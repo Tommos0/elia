@@ -1,0 +1,196 @@
+defmodule Elia.LLM.AnthropicTest do
+  use ExUnit.Case, async: false
+
+  alias Elia.LLM.{Anthropic, Message}
+
+  setup do
+    previous = Application.get_env(:elia, Anthropic)
+
+    Application.put_env(:elia, Anthropic,
+      api_key: "test-key",
+      req_options: [plug: {Req.Test, __MODULE__}]
+    )
+
+    on_exit(fn -> Application.put_env(:elia, Anthropic, previous) end)
+  end
+
+  defp sse(events) do
+    Enum.map_join(events, fn event ->
+      "event: #{event["type"]}\ndata: #{Jason.encode!(event)}\n\n"
+    end)
+  end
+
+  defp stub_stream(test_pid, events) do
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:request, conn.req_headers, Jason.decode!(body)})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("text/event-stream")
+      |> Plug.Conn.send_resp(200, sse(events))
+    end)
+  end
+
+  test "streams text, thinking and tool calls into a neutral message" do
+    thinking = %{"type" => "thinking", "thinking" => "", "signature" => ""}
+
+    stub_stream(self(), [
+      %{
+        "type" => "message_start",
+        "message" => %{"model" => "claude-opus-5-5", "usage" => %{"input_tokens" => 10}}
+      },
+      %{"type" => "content_block_start", "index" => 0, "content_block" => thinking},
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "thinking_delta", "thinking" => "Checking files."}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "signature_delta", "signature" => "sig"}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{
+        "type" => "content_block_start",
+        "index" => 1,
+        "content_block" => %{"type" => "text", "text" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 1,
+        "delta" => %{"type" => "text_delta", "text" => "Let me "}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 1,
+        "delta" => %{"type" => "text_delta", "text" => "look."}
+      },
+      %{"type" => "content_block_stop", "index" => 1},
+      %{
+        "type" => "content_block_start",
+        "index" => 2,
+        "content_block" => %{
+          "type" => "tool_use",
+          "id" => "toolu_1",
+          "name" => "shell",
+          "input" => %{}
+        }
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 2,
+        "delta" => %{"type" => "input_json_delta", "partial_json" => "{\"command\": "}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 2,
+        "delta" => %{"type" => "input_json_delta", "partial_json" => "\"ls\"}"}
+      },
+      %{"type" => "content_block_stop", "index" => 2},
+      %{
+        "type" => "message_delta",
+        "delta" => %{"stop_reason" => "tool_use"},
+        "usage" => %{"output_tokens" => 20}
+      },
+      %{"type" => "message_stop"}
+    ])
+
+    test_pid = self()
+    request = %{system: "sys", messages: [Message.user("hi")], tools: Elia.Skills.Shell.tools()}
+
+    assert {:ok, response} = Anthropic.stream(request, &send(test_pid, {:event, &1}))
+
+    assert response.stop_reason == :tool_use
+    assert response.usage == %{"input_tokens" => 10, "output_tokens" => 20}
+
+    assert [
+             %{type: :reasoning, text: "Checking files."},
+             %{type: :text, text: "Let me look."},
+             %{type: :tool_call, id: "toolu_1", name: "shell", input: %{"command" => "ls"}}
+           ] = response.message.content
+
+    assert_received {:event, {:text_delta, "Let me "}}
+    assert_received {:event, {:tool_call_started, %{id: "toolu_1", name: "shell"}}}
+
+    assert_received {:request, headers, body}
+    assert {"anthropic-version", "2026-10-21"} in headers
+    assert {"x-api-key", "test-key"} in headers
+
+    assert {"anthropic-beta",
+            "server-side-fallback-2026-07-01,thinking-display-updates-2026-08-18"} in headers
+
+    assert body["model"] == "claude-opus-5-5"
+    assert body["stream"] == true
+    assert body["fallbacks"] == "default"
+    assert body["thinking"] == %{"type" => "adaptive", "display" => "updates"}
+    assert [%{"name" => "shell", "input_schema" => %{"required" => ["command"]}}] = body["tools"]
+
+    # Our own blocks are echoed back exactly as received.
+    history = [
+      Message.user("hi"),
+      response.message,
+      %Message{role: :tool, content: [Message.tool_result("toolu_1", "a\nb")]}
+    ]
+
+    assert [
+             %{"role" => "user"},
+             %{"role" => "assistant", "content" => [echoed_thinking, _text, tool_use]},
+             %{
+               "role" => "user",
+               "content" => [%{"type" => "tool_result", "tool_use_id" => "toolu_1"}]
+             }
+           ] = Anthropic.encode_messages(history)
+
+    assert echoed_thinking == %{
+             "type" => "thinking",
+             "thinking" => "Checking files.",
+             "signature" => "sig"
+           }
+
+    assert tool_use == %{
+             "type" => "tool_use",
+             "id" => "toolu_1",
+             "name" => "shell",
+             "input" => %{"command" => "ls"}
+           }
+  end
+
+  test "drops reasoning from other providers and merges consecutive user turns" do
+    history = [
+      Message.user("one"),
+      %Message{
+        role: :assistant,
+        content: [%{type: :reasoning, text: "x", raw: {OtherProvider, %{}}}, Message.text("ok")]
+      },
+      %Message{role: :tool, content: [Message.tool_result("t1", "out")]},
+      Message.user("two")
+    ]
+
+    assert [
+             %{"role" => "user"},
+             %{"role" => "assistant", "content" => [%{"type" => "text", "text" => "ok"}]},
+             %{
+               "role" => "user",
+               "content" => [%{"type" => "tool_result"}, %{"type" => "text", "text" => "two"}]
+             }
+           ] = Anthropic.encode_messages(history)
+  end
+
+  test "maps refusals and API errors" do
+    stub_stream(self(), [
+      %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+      %{"type" => "message_delta", "delta" => %{"stop_reason" => "refusal"}}
+    ])
+
+    assert {:ok, %{stop_reason: :refusal, message: %{content: []}}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(Plug.Conn.put_status(conn, 400), %{"error" => %{"message" => "bad request"}})
+    end)
+
+    assert {:error, "Anthropic API error 400: bad request"} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+  end
+end

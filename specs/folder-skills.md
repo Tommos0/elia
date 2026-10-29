@@ -1,0 +1,43 @@
+# Folder skills
+
+Status: Implemented
+
+Skills can be added without recompiling: a folder under `skills/` with a
+`SKILL.md` and, optionally, script-backed tools. The agent can write these
+itself.
+
+## Requirements
+
+- **FOLDER-1** Each directory directly under `skills/` is a candidate skill.
+  It must contain `SKILL.md`.
+- **FOLDER-2** `SKILL.md` starts with a `---` frontmatter block of
+  `key: value` lines. `name` (matching `^[a-z0-9][a-z0-9_-]{0,63}$`) and
+  `description` are required. The body after the frontmatter is the skill's
+  instructions.
+- **FOLDER-3** The skill's instructions end with "Skill folder: <relative path>".
+- **FOLDER-4** The optional `tools.json` file is a JSON list of tools. Each
+  has `name` (matching `^[a-zA-Z0-9_-]{1,64}$`), `description` and `command`,
+  and optionally `input_schema` (an object schema; defaults to empty) and
+  `timeout_seconds` (default 60).
+- **FOLDER-5** Load errors are specific: a missing `SKILL.md`, missing
+  frontmatter, an invalid or missing field, invalid JSON, or
+  "tools.json entry <i>: <reason>".
+- **FOLDER-6** A script tool runs its `command` with `sh -c` in the skill
+  folder.
+- **FOLDER-7** Tool input never goes into the command line. It is passed as
+  JSON in `ELIA_INPUT`, and each top-level string, number or boolean field as
+  `ELIA_ARG_<FIELD>` (upper-cased, with non-alphanumeric characters replaced
+  by `_`). `ELIA_WORKSPACE` holds the workspace root.
+- **FOLDER-8** Script tools always need approval, because the agent can write
+  them without approval (WS-1).
+- **FOLDER-9** A script tool checkpoints the workspace before running
+  (CKPT-2). Its output and exit status are formatted like the shell tool's
+  (SHELL-4).
+
+## Implementation
+
+`Elia.Skills.Folder`.
+
+## Tests
+
+`test/elia/self_modification_test.exs`, `test/elia/agent_test.exs`.
