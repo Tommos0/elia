@@ -23,6 +23,7 @@ end
 config :elia, EliaWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
+config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.

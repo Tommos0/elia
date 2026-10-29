@@ -35,6 +35,26 @@ defmodule Elia.LLM.Provider do
           | {:tool_call_started, %{id: binary(), name: binary()}}
           | {:notice, binary()}
 
+  @typedoc "A model offered in the picker. Prices are USD per million tokens."
+  @type model :: %{
+          required(:id) => binary(),
+          required(:name) => binary(),
+          optional(:context_length) => pos_integer() | nil,
+          optional(:prompt_price) => float() | nil,
+          optional(:completion_price) => float() | nil
+        }
+
   @callback stream(request(), on_event :: (event() -> any())) ::
               {:ok, response()} | {:error, term()}
+
+  @doc "The model used when a request names none."
+  @callback default_model() :: binary()
+
+  @doc "Makes one authenticated request to verify `api_key`."
+  @callback check_key(api_key :: binary()) :: :ok | {:error, binary()}
+
+  @doc "Models available with `api_key` (which may be `nil`)."
+  @callback list_models(api_key :: binary() | nil) :: {:ok, [model()]} | {:error, binary()}
+
+  @optional_callbacks default_model: 0, check_key: 1, list_models: 1
 end

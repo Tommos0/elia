@@ -65,7 +65,15 @@ defmodule Elia.Agent.Session do
     session = self()
     history = state.messages
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
-    opts = Keyword.merge(state.loop_opts, session_id: state.id, turn_id: turn_id)
+    # The model selected now is used for the whole turn. An explicit provider
+    # replaces the selection; other explicit options are merged over it.
+    llm =
+      case Keyword.get(state.loop_opts, :llm, %{}) do
+        %{provider: _} = llm -> llm
+        llm -> Map.merge(Elia.LLM.selection_request(), llm)
+      end
+
+    opts = Keyword.merge(state.loop_opts, session_id: state.id, turn_id: turn_id, llm: llm)
 
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->

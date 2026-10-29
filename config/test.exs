@@ -24,5 +24,9 @@ config :phoenix,
 # Tests script model turns with a fake provider.
 config :elia, Elia.LLM, provider: Elia.FakeLLM
 
+# Settings (API keys, model selection) go to a scratch database.
+config :elia, Elia.Settings,
+  path: Path.join([System.tmp_dir!(), "elia-test-settings", "settings.dets"])
+
 # Tests run against a scratch workspace (a fresh git repo, see test_helper.exs).
 config :elia, :workspace, Path.join(System.tmp_dir!(), "elia-test-workspace")

@@ -198,4 +198,35 @@ defmodule Elia.AgentTest do
 
     assert [%Message{role: :user}, %Message{role: :assistant}] = Agent.snapshot(id).messages
   end
+
+  # MODEL-3
+  test "a turn uses the model selected when it starts", %{id: id} do
+    Elia.LLMCase.reset_settings()
+    Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
+    :ok = Elia.LLM.select("openrouter", "vendor/picked")
+
+    Elia.LLMCase.stub_openrouter_stream(self(), [
+      %{"choices" => [%{"delta" => %{"content" => "From OpenRouter."}}]},
+      %{"choices" => [%{"delta" => %{}, "finish_reason" => "stop"}]}
+    ])
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    assert_receive {:request, "/api/v1/chat/completions", _headers, %{"model" => "vendor/picked"}}
+    assert FakeLLM.requests() == []
+    assert Message.text_content(List.last(Agent.snapshot(id).messages)) == "From OpenRouter."
+
+    # Explicit loop options win over the selection.
+    other = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(other, loop_opts: [llm: %{provider: FakeLLM}])
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(other)
+    FakeLLM.push(FakeLLM.assistant([Message.text("From fake.")]))
+
+    :ok = Agent.send_message(other, "hi")
+    await_status(other, :idle)
+    assert [request] = FakeLLM.requests()
+    refute Map.has_key?(request, :model)
+  end
 end

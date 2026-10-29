@@ -4,7 +4,8 @@ Status: Implemented
 
 Model calls go through a provider-neutral interface, so the agent loop never
 depends on one vendor's API. The default provider is Anthropic's Messages API,
-streamed over SSE.
+streamed over SSE. OpenRouter's OpenAI-compatible Chat Completions API gives
+access to many other models.
 
 ## Requirements
 
@@ -29,8 +30,9 @@ streamed over SSE.
 
 ### Anthropic
 
-- **LLM-7** Without an API key, `stream` returns
-  `{:error, "ANTHROPIC_API_KEY is not set"}` and makes no request.
+- **LLM-7** Without an API key (CONF-5), `stream` returns
+  `{:error, "No Anthropic API key: add one in Settings or set ANTHROPIC_API_KEY"}`
+  and makes no request.
 - **LLM-8** Requests use adaptive thinking, the configured effort, and
   automatic prompt caching (`cache_control: ephemeral`). The beta headers for
   fallbacks and thinking "updates" display are sent only when those features
@@ -50,18 +52,63 @@ streamed over SSE.
   `:end_turn`; `max_tokens` and `model_context_window_exceeded` →
   `:max_tokens`; `tool_use`, `refusal` → same; anything else → `:other`.
 
+### Registry
+
+- **LLM-15** `Elia.LLM.providers/0` lists the registered providers as
+  `%{key, name, module}`: `"anthropic"` (`Elia.LLM.Anthropic`) and
+  `"openrouter"` (`Elia.LLM.OpenRouter`).
+- **LLM-16** Providers may implement `check_key/1` (CONF-6) and
+  `list_models/1` (MODEL-5, MODEL-6).
+
+### OpenRouter
+
+- **LLM-17** Without an API key (CONF-5), `stream` returns
+  `{:error, "No OpenRouter API key: add one in Settings or set OPENROUTER_API_KEY"}`
+  and makes no request.
+- **LLM-18** Requests go to `POST /api/v1/chat/completions` with
+  `stream: true`, a bearer token and an `X-Title: Elia` header. The system
+  prompt is the first message with role `system`. Tools are sent as
+  `function` tools with `parameters` set to the input schema. `max_tokens`
+  and `reasoning.effort` are sent only when configured or requested.
+- **LLM-19** Assistant messages carry their text as `content` and tool calls
+  as `tool_calls` with JSON-encoded `arguments`. Each tool result becomes its
+  own `tool` message; error results are prefixed with `Error: `. Text in a tool-role message after the results becomes
+  a following user message.
+- **LLM-20** Streamed `content`, `reasoning` and `tool_calls` deltas emit
+  `:text_delta`, `:reasoning_delta` and `:tool_call_started` events. Tool
+  call fragments are joined by `index`.
+- **LLM-21** `reasoning_details` are accumulated (fragments with the same
+  `index` are joined) and kept as the raw data of a `:reasoning` block. They
+  are sent back on that assistant message so models can continue their
+  reasoning across tool calls.
+- **LLM-22** Finish reasons map as: `stop` → `:end_turn`; `tool_calls` →
+  `:tool_use`; `length` → `:max_tokens`; `content_filter` → `:refusal`;
+  anything else → `:other`. An `error` object in a chunk, or a finish reason
+  of `error`, makes the call return an error.
+- **LLM-23** Statuses 408, 429, 500, 502, 503 and 504 are retried as in
+  LLM-10. Other errors return the API's error message.
+- **LLM-24** Tool arguments that fail to parse become empty input, with the
+  raw text kept in `invalid_input` (as LLM-11).
+
 ## Configuration
 
 ```elixir
 config :elia, Elia.LLM, provider: Elia.LLM.Anthropic
 
 config :elia, Elia.LLM.Anthropic,
-  api_key: System.get_env("ANTHROPIC_API_KEY"),
+  api_key: System.get_env("ANTHROPIC_API_KEY"),   # a key saved in Settings wins
   model: "claude-opus-5-5",
   max_tokens: 64_000,
   effort: "high",
   thinking_display: "updates",   # "summarized" | "omitted" | nil
-  fallbacks: "default"           # nil disables
+  fallbacks: "default",          # nil disables
+  prices: %{}                    # extra/override picker prices, USD per MTok {in, out}
+
+config :elia, Elia.LLM.OpenRouter,
+  api_key: System.get_env("OPENROUTER_API_KEY"),  # a key saved in Settings wins
+  model: "anthropic/claude-opus-5.5",
+  max_tokens: nil,               # model default
+  effort: nil                    # "low" | "medium" | "high"
 ```
 
 Tests use `Elia.FakeLLM`.
@@ -69,8 +116,8 @@ Tests use `Elia.FakeLLM`.
 ## Implementation
 
 `Elia.LLM`, `Elia.LLM.Provider`, `Elia.LLM.Message`, `Elia.LLM.Anthropic`,
-`Elia.LLM.SSE`.
+`Elia.LLM.OpenRouter`, `Elia.LLM.SSE`.
 
 ## Tests
 
-`test/elia/llm/anthropic_test.exs`.
+`test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`.

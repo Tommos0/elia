@@ -493,6 +493,54 @@ defmodule EliaWeb.CoreComponents do
   end
 
   @doc """
+  A colour-coded pill naming an LLM provider, so models from different
+  providers (e.g. Claude direct vs. Claude via OpenRouter) are easy to tell apart.
+
+  ## Examples
+
+      <.provider_badge provider="openrouter" />
+      <.provider_badge provider="anthropic" size="xs" />
+  """
+  attr :provider, :string, required: true
+  attr :size, :string, default: "sm", values: ~w(xs sm)
+  attr :rest, :global
+
+  def provider_badge(assigns) do
+    assigns =
+      assign(assigns,
+        name:
+          case Elia.LLM.provider_info(assigns.provider) do
+            %{name: name} -> name
+            nil -> assigns.provider
+          end
+      )
+
+    ~H"""
+    <span
+      data-provider={@provider}
+      class={[
+        "inline-flex shrink-0 items-center gap-1 rounded-full font-medium",
+        @size == "sm" && "px-2 py-0.5 text-[11px]",
+        @size == "xs" && "px-1.5 py-px text-[10px]",
+        provider_color(@provider)
+      ]}
+      {@rest}
+    >
+      <.icon name={provider_icon(@provider)} class={if @size == "xs", do: "size-2.5", else: "size-3"} />
+      {@name}
+    </span>
+    """
+  end
+
+  def provider_icon("anthropic"), do: "hero-sparkles"
+  def provider_icon("openrouter"), do: "hero-globe-alt"
+  def provider_icon(_provider), do: "hero-cpu-chip"
+
+  defp provider_color("anthropic"), do: "bg-secondary/15 text-secondary"
+  defp provider_color("openrouter"), do: "bg-info/15 text-info"
+  defp provider_color(_provider), do: "bg-base-300 text-base-content/70"
+
+  @doc """
   Translates the errors for a field from a keyword list of errors.
   """
   def translate_errors(errors, field) when is_list(errors) do

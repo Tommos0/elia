@@ -18,6 +18,8 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
+      Elia.Settings,
+      Elia.LLM.Catalog,
       Elia.Skills,
       Elia.Checkpoint,
       # Start to serve requests, typically the last entry

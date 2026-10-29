@@ -51,7 +51,9 @@ deleting it.
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, and how decisions apply |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
-| [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages and the Anthropic backend |
+| [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic and OpenRouter backends |
+| [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
+| [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks |
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |

@@ -193,4 +193,28 @@ defmodule Elia.LLM.AnthropicTest do
     assert {:error, "Anthropic API error 400: bad request"} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
+
+  # LLM-7, CONF-5
+  test "without a key, returns an error and makes no request; a stored key is used" do
+    Application.put_env(:elia, Anthropic, req_options: [plug: {Req.Test, __MODULE__}])
+    Elia.Settings.delete({:api_key, "anthropic"})
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
+
+    assert {:error, "No Anthropic API key: add one in Settings or set ANTHROPIC_API_KEY"} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    :ok = Elia.Settings.put({:api_key, "anthropic"}, "stored-key")
+    on_exit(fn -> Elia.Settings.delete({:api_key, "anthropic"}) end)
+
+    stub_stream(self(), [
+      %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+      %{"type" => "message_delta", "delta" => %{"stop_reason" => "end_turn"}}
+    ])
+
+    assert {:ok, %{stop_reason: :end_turn}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert_receive {:request, headers, _body}
+    assert {"x-api-key", "stored-key"} in headers
+  end
 end

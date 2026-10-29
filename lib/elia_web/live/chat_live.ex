@@ -2,6 +2,7 @@ defmodule EliaWeb.ChatLive do
   use EliaWeb, :live_view
 
   alias Elia.Agent
+  alias Elia.LLM
   alias Elia.LLM.Message
 
   @impl true
@@ -17,7 +18,12 @@ defmodule EliaWeb.ChatLive do
 
   defp mount_chat(id, socket) do
     {:ok, _pid} = Agent.ensure_started(id)
-    if connected?(socket), do: Agent.subscribe(id)
+
+    if connected?(socket) do
+      Agent.subscribe(id)
+      LLM.subscribe_selection()
+    end
+
     snapshot = Agent.snapshot(id)
 
     socket =
@@ -30,8 +36,15 @@ defmodule EliaWeb.ChatLive do
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
-        chats: Elia.Store.list(30)
+        chats: Elia.Store.list(30),
+        selection: LLM.selection(),
+        picker_open: false,
+        model_query: "",
+        search_form: to_form(%{"q" => ""}, as: :model_search),
+        # provider key => :loading | {:ok, models} | {:error, message}
+        catalogs: %{}
       )
+      |> stream(:models, [])
       |> load_messages(snapshot.messages)
 
     {:ok, socket}
@@ -100,11 +113,19 @@ defmodule EliaWeb.ChatLive do
           </div>
 
           <div class="border-t border-base-300 bg-base-100">
+            <div class="mx-auto max-w-3xl px-4 pt-3 sm:px-6">
+              <.model_picker
+                selection={@selection}
+                open={@picker_open}
+                search_form={@search_form}
+                streams={@streams}
+              />
+            </div>
             <.form
               for={@form}
               id="chat-form"
               phx-submit="send"
-              class="mx-auto flex max-w-3xl items-end gap-2 px-4 py-4 sm:px-6"
+              class="mx-auto flex max-w-3xl items-end gap-2 px-4 pt-2 pb-4 sm:px-6"
             >
               <textarea
                 id="chat-input"
@@ -174,6 +195,186 @@ defmodule EliaWeb.ChatLive do
     </Layouts.app>
     """
   end
+
+  attr :selection, :map, required: true
+  attr :open, :boolean, required: true
+  attr :search_form, :any, required: true
+  attr :streams, :any, required: true
+
+  defp model_picker(assigns) do
+    ~H"""
+    <div class="relative inline-block max-w-full">
+      <button
+        type="button"
+        id="model-picker-button"
+        phx-click={if @open, do: "close_picker", else: "open_picker"}
+        aria-haspopup="listbox"
+        aria-expanded={to_string(@open)}
+        class={[
+          "group flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+          @open && "border-primary/50 bg-primary/5",
+          !@open &&
+            "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+        ]}
+      >
+        <.provider_badge provider={@selection.provider} id="selected-provider" />
+        <span id="selected-model" class="truncate font-medium">{@selection.name}</span>
+        <.icon
+          name="hero-chevron-up-down"
+          class="size-3.5 shrink-0 opacity-60 transition group-hover:opacity-100"
+        />
+      </button>
+
+      <div
+        :if={@open}
+        id="model-picker"
+        phx-click-away="close_picker"
+        phx-window-keydown="close_picker"
+        phx-key="Escape"
+        class="absolute bottom-full left-0 z-30 mb-2 flex max-h-[28rem] w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
+      >
+        <.form
+          for={@search_form}
+          id="model-search-form"
+          phx-change="search_models"
+          phx-submit="search_models"
+          class="border-b border-base-300 p-2"
+        >
+          <label class="flex items-center gap-2 rounded-lg bg-base-200/60 px-2.5 focus-within:ring-1 focus-within:ring-primary/50">
+            <.icon name="hero-magnifying-glass" class="size-4 shrink-0 text-base-content/40" />
+            <input
+              type="text"
+              id="model-search"
+              name={@search_form[:q].name}
+              value={@search_form[:q].value}
+              placeholder="Search models…"
+              autocomplete="off"
+              phx-debounce="120"
+              phx-mounted={JS.focus()}
+              class="h-9 w-full bg-transparent text-sm outline-none"
+            />
+          </label>
+        </.form>
+        <ul id="model-list" phx-update="stream" role="listbox" class="flex-1 overflow-y-auto py-1">
+          <li :for={{dom_id, entry} <- @streams.models} id={dom_id}>
+            <.model_entry entry={entry} selection={@selection} />
+          </li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  attr :entry, :map, required: true
+  attr :selection, :map, required: true
+
+  defp model_entry(%{entry: %{kind: :header}} = assigns) do
+    ~H"""
+    <div
+      id={"group-#{@entry.provider}"}
+      class="sticky top-0 z-10 flex items-center gap-2 border-b border-base-300/60 bg-base-100/95 px-3 py-2 backdrop-blur [li:not(:first-child)>&]:mt-1 [li:not(:first-child)>&]:border-t"
+    >
+      <.provider_badge provider={@entry.provider} />
+      <span class="truncate text-[11px] text-base-content/50">{provider_route(@entry.provider)}</span>
+      <span :if={@entry.count} class="ml-auto text-[11px] tabular-nums text-base-content/40">
+        {@entry.count}
+      </span>
+    </div>
+    <%= case @entry.status do %>
+      <% :loading -> %>
+        <div class="flex items-center gap-2 px-3 py-2 text-xs text-base-content/50">
+          <.icon name="hero-arrow-path" class="size-3.5 motion-safe:animate-spin" /> Loading models…
+        </div>
+      <% :no_key -> %>
+        <.link
+          navigate={~p"/settings"}
+          id={"add-key-#{@entry.provider}"}
+          class="mx-2 mb-1 flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-primary transition hover:bg-primary/10"
+        >
+          <.icon name="hero-key" class="size-3.5" /> Add an API key in Settings
+          <.icon name="hero-arrow-right" class="ml-auto size-3.5" />
+        </.link>
+      <% {:error, message} -> %>
+        <div
+          id={"catalog-error-#{@entry.provider}"}
+          class="mx-2 mb-1 flex items-start gap-2 rounded-lg bg-error/10 px-2 py-2 text-xs text-error"
+        >
+          <.icon name="hero-exclamation-triangle" class="mt-px size-3.5 shrink-0" />
+          <span class="break-words">{message}</span>
+        </div>
+      <% :empty -> %>
+        <p class="px-3 py-2 text-xs text-base-content/40">No matching models</p>
+      <% _ -> %>
+    <% end %>
+    """
+  end
+
+  defp model_entry(assigns) do
+    assigns =
+      assign(assigns,
+        selected?:
+          assigns.selection.provider == assigns.entry.provider and
+            assigns.selection.model == assigns.entry.model
+      )
+
+    ~H"""
+    <button
+      type="button"
+      role="option"
+      aria-selected={to_string(@selected?)}
+      phx-click="select_model"
+      phx-value-provider={@entry.provider}
+      phx-value-model={@entry.model}
+      phx-value-name={@entry.name}
+      class={[
+        "group mx-1 flex w-[calc(100%-0.5rem)] items-center gap-3 rounded-lg px-2 py-1.5 text-left transition",
+        @selected? && "bg-primary/10",
+        !@selected? && "hover:bg-base-200"
+      ]}
+    >
+      <div class="min-w-0 flex-1">
+        <p class={["truncate text-sm", @selected? && "font-medium text-primary"]}>{@entry.name}</p>
+        <p class="flex min-w-0 items-center gap-1.5">
+          <.provider_badge provider={@entry.provider} size="xs" />
+          <span class="truncate font-mono text-[11px] text-base-content/40">{@entry.model}</span>
+        </p>
+      </div>
+      <div class="shrink-0 text-right text-[11px] leading-tight text-base-content/50">
+        <p :if={@entry.context_length}>{format_context(@entry.context_length)}</p>
+        <p :if={@entry.prompt_price}>
+          {format_price(@entry.prompt_price)} / {format_price(@entry.completion_price)}
+        </p>
+      </div>
+      <.icon
+        name="hero-check"
+        class={["size-4 shrink-0 text-primary", !@selected? && "invisible"]}
+      />
+    </button>
+    """
+  end
+
+  defp provider_route("anthropic"), do: "Direct from the Anthropic API"
+  defp provider_route("openrouter"), do: "Many vendors, routed via OpenRouter"
+  defp provider_route(_key), do: ""
+
+  defp format_context(tokens) when tokens >= 1_000_000,
+    do: "#{Float.round(tokens / 1_000_000, 1) |> trim_float()}M ctx"
+
+  defp format_context(tokens) when tokens >= 1000, do: "#{div(tokens, 1000)}K ctx"
+  defp format_context(tokens), do: "#{tokens} ctx"
+
+  defp format_price(nil), do: "?"
+  defp format_price(price) when price == 0, do: "free"
+  defp format_price(price) when price < 0.1, do: "$#{Float.round(price, 3) |> trim_float()}"
+  defp format_price(price), do: "$#{Float.round(price, 2) |> trim_float()}"
+
+  defp trim_float(float) do
+    if float == Float.round(float), do: trunc(float), else: float
+  end
+
+  @doc "DOM id of a model in the picker (ids contain `/`, `:` and `.`)."
+  def model_dom_id(provider, model),
+    do: "models-m-#{provider}-#{Base.url_encode64(model, padding: false)}"
 
   attr :item, :map, required: true
 
@@ -383,7 +584,129 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
+  def handle_event("open_picker", _params, socket) do
+    catalogs =
+      for info <- LLM.providers(), LLM.api_key(info.key) != nil, into: %{} do
+        case socket.assigns.catalogs[info.key] do
+          {:ok, _} = loaded -> {info.key, loaded}
+          _ -> {info.key, :loading}
+        end
+      end
+
+    socket =
+      Enum.reduce(catalogs, socket, fn
+        {key, :loading}, socket -> start_async(socket, {:catalog, key}, fn -> LLM.models(key) end)
+        _loaded, socket -> socket
+      end)
+
+    socket
+    |> assign(
+      picker_open: true,
+      catalogs: catalogs,
+      model_query: "",
+      search_form: to_form(%{"q" => ""}, as: :model_search)
+    )
+    |> stream_models()
+    |> noreply()
+  end
+
+  def handle_event("close_picker", _params, socket) do
+    {:noreply, assign(socket, picker_open: false)}
+  end
+
+  def handle_event("search_models", %{"model_search" => %{"q" => query}}, socket) do
+    socket
+    |> assign(model_query: query, search_form: to_form(%{"q" => query}, as: :model_search))
+    |> stream_models()
+    |> noreply()
+  end
+
+  def handle_event("select_model", %{"provider" => key, "model" => model} = params, socket) do
+    case LLM.select(key, model, params["name"]) do
+      :ok ->
+        {:noreply, assign(socket, selection: LLM.selection(), picker_open: false)}
+
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
   @impl true
+  def handle_async({:catalog, key}, result, socket) do
+    catalog =
+      case result do
+        {:ok, {:ok, models}} -> {:ok, models}
+        {:ok, {:error, message}} -> {:error, message}
+        {:exit, reason} -> {:error, "Could not load models: #{Exception.format_exit(reason)}"}
+      end
+
+    socket
+    |> assign(catalogs: Map.put(socket.assigns.catalogs, key, catalog))
+    |> stream_models()
+    |> noreply()
+  end
+
+  defp noreply(socket), do: {:noreply, socket}
+
+  # Rebuilds the picker list: a header per provider, then its matching models.
+  defp stream_models(%{assigns: %{picker_open: false}} = socket), do: socket
+
+  defp stream_models(socket) do
+    query = socket.assigns.model_query |> String.trim() |> String.downcase()
+
+    entries =
+      Enum.flat_map(LLM.providers(), fn info ->
+        header = %{id: "g-#{info.key}", kind: :header, provider: info.key, name: info.name}
+
+        case socket.assigns.catalogs[info.key] do
+          nil ->
+            [Map.merge(header, %{status: :no_key, count: nil})]
+
+          {:ok, models} ->
+            matches = Enum.filter(models, &model_matches?(&1, query))
+            status = if matches == [], do: :empty, else: :ok
+
+            count =
+              if query == "", do: length(models), else: "#{length(matches)}/#{length(models)}"
+
+            [Map.merge(header, %{status: status, count: count})] ++
+              Enum.map(matches, &model_entry_data(info.key, &1))
+
+          other ->
+            [Map.merge(header, %{status: other, count: nil})]
+        end
+      end)
+
+    stream(socket, :models, entries, reset: true)
+  end
+
+  defp model_matches?(_model, ""), do: true
+
+  defp model_matches?(model, query) do
+    String.contains?(String.downcase(model.name), query) or
+      String.contains?(String.downcase(model.id), query)
+  end
+
+  defp model_entry_data(key, model) do
+    "models-" <> id = model_dom_id(key, model.id)
+
+    %{
+      id: id,
+      kind: :model,
+      provider: key,
+      model: model.id,
+      name: model.name,
+      context_length: model[:context_length],
+      prompt_price: model[:prompt_price],
+      completion_price: model[:completion_price]
+    }
+  end
+
+  @impl true
+  def handle_info({:llm_selection, selection}, socket) do
+    socket |> assign(selection: selection) |> stream_models() |> noreply()
+  end
+
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
   defp apply_event({:message, %Message{} = message}, socket) do

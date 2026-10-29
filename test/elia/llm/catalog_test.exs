@@ -1,0 +1,147 @@
+defmodule Elia.LLM.CatalogTest do
+  use ExUnit.Case, async: false
+
+  import Elia.LLMCase
+
+  alias Elia.LLM
+  alias Elia.LLM.{Anthropic, OpenRouter}
+
+  setup do
+    reset_settings()
+    configure(Anthropic, model: "claude-configured")
+    configure(OpenRouter)
+    :ok
+  end
+
+  defp openrouter_models do
+    %{
+      "data" => [
+        %{
+          "id" => "zeta/tools",
+          "name" => "Zeta: Tools",
+          "context_length" => 200_000,
+          "pricing" => %{"prompt" => "0.000003", "completion" => "0.000015"},
+          "supported_parameters" => ["tools", "tool_choice", "reasoning"]
+        },
+        %{
+          "id" => "alpha/tools",
+          "name" => "alpha: Tools",
+          "pricing" => %{"prompt" => "-1", "completion" => "0"},
+          "supported_parameters" => ["tools"]
+        },
+        %{"id" => "no/tools", "name" => "No Tools", "supported_parameters" => ["temperature"]},
+        %{"id" => "no/params", "name" => "No Params"}
+      ]
+    }
+  end
+
+  # LLM-15
+  test "registers Anthropic and OpenRouter" do
+    assert [%{key: "anthropic", module: Anthropic}, %{key: "openrouter", module: OpenRouter}] =
+             LLM.providers()
+  end
+
+  # MODEL-5, MODEL-7
+  test "OpenRouter offers tool-capable models, sorted by name, without a key" do
+    Req.Test.stub(OpenRouter, fn conn ->
+      assert conn.request_path == "/api/v1/models"
+      assert Plug.Conn.get_req_header(conn, "authorization") == []
+      Req.Test.json(conn, openrouter_models())
+    end)
+
+    assert {:ok, [alpha, zeta]} = LLM.models("openrouter")
+    assert %{id: "alpha/tools", prompt_price: nil, completion_price: +0.0} = alpha
+
+    assert %{id: "zeta/tools", name: "Zeta: Tools", context_length: 200_000} = zeta
+    assert_in_delta zeta.prompt_price, 3.0, 1.0e-9
+    assert_in_delta zeta.completion_price, 15.0, 1.0e-9
+  end
+
+  # MODEL-6
+  test "Anthropic lists models with a key and falls back to the configured model" do
+    assert {:ok, [%{id: "claude-configured"}]} = LLM.models("anthropic")
+    LLM.Catalog.clear("anthropic")
+
+    configure(Anthropic, api_key: "ak", model: "claude-configured")
+
+    Req.Test.stub(Anthropic, fn conn ->
+      assert Plug.Conn.get_req_header(conn, "x-api-key") == ["ak"]
+
+      Req.Test.json(conn, %{
+        "data" => [
+          %{"id" => "claude-a", "display_name" => "Claude A", "max_input_tokens" => 1000}
+        ]
+      })
+    end)
+
+    assert {:ok, [%{id: "claude-a", name: "Claude A", context_length: 1000}]} =
+             LLM.models("anthropic")
+
+    LLM.Catalog.clear("anthropic")
+    Req.Test.stub(Anthropic, fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
+    assert {:ok, [%{id: "claude-configured"}]} = LLM.models("anthropic")
+  end
+
+  # MODEL-14
+  test "Anthropic models get prices from the built-in table and config" do
+    configure(Anthropic, api_key: "ak", prices: %{"claude-custom" => {1.5, 7.5}})
+
+    Req.Test.stub(Anthropic, fn conn ->
+      Req.Test.json(conn, %{
+        "data" => [
+          %{"id" => "claude-opus-5-5", "display_name" => "Claude Opus 5.5"},
+          %{"id" => "claude-haiku-4-5-20251001", "display_name" => "Claude Haiku 4.5"},
+          %{"id" => "claude-custom", "display_name" => "Custom"},
+          %{"id" => "claude-unknown", "display_name" => "Unknown"}
+        ]
+      })
+    end)
+
+    assert {:ok, [opus, haiku, custom, unknown]} = LLM.models("anthropic")
+    assert %{prompt_price: 4.0, completion_price: 20.0} = opus
+    assert %{prompt_price: 1.0, completion_price: 5.0} = haiku
+    assert %{prompt_price: 1.5, completion_price: 7.5} = custom
+    refute Map.has_key?(unknown, :prompt_price)
+  end
+
+  # MODEL-8
+  test "results are cached, failures are not, and saving a key clears the cache" do
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+        0 -> Plug.Conn.send_resp(conn, 503, "down")
+        _ -> Req.Test.json(conn, openrouter_models())
+      end
+    end)
+
+    assert {:error, "OpenRouter API error 503: down"} = LLM.models("openrouter")
+    assert {:ok, [_, _]} = LLM.models("openrouter")
+    assert {:ok, [_, _]} = LLM.models("openrouter")
+    assert Agent.get(calls, & &1) == 2
+
+    :ok = LLM.delete_key("openrouter")
+    assert {:ok, [_, _]} = LLM.models("openrouter")
+    assert Agent.get(calls, & &1) == 3
+  end
+
+  # MODEL-1, MODEL-2, MODEL-4
+  test "selection defaults to the configured provider and persists choices" do
+    # Tests configure Elia.FakeLLM, which isn't registered: Anthropic is the fallback.
+    assert %{provider: "anthropic", model: "claude-configured"} = LLM.selection()
+    assert LLM.selection_request() == %{}
+
+    LLM.subscribe_selection()
+    assert :ok = LLM.select("openrouter", "vendor/model", "Vendor: Model")
+    assert_receive {:llm_selection, %{provider: "openrouter", model: "vendor/model"}}
+
+    assert %{provider: "openrouter", model: "vendor/model", name: "Vendor: Model"} =
+             LLM.selection()
+
+    assert LLM.selection_request() == %{provider: OpenRouter, model: "vendor/model"}
+
+    assert {:error, _} = LLM.select("nope", "x")
+    assert {:error, _} = LLM.select("openrouter", " ")
+    assert %{model: "vendor/model"} = LLM.selection()
+  end
+end

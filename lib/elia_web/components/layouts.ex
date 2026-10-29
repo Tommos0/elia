@@ -59,6 +59,13 @@ defmodule EliaWeb.Layouts do
             <.icon name="hero-chart-bar" class="size-4" /> System
           </.link>
           <.link
+            navigate={~p"/settings"}
+            id="settings-link"
+            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
+          >
+            <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+          </.link>
+          <.link
             navigate={~p"/"}
             id="new-chat"
             class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"

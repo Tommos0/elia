@@ -4,11 +4,13 @@ defmodule Elia.LLM.Anthropic do
 
   Configuration (`config :elia, Elia.LLM.Anthropic, ...`):
 
-    * `:api_key` - defaults to `ANTHROPIC_API_KEY`
+    * `:api_key` - defaults to `ANTHROPIC_API_KEY`; a key saved in Settings wins
     * `:model` - defaults to `"claude-opus-5-5"`
     * `:max_tokens` - defaults to `64_000`
     * `:effort` - `output_config.effort`, defaults to `"high"`
     * `:thinking_display` - `"updates"` (progress notes), `"summarized"` or `"omitted"`
+    * `:prices` - `%{model_id => {input, output}}` USD per million tokens,
+      merged over the built-in table (the Models API has no prices)
     * `:fallbacks` - server-side refusal fallback, `"default"` or `nil` to disable
     * `:base_url`, `:req_options` - transport overrides (tests use `Req.Test`)
   """
@@ -25,6 +27,25 @@ defmodule Elia.LLM.Anthropic do
   @retry_statuses [408, 429, 500, 502, 503, 504, 529]
   @max_retries 2
 
+  # The Models API has no prices, so the picker uses Anthropic's published
+  # first-party rates (USD per million input/output tokens). Override or extend
+  # with `config :elia, Elia.LLM.Anthropic, prices: %{"model-id" => {in, out}}`.
+  @prices %{
+    "claude-fable-5-1" => {10.0, 50.0},
+    "claude-fable-5" => {10.0, 50.0},
+    "claude-opus-5-5" => {4.0, 20.0},
+    "claude-opus-5" => {5.0, 25.0},
+    "claude-opus-4-8" => {5.0, 25.0},
+    "claude-opus-4-7" => {5.0, 25.0},
+    "claude-opus-4-6" => {5.0, 25.0},
+    "claude-sonnet-5-5" => {2.0, 10.0},
+    "claude-sonnet-5" => {2.0, 10.0},
+    "claude-sonnet-4-6" => {3.0, 15.0},
+    # Up to 100K-token prompts; longer prompts cost $0.50 / $2.50.
+    "claude-haiku-5-5" => {0.1, 0.5},
+    "claude-haiku-4-5" => {1.0, 5.0}
+  }
+
   @defaults [
     base_url: "https://api.anthropic.com",
     model: "claude-opus-5-5",
@@ -37,16 +58,96 @@ defmodule Elia.LLM.Anthropic do
 
   @impl true
   def stream(request, on_event) do
-    config = Keyword.merge(@defaults, Application.get_env(:elia, __MODULE__, []))
+    config = config()
 
-    case config[:api_key] do
-      key when is_binary(key) and key != "" ->
+    case Elia.LLM.api_key("anthropic") do
+      {_source, key} ->
         do_stream(build_body(request, config), key, config, on_event, 0)
 
-      _ ->
-        {:error, "ANTHROPIC_API_KEY is not set"}
+      nil ->
+        {:error, "No Anthropic API key: add one in Settings or set ANTHROPIC_API_KEY"}
     end
   end
+
+  @impl true
+  def default_model, do: config()[:model]
+
+  @impl true
+  def check_key(api_key) do
+    case get_models(api_key, limit: 1) do
+      {:ok, _models} -> :ok
+      error -> error
+    end
+  end
+
+  # Without a key (or if listing fails) offer just the configured model.
+  @impl true
+  def list_models(api_key) do
+    fallback = [%{id: default_model(), name: default_model()}]
+
+    models =
+      with key when is_binary(key) <- api_key,
+           {:ok, [_ | _] = models} <- get_models(key, limit: 1000) do
+        models
+      else
+        _ -> fallback
+      end
+
+    {:ok, Enum.map(models, &put_prices/1)}
+  end
+
+  defp put_prices(model) do
+    prices = Map.merge(@prices, config()[:prices] || %{})
+    # Dated snapshot ids (e.g. "claude-haiku-4-5-20251001") price like their alias.
+    alias_id = String.replace(model.id, ~r/-\d{8}$/, "")
+
+    case Map.get(prices, model.id) || Map.get(prices, alias_id) do
+      {prompt, completion} ->
+        Map.merge(model, %{prompt_price: prompt, completion_price: completion})
+
+      nil ->
+        model
+    end
+  end
+
+  defp get_models(api_key, params) do
+    config = config()
+
+    options =
+      Keyword.merge(
+        [
+          url: config[:base_url] <> "/v1/models",
+          params: params,
+          headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}],
+          retry: false,
+          receive_timeout: :timer.seconds(15)
+        ],
+        config[:req_options]
+      )
+
+    case Req.get(options) do
+      {:ok, %Req.Response{status: 200, body: %{"data" => data}}} ->
+        {:ok,
+         for model <- data do
+           %{
+             id: model["id"],
+             name: model["display_name"] || model["id"],
+             context_length: model["max_input_tokens"]
+           }
+         end}
+
+      {:ok, %Req.Response{status: status, body: %{"error" => %{"message" => message}}}} ->
+        {:error, "Anthropic API error #{status}: #{message}"}
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, "Anthropic API error #{status}"}
+
+      {:error, exception} ->
+        {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
+    end
+  end
+
+  defp config, do: Keyword.merge(@defaults, Application.get_env(:elia, __MODULE__, []))
 
   ## Request
 
