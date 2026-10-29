@@ -104,6 +104,108 @@ defmodule Elia.LLM.CatalogTest do
     refute Map.has_key?(unknown, :prompt_price)
   end
 
+  # CTX-7: context_window never fetches; it reads the cache or built-in fallbacks.
+  test "context_window reads the catalog cache without fetching" do
+    LLM.Catalog.clear("anthropic")
+    assert LLM.Catalog.peek("anthropic") == :miss
+    # No cache: Anthropic's built-in window applies.
+    assert %{provider: "anthropic", context_length: 200_000} = LLM.context_window()
+
+    # Populate the cache with a model of the selected id.
+    configure(Anthropic, api_key: "ak", model: "claude-a")
+
+    Req.Test.stub(Anthropic, fn conn ->
+      Req.Test.json(conn, %{
+        "data" => [%{"id" => "claude-a", "name" => "Claude A", "max_input_tokens" => 1000}]
+      })
+    end)
+
+    assert {:ok, [%{id: "claude-a", context_length: 1000}]} = LLM.models("anthropic")
+    assert {:ok, [%{id: "claude-a", context_length: 1000}]} = LLM.Catalog.peek("anthropic")
+
+    assert %{provider: "anthropic", model: "claude-a", context_length: 1000} =
+             LLM.context_window()
+
+    # A cached model without a reported window falls back to the default.
+    configure(Anthropic, api_key: "ak", model: "claude-plain")
+
+    Req.Test.stub(Anthropic, fn conn ->
+      Req.Test.json(conn, %{"data" => [%{"id" => "claude-plain", "name" => "Plain"}]})
+    end)
+
+    assert {:ok, [_]} = LLM.models("anthropic")
+    assert %{context_length: 200_000} = LLM.context_window()
+  end
+
+  # CTX-7: reading the window never waits on a catalog fetch in flight.
+  test "context_window does not block while a fetch is in flight" do
+    test_pid = self()
+    configure(Anthropic, api_key: "ak", model: "claude-a")
+
+    Req.Test.stub(Anthropic, fn conn ->
+      send(test_pid, {:fetching, self()})
+
+      receive do
+        :go -> Req.Test.json(conn, %{"data" => []})
+      end
+    end)
+
+    task = Task.async(fn -> LLM.models("anthropic") end)
+    assert_receive {:fetching, fetcher}
+
+    assert %{context_length: 200_000} = LLM.context_window()
+
+    send(fetcher, :go)
+    assert {:ok, _models} = Task.await(task)
+  end
+
+  # MODEL-1, CTX-7: selecting a model stores its cached context length, which
+  # keeps the window known after the catalog cache is gone.
+  test "selection stores the cached context length for after the cache expires" do
+    Req.Test.stub(OpenRouter, &Req.Test.json(&1, openrouter_models()))
+    assert {:ok, _} = LLM.models("openrouter")
+
+    :ok = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
+    assert %{context_length: 200_000} = LLM.selection()
+
+    LLM.Catalog.clear("openrouter")
+    assert %{provider: "openrouter", context_length: 200_000} = LLM.context_window()
+  end
+
+  # CTX-7: a selection stored without a length picks it up from the catalog.
+  test "context_window saves a cached length the stored selection lacks" do
+    :ok = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
+    refute Map.has_key?(LLM.selection(), :context_length)
+
+    Req.Test.stub(OpenRouter, &Req.Test.json(&1, openrouter_models()))
+    assert {:ok, _} = LLM.models("openrouter")
+    assert %{context_length: 200_000} = LLM.context_window()
+
+    LLM.Catalog.clear("openrouter")
+    assert %{context_length: 200_000} = LLM.selection()
+    assert %{context_length: 200_000} = LLM.context_window()
+  end
+
+  # CTX-7, MODEL-2: the configured default is never turned into a stored selection.
+  test "context_window leaves an unstored default selection alone" do
+    Req.Test.stub(Anthropic, fn conn ->
+      Req.Test.json(conn, %{
+        "data" => [%{"id" => "claude-configured", "max_input_tokens" => 1000}]
+      })
+    end)
+
+    configure(Anthropic, api_key: "ak", model: "claude-configured")
+    assert {:ok, _} = LLM.models("anthropic")
+    assert %{context_length: 1000} = LLM.context_window()
+    assert Elia.Settings.get(:model) == nil
+  end
+
+  # CTX-7: non-Anthropic providers have no built-in fallback window.
+  test "context_window is nil for a provider without a cached window" do
+    LLM.select("openrouter", "vendor/model", "Vendor: Model")
+    assert %{provider: "openrouter", context_length: nil} = LLM.context_window()
+  end
+
   # MODEL-8
   test "results are cached, failures are not, and saving a key clears the cache" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)

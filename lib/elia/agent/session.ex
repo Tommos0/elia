@@ -7,7 +7,7 @@ defmodule Elia.Agent.Session do
 
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
-  `{:error, text}`, `{:reset, messages}`.
+  `{:usage, usage}`, `{:error, text}`, `{:reset, messages}`.
   """
 
   use GenServer, restart: :temporary
@@ -24,6 +24,8 @@ defmodule Elia.Agent.Session do
     status: :idle,
     # call_id => :awaiting_approval | :running | :done
     tool_status: %{},
+    # Provider-reported usage of the last completed model request (CTX-6).
+    last_usage: nil,
     approval: nil,
     loop_opts: [],
     persist: true
@@ -51,7 +53,7 @@ defmodule Elia.Agent.Session do
 
   @impl true
   def handle_call(:snapshot, _from, state) do
-    {:reply, Map.take(state, [:id, :messages, :status, :tool_status]), state}
+    {:reply, Map.take(state, [:id, :messages, :status, :tool_status, :last_usage]), state}
   end
 
   def handle_call({:send_message, _text}, _from, %{status: status} = state)
@@ -143,6 +145,11 @@ defmodule Elia.Agent.Session do
 
   def handle_info({:loop_append, message}, state), do: {:noreply, append(state, message)}
 
+  def handle_info({:loop_usage, usage}, state) when is_map(usage) do
+    broadcast(state, {:usage, usage})
+    {:noreply, %{state | last_usage: usage}}
+  end
+
   def handle_info({:loop_tool_status, call_id, status}, state) do
     {:noreply, put_tool_status(state, call_id, status)}
   end
@@ -165,7 +172,14 @@ defmodule Elia.Agent.Session do
 
         :refused ->
           # Roll back to the prefix before this turn; nothing in it was edited.
-          state = save(%{state | messages: Enum.take(state.messages, state.turn_start)})
+          # The rolled-back request's usage no longer describes the context (CTX-6).
+          state =
+            save(%{
+              state
+              | messages: Enum.take(state.messages, state.turn_start),
+                last_usage: nil
+            })
+
           broadcast(state, {:reset, state.messages})
           broadcast(state, {:error, "The model declined this request."})
           state

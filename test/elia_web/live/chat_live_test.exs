@@ -69,4 +69,139 @@ defmodule EliaWeb.ChatLiveTest do
     assert_receive {:agent, ^id, {:status, :idle}}, 5000
     refute has_element?(view, "#guarded-g1")
   end
+
+  # CTX-1, CTX-2: the indicator shows the estimate, the window and the percent.
+  test "context indicator shows the estimate and the window on an empty chat", %{conn: conn} do
+    id = Agent.new_id()
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    assert html =~ "Context"
+    assert has_element?(view, "#context-indicator")
+    assert has_element?(view, "#context-size")
+    # Anthropic's built-in fallback window (CTX-7) is 200K.
+    assert render(view) =~ "/ 200K"
+    refute has_element?(view, "#context-breakdown")
+  end
+
+  # CTX-4: clicking the indicator toggles the breakdown.
+  test "clicking the context indicator toggles the breakdown", %{conn: conn} do
+    id = Agent.new_id()
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    view |> element("#context-indicator") |> render_click()
+    assert has_element?(view, "#context-breakdown")
+
+    html = render(view)
+    assert html =~ "System prompt"
+    assert html =~ "Agent instructions"
+    assert html =~ "Skill:"
+    assert html =~ "Tool definitions"
+    assert html =~ "Messages"
+    assert html =~ "Estimated total"
+    assert has_element?(view, "#context-total")
+
+    view |> element("#context-indicator") |> render_click()
+    refute has_element?(view, "#context-breakdown")
+  end
+
+  # CTX-5: file and shell tool traffic lands in its own breakdown buckets.
+  test "context breakdown buckets files and shell from a saved chat", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    messages = [
+      Message.user("read my notes"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}},
+          %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "ls"}}
+        ]
+      },
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("r1", "hello from notes"),
+          Message.tool_result("s1", "lib\nREADME.md\n")
+        ]
+      },
+      %Message{role: :assistant, content: [Message.text("Found it.")]}
+    ]
+
+    Elia.Store.save(id, messages)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    view |> element("#context-indicator") |> render_click()
+
+    html = render(view)
+    assert html =~ "Files"
+    assert html =~ "Shell"
+    assert html =~ "User"
+    assert html =~ "Assistant"
+  end
+
+  # CTX-6: provider-reported input usage (with cache tokens) appears after a
+  # turn, and a reset clears it.
+  test "provider-reported usage is shown after a turn", %{conn: conn} do
+    id = Agent.new_id()
+
+    FakeLLM.push(fn _request, on_event ->
+      text = "Counting tokens."
+      on_event.({:text_delta, text})
+      msg = FakeLLM.assistant([Message.text(text)])
+      usage = %{"input_tokens" => 345, "cache_read_input_tokens" => 12_000}
+      {:ok, %{message: msg, stop_reason: :end_turn, model: "fake", usage: usage}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "how big is my context?"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    view |> element("#context-indicator") |> render_click()
+    assert view |> element("#context-provider-usage") |> render() =~ "12K"
+
+    send(view.pid, {:agent, id, {:reset, []}})
+    refute has_element?(view, "#context-provider-usage")
+  end
+
+  # CTX-2: the percentage and the coloured bar show when the window is known.
+  test "context indicator shows the percentage and bar", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#context-percent")
+    assert has_element?(view, "#context-bar.bg-success")
+  end
+
+  # CTX-8: the indicator updates as messages arrive, without a re-mount.
+  test "context indicator updates live as messages arrive", %{conn: conn} do
+    id = Agent.new_id()
+    FakeLLM.push(FakeLLM.assistant([Message.text(String.duplicate("word ", 8000))]))
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+    before = view |> element("#context-size") |> render()
+
+    view |> form("#chat-form", chat: %{text: "write a lot"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    after_turn = view |> element("#context-size") |> render()
+    refute after_turn == before
+
+    {:ok, fresh, _html} = live(conn, ~p"/c/#{id}")
+    assert fresh |> element("#context-size") |> render() == after_turn
+  end
+
+  # CTX-8: a skills reload refreshes the system-prompt breakdown.
+  test "context breakdown follows a skills reload", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+    view |> element("#context-indicator") |> render_click()
+    assert has_element?(view, "#context-breakdown li", "Skill:")
+
+    send(view.pid, {:skills_reloaded, []})
+    refute has_element?(view, "#context-breakdown li", "Skill:")
+  end
 end

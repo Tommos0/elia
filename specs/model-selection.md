@@ -12,7 +12,8 @@ code change.
 ### Selection
 
 - **MODEL-1** The selection is a provider key, a model id and the model's
-  display name, stored in the settings database (CONF-1), so it is global and
+  display name, plus its context length when the cached catalog knows it
+  (CTX-7), stored in the settings database (CONF-1), so it is global and
   survives restarts. A change is broadcast so open chats update their picker.
 - **MODEL-2** With no stored selection, the selection is the configured
   default provider (`config :elia, Elia.LLM, provider: ...`) with that

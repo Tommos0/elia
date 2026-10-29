@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLive do
 
   alias Elia.Agent
   alias Elia.LLM
-  alias Elia.LLM.Message
+  alias Elia.LLM.{Context, Message}
 
   @impl true
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket) do
@@ -22,6 +22,7 @@ defmodule EliaWeb.ChatLive do
     if connected?(socket) do
       Agent.subscribe(id)
       LLM.subscribe_selection()
+      Elia.Skills.subscribe()
     end
 
     snapshot = Agent.snapshot(id)
@@ -32,6 +33,9 @@ defmodule EliaWeb.ChatLive do
         session_id: id,
         status: snapshot.status,
         tool_status: snapshot.tool_status,
+        last_usage: snapshot.last_usage,
+        show_context: false,
+        context_window: LLM.context_window(),
         draft: "",
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
@@ -45,6 +49,7 @@ defmodule EliaWeb.ChatLive do
         catalogs: %{}
       )
       |> stream(:models, [])
+      |> put_context(Context.new(snapshot.messages))
       |> load_messages(snapshot.messages)
 
     {:ok, socket}
@@ -77,6 +82,13 @@ defmodule EliaWeb.ChatLive do
           </nav>
         </aside>
         <div class="flex min-w-0 flex-1 flex-col">
+          <.context_header
+            total={@context_breakdown.total}
+            context_length={@context_window.context_length}
+            show={@show_context}
+            buckets={@context_breakdown.buckets}
+            provider_tokens={Context.provider_input_tokens(@last_usage)}
+          />
           <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
               <div id="transcript" phx-update="stream" class="space-y-5">
@@ -193,6 +205,119 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
     </Layouts.app>
+    """
+  end
+
+  attr :total, :integer, required: true
+  attr :context_length, :integer, default: nil
+  attr :show, :boolean, required: true
+  attr :buckets, :list, required: true
+  attr :provider_tokens, :integer, default: nil
+
+  defp context_header(assigns) do
+    assigns = assign(assigns, :percent, percent_of(assigns.total, assigns.context_length))
+
+    ~H"""
+    <div class="border-b border-base-300 bg-base-200/40">
+      <div class="mx-auto max-w-3xl px-4 pt-2 sm:px-6">
+        <button
+          type="button"
+          id="context-indicator"
+          phx-click="toggle_context"
+          aria-expanded={to_string(@show)}
+          title="What makes up the context?"
+          class="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:bg-base-300/60"
+        >
+          <.icon name="hero-cube" class="size-3.5 text-base-content/50" />
+          <span class="font-medium text-base-content/70">Context</span>
+          <span id="context-size" class="tabular-nums font-semibold">{format_tokens(@total)}</span>
+          <span :if={@context_length} id="context-window" class="tabular-nums text-base-content/50">
+            / {format_tokens(@context_length)}
+          </span>
+          <span :if={@percent} id="context-percent" class="tabular-nums text-base-content/50">
+            {@percent}%
+          </span>
+          <span
+            :if={@context_length}
+            class="block h-1.5 w-16 overflow-hidden rounded-full bg-base-300/80"
+          >
+            <span
+              id="context-bar"
+              class={["block h-full rounded-full transition-all", context_bar_class(@percent)]}
+              style={"width: #{@percent}%"}
+            />
+          </span>
+          <.icon
+            name={if @show, do: "hero-chevron-up", else: "hero-chevron-down"}
+            class="size-3.5 text-base-content/40 transition group-hover:text-base-content"
+          />
+        </button>
+
+        <div :if={@show} id="context-breakdown" class="space-y-2 pb-3 pt-2 text-xs">
+          <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/40">
+            What makes up the context
+          </p>
+          <.context_bucket_list buckets={@buckets} />
+          <div class="flex items-center justify-between border-t border-base-300/70 pt-2 text-base-content/70">
+            <span>Estimated total</span>
+            <span id="context-total" class="tabular-nums font-semibold">
+              {format_tokens(@total)}
+            </span>
+          </div>
+          <p
+            :if={@provider_tokens}
+            id="context-provider-usage"
+            class="text-[11px] text-base-content/40"
+          >
+            The model API reported {format_tokens(@provider_tokens)} input tokens on the last
+            reply.
+          </p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :buckets, :list, required: true
+
+  defp context_bucket_list(assigns) do
+    ~H"""
+    <ul class="space-y-1">
+      <.context_bucket :for={bucket <- @buckets} bucket={bucket} />
+    </ul>
+    """
+  end
+
+  attr :bucket, :map, required: true
+
+  defp context_bucket(%{bucket: %{children: children}} = assigns) when is_list(children) do
+    ~H"""
+    <li class="rounded-lg bg-base-100/70 px-3 py-1.5">
+      <div class="flex items-center justify-between gap-3">
+        <span class="font-medium">{@bucket.label}</span>
+        <span class="tabular-nums text-base-content/60">{format_tokens(Context.bucket_tokens(@bucket))}</span>
+      </div>
+      <ul class="ml-3 space-y-0.5 border-l border-base-300 pl-3 pt-1">
+        <.context_bucket :for={child <- @bucket.children} bucket={child} />
+      </ul>
+    </li>
+    """
+  end
+
+  defp context_bucket(assigns) do
+    ~H"""
+    <li class="flex items-center justify-between gap-3 py-0.5 pl-3 text-base-content/80">
+      <span class="flex min-w-0 items-center gap-1.5">
+        <span class="truncate">{@bucket.label}</span>
+        <span
+          :if={@bucket.count && @bucket.count > 0}
+          class="shrink-0 text-[10px] text-base-content/40"
+        >
+          {@bucket.count}
+        </span>
+      </span>
+      <span class="tabular-nums text-base-content/60">{format_tokens(@bucket.tokens)}</span>
+    </li>
     """
   end
 
@@ -362,6 +487,22 @@ defmodule EliaWeb.ChatLive do
 
   defp format_context(tokens) when tokens >= 1000, do: "#{div(tokens, 1000)}K ctx"
   defp format_context(tokens), do: "#{tokens} ctx"
+
+  defp format_tokens(tokens) when tokens >= 1_000_000,
+    do: "#{Float.round(tokens / 1_000_000, 1) |> trim_float()}M"
+
+  defp format_tokens(tokens) when tokens >= 1000, do: "#{div(tokens, 1000)}K"
+  defp format_tokens(tokens), do: "#{tokens}"
+
+  defp percent_of(_tokens, nil), do: nil
+
+  defp percent_of(tokens, window) when is_integer(window) and window > 0,
+    do: min(100, div(tokens * 100 + window - 1, window))
+
+  defp context_bar_class(nil), do: ""
+  defp context_bar_class(percent) when percent <= 60, do: "bg-success"
+  defp context_bar_class(percent) when percent <= 85, do: "bg-warning"
+  defp context_bar_class(_percent), do: "bg-error"
 
   defp format_price(nil), do: "?"
   defp format_price(price) when price == 0, do: "free"
@@ -569,6 +710,10 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
+  def handle_event("toggle_context", _params, socket) do
+    {:noreply, assign(socket, show_context: !socket.assigns.show_context)}
+  end
+
   def handle_event("approve", %{"id" => call_id}, socket) do
     Agent.approve(socket.assigns.session_id, call_id)
     {:noreply, socket}
@@ -641,7 +786,10 @@ defmodule EliaWeb.ChatLive do
       end
 
     socket
-    |> assign(catalogs: Map.put(socket.assigns.catalogs, key, catalog))
+    |> assign(
+      catalogs: Map.put(socket.assigns.catalogs, key, catalog),
+      context_window: LLM.context_window()
+    )
     |> stream_models()
     |> noreply()
   end
@@ -704,10 +852,22 @@ defmodule EliaWeb.ChatLive do
 
   @impl true
   def handle_info({:llm_selection, selection}, socket) do
-    socket |> assign(selection: selection) |> stream_models() |> noreply()
+    socket
+    |> assign(selection: selection, context_window: LLM.context_window())
+    |> stream_models()
+    |> noreply()
+  end
+
+  def handle_info({:skills_reloaded, skills}, socket) do
+    {:noreply, put_context(socket, Context.put_skills(socket.assigns.context, skills))}
   end
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
+
+  # The estimate is folded in per change, never rebuilt on render (CTX-8).
+  defp put_context(socket, context) do
+    assign(socket, context: context, context_breakdown: Context.breakdown(context))
+  end
 
   defp apply_event({:message, %Message{} = message}, socket) do
     socket =
@@ -715,8 +875,12 @@ defmodule EliaWeb.ChatLive do
         do: assign(socket, draft: "", draft_reasoning: ""),
         else: socket
 
-    insert_message(socket, message)
+    socket
+    |> put_context(Context.add(socket.assigns.context, message))
+    |> insert_message(message)
   end
+
+  defp apply_event({:usage, usage}, socket), do: assign(socket, last_usage: usage)
 
   defp apply_event({:delta, :text, text}, socket) do
     # Progress notes before a text block are superseded by the answer.
@@ -756,7 +920,12 @@ defmodule EliaWeb.ChatLive do
     stream_insert(socket, :items, item)
   end
 
-  defp apply_event({:reset, messages}, socket), do: load_messages(socket, messages)
+  defp apply_event({:reset, messages}, socket) do
+    socket
+    |> assign(last_usage: nil)
+    |> put_context(Context.new(messages))
+    |> load_messages(messages)
+  end
 
   ## Transcript items
 

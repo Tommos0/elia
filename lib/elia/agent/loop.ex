@@ -64,7 +64,10 @@ defmodule Elia.Agent.Loop do
       {:ok, %{stop_reason: :refusal}} ->
         :refused
 
-      {:ok, %{message: message, stop_reason: stop_reason}} ->
+      {:ok, %{message: message, stop_reason: stop_reason, usage: usage}} ->
+        # The provider's real input count for this request; the session keeps
+        # the latest so the context indicator can show it (CTX-6).
+        send(ctx.session, {:loop_usage, usage})
         append(ctx, message)
         history = history ++ [message]
 

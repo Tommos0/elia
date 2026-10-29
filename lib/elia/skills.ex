@@ -12,6 +12,8 @@ defmodule Elia.Skills do
 
   alias Elia.Skills.Folder
 
+  @topic "skills"
+
   @base_prompt """
   You are Elia, an assistant running inside a local harness. You can use the \
   tools provided by your enabled skills. Be concise, and tell the user what you \
@@ -34,14 +36,23 @@ defmodule Elia.Skills do
 
   def tools(skills \\ current()), do: Enum.flat_map(skills, & &1.tools)
 
-  def system_prompt(skills \\ current()) do
-    sections =
-      for skill <- skills do
-        "## Skill: #{skill.name}\n#{skill.description}\n\n#{String.trim(skill.instructions)}"
-      end
-
-    Enum.join([String.trim(@base_prompt) | sections], "\n\n")
+  @doc """
+  The system prompt's pieces, in order: the agent instructions, then one
+  section per skill (with its leading separator). They concatenate to
+  `system_prompt/1`, so the context indicator can size each one.
+  """
+  def system_sections(skills \\ current()) do
+    [String.trim(@base_prompt) | Enum.map(skills, &("\n\n" <> skill_section(&1)))]
   end
+
+  def system_prompt(skills \\ current()), do: skills |> system_sections() |> Enum.join()
+
+  defp skill_section(skill) do
+    "## Skill: #{skill.name}\n#{skill.description}\n\n#{String.trim(skill.instructions)}"
+  end
+
+  @doc "Subscribes to `{:skills_reloaded, skills}` broadcasts."
+  def subscribe, do: Phoenix.PubSub.subscribe(Elia.PubSub, @topic)
 
   ## Server
 
@@ -54,6 +65,7 @@ defmodule Elia.Skills do
 
   def handle_call(:reload, _from, _state) do
     state = load()
+    Phoenix.PubSub.broadcast(Elia.PubSub, @topic, {:skills_reloaded, state.skills})
     {:reply, state, state}
   end
 

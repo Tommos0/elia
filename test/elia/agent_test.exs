@@ -184,8 +184,17 @@ defmodule Elia.AgentTest do
     assert Message.text_content(notice) =~ "rolled back"
   end
 
+  # CTX-6: the rolled-back request's usage is cleared with it.
   test "a refusal rolls the turn back", %{id: id} do
-    FakeLLM.push(FakeLLM.assistant([Message.text("Sure.")]))
+    FakeLLM.push(fn _request, _on_event ->
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("Sure.")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{"input_tokens" => 10}
+       }}
+    end)
 
     FakeLLM.push(fn _request, _on_event ->
       {:ok, %{message: FakeLLM.assistant([]), stop_reason: :refusal, model: "fake", usage: %{}}}
@@ -197,6 +206,7 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:error, "The model declined this request."}}, 5000
 
     assert [%Message{role: :user}, %Message{role: :assistant}] = Agent.snapshot(id).messages
+    assert Agent.snapshot(id).last_usage == nil
   end
 
   # MODEL-3
