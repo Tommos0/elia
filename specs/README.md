@@ -46,6 +46,7 @@ deleting it.
 | --- | --- | --- |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, streaming, approvals, chat list |
 | [Client sessions](client-sessions.md) | `CLIENT` | Sessions page listing open tabs with IP, browser and page |
+| [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, and how decisions apply |

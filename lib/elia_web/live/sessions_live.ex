@@ -147,6 +147,7 @@ defmodule EliaWeb.SessionsLive do
   end
 
   defp page("/sessions"), do: "Sessions"
+  defp page("/system"), do: "System"
   defp page(path), do: path
 
   defp ago(seconds) when seconds < 60, do: "connected just now"
