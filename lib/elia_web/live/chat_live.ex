@@ -104,7 +104,7 @@ defmodule EliaWeb.ChatLive do
               </div>
 
               <div :if={@draft_reasoning != ""} id="draft-reasoning">
-                <.item item={%{kind: :reasoning, text: @draft_reasoning}} />
+                <.item item={%{kind: :reasoning, text: @draft_reasoning, streaming: true}} />
               </div>
               <div :if={@draft != ""} id="draft">
                 <.item item={%{kind: :assistant, text: @draft}} />
@@ -535,12 +535,30 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  # UI-29, UI-30: collapsed by default; the client keeps `open` across patches
+  # so an expanded streaming block stays expanded.
   defp item(%{item: %{kind: :reasoning}} = assigns) do
+    assigns =
+      assign(assigns,
+        streaming: Map.get(assigns.item, :streaming, false),
+        words: length(String.split(assigns.item.text))
+      )
+
     ~H"""
-    <div class="flex gap-2 text-xs italic text-base-content/50">
-      <.icon name="hero-light-bulb" class="mt-px size-3.5 shrink-0" />
-      <span class="whitespace-pre-wrap">{@item.text}</span>
-    </div>
+    <details
+      class="group/reasoning text-xs text-base-content/50"
+      phx-mounted={JS.ignore_attributes("open")}
+    >
+      <summary class="reasoning-summary inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md py-0.5 pr-1.5 transition hover:text-base-content/80">
+        <.icon name="hero-light-bulb" class={["size-3.5 shrink-0", @streaming && "animate-pulse"]} />
+        <span class="font-medium">{if @streaming, do: "Reasoning…", else: "Reasoning"}</span>
+        <span class="text-base-content/40">· {@words} {if @words == 1, do: "word", else: "words"}</span>
+        <.icon name="hero-chevron-right" class="size-3 transition group-open/reasoning:rotate-90" />
+      </summary>
+      <div class="reasoning-text mt-1 ml-1.5 whitespace-pre-wrap border-l-2 border-base-300 pl-3 italic">
+        {@item.text}
+      </div>
+    </details>
     """
   end
 

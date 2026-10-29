@@ -29,7 +29,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-7** An empty chat shows an empty state that tells the user Elia can run
   shell commands and that they approve each one.
 - **UI-8** User messages render as right-aligned bubbles; assistant text as
-  Markdown (UI-25); reasoning as small italic text with a light-bulb icon.
+  Markdown (UI-25); reasoning as a collapsed block (UI-29).
 - **UI-9** Messages the harness wrote itself (`meta.harness`) render as
   notices, not as user bubbles.
 - **UI-10** Text and reasoning deltas stream into draft blocks below the
@@ -84,6 +84,16 @@ stream in, approves or denies tool calls, and switches between saved chats.
   with unsafe URLs (such as `javascript:`) lose their URL.
 - **UI-28** Long code blocks and wide tables scroll horizontally inside the
   message instead of widening the transcript.
+
+### Reasoning
+
+- **UI-29** Reasoning, both saved and streaming (UI-10), is collapsed by
+  default: only a "Reasoning" header with a light-bulb icon and its length in
+  words is shown. Clicking the header reveals the text as small italic text;
+  clicking again hides it.
+- **UI-30** While reasoning streams, its header pulses and reads
+  "Reasoning…". Expanding the streaming block keeps it expanded as more text
+  arrives.
 
 ## Implementation
 

@@ -170,6 +170,53 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#transcript .markdown li strong", "item")
   end
 
+  # UI-29: saved reasoning is collapsed behind a header with its word count.
+  test "saved reasoning is collapsed by default", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    Elia.Store.save(id, [
+      Message.user("think first"),
+      %Message{
+        role: :assistant,
+        content: [%{type: :reasoning, text: "Let me weigh this"}, Message.text("Done.")]
+      }
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#transcript details:not([open]) summary", "Reasoning")
+    assert has_element?(view, "#transcript details summary", "4 words")
+    assert has_element?(view, "#transcript details .reasoning-text", "Let me weigh this")
+  end
+
+  # UI-29, UI-30: streaming reasoning is collapsed too and marked as in progress.
+  test "streaming reasoning is collapsed and marked in progress", %{conn: conn} do
+    id = Agent.new_id()
+    test_pid = self()
+
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:reasoning_delta, "Pondering"})
+      send(test_pid, {:streamed, self()})
+      receive do: (:finish -> :ok)
+      msg = FakeLLM.assistant([%{type: :reasoning, text: "Pondering"}, Message.text("Hi.")])
+      {:ok, %{message: msg, stop_reason: :end_turn, model: "fake", usage: %{}}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "think"}) |> render_submit()
+    assert_receive {:streamed, llm}, 5000
+    _ = :sys.get_state(view.pid)
+    assert has_element?(view, "#draft-reasoning details:not([open]) summary", "Reasoning…")
+
+    send(llm, :finish)
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+    refute has_element?(view, "#draft-reasoning")
+    assert has_element?(view, "#transcript details:not([open]) summary", "1 word")
+  end
+
   # CTX-6: provider-reported input usage (with cache tokens) appears after a
   # turn, and a reset clears it.
   test "provider-reported usage is shown after a turn", %{conn: conn} do
