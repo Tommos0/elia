@@ -531,7 +531,7 @@ defmodule EliaWeb.ChatLive do
 
   defp item(%{item: %{kind: :assistant}} = assigns) do
     ~H"""
-    <div class="whitespace-pre-wrap text-sm leading-relaxed">{@item.text}</div>
+    <div class="markdown text-sm leading-relaxed">{EliaWeb.Markdown.to_html(@item.text)}</div>
     """
   end
 

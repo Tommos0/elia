@@ -29,7 +29,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-7** An empty chat shows an empty state that tells the user Elia can run
   shell commands and that they approve each one.
 - **UI-8** User messages render as right-aligned bubbles; assistant text as
-  plain text; reasoning as small italic text with a light-bulb icon.
+  Markdown (UI-25); reasoning as small italic text with a light-bulb icon.
 - **UI-9** Messages the harness wrote itself (`meta.harness`) render as
   notices, not as user bubbles.
 - **UI-10** Text and reasoning deltas stream into draft blocks below the
@@ -72,10 +72,24 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-24** While the agent isn't idle, the input is disabled and the send
   button is replaced by a Stop button that stops the turn (SESS-8).
 
+### Markdown
+
+- **UI-25** Assistant text, both saved and streaming (UI-10), renders as
+  GitHub-flavoured Markdown: headings, emphasis, strikethrough, lists, task
+  lists, tables, block quotes, inline code, fenced code blocks, links and bare
+  URLs.
+- **UI-26** Single newlines render as line breaks, so a plain-text response
+  looks the same as it would as plain text.
+- **UI-27** Raw HTML in assistant text is not rendered, and links or images
+  with unsafe URLs (such as `javascript:`) lose their URL.
+- **UI-28** Long code blocks and wide tables scroll horizontally inside the
+  message instead of widening the transcript.
+
 ## Implementation
 
-`EliaWeb.ChatLive`, `EliaWeb.Router`, `EliaWeb.Layouts`.
+`EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`.
 
 ## Tests
 
-`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/page_title_test.exs`.
+`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/page_title_test.exs`,
+`test/elia_web/markdown_test.exs`.

@@ -65,6 +65,7 @@ defmodule Elia.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
+      {:mdex, "~> 0.14"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}
     ]

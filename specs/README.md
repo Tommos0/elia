@@ -44,7 +44,7 @@ deleting it.
 
 | Spec | Prefix | Summary |
 | --- | --- | --- |
-| [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, streaming, approvals, chat list |
+| [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Context indicator](context-indicator.md) | `CTX` | Context size and window shown per chat, with a clickable breakdown |
 | [Client sessions](client-sessions.md) | `CLIENT` | Sessions page listing open tabs with IP, browser and page |
 | [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |

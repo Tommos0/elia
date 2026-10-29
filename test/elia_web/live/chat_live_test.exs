@@ -142,6 +142,34 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "Assistant"
   end
 
+  # UI-25: saved and streaming assistant text both render as Markdown.
+  test "assistant text renders as Markdown", %{conn: conn} do
+    id = Agent.new_id()
+    test_pid = self()
+
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "## Draft heading"})
+      send(test_pid, {:streamed, self()})
+      receive do: (:finish -> :ok)
+      msg = FakeLLM.assistant([Message.text("## Saved heading\n\n- **item**")])
+      {:ok, %{message: msg, stop_reason: :end_turn, model: "fake", usage: %{}}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "format it"}) |> render_submit()
+    assert_receive {:streamed, llm}, 5000
+    _ = :sys.get_state(view.pid)
+    assert has_element?(view, "#draft .markdown h2", "Draft heading")
+
+    send(llm, :finish)
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    assert has_element?(view, "#transcript .markdown h2", "Saved heading")
+    assert has_element?(view, "#transcript .markdown li strong", "item")
+  end
+
   # CTX-6: provider-reported input usage (with cache tokens) appears after a
   # turn, and a reset clears it.
   test "provider-reported usage is shown after a turn", %{conn: conn} do

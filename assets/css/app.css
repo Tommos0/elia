@@ -109,3 +109,70 @@
   from { opacity: 0; transform: translateY(4px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Assistant Markdown (UI-25..UI-28) */
+.markdown { overflow-wrap: anywhere; }
+.markdown > * + * { margin-top: 0.75em; }
+.markdown :where(h1, h2, h3, h4, h5, h6) {
+  margin-top: 1.25em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.markdown > :first-child { margin-top: 0; }
+.markdown h1 { font-size: 1.35em; }
+.markdown h2 { font-size: 1.2em; }
+.markdown h3 { font-size: 1.05em; }
+.markdown :where(h4, h5, h6) { font-size: 1em; }
+.markdown strong { font-weight: 600; }
+.markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 150ms;
+}
+.markdown a:hover { text-decoration-color: currentColor; }
+.markdown :where(ul, ol) { padding-left: 1.4em; }
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.markdown li + li, .markdown li > :where(ul, ol) { margin-top: 0.25em; }
+.markdown li::marker { color: color-mix(in oklab, var(--color-base-content) 45%, transparent); }
+.markdown ul:has(> li > input[type="checkbox"]) { list-style: none; padding-left: 0.25em; }
+.markdown li > input[type="checkbox"] { margin-right: 0.4em; vertical-align: -1px; accent-color: var(--color-primary); }
+.markdown blockquote {
+  border-left: 3px solid var(--color-base-300);
+  padding-left: 0.9em;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+.markdown hr { border: 0; border-top: 1px solid var(--color-base-300); margin: 1.25em 0; }
+.markdown :not(pre) > code {
+  border-radius: 0.3rem;
+  background: var(--color-base-200);
+  padding: 0.1em 0.35em;
+  font-size: 0.88em;
+}
+.markdown pre {
+  overflow-x: auto;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  background: var(--color-base-200);
+  padding: 0.75em 1em;
+  font-size: 0.85em;
+  line-height: 1.55;
+}
+.markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.markdown :where(th, td) {
+  border: 1px solid var(--color-base-300);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.markdown th { background: var(--color-base-200); font-weight: 600; }
+.markdown img { max-width: 100%; border-radius: 0.5rem; }
