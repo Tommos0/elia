@@ -67,9 +67,21 @@ defmodule Elia.Store do
     end
   end
 
+  defp ensure_app_loaded do
+    unless :persistent_term.get({__MODULE__, :app_loaded}, false) do
+      {:ok, modules} = :application.get_key(:elia, :modules)
+      Code.ensure_all_loaded(modules)
+      :persistent_term.put({__MODULE__, :app_loaded}, true)
+    end
+  end
+
   defp path(id), do: Path.join(dir(), id <> ".term")
 
+  # `:safe` refuses atoms that don't exist yet. In dev, modules load lazily,
+  # so after a restart atoms like `:tool_call` may not exist until the code
+  # that defines them is loaded; load it all first (STORE-3).
   defp decode(data) do
+    ensure_app_loaded()
     :erlang.binary_to_term(data, [:safe])
   rescue
     ArgumentError -> nil

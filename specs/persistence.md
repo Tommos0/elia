@@ -13,7 +13,9 @@ reopened.
 - **STORE-2** Writes are atomic: the data goes to a `.tmp` file, which is then
   renamed into place.
 - **STORE-3** Loading a chat that is missing, unreadable or corrupt returns
-  an empty history. Decoding is safe and never creates new atoms.
+  an empty history. Decoding is safe and never creates new atoms; all of
+  Elia's modules are loaded first, so atoms a saved chat uses exist even
+  right after a restart, when modules haven't been loaded yet.
 - **STORE-4** Valid chat ids are 1–64 characters from `[A-Za-z0-9_-]`. Save
   only accepts valid ids; load and delete reject invalid ones.
 - **STORE-5** New ids are 12-character URL-safe random strings.
@@ -31,4 +33,5 @@ reopened.
 ## Tests
 
 `test/elia/agent_test.exs` (history survives a restart),
+`test/elia/store_test.exs`,
 `test/elia_web/live/page_title_test.exs`.
