@@ -22,6 +22,7 @@ defmodule EliaWeb.Router do
       live "/c/:id", ChatLive, :show
       live "/sessions", SessionsLive
       live "/system", SystemLive
+      live "/files", FilesLive
       live "/settings", SettingsLive
     end
   end
