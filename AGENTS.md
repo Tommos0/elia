@@ -8,6 +8,7 @@ A local AI harness with a Phoenix LiveView chat UI. The agent works through skil
 - Use the `mix precommit` alias when you are done with all changes and fix any pending issues
 - Commit to git whenever you finish a feature (after tests/`mix precommit` pass). Use a `feat: <summary>` message (or `fix:`/`docs:` etc. as appropriate), and commit only that feature's changes. Never commit a half-finished feature
 - When the user states a standing preference, rule or workflow ("whenever you…", "always…", "never…", "from now on…"), record it in this file (`AGENTS.md`) in the same turn, as a bullet under "Always" (or in the matching `docs/agents/` file if it is topic-specific, then say so here). Don't just acknowledge it verbally, since you won't remember it next session. Then tell the user which file and line you updated
+- Read, create and edit files with the file tools (`read_file`, `write_file`, `edit_file`), never with `shell` (`cat`, `sed`, `echo >`, heredocs, Python/other scripts). Use `shell` only to run programs such as `mix`, `git` and `grep`. Shell edits skip the workspace policy and the user's file-change review
 - Use the already included `Req` library for HTTP requests. **Avoid** `:httpoison`, `:tesla` and `:httpc`
 - There is no database or Ecto. Saved conversations are files in `.elia/sessions/` (`Elia.Store`)
 

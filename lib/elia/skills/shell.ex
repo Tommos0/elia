@@ -18,10 +18,12 @@ defmodule Elia.Skills.Shell do
   @impl true
   def instructions do
     """
-    Use the `shell` tool to run programs and inspect the machine. The user \
-    approves each command before it runs, so prefer one clear command over many \
-    small ones. Commands run non-interactively (stdin is empty) with `sh -c` in \
-    the workspace root. Prefer the file tools for reading and editing files.
+    Never use the shell to read, create or edit files (`cat`, `sed`, `echo >`, \
+    scripts that rewrite files): use the file tools, which apply the workspace \
+    policy. Use the `shell` tool to run programs and inspect the machine. The \
+    user approves each command before it runs, so prefer one clear command over \
+    many small ones. Commands run non-interactively (stdin is empty) with \
+    `sh -c` in the workspace root.
     """
   end
 
@@ -32,7 +34,8 @@ defmodule Elia.Skills.Shell do
         name: "shell",
         description:
           "Run a command with `sh -c` and return its combined stdout/stderr and exit code. " <>
-            "Long output is truncated in the middle.",
+            "Long output is truncated in the middle. Do not use this to read or edit files " <>
+            "(cat, sed, echo >, scripts): use read_file, write_file and edit_file.",
         input_schema: %{
           "type" => "object",
           "properties" => %{

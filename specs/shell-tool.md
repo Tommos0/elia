@@ -23,6 +23,10 @@ approved it.
 - **SHELL-7** The shell isn't sandboxed: an approved command can do anything,
   including get around the workspace policy. The approval prompt is the only
   safeguard.
+- **SHELL-8** The skill's instructions open by telling the model not to use
+  the shell to read, create or edit files (`cat`, `sed`, `echo >`, scripts that
+  rewrite files) but to use the file tools, which apply the workspace policy.
+  The `shell` tool's description says the same.
 
 ## Configuration
 

@@ -28,6 +28,9 @@ workspace class.
   the checkpoint.
 - **FILE-9** Success results name the relative path and the bytes written or
   the number of replacements.
+- **FILE-10** The skill's instructions open by telling the model to use these
+  tools, not shell commands (`cat`, `sed`, `echo >`, scripts), to read, create
+  and edit files, because the file tools apply the workspace policy (WS-1).
 
 ## Implementation
 

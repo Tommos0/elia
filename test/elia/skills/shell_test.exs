@@ -10,6 +10,18 @@ defmodule Elia.Skills.ShellTest do
     assert output =~ "[exit: 3]"
   end
 
+  # SHELL-8
+  test "instructions and tool description send file work to the file tools" do
+    assert String.starts_with?(
+             Shell.instructions(),
+             "Never use the shell to read, create or edit"
+           )
+
+    assert Shell.instructions() =~ "file tools"
+    assert [%{description: description}] = Shell.tools()
+    assert description =~ "use read_file, write_file and edit_file"
+  end
+
   test "does not wait on stdin" do
     assert {:ok, "\n[exit: 0]"} = Shell.run(%{"command" => "cat", "timeout_seconds" => 5})
   end

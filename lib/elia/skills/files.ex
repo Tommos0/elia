@@ -23,6 +23,8 @@ defmodule Elia.Skills.Files do
   @impl true
   def instructions do
     """
+    Always use these tools, never shell commands (`cat`, `sed`, `echo >`, \
+    scripts), to read, create and edit files: they apply the workspace policy. \
     Paths are relative to the workspace root (#{Workspace.root()}). Read a file \
     before editing it. `edit_file` replaces an exact string, which must occur \
     once unless `replace_all` is set; include enough surrounding lines to make \
