@@ -30,6 +30,19 @@ defmodule EliaWeb.ChatLiveTest do
     assert length(Regex.scan(~r/id="new-chat"/, html)) == 1
   end
 
+  # UI-35: the sidebar has an accessible drag handle for resizing.
+  test "sidebar has a resize handle driven by a hook", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#sidebar #sidebar-resize")
+    assert has_element?(view, "#sidebar-resize[role='separator'][aria-orientation='vertical']")
+    assert has_element?(view, "#sidebar-resize[tabindex='0']")
+    assert has_element?(view, "#sidebar-resize[phx-hook$='SidebarResize']")
+
+    # The width comes from a CSS variable the hook sets, defaulting to 16rem.
+    assert html =~ "var(--sidebar-width,16rem)"
+  end
+
   # UI-33: hovering a sidebar chat shows its full description.
   test "sidebar chat links carry the full description as a tooltip", %{conn: conn} do
     id = Agent.new_id()

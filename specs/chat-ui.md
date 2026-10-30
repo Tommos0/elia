@@ -33,6 +33,12 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-33** Each sidebar chat link has a `title` attribute with the chat's
   description (STORE-10), so hovering shows the full text (up to 1000
   characters) rather than the truncated line.
+- **UI-35** The sidebar is resizable: a drag handle (`#sidebar-resize`, an
+  accessible `separator` with `aria-orientation="vertical"`) on its right edge
+  changes its width by dragging or with the Left/Right arrow keys, and
+  double-clicking it restores the default (16rem). The width is clamped between
+  12rem and 40rem (and at most half the window), is kept in the browser's
+  `localStorage`, and survives LiveView patches and navigation between chats.
 - **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
   the left of "Sessions". It goes where the logo at the top left goes: `/`,
   which opens a fresh chat (UI-1).

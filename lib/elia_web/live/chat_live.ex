@@ -61,7 +61,21 @@ defmodule EliaWeb.ChatLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="flex h-full">
-        <aside class="hidden w-64 shrink-0 flex-col border-r border-base-300 bg-base-200/30 lg:flex">
+        <aside
+          id="sidebar"
+          class="relative hidden w-[var(--sidebar-width,16rem)] shrink-0 flex-col border-r border-base-300 bg-base-200/30 lg:flex"
+        >
+          <div
+            id="sidebar-resize"
+            phx-hook=".SidebarResize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            tabindex="0"
+            title="Drag to resize, double-click to reset"
+            class="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none transition-colors hover:bg-primary/30 focus-visible:bg-primary/30 focus-visible:outline-none active:bg-primary/40"
+          >
+          </div>
           <p class="px-4 pt-4 pb-2 text-xs font-medium uppercase tracking-wider text-base-content/50">
             Chats
           </p>
@@ -205,6 +219,70 @@ defmodule EliaWeb.ChatLive do
             this.handleEvent("chat:clear", () => { this.el.value = ""; resize() })
           },
           updated() { if (!this.el.disabled) this.el.focus() }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SidebarResize">
+        // The width lives in a CSS variable on <html>, so LiveView patches
+        // (which rewrite element attributes) never reset it.
+        const KEY = "elia:sidebar-width"
+        const DEFAULT = 256
+        const MIN = 192
+        const MAX = 640
+
+        export default {
+          mounted() {
+            const root = document.documentElement
+            const aside = this.el.parentElement
+            const clamp = w => Math.round(Math.min(Math.max(w, MIN), MAX, window.innerWidth / 2))
+            const current = () => aside.getBoundingClientRect().width
+            const apply = w => {
+              root.style.setProperty("--sidebar-width", clamp(w) + "px")
+              this.el.setAttribute("aria-valuenow", clamp(w))
+            }
+            const save = () => {
+              try { localStorage.setItem(KEY, String(Math.round(current()))) } catch (_e) {}
+            }
+
+            this.el.setAttribute("aria-valuemin", MIN)
+            this.el.setAttribute("aria-valuemax", MAX)
+
+            let stored = null
+            try { stored = parseInt(localStorage.getItem(KEY), 10) } catch (_e) {}
+            if (stored) apply(stored)
+            else this.el.setAttribute("aria-valuenow", DEFAULT)
+
+            this.el.addEventListener("pointerdown", e => {
+              e.preventDefault()
+              this.el.setPointerCapture(e.pointerId)
+              this.dragging = {x: e.clientX, width: current()}
+              document.body.style.userSelect = "none"
+            })
+            this.el.addEventListener("pointermove", e => {
+              if (this.dragging) apply(this.dragging.width + e.clientX - this.dragging.x)
+            })
+            const stop = () => {
+              if (!this.dragging) return
+              this.dragging = null
+              document.body.style.userSelect = ""
+              save()
+            }
+            this.el.addEventListener("pointerup", stop)
+            this.el.addEventListener("pointercancel", stop)
+
+            this.el.addEventListener("dblclick", () => {
+              apply(DEFAULT)
+              try { localStorage.removeItem(KEY) } catch (_e) {}
+            })
+
+            this.el.addEventListener("keydown", e => {
+              const step = e.shiftKey ? 48 : 16
+              if (e.key === "ArrowLeft") apply(current() - step)
+              else if (e.key === "ArrowRight") apply(current() + step)
+              else return
+              e.preventDefault()
+              save()
+            })
+          }
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollBottom">
