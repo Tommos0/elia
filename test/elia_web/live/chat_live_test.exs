@@ -42,6 +42,32 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chat-link-#{id}[title='#{text}']")
   end
 
+  # UI-34: each sidebar chat shows its start time, and the text keeps up with the clock.
+  test "sidebar chats show a relative start time that refreshes", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, [Message.user("hi")])
+    chat = Enum.find(Elia.Store.list(30), &(&1.id == id))
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    time = "time#chat-time-#{id}"
+    assert has_element?(view, "#{time}[datetime='#{DateTime.to_iso8601(chat.created_at)}']")
+    title = Calendar.strftime(chat.created_at, "%Y-%m-%d %H:%M:%S UTC")
+    assert has_element?(view, "#{time}[title='#{title}']")
+    assert has_element?(view, time, "just now")
+
+    # Age the listed chat by an hour without rendering, then let the tick render it.
+    :sys.replace_state(view.pid, fn state ->
+      update_in(state.socket.assigns.chats, fn chats ->
+        Enum.map(chats, &%{&1 | created_at: DateTime.add(&1.created_at, -3600)})
+      end)
+    end)
+
+    send(view.pid, :tick_now)
+    assert has_element?(view, time, "1 hour ago")
+  end
+
   # UI-32: the header's Chats button goes to "/" and precedes Sessions.
   test "header has a Chats button left of Sessions that opens a fresh chat", %{conn: conn} do
     id = Agent.new_id()

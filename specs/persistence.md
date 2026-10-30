@@ -33,6 +33,13 @@ reopened.
   text as the title (STORE-7) but cut to 1000 characters instead of 60, or
   "New chat" if there is none.
 
+- **STORE-11** A saved chat also records `created_at: DateTime`, set the first
+  time it is saved and kept unchanged by later saves. Files saved before this
+  field existed use their file modification time as the start date.
+- **STORE-12** Each listed chat carries `created_at`, and listing orders
+  chats by it, newest first (replacing the modification-time order of
+  STORE-6; `updated_at` is still returned).
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.

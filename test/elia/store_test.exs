@@ -60,4 +60,52 @@ defmodule Elia.StoreTest do
     :ok = Store.save(id, [])
     assert %{description: "New chat"} = Enum.find(Store.list(1000), &(&1.id == id))
   end
+
+  defp listed(id), do: Enum.find(Store.list(1000), &(&1.id == id))
+
+  # STORE-11
+  test "created_at is set by the first save and kept by later saves" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    %{created_at: %DateTime{} = created_at} = listed(id)
+
+    :ok = Store.save(id, [Message.user("hi"), Message.user("again")])
+    assert %{created_at: ^created_at} = listed(id)
+  end
+
+  # STORE-11: a file saved before created_at existed keeps its mtime as the
+  # start date, including through its next save.
+  test "chats without created_at use their modification time" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    :ok = Store.save(id, [Message.user("hi")])
+
+    path = Path.join(Store.dir(), id <> ".term")
+    legacy = path |> File.read!() |> :erlang.binary_to_term() |> Map.delete(:created_at)
+    File.write!(path, :erlang.term_to_binary(legacy))
+    mtime = ~U[2020-01-02 03:04:05Z]
+    File.touch!(path, DateTime.to_unix(mtime))
+
+    assert %{created_at: ^mtime} = listed(id)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert %{created_at: ^mtime} = listed(id)
+  end
+
+  # STORE-12: saving an older chat doesn't move it above a newer one.
+  test "chats are listed newest started first, regardless of later saves" do
+    older = Elia.Agent.new_id()
+    newer = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([older, newer], &Store.delete/1) end)
+
+    :ok = Store.save(older, [Message.user("older")])
+    :ok = Store.save(newer, [Message.user("newer")])
+    :ok = Store.save(older, [Message.user("older, updated")])
+
+    ids = Store.list(1000) |> Enum.map(& &1.id) |> Enum.filter(&(&1 in [older, newer]))
+    assert ids == [newer, older]
+    assert %{updated_at: %DateTime{}} = listed(older)
+  end
 end

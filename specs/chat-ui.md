@@ -17,9 +17,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ### Chat list
 
-- **UI-4** On large screens a sidebar lists the 30 most recently updated
-  chats, newest first, each linking to `/c/<id>`. The open chat is
+- **UI-4** On large screens a sidebar lists the 30 most recently started
+  chats (STORE-12), newest first, each linking to `/c/<id>`. The open chat is
   highlighted.
+- **UI-34** Each sidebar chat shows when it was started in human-readable
+  relative form ("just now", "10 minutes ago", "3 hours ago", "2 days ago",
+  then a date after a week), in a `<time>` element whose `datetime` is the
+  start time and whose `title` is the exact date and time. The relative text
+  refreshes every minute.
 - **UI-5** With no saved chats, the sidebar shows "No chats yet".
 - **UI-6** When a turn ends (status becomes idle), the sidebar and page title
   refresh.
@@ -110,4 +115,4 @@ stream in, approves or denies tool calls, and switches between saved chats.
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/page_title_test.exs`,
-`test/elia_web/markdown_test.exs`.
+`test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

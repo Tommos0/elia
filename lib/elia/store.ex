@@ -25,7 +25,8 @@ defmodule Elia.Store do
     path = path(id)
     tmp = path <> ".tmp"
 
-    chat = %{version: 1, messages: messages, updated_at: DateTime.utc_now()}
+    now = DateTime.utc_now()
+    chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
     data = :erlang.term_to_binary(chat)
 
@@ -55,23 +56,55 @@ defmodule Elia.Store do
     end
   end
 
-  @doc "Saved conversations, most recently updated first."
+  @doc "Saved conversations, most recently started first (STORE-12)."
   def list(limit \\ 50) do
     case File.ls(dir()) do
       {:ok, files} ->
         files
         |> Enum.filter(&String.ends_with?(&1, ".term"))
-        |> Enum.map(fn file -> {file, File.stat!(Path.join(dir(), file), time: :posix).mtime} end)
-        |> Enum.sort_by(&elem(&1, 1), :desc)
+        |> Enum.map(&list_entry/1)
+        |> Enum.sort_by(&DateTime.to_unix(&1.created_at, :microsecond), :desc)
         |> Enum.take(limit)
-        |> Enum.map(fn {file, mtime} ->
-          id = Path.rootname(file)
-          messages = load(id)
-          %{id: id, title: title(messages), description: title(messages, 1000), updated_at: mtime}
+        |> Enum.map(fn entry ->
+          {messages, entry} = Map.pop(entry, :messages)
+          Map.merge(entry, %{title: title(messages), description: title(messages, 1000)})
         end)
 
       {:error, _} ->
         []
+    end
+  end
+
+  defp list_entry(file) do
+    path = Path.join(dir(), file)
+    mtime = path |> File.stat!(time: :posix) |> Map.fetch!(:mtime) |> DateTime.from_unix!()
+
+    chat =
+      with {:ok, data} <- File.read(path),
+           %{} = chat <- decode(data) do
+        chat
+      else
+        _ -> %{}
+      end
+
+    %{
+      id: Path.rootname(file),
+      messages: Map.get(chat, :messages, []),
+      created_at: Map.get(chat, :created_at) || mtime,
+      updated_at: Map.get(chat, :updated_at) || mtime
+    }
+  end
+
+  # The start date of an already saved chat, or `nil` (STORE-11).
+  defp created_at(id) do
+    with {:ok, data} <- File.read(path(id)),
+         %{} = chat <- decode(data) do
+      case chat do
+        %{created_at: %DateTime{} = at} -> at
+        _ -> path(id) |> File.stat!(time: :posix) |> Map.fetch!(:mtime) |> DateTime.from_unix!()
+      end
+    else
+      _ -> nil
     end
   end
 

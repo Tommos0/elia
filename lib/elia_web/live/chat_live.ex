@@ -22,6 +22,7 @@ defmodule EliaWeb.ChatLive do
     if connected?(socket) do
       Agent.subscribe(id)
       Elia.Skills.subscribe()
+      Process.send_after(self(), :tick_now, 60_000)
     end
 
     snapshot = Agent.snapshot(id)
@@ -40,6 +41,7 @@ defmodule EliaWeb.ChatLive do
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
         chats: Elia.Store.list(30),
+        now: DateTime.utc_now(),
         selection: LLM.selection(snapshot.selection),
         picker_open: false,
         model_query: "",
@@ -77,13 +79,21 @@ defmodule EliaWeb.ChatLive do
               id={"chat-link-#{chat.id}"}
               title={chat.description}
               class={[
-                "block truncate rounded-lg px-3 py-2 text-sm transition",
+                "block rounded-lg px-3 py-2 text-sm transition",
                 chat.id == @session_id && "bg-base-300 font-medium",
                 chat.id != @session_id &&
                   "text-base-content/70 hover:bg-base-200 hover:text-base-content"
               ]}
             >
-              {chat.title}
+              <span class="block truncate">{chat.title}</span>
+              <time
+                id={"chat-time-#{chat.id}"}
+                datetime={DateTime.to_iso8601(chat.created_at)}
+                title={Calendar.strftime(chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
+                class="block text-xs font-normal text-base-content/50"
+              >
+                {EliaWeb.TimeAgo.format(chat.created_at, @now)}
+              </time>
             </.link>
             <p :if={@chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
           </nav>
@@ -884,6 +894,12 @@ defmodule EliaWeb.ChatLive do
   end
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
+
+  # Keeps the sidebar's relative times current (UI-34).
+  def handle_info(:tick_now, socket) do
+    Process.send_after(self(), :tick_now, 60_000)
+    {:noreply, assign(socket, now: DateTime.utc_now())}
+  end
 
   # The estimate is folded in per change, never rebuilt on render (CTX-8).
   defp put_context(socket, context) do
