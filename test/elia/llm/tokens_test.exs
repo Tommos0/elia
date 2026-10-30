@@ -46,13 +46,20 @@ defmodule Elia.LLM.TokensTest do
     assert Tokens.estimate_block(block) == Tokens.estimate(Jason.encode!(raw))
   end
 
-  # CTX-9: a reasoning signature is sized by its decoded bytes.
-  test "reasoning blocks include their signature" do
+  # CTX-9: a signed reasoning block counts the larger of its text and signature.
+  test "reasoning blocks are the larger of their text and signature" do
     raw = %{"type" => "thinking", "signature" => String.duplicate("s", 160)}
-    signed = %{type: :reasoning, text: "abcd", raw: {Elia.LLM.Anthropic, raw}}
+    signed = fn text -> %{type: :reasoning, text: text, raw: {Elia.LLM.Anthropic, raw}} end
 
-    # 1 (text) + 30 (160 characters is 120 bytes, at 4 bytes per token)
-    assert Tokens.estimate_block(signed) == 31
+    # 160 characters is 120 bytes, at 4 bytes per token.
+    assert Tokens.estimate_block(signed.("")) == 30
+    assert Tokens.estimate_block(signed.("abcd")) == 30
+    assert Tokens.estimate_block(signed.(String.duplicate("a", 400))) == 100
+
+    # The size rounds up.
+    short = %{type: :reasoning, text: "", raw: {Elia.LLM.Anthropic, %{"signature" => "abc"}}}
+    assert Tokens.estimate_block(short) == 1
+
     assert Tokens.estimate_block(%{type: :reasoning, text: "abcd"}) == 1
   end
 

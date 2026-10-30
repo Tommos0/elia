@@ -51,10 +51,13 @@ files, skills, tool definitions and more — each with an estimated token count.
   are reloaded, and when the model selection or its catalog changes. The
   estimate is updated incrementally per message rather than recomputed on
   every render.
-- **CTX-9** A reasoning block's estimate includes its provider signature when
-  it has one, since the signature is sent back with the block. Signatures are
-  base64, so they are sized by their decoded bytes (3 per 4 characters) at about
-  four bytes per token.
+- **CTX-9** A reasoning block that carries a provider signature (Anthropic
+  `thinking` blocks) is estimated as the larger of its visible text and its
+  signature. The signature holds the model's full, encrypted thinking, which
+  the API counts as input even when the visible text is empty or a summary.
+  The signature is base64, so it is sized as 3 bytes per 4 characters at about
+  4 bytes per token (`ceil(length * 3 / 16)`). Blocks without a signature are
+  estimated from their text, as before.
 - **CTX-10** The local estimate is calibrated against the provider's report.
   With each usage report the session records `estimated_input_tokens`, its
   estimate for the history that request sent. The difference between the

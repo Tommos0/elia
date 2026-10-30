@@ -30,9 +30,10 @@ defmodule Elia.LLM.Tokens do
   @spec estimate_block(map()) :: non_neg_integer()
   def estimate_block(%{type: :text, text: text}), do: estimate(text)
 
-  # CTX-9: the signature is sent back with the block.
+  # CTX-9: the signature holds the full thinking, of which the text is at most
+  # a summary, so the two overlap rather than add up.
   def estimate_block(%{type: :reasoning, text: text} = block),
-    do: estimate(text) + signature_tokens(block)
+    do: max(estimate(text), signature_tokens(block))
 
   def estimate_block(%{type: :tool_call, input: input}), do: estimate(encode(input))
 
