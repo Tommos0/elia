@@ -127,6 +127,40 @@ defmodule EliaWeb.AutoApproveTest do
     refute has_element?(view, "#always-allow-c1")
   end
 
+  # UI-41, UI-42
+  test "enabled tools show as chips and as On/Off text", %{conn: conn, id: id} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    refute has_element?(view, "[id^='auto-approve-chip-']")
+
+    open_popover(view)
+    assert has_element?(view, "#auto-approve-state-shell", "Off")
+
+    view |> element("#auto-approve-shell") |> render_click()
+    assert has_element?(view, "#auto-approve-state-shell", "On")
+    assert has_element?(view, "#auto-approve-chip-shell", "shell")
+    refute has_element?(view, "#auto-approve-chip-write_file")
+
+    view |> element("#auto-approve-edit_file") |> render_click()
+    assert has_element?(view, "#auto-approve-chip-edit_file", "edit_file")
+
+    view |> element("#auto-approve-shell") |> render_click()
+    assert has_element?(view, "#auto-approve-state-shell", "Off")
+    refute has_element?(view, "#auto-approve-chip-shell")
+  end
+
+  # UI-41
+  test "chips are visible on load and open the popover when tapped", %{conn: conn, id: id} do
+    :ok = Elia.Store.save(id, [Message.user("hi")], auto_approve: ["shell", "edit_file"])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    refute has_element?(view, "#auto-approve")
+    assert has_element?(view, "#auto-approve-chip-shell")
+    assert has_element?(view, "#auto-approve-chip-edit_file")
+
+    view |> element("#auto-approve-chip-shell") |> render_click()
+    assert has_element?(view, "#auto-approve")
+  end
+
   # UI-40, APPR-11
   test "Always allow approves the call and later calls of the tool", %{conn: conn, id: id} do
     FakeLLM.push(

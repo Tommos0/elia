@@ -509,6 +509,16 @@ defmodule EliaWeb.ChatLive do
             >
               <.icon name={tool_icon(tool.name)} class="size-4 shrink-0 text-base-content/60" />
               <span class="min-w-0 flex-1 truncate font-medium">{tool.name}</span>
+              <span
+                id={"auto-approve-state-#{tool.name}"}
+                class={[
+                  "text-xs font-medium",
+                  tool.name in @enabled && "text-warning",
+                  tool.name not in @enabled && "text-base-content/50"
+                ]}
+              >
+                {if tool.name in @enabled, do: "On", else: "Off"}
+              </span>
               <span class={[
                 "relative h-5 w-9 shrink-0 rounded-full transition",
                 tool.name in @enabled && "bg-warning",
@@ -528,6 +538,18 @@ defmodule EliaWeb.ChatLive do
         </ul>
       </div>
     </div>
+    <%!-- UI-41: enabled tools stay visible without opening the popover --%>
+    <button
+      :for={name <- @enabled}
+      type="button"
+      id={"auto-approve-chip-#{name}"}
+      phx-click="toggle_auto_approve_picker"
+      title={"#{name} is auto-approved in this chat"}
+      class="flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning transition active:scale-95"
+    >
+      <.icon name={tool_icon(name)} class="size-3.5 shrink-0" />
+      {name}
+    </button>
     """
   end
 

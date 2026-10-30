@@ -108,6 +108,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-40** A call awaiting approval has an "Always allow" button
   (`#always-allow-<call_id>`) that turns auto-approval on for its tool
   (APPR-11, which also approves this call).
+- **UI-41** The tools a chat auto-approves are visible without opening the
+  popover: each one shows as a chip (`#auto-approve-chip-<tool name>`) with its
+  icon and name beside the Auto-approve button, wrapping onto further lines on
+  narrow screens. Tapping a chip opens the popover. No chips show when the set
+  is empty. Chips follow `{:auto_approve, names}` events (SESS-16).
+- **UI-42** In the popover each switch row says "On" or "Off" in text next to
+  the switch, so the state doesn't rely on colour or hover and is clear on
+  touch screens.
 
 ### Markdown
 
