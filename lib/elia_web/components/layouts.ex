@@ -45,6 +45,13 @@ defmodule EliaWeb.Layouts do
         </.link>
         <div class="flex items-center gap-2">
           <.link
+            navigate={~p"/"}
+            id="chats-link"
+            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
+          >
+            <.icon name="hero-chat-bubble-left-right" class="size-4" /> Chats
+          </.link>
+          <.link
             navigate={~p"/sessions"}
             id="sessions-link"
             class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"

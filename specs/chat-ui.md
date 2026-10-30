@@ -25,6 +25,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   refresh.
 - **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
   list that starts a fresh chat.
+- **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
+  the left of "Sessions". It goes where the logo at the top left goes: `/`,
+  which opens a fresh chat (UI-1).
 
 ### Transcript
 

@@ -30,6 +30,20 @@ defmodule EliaWeb.ChatLiveTest do
     assert length(Regex.scan(~r/id="new-chat"/, html)) == 1
   end
 
+  # UI-32: the header's Chats button goes to "/" and precedes Sessions.
+  test "header has a Chats button left of Sessions that opens a fresh chat", %{conn: conn} do
+    id = Agent.new_id()
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "header #chats-link[href='/']", "Chats")
+    [before_sessions | _] = String.split(html, "id=\"sessions-link\"")
+    assert before_sessions =~ "id=\"chats-link\""
+
+    view |> element("#chats-link") |> render_click()
+    assert_redirect(view, "/")
+  end
+
   test "chatting with an approval round-trip", %{conn: conn} do
     id = Agent.new_id()
 
