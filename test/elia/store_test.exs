@@ -4,6 +4,23 @@ defmodule Elia.StoreTest do
   alias Elia.Store
   alias Elia.LLM.Message
 
+  # STORE-1, STORE-9
+  test "a chat's model selection is saved with it and defaults to nil" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    model = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_model(id) == nil
+
+    :ok = Store.save(id, [Message.user("hi")], model: model)
+    assert Store.load_model(id) == model
+    assert [%Message{}] = Store.load(id)
+
+    assert Store.load_model("missing-chat") == nil
+    assert Store.load_model("../bad") == nil
+  end
+
   # STORE-3: a fresh dev VM hasn't loaded the modules whose atoms a saved
   # chat uses; loading must load them before the safe decode.
   test "loading a chat loads app modules first so the safe decode succeeds" do

@@ -22,9 +22,10 @@ progress so any number of UIs can follow it.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
-  `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`.
-- **SESS-7** `snapshot/1` returns the id, messages, status and per-call tool
-  status, so a UI that connects mid-turn can render the current state.
+  `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`,
+  `{:model, selection}` (the chat's model selection changed, MODEL-1).
+- **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
+  status and the chat's model selection (`nil` if none yet), so a UI that connects mid-turn can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
   returns to idle and broadcasts the notice "Stopped.". Stopping an idle
@@ -40,6 +41,10 @@ progress so any number of UIs can follow it.
   any unanswered tool calls are closed with an error result, as in SESS-8.
 - **SESS-13** A failure to save the history is logged and does not stop the
   session.
+- **SESS-14** A session loads its saved model selection on start (STORE-9).
+  `select_model/4` sets it, saves it with the history once the chat has
+  messages (a chat with no messages is not written to disk), and broadcasts
+  `{:model, selection}`. It is allowed mid-turn (MODEL-3).
 
 ## Out of scope
 

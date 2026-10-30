@@ -11,17 +11,27 @@ code change.
 
 ### Selection
 
-- **MODEL-1** The selection is a provider key, a model id and the model's
+- **MODEL-1** A selection is a provider key, a model id and the model's
   display name, plus its context length when the cached catalog knows it
-  (CTX-7), stored in the settings database (CONF-1), so it is global and
-  survives restarts. A change is broadcast so open chats update their picker.
-- **MODEL-2** With no stored selection, the selection is the configured
-  default provider (`config :elia, Elia.LLM, provider: ...`) with that
-  provider's configured model.
-- **MODEL-3** A session reads the selection when a turn starts and uses that
-  provider and model for every model call in the turn. Changing the selection
-  mid-turn affects the next turn. Explicit `:llm` loop options are merged
-  over it; an explicit `:provider` replaces the selection entirely.
+  (CTX-7). Each chat has its own selection, saved with the chat (STORE-1), so
+  it is chat-local and survives restarts. Choosing a model in one chat never
+  changes another chat's model. The choice is broadcast on the chat's topic
+  (SESS-6) so every tab showing that chat updates its picker.
+- **MODEL-15** The most recent choice is also stored in the settings
+  database (CONF-1) as the default for chats that have no selection of their
+  own, so a new chat starts on the model last picked anywhere.
+- **MODEL-2** With no chat selection and no stored default, the selection is
+  the configured default provider (`config :elia, Elia.LLM, provider: ...`)
+  with that provider's configured model.
+- **MODEL-3** A session reads the chat's selection when a turn starts and uses
+  that provider and model for every model call in the turn. Changing the
+  selection mid-turn affects the next turn. Explicit `:llm` loop options are
+  merged over it; an explicit `:provider` replaces the selection entirely.
+- **MODEL-16** A chat with no selection of its own pins the model it resolves
+  to (MODEL-15, or MODEL-2 when its provider is registered) when its first turn
+  starts, so later choices in other
+  chats don't change it. A saved selection whose provider is no longer
+  registered is ignored in favour of MODEL-15/MODEL-2.
 - **MODEL-4** Selecting a provider key that isn't registered, or a blank model
   id, is rejected.
 
@@ -58,14 +68,15 @@ code change.
   Claude direct. The selected model is marked.
 - **MODEL-11** Catalogs load asynchronously; while loading the popover shows
   a loading state, and a failed load shows the error for that provider.
-- **MODEL-12** Clicking a model selects it (MODEL-1) and closes the popover.
+- **MODEL-12** Clicking a model selects it for this chat (MODEL-1) and closes
+  the popover.
   Escape or clicking outside closes it without changing the selection.
 - **MODEL-13** A provider without an active key (CONF-5) shows a link to
   `/settings` instead of selectable models.
 
 ## Implementation
 
-`Elia.LLM` (`selection/0`, `select/2`, `models/1`), `Elia.LLM.Catalog`,
+`Elia.LLM` (`selection/1`, `select/3`, `models/1`), `Elia.LLM.Catalog`,
 `Elia.Agent.Session`, `EliaWeb.ChatLive`.
 
 ## Tests

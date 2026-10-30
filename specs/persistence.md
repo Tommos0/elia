@@ -8,8 +8,10 @@ reopened.
 ## Requirements
 
 - **STORE-1** A chat is saved to `.elia/sessions/<id>.term` as an Erlang term
-  `%{version: 1, messages: [...], updated_at: DateTime}`. Terms are used
-  instead of JSON so provider raw blocks are kept exactly (LLM-6).
+  `%{version: 1, messages: [...], updated_at: DateTime}`, plus `model: selection`
+  when the chat has its own model selection (MODEL-1); files without it load
+  as having none. Terms are used instead of JSON so provider raw blocks are
+  kept exactly (LLM-6).
 - **STORE-2** Writes are atomic: the data goes to a `.tmp` file, which is then
   renamed into place.
 - **STORE-3** Loading a chat that is missing, unreadable or corrupt returns
@@ -25,6 +27,8 @@ reopened.
   message, cut to 60 characters, or "New chat" if there is none.
 - **STORE-8** `.elia/` is git-ignored and can't be written by the file tools
   (WS-3).
+- **STORE-9** Loading a chat's model selection returns `nil` when the chat is
+  missing, unreadable, corrupt or has none.
 
 ## Implementation
 

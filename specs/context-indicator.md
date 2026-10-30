@@ -38,11 +38,11 @@ files, skills, tool definitions and more — each with an estimated token count.
   refused turn rolled back) clears the figure.
 - **CTX-7** The context window size comes from the model catalog when cached
   (never triggering a network fetch, nor waiting on one in flight); otherwise
-  the context length stored with the selection (MODEL-1); otherwise a built-in
+  the context length stored with the chat's selection (MODEL-1); otherwise a built-in
   default for Anthropic models; otherwise it is omitted from the indicator.
   When the cached catalog reports a length the stored selection lacks (e.g. a
-  model selected before lengths were stored), it is saved with the selection
-  so the window survives the catalog cache expiring.
+  model selected before lengths were stored), it is saved with the stored default
+  selection (MODEL-15) so the window survives the catalog cache expiring.
 - **CTX-8** The indicator and breakdown stay in sync with the conversation:
   they update as messages arrive, when the conversation is reset, when skills
   are reloaded, and when the model selection or its catalog changes. The

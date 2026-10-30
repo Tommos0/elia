@@ -14,15 +14,20 @@ defmodule Elia.Store do
 
   def valid_id?(id), do: is_binary(id) and Regex.match?(@id_format, id)
 
-  @spec save(binary(), [Message.t()]) :: :ok | {:error, term()}
-  def save(id, messages) do
+  @doc """
+  Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1), kept
+  alongside the messages when given.
+  """
+  @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
+  def save(id, messages, opts \\ []) do
     true = valid_id?(id)
     File.mkdir_p!(dir())
     path = path(id)
     tmp = path <> ".tmp"
 
-    data =
-      :erlang.term_to_binary(%{version: 1, messages: messages, updated_at: DateTime.utc_now()})
+    chat = %{version: 1, messages: messages, updated_at: DateTime.utc_now()}
+    chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
+    data = :erlang.term_to_binary(chat)
 
     with :ok <- File.write(tmp, data), do: File.rename(tmp, path)
   end
@@ -35,6 +40,18 @@ defmodule Elia.Store do
       messages
     else
       _ -> []
+    end
+  end
+
+  @doc "The chat's saved model selection, or `nil` (STORE-9)."
+  @spec load_model(binary()) :: map() | nil
+  def load_model(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{model: %{} = model} <- decode(data) do
+      model
+    else
+      _ -> nil
     end
   end
 

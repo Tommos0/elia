@@ -20,6 +20,8 @@ defmodule Elia.Agent.Session do
     :id,
     :task,
     :turn_start,
+    # The chat's own model selection (MODEL-1); nil until chosen or pinned.
+    :selection,
     messages: [],
     status: :idle,
     # call_id => :awaiting_approval | :running | :done
@@ -47,13 +49,15 @@ defmodule Elia.Agent.Session do
        id: opts[:id],
        loop_opts: Keyword.get(opts, :loop_opts, []),
        persist: persist,
-       messages: if(persist, do: Elia.Store.load(opts[:id]), else: [])
+       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
+       selection: if(persist, do: Elia.Store.load_model(opts[:id]))
      }}
   end
 
   @impl true
   def handle_call(:snapshot, _from, state) do
-    {:reply, Map.take(state, [:id, :messages, :status, :tool_status, :last_usage]), state}
+    {:reply, Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection]),
+     state}
   end
 
   def handle_call({:send_message, _text}, _from, %{status: status} = state)
@@ -63,16 +67,25 @@ defmodule Elia.Agent.Session do
 
   def handle_call({:send_message, text}, _from, state) do
     message = Message.user(text)
+    explicit = Keyword.get(state.loop_opts, :llm, %{})
+
+    # A chat without a selection pins the one it resolves to now (MODEL-16),
+    # unless an explicit provider replaces the selection anyway.
+    state =
+      if state.selection == nil and not is_map_key(explicit, :provider),
+        do: %{state | selection: Elia.LLM.pinnable_selection()},
+        else: state
+
     state = %{state | turn_start: length(state.messages)} |> append(message)
     session = self()
     history = state.messages
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
-    # The model selected now is used for the whole turn. An explicit provider
-    # replaces the selection; other explicit options are merged over it.
+    # The chat's model selected now is used for the whole turn. An explicit
+    # provider replaces the selection; other explicit options are merged over it.
     llm =
-      case Keyword.get(state.loop_opts, :llm, %{}) do
+      case explicit do
         %{provider: _} = llm -> llm
-        llm -> Map.merge(Elia.LLM.selection_request(), llm)
+        llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
       end
 
     opts = Keyword.merge(state.loop_opts, session_id: state.id, turn_id: turn_id, llm: llm)
@@ -83,6 +96,15 @@ defmodule Elia.Agent.Session do
       end)
 
     {:reply, :ok, set_status(%{state | task: task}, :running)}
+  end
+
+  def handle_call({:select_model, selection}, _from, state) do
+    state = %{state | selection: selection}
+    # A chat with no messages isn't written to disk; the selection is saved
+    # with its first message.
+    state = if state.messages == [], do: state, else: save(state)
+    broadcast(state, {:model, selection})
+    {:reply, :ok, state}
   end
 
   def handle_call({:decide, call_id, decision}, _from, %{approval: {pid, decisions}} = state)
@@ -217,7 +239,7 @@ defmodule Elia.Agent.Session do
   defp save(%{persist: false} = state), do: state
 
   defp save(state) do
-    with {:error, reason} <- Elia.Store.save(state.id, state.messages) do
+    with {:error, reason} <- Elia.Store.save(state.id, state.messages, model: state.selection) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end
 

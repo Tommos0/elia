@@ -28,5 +28,16 @@ defmodule Elia.Agent do
 
   def deny(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :deny})
 
+  @doc """
+  Sets the chat's model (MODEL-1). Also remembers it as the default for new
+  chats (MODEL-15).
+  """
+  def select_model(id, provider_key, model, name \\ nil) do
+    with {:ok, selection} <- Elia.LLM.select(provider_key, model, name),
+         :ok <- GenServer.call(Session.via(id), {:select_model, selection}) do
+      {:ok, selection}
+    end
+  end
+
   def stop(id), do: GenServer.call(Session.via(id), :stop)
 end

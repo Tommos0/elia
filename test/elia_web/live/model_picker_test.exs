@@ -84,6 +84,8 @@ defmodule EliaWeb.ModelPickerTest do
     refute has_element?(view, "#model-picker")
     assert has_element?(view, "#selected-model", "OpenAI: GPT X")
     assert has_element?(view, "#selected-provider[data-provider=openrouter]")
+    # MODEL-1, MODEL-15: stored on the chat, and remembered as the default.
+    assert %{provider: "openrouter", model: "openai/gpt-x"} = Agent.snapshot(id).selection
     assert %{provider: "openrouter", model: "openai/gpt-x"} = LLM.selection()
 
     # The selected model is marked when the picker reopens.
@@ -112,11 +114,33 @@ defmodule EliaWeb.ModelPickerTest do
     assert %{model: "claude-configured"} = LLM.selection()
   end
 
-  # MODEL-1
-  test "a selection made elsewhere updates open chats", %{conn: conn, id: id} do
+  # MODEL-1, SESS-14
+  test "a selection made in another tab of the chat updates it", %{conn: conn, id: id} do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
-    :ok = LLM.select("openrouter", "vendor/model", "Vendor Model")
+    {:ok, _} = Agent.select_model(id, "openrouter", "vendor/model", "Vendor Model")
     assert render(view) =~ "Vendor Model"
     assert has_element?(view, "#selected-model", "Vendor Model")
+  end
+
+  # MODEL-1, MODEL-15
+  test "the model is chat-local; new chats start on the last choice", %{conn: conn, id: id} do
+    other = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(other) end)
+
+    {:ok, view_a, _} = live(conn, ~p"/c/#{id}")
+    {:ok, view_b, _} = live(conn, ~p"/c/#{other}")
+    {:ok, _} = Agent.select_model(id, "openrouter", "vendor/model", "Vendor Model")
+    {:ok, _} = Agent.select_model(other, "anthropic", "claude-other", "Claude Other")
+
+    assert has_element?(view_a, "#selected-model", "Vendor Model")
+    assert has_element?(view_b, "#selected-model", "Claude Other")
+
+    # Reopening a chat shows its own model, not the last choice made anywhere.
+    {:ok, reopened, _} = live(conn, ~p"/c/#{id}")
+    assert has_element?(reopened, "#selected-model", "Vendor Model")
+
+    # A chat that never chose one starts on the last choice.
+    {:ok, fresh, _} = live(conn, ~p"/c/#{Agent.new_id()}")
+    assert has_element?(fresh, "#selected-model", "Claude Other")
   end
 end

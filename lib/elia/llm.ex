@@ -27,10 +27,6 @@ defmodule Elia.LLM do
     }
   ]
 
-  @selection_topic "llm:selection"
-
-  @selection_topic "llm:selection"
-
   @spec stream(Elia.LLM.Provider.request(), (Elia.LLM.Provider.event() -> any())) ::
           {:ok, Elia.LLM.Provider.response()} | {:error, term()}
   def stream(request, on_event \\ fn _ -> :ok end) do
@@ -116,22 +112,35 @@ defmodule Elia.LLM do
 
   ## Model selection
 
-  def subscribe_selection, do: Phoenix.PubSub.subscribe(Elia.PubSub, @selection_topic)
+  @doc """
+  The effective `%{provider, model, name}` for a chat, plus `context_length`
+  when it was known at selection time.
+
+  `chat_selection` is the chat's own selection (MODEL-1); when it is `nil` or
+  names an unregistered provider, the stored default (the last choice made
+  anywhere, MODEL-15) applies, and without one the configured provider and its
+  default model (MODEL-2).
+  """
+  def selection(chat_selection \\ nil) do
+    valid_selection(chat_selection) || valid_selection(Settings.get(:model)) ||
+      default_selection()
+  end
 
   @doc """
-  The selected `%{provider, model, name}`, plus `context_length` when it was
-  known at selection time. Without a stored selection, the configured provider
-  and its default model.
+  The selection a chat without its own should pin when its first turn starts
+  (MODEL-16): the stored default, else the configured default when its
+  provider is registered, else `nil` (the configured provider applies as is).
   """
-  def selection do
-    case Settings.get(:model) do
-      %{provider: key, model: model} = selection when is_binary(model) ->
-        if provider_info(key), do: selection, else: default_selection()
-
-      _ ->
-        default_selection()
-    end
+  def pinnable_selection do
+    valid_selection(Settings.get(:model)) ||
+      if Enum.any?(@providers, &(&1.module == provider())), do: default_selection()
   end
+
+  defp valid_selection(%{provider: key, model: model} = selection) when is_binary(model) do
+    if provider_info(key), do: selection
+  end
+
+  defp valid_selection(_), do: nil
 
   defp default_selection do
     info = Enum.find(@providers, &(&1.module == provider())) || hd(@providers)
@@ -139,7 +148,11 @@ defmodule Elia.LLM do
     %{provider: info.key, model: model, name: model}
   end
 
-  @spec select(binary(), binary(), binary() | nil) :: :ok | {:error, binary()}
+  @doc """
+  Builds a selection and remembers it as the default for chats without one
+  (MODEL-15). The caller stores it on the chat (`Elia.Agent.select_model/4`).
+  """
+  @spec select(binary(), binary(), binary() | nil) :: {:ok, map()} | {:error, binary()}
   def select(key, model, name \\ nil) do
     cond do
       provider_info(key) == nil ->
@@ -153,26 +166,18 @@ defmodule Elia.LLM do
           %{provider: key, model: model, name: name || model}
           |> put_context_length(cached_context_length(key, model))
 
-        with :ok <- Settings.put(:model, selection) do
-          Phoenix.PubSub.broadcast(Elia.PubSub, @selection_topic, {:llm_selection, selection})
-        end
+        with :ok <- Settings.put(:model, selection), do: {:ok, selection}
     end
   end
 
   @doc """
-  Request fields for the stored selection, or none so the configured provider
-  and model apply.
+  Request fields for the chat's selection (else the stored default), or none
+  so the configured provider and model apply.
   """
-  def selection_request do
-    case Settings.get(:model) do
-      %{provider: key, model: model} when is_binary(model) ->
-        case provider_info(key) do
-          %{module: module} -> %{provider: module, model: model}
-          nil -> %{}
-        end
-
-      _ ->
-        %{}
+  def selection_request(chat_selection \\ nil) do
+    case valid_selection(chat_selection) || valid_selection(Settings.get(:model)) do
+      %{provider: key, model: model} -> %{provider: provider_info(key).module, model: model}
+      nil -> %{}
     end
   end
 
@@ -195,13 +200,13 @@ defmodule Elia.LLM do
   unknown. A cached length the stored selection lacks is saved with it, so the
   window outlives the catalog cache (CTX-7).
   """
-  @spec context_window() :: %{
+  @spec context_window(map() | nil) :: %{
           provider: binary(),
           model: binary(),
           context_length: pos_integer() | nil
         }
-  def context_window do
-    %{provider: provider, model: model} = selection = selection()
+  def context_window(chat_selection \\ nil) do
+    %{provider: provider, model: model} = selection = selection(chat_selection)
     cached = cached_context_length(provider, model)
 
     # Only a stored selection is updated; the configured default stays unstored.

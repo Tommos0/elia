@@ -213,7 +213,7 @@ defmodule Elia.AgentTest do
   test "a turn uses the model selected when it starts", %{id: id} do
     Elia.LLMCase.reset_settings()
     Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
-    :ok = Elia.LLM.select("openrouter", "vendor/picked")
+    {:ok, _} = Elia.LLM.select("openrouter", "vendor/picked")
 
     Elia.LLMCase.stub_openrouter_stream(self(), [
       %{"choices" => [%{"delta" => %{"content" => "From OpenRouter."}}]},
@@ -238,5 +238,57 @@ defmodule Elia.AgentTest do
     await_status(other, :idle)
     assert [request] = FakeLLM.requests()
     refute Map.has_key?(request, :model)
+  end
+
+  # MODEL-1, MODEL-16, SESS-14
+  test "the chat remembers its model across restarts and other chats' choices", %{id: id} do
+    Elia.LLMCase.reset_settings()
+    Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # Selecting in an empty chat is broadcast but not written to disk.
+    {:ok, _} = Agent.select_model(id, "openrouter", "vendor/chat-model", "Chat Model")
+    assert_receive {:agent, ^id, {:model, %{model: "vendor/chat-model"}}}
+    assert Elia.Store.load_model(id) == nil
+
+    # A later choice elsewhere only changes the default.
+    {:ok, _} = Elia.LLM.select("openrouter", "vendor/elsewhere")
+
+    Elia.LLMCase.stub_openrouter_stream(self(), [
+      %{"choices" => [%{"delta" => %{"content" => "Hi."}}]},
+      %{"choices" => [%{"delta" => %{}, "finish_reason" => "stop"}]}
+    ])
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+    assert_receive {:request, "/api/v1/chat/completions", _, %{"model" => "vendor/chat-model"}}
+    assert %{model: "vendor/chat-model"} = Elia.Store.load_model(id)
+
+    # Restart the session: the selection is reloaded.
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    {:ok, _} = Agent.ensure_started(id)
+    assert %{model: "vendor/chat-model"} = Agent.snapshot(id).selection
+  end
+
+  # MODEL-16
+  test "a chat without a selection pins the default when its first turn starts", %{id: id} do
+    Elia.LLMCase.reset_settings()
+    Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
+    on_exit(fn -> Elia.Store.delete(id) end)
+    {:ok, _} = Elia.LLM.select("openrouter", "vendor/first")
+    assert Agent.snapshot(id).selection == nil
+
+    Elia.LLMCase.stub_openrouter_stream(self(), [
+      %{"choices" => [%{"delta" => %{"content" => "Hi."}}]},
+      %{"choices" => [%{"delta" => %{}, "finish_reason" => "stop"}]}
+    ])
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+    assert %{model: "vendor/first"} = Agent.snapshot(id).selection
+
+    {:ok, _} = Elia.LLM.select("openrouter", "vendor/second")
+    assert %{model: "vendor/first"} = Agent.snapshot(id).selection
   end
 end

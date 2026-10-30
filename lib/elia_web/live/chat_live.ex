@@ -21,7 +21,6 @@ defmodule EliaWeb.ChatLive do
 
     if connected?(socket) do
       Agent.subscribe(id)
-      LLM.subscribe_selection()
       Elia.Skills.subscribe()
     end
 
@@ -35,13 +34,13 @@ defmodule EliaWeb.ChatLive do
         tool_status: snapshot.tool_status,
         last_usage: snapshot.last_usage,
         show_context: false,
-        context_window: LLM.context_window(),
+        context_window: LLM.context_window(snapshot.selection),
         draft: "",
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
         chats: Elia.Store.list(30),
-        selection: LLM.selection(),
+        selection: LLM.selection(snapshot.selection),
         picker_open: false,
         model_query: "",
         search_form: to_form(%{"q" => ""}, as: :model_search),
@@ -792,9 +791,12 @@ defmodule EliaWeb.ChatLive do
   end
 
   def handle_event("select_model", %{"provider" => key, "model" => model} = params, socket) do
-    case LLM.select(key, model, params["name"]) do
-      :ok ->
-        {:noreply, assign(socket, selection: LLM.selection(), picker_open: false)}
+    case Agent.select_model(socket.assigns.session_id, key, model, params["name"]) do
+      {:ok, selection} ->
+        socket
+        |> assign(selection: selection, context_window: LLM.context_window(selection))
+        |> assign(picker_open: false)
+        |> noreply()
 
       {:error, message} ->
         {:noreply, put_flash(socket, :error, message)}
@@ -813,7 +815,7 @@ defmodule EliaWeb.ChatLive do
     socket
     |> assign(
       catalogs: Map.put(socket.assigns.catalogs, key, catalog),
-      context_window: LLM.context_window()
+      context_window: LLM.context_window(socket.assigns.selection)
     )
     |> stream_models()
     |> noreply()
@@ -876,13 +878,6 @@ defmodule EliaWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:llm_selection, selection}, socket) do
-    socket
-    |> assign(selection: selection, context_window: LLM.context_window())
-    |> stream_models()
-    |> noreply()
-  end
-
   def handle_info({:skills_reloaded, skills}, socket) do
     {:noreply, put_context(socket, Context.put_skills(socket.assigns.context, skills))}
   end
@@ -903,6 +898,12 @@ defmodule EliaWeb.ChatLive do
     socket
     |> put_context(Context.add(socket.assigns.context, message))
     |> insert_message(message)
+  end
+
+  defp apply_event({:model, selection}, socket) do
+    socket
+    |> assign(selection: selection, context_window: LLM.context_window(selection))
+    |> stream_models()
   end
 
   defp apply_event({:usage, usage}, socket), do: assign(socket, last_usage: usage)

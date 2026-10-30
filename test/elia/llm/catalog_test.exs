@@ -165,7 +165,7 @@ defmodule Elia.LLM.CatalogTest do
     Req.Test.stub(OpenRouter, &Req.Test.json(&1, openrouter_models()))
     assert {:ok, _} = LLM.models("openrouter")
 
-    :ok = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
+    {:ok, _} = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
     assert %{context_length: 200_000} = LLM.selection()
 
     LLM.Catalog.clear("openrouter")
@@ -174,7 +174,7 @@ defmodule Elia.LLM.CatalogTest do
 
   # CTX-7: a selection stored without a length picks it up from the catalog.
   test "context_window saves a cached length the stored selection lacks" do
-    :ok = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
+    {:ok, _} = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
     refute Map.has_key?(LLM.selection(), :context_length)
 
     Req.Test.stub(OpenRouter, &Req.Test.json(&1, openrouter_models()))
@@ -233,9 +233,8 @@ defmodule Elia.LLM.CatalogTest do
     assert %{provider: "anthropic", model: "claude-configured"} = LLM.selection()
     assert LLM.selection_request() == %{}
 
-    LLM.subscribe_selection()
-    assert :ok = LLM.select("openrouter", "vendor/model", "Vendor: Model")
-    assert_receive {:llm_selection, %{provider: "openrouter", model: "vendor/model"}}
+    assert {:ok, %{provider: "openrouter", model: "vendor/model"}} =
+             LLM.select("openrouter", "vendor/model", "Vendor: Model")
 
     assert %{provider: "openrouter", model: "vendor/model", name: "Vendor: Model"} =
              LLM.selection()
