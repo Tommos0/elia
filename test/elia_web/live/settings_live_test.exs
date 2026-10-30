@@ -160,6 +160,17 @@ defmodule EliaWeb.SettingsLiveTest do
     assert has_element?(view, "#balance-openrouter", "boom")
   end
 
+  # CONF-17, CONF-18
+  test "the theme toggle is on the settings page, not in the header", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert has_element?(view, "#appearance #theme-toggle button[data-phx-theme=dark]")
+    assert view |> element("#appearance #theme-toggle") |> render() =~ "data-phx-theme"
+    assert length(Regex.scan(~r/id="theme-toggle"/, render(view))) == 1
+
+    {:ok, files, _html} = live(conn, ~p"/files")
+    refute has_element?(files, "#theme-toggle")
+  end
+
   # CONF-14
   test "a provider without a balance API says so", %{conn: conn} do
     configure(Anthropic, api_key: "sk-ant-env-wxyz")

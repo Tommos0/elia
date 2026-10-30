@@ -60,7 +60,18 @@ defmodule EliaWeb.SettingsLive do
             API keys for the model providers Elia can use. Pick a model from the chat composer.
           </p>
 
-          <div class="mt-8 space-y-4">
+          <section
+            id="appearance"
+            class="mt-8 flex items-center justify-between gap-3 rounded-2xl border border-base-300 p-5"
+          >
+            <div>
+              <h2 class="font-medium">Appearance</h2>
+              <p class="text-xs text-base-content/50">Follow the system, or pick light or dark.</p>
+            </div>
+            <Layouts.theme_toggle />
+          </section>
+
+          <div class="mt-4 space-y-4">
             <section
               :for={info <- @providers}
               id={"provider-#{info.key}"}

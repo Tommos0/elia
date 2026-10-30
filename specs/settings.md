@@ -67,6 +67,13 @@ remove a key for each provider.
 - **CONF-16** A "Refresh" button (`#refresh-balance-<key>`) next to the credit
   line of a provider with `balance/1` reloads the balance.
 
+### Appearance
+
+- **CONF-17** `/settings` has an "Appearance" section (`#appearance`) holding
+  the theme toggle (`#theme-toggle`) with its system, light and dark buttons.
+- **CONF-18** The app header has no theme toggle; it is only on the Settings
+  page.
+
 ## Configuration
 
 ```elixir
