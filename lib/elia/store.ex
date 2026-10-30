@@ -38,7 +38,7 @@ defmodule Elia.Store do
     with true <- valid_id?(id),
          {:ok, data} <- File.read(path(id)),
          %{messages: messages} <- decode(data) do
-      messages
+      Enum.map(messages, &Message.scrub/1)
     else
       _ -> []
     end

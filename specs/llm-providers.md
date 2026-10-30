@@ -116,6 +116,9 @@ access to many other models.
   `balance/1`. Each registry entry (LLM-15) has a `billing_url`, the web page
   where credits are added: `https://console.anthropic.com/settings/billing`
   and `https://openrouter.ai/settings/credits`.
+- **LLM-28** Tool results and harness messages are always valid UTF-8, since
+  they are JSON-encoded for both the provider and the browser. Each invalid
+  byte, such as from a command printing a binary file, is replaced with U+FFFD.
 
 ## Configuration
 
@@ -147,4 +150,5 @@ Tests use `Elia.FakeLLM`.
 
 ## Tests
 
-`test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`.
+`test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`,
+`test/elia/llm/message_test.exs`.

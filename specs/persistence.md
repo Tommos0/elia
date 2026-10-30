@@ -39,6 +39,9 @@ reopened.
 - **STORE-12** Each listed chat carries `created_at`, and listing orders
   chats by it, newest first (replacing the modification-time order of
   STORE-6; `updated_at` is still returned).
+- **STORE-13** Loading a chat replaces invalid UTF-8 in its text and tool
+  results as in LLM-28, so a chat saved with such bytes can still be opened.
+  Provider raw blocks stay exact (LLM-6).
 
 ## Implementation
 

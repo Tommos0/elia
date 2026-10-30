@@ -32,15 +32,33 @@ defmodule Elia.LLM.Message do
   def harness(text),
     do: %__MODULE__{
       role: :user,
-      content: [text("[Elia harness] " <> text)],
+      content: [text("[Elia harness] " <> String.replace_invalid(text))],
       meta: %{harness: true}
     }
 
   def text(text), do: %{type: :text, text: text}
 
   def tool_result(tool_call_id, content, is_error \\ false) do
-    %{type: :tool_result, tool_call_id: tool_call_id, content: content, is_error: is_error}
+    # LLM-28: tools can return raw bytes, which can't be JSON-encoded.
+    %{
+      type: :tool_result,
+      tool_call_id: tool_call_id,
+      content: String.replace_invalid(content),
+      is_error: is_error
+    }
   end
+
+  @doc "Replaces invalid UTF-8 in a message's text and tool results (STORE-13)."
+  def scrub(%__MODULE__{content: content} = message),
+    do: %{message | content: Enum.map(content, &scrub_block/1)}
+
+  defp scrub_block(%{type: :text, text: text} = block),
+    do: %{block | text: String.replace_invalid(text)}
+
+  defp scrub_block(%{type: :tool_result, content: content} = block),
+    do: %{block | content: String.replace_invalid(content)}
+
+  defp scrub_block(block), do: block
 
   def tool_calls(%__MODULE__{content: content}),
     do: Enum.filter(content, &(&1.type == :tool_call))

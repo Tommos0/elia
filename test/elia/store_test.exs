@@ -108,4 +108,25 @@ defmodule Elia.StoreTest do
     assert ids == [newer, older]
     assert %{updated_at: %DateTime{}} = listed(older)
   end
+
+  # STORE-13: a chat saved before LLM-28 still holds raw bytes.
+  test "loading replaces invalid UTF-8 but keeps raw blocks exact" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    raw = {Elia.LLM.Anthropic, %{"signature" => <<0x83>>}}
+
+    :ok =
+      Store.save(id, [
+        %Message{role: :assistant, content: [%{type: :text, text: <<"a", 0x83>>, raw: raw}]},
+        %Message{
+          role: :tool,
+          content: [%{type: :tool_result, tool_call_id: "1", content: <<0x83>>, is_error: false}]
+        }
+      ])
+
+    assert [
+             %Message{content: [%{text: "a�", raw: ^raw}]},
+             %Message{content: [%{content: "�"}]}
+           ] = Store.load(id)
+  end
 end
