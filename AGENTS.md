@@ -4,6 +4,8 @@ This is a web application written using the Phoenix web framework.
 
 - This project is spec-driven. Each feature is specified in `specs/` (index and workflow in `specs/README.md`). Before changing behaviour, update or add the spec, then implement it and test each requirement you touched, citing its ID (e.g. `# SHELL-3`)
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
+- Commit to git whenever you finish a feature (after tests/`mix precommit` pass). Use a `feat: <summary>` message (or `fix:`/`docs:` etc. as appropriate), and commit only that feature's changes. Never commit a half-finished feature
+- When the user states a standing preference, rule or workflow ("whenever you…", "always…", "never…", "from now on…"), record it in this file (`AGENTS.md`) in the same turn, as a bullet under "Project guidelines", before replying. Don't just acknowledge it verbally, since you won't remember it next session. Then tell the user which file and line you updated
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 
 ### Phoenix v1.8 guidelines
