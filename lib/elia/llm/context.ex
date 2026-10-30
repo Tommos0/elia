@@ -1,7 +1,7 @@
 defmodule Elia.LLM.Context do
   @moduledoc """
   Tracks the token breakdown of the request context a chat would send to the
-  model: the system prompt (agent instructions + skill instructions), the tool
+  model: the system prompt (agent instructions + project instructions + skill instructions), the tool
   definitions and every message.
 
   The struct is an accumulator: `new/2` seeds it from skills and a message
@@ -12,8 +12,9 @@ defmodule Elia.LLM.Context do
 
   Buckets:
 
-    * `:system` "System prompt" - children "Agent instructions" and one
-      "Skill: <name>" per skill
+    * `:system` "System prompt" - children "Agent instructions", "Project
+      instructions" (when `AGENTS.md` is injected) and one "Skill: <name>"
+      per skill
     * `:tools` "Tool definitions"
     * `:messages` "Messages" - children "User", "Assistant", "Reasoning"
     * `:files` "Files" - `read_file`/`write_file`/`edit_file` calls & results
@@ -57,25 +58,23 @@ defmodule Elia.LLM.Context do
   @spec build([Message.t()], [Elia.Skill.t()]) :: breakdown()
   def build(messages, skills \\ Skills.current()), do: messages |> new(skills) |> breakdown()
 
-  @doc "Replaces the system-prompt and tool-definition buckets for `skills`."
-  @spec put_skills(t(), [Elia.Skill.t()]) :: t()
-  def put_skills(%__MODULE__{} = context, skills) do
-    [base | sections] = Skills.system_sections(skills)
-
-    skill_children =
-      Enum.zip_with(skills, sections, fn skill, text ->
-        %{
-          id: "skill:#{skill.name}",
-          label: "Skill: #{skill.name}",
-          count: 1,
-          tokens: Tokens.estimate(text)
-        }
+  @doc """
+  Replaces the system-prompt and tool-definition buckets for `skills` and the
+  project instructions (default: the workspace's `AGENTS.md`, if any).
+  """
+  @spec put_skills(t(), [Elia.Skill.t()], binary() | nil) :: t()
+  def put_skills(
+        %__MODULE__{} = context,
+        skills,
+        project \\ Skills.project_instructions()
+      ) do
+    children =
+      skills
+      |> Skills.system_sections(project)
+      |> Enum.map(fn {kind, text} ->
+        {id, label} = section_label(kind)
+        %{id: id, label: label, count: 1, tokens: Tokens.estimate(text)}
       end)
-
-    children = [
-      %{id: :base, label: "Agent instructions", count: 1, tokens: Tokens.estimate(base)}
-      | skill_children
-    ]
 
     # Deduplicated by name, as `Elia.Agent.Loop` sends them.
     tools = skills |> Skills.tools() |> Map.new(&{&1.name, &1}) |> Map.values()
@@ -96,6 +95,10 @@ defmodule Elia.LLM.Context do
         }
     }
   end
+
+  defp section_label(:base), do: {:base, "Agent instructions"}
+  defp section_label(:project), do: {:project, "Project instructions"}
+  defp section_label({:skill, skill}), do: {"skill:#{skill.name}", "Skill: #{skill.name}"}
 
   @doc "Folds `messages` into the context, in order."
   @spec add_messages(t(), [Message.t()]) :: t()

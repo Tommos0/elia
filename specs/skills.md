@@ -18,7 +18,8 @@ system prompt from them. It can be reloaded while the app runs.
   conflict; the other skills still load.
 - **SKILL-4** Load errors are logged and returned per folder as
   `{relative_folder, reason}`.
-- **SKILL-5** The system prompt is a base prompt followed by one section per
+- **SKILL-5** The system prompt is a base prompt, then the project
+  instructions section (SKILL-10) when there is one, then one section per
   skill: `## Skill: <name>`, the description, and the instructions.
 - **SKILL-6** `reload_skills` rescans the skills folder. It returns the loaded
   skills with their tool names, plus an error result listing any folders that
@@ -34,6 +35,18 @@ system prompt from them. It can be reloaded while the app runs.
   feature's spec in `specs/` (see `specs/README.md`), keeps requirement IDs
   stable, and cites the IDs it touched in the tests it writes. Folder skills
   don't need a spec.
+- **SKILL-10** When `AGENTS.md` exists in the workspace root and isn't blank,
+  its contents are injected into the system prompt as a section headed
+  `## Project instructions (AGENTS.md)`, after the base prompt and before the
+  skill sections.
+- **SKILL-11** The file is read each time the system prompt is built, so an
+  edit applies from the next model request. A missing, unreadable or blank
+  file adds no section; an unreadable one is logged as a warning.
+- **SKILL-12** The injected contents are capped at 32,000 bytes. Longer files
+  are cut at a character boundary, end with a note saying they were truncated,
+  and a warning is logged.
+- **SKILL-13** Only the root `AGENTS.md` is injected. Files it points to (such
+  as `docs/agents/*.md`) are not; the model reads them on demand.
 
 ## Configuration
 
@@ -44,8 +57,10 @@ config :elia, Elia.Skills,
 
 ## Implementation
 
-`Elia.Skill`, `Elia.Skills`, `Elia.Skills.Harness`.
+`Elia.Skill`, `Elia.Skills` (`project_instructions/1`, `system_sections/2`),
+`Elia.Skills.Harness`.
 
 ## Tests
 
-`test/elia/self_modification_test.exs`, `test/elia/agent_test.exs`.
+`test/elia/self_modification_test.exs`, `test/elia/agent_test.exs`,
+`test/elia/skills_test.exs`.

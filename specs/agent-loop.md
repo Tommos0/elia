@@ -9,8 +9,9 @@ the end, the turn's changes are verified.
 ## Requirements
 
 - **LOOP-1** Each step sends the model the system prompt and tools of the
-  currently loaded skills plus the full history. Skills are read again every
-  step, so a skill reloaded mid-turn is usable from the next step.
+  currently loaded skills plus the full history. Skills and the project
+  instructions (SKILL-10) are read again every step, so a skill reloaded or an
+  `AGENTS.md` edited mid-turn applies from the next step.
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
 - **LOOP-3** A turn stops with an error after 50 steps.

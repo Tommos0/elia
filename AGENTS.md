@@ -13,7 +13,7 @@ A local AI harness with a Phoenix LiveView chat UI. The agent works through skil
 
 ## Read before you…
 
-Open the file before starting the task. It isn't loaded automatically.
+This file (`AGENTS.md`) is injected into the system prompt. The files below are not, so open them before starting the task.
 
 | Task | Read |
 | --- | --- |

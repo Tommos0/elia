@@ -17,13 +17,15 @@ files, skills, tool definitions and more — each with an estimated token count.
   also shows the window size and the percentage of it used, rendered as a
   coloured progress bar.
 - **CTX-3** The estimate derives locally from the exact pieces sent to the
-  model: the system prompt (agent instructions plus each skill's instructions),
+  model: the system prompt (agent instructions, the project instructions from
+  `AGENTS.md` when present, and each skill's instructions),
   the tool definitions, and every message (user text, assistant text,
   reasoning, tool calls and tool results). Each text or payload belongs to
   exactly one bucket, so the bucket totals sum to the overall estimate.
 - **CTX-4** Clicking the indicator toggles a breakdown panel (`#context-breakdown`)
   that lists the parts of the context with their estimated tokens and an item
-  count: System prompt (with an "Agent instructions" child and one "Skill:
+  count: System prompt (with an "Agent instructions" child, a "Project
+  instructions" child when `AGENTS.md` is injected (SKILL-10), and one "Skill:
   <name>" child per skill), Tool definitions, Messages (with User, Assistant
   and Reasoning children), Files, Shell and Other tools.
 - **CTX-5** `read_file`, `write_file` and `edit_file` tool calls and results

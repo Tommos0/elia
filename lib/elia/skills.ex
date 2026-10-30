@@ -13,6 +13,8 @@ defmodule Elia.Skills do
   alias Elia.Skills.Folder
 
   @topic "skills"
+  @project_file "AGENTS.md"
+  @project_max_bytes 32_000
 
   @base_prompt """
   You are Elia, an assistant running inside a local harness. You can use the \
@@ -37,15 +39,67 @@ defmodule Elia.Skills do
   def tools(skills \\ current()), do: Enum.flat_map(skills, & &1.tools)
 
   @doc """
-  The system prompt's pieces, in order: the agent instructions, then one
-  section per skill (with its leading separator). They concatenate to
-  `system_prompt/1`, so the context indicator can size each one.
+  The system prompt's pieces, in order, each as `{kind, text}`: the agent
+  instructions (`:base`), the project instructions when there are any
+  (`:project`), then one `{:skill, skill}` section per skill. The texts carry
+  their leading separator and concatenate to `system_prompt/2`, so the context
+  indicator can size each one.
   """
-  def system_sections(skills \\ current()) do
-    [String.trim(@base_prompt) | Enum.map(skills, &("\n\n" <> skill_section(&1)))]
+  @spec system_sections([Elia.Skill.t()], binary() | nil) :: [{term(), binary()}]
+  def system_sections(skills \\ current(), project \\ project_instructions()) do
+    project_section =
+      if project,
+        do: [{:project, "\n\n## Project instructions (#{@project_file})\n" <> project}],
+        else: []
+
+    [{:base, String.trim(@base_prompt)}] ++
+      project_section ++ Enum.map(skills, &{{:skill, &1}, "\n\n" <> skill_section(&1)})
   end
 
-  def system_prompt(skills \\ current()), do: skills |> system_sections() |> Enum.join()
+  def system_prompt(skills \\ current(), project \\ project_instructions()) do
+    skills |> system_sections(project) |> Enum.map_join(&elem(&1, 1))
+  end
+
+  @doc """
+  The contents of `AGENTS.md` in the workspace root, trimmed and capped at
+  #{@project_max_bytes} bytes, or `nil` when it is missing, unreadable or blank.
+  Read on every call, so edits apply from the next request.
+  """
+  @spec project_instructions(Path.t()) :: binary() | nil
+  def project_instructions(root \\ Elia.Workspace.root()) do
+    case File.read(Path.join(root, @project_file)) do
+      {:ok, text} ->
+        case String.trim(text) do
+          "" -> nil
+          text -> cap_project(text)
+        end
+
+      {:error, :enoent} ->
+        nil
+
+      {:error, reason} ->
+        Logger.warning("Could not read #{@project_file}: #{:file.format_error(reason)}")
+        nil
+    end
+  end
+
+  defp cap_project(text) when byte_size(text) <= @project_max_bytes, do: text
+
+  defp cap_project(text) do
+    Logger.warning(
+      "#{@project_file} is #{byte_size(text)} bytes; truncated to #{@project_max_bytes}"
+    )
+
+    cut = binary_part(text, 0, @project_max_bytes)
+
+    valid =
+      case :unicode.characters_to_binary(cut) do
+        bin when is_binary(bin) -> bin
+        {_, valid, _} -> valid
+      end
+
+    valid <> "\n\n[#{@project_file} truncated: it exceeds #{@project_max_bytes} bytes]"
+  end
 
   defp skill_section(skill) do
     "## Skill: #{skill.name}\n#{skill.description}\n\n#{String.trim(skill.instructions)}"

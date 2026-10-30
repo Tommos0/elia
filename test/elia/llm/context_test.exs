@@ -79,9 +79,26 @@ defmodule Elia.LLM.ContextTest do
     assert Enum.map(skill_children, & &1.label) == ["Skill: lego", "Skill: draw"]
 
     # CTX-3: the sized sections are exactly the system prompt the loop sends.
-    sections = Elia.Skills.system_sections(skills())
-    assert Enum.join(sections) == Elia.Skills.system_prompt(skills())
-    assert Enum.map(system.children, & &1.tokens) == Enum.map(sections, &Tokens.estimate/1)
+    sections = Elia.Skills.system_sections(skills(), nil)
+    assert Enum.map_join(sections, &elem(&1, 1)) == Elia.Skills.system_prompt(skills(), nil)
+
+    assert Enum.map(system.children, & &1.tokens) ==
+             Enum.map(sections, &Tokens.estimate(elem(&1, 1)))
+  end
+
+  # CTX-4, SKILL-10: AGENTS.md shows as a "Project instructions" child, sized
+  # from the section the loop sends, between the agent and skill children.
+  test "system bucket lists project instructions when there are any" do
+    context = Context.put_skills(Context.new([], skills()), skills(), "Always run the tests.")
+    system = hd(Context.breakdown(context).buckets)
+
+    assert [%{id: :base}, %{id: :project, label: "Project instructions"} = project | skills] =
+             system.children
+
+    assert length(skills) == 2
+
+    [_, {:project, text} | _] = Elia.Skills.system_sections(skills(), "Always run the tests.")
+    assert project.tokens == Tokens.estimate(text)
   end
 
   # CTX-4: tool definitions are sized once per name, as the loop sends them.
