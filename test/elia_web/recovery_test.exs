@@ -153,9 +153,11 @@ defmodule EliaWeb.RecoveryTest do
   end
 
   describe "RECOVER-3: checkpoint list" do
-    test "shows the newest agent-turn checkpoint first, as recommended" do
+    test "shows the recommended checkpoint first" do
       turn = "recover-#{System.unique_integer([:positive])}"
       :ok = Checkpoint.ensure(turn)
+      # Rolling back to the turn's checkpoint must change something (CKPT-9).
+      File.write!(in_root("recover.txt"), "edited after the turn started")
       {:ok, _} = Checkpoint.create("a manual checkpoint")
 
       conn = request(:get, "/recover")
@@ -184,6 +186,59 @@ defmodule EliaWeb.RecoveryTest do
       shas = Enum.map(Checkpoint.list(), & &1.sha)
 
       assert Enum.find_index(shas, &(&1 == second)) < Enum.find_index(shas, &(&1 == first))
+    end
+
+    test "CKPT-9: the recommendation always changes something and never goes forward" do
+      cp = fn name, tree, label -> %{sha: name, tree: tree, at: "", label: label} end
+      turn = fn name, tree -> cp.(name, tree, "before agent turn #{name}") end
+
+      # A read-only shell command took turn checkpoint `c` after the damage (tree T2).
+      history = [
+        turn.("c", "T2"),
+        cp.("undo", "T2", "before rollback to a"),
+        turn.("b", "T2"),
+        turn.("a", "T1"),
+        turn.("z", "T0")
+      ]
+
+      assert %{sha: "a"} = Checkpoint.recommended(history, "T2")
+
+      # After rolling back to `a`, the undo snapshots hold the damaged state T2,
+      # which must not be recommended again: the target moves further back.
+      after_rollback = [cp.("undo2", "T2", "before rollback to a") | history]
+      assert %{sha: "z"} = Checkpoint.recommended(after_rollback, "T1")
+
+      # Work done since the last snapshot: its turn checkpoint is the target.
+      assert %{sha: "c"} = Checkpoint.recommended(history, "T9")
+
+      # Only agent-turn checkpoints qualify; nothing differing means nothing to suggest.
+      assert Checkpoint.recommended([cp.("m", "T1", "manual")], "T2") == nil
+      assert Checkpoint.recommended([turn.("a", "T2")], "T2") == nil
+      assert Checkpoint.recommended([], "T2") == nil
+    end
+
+    test "CKPT-9: lists tree hashes and the workspace's current tree" do
+      {:ok, sha} = Checkpoint.create("tree check")
+      {:ok, tree} = Checkpoint.current_tree()
+
+      assert %{tree: ^tree} = Enum.find(Checkpoint.list(), &(&1.sha == sha))
+    end
+
+    test "RECOVER-3: a turn checkpoint taken after the damage isn't recommended" do
+      File.write!(in_root("recover.txt"), "good")
+      good_turn = "good-#{System.unique_integer([:positive])}"
+      :ok = Checkpoint.ensure(good_turn)
+      good = Checkpoint.for_turn(good_turn)
+
+      # The damage, then a later turn whose first (read-only) tool call checkpoints it.
+      File.write!(in_root("recover.txt"), "crash")
+      :ok = Checkpoint.ensure("later-#{System.unique_integer([:positive])}")
+
+      body = request(:get, "/recover").resp_body
+      assert body =~ ~r/before agent turn #{good_turn}\s*<strong>\(recommended\)/
+
+      assert rollback_request(good).status == 200
+      assert File.read!(in_root("recover.txt")) == "good"
     end
   end
 
@@ -288,6 +343,8 @@ defmodule EliaWeb.RecoveryTest do
 
     setup do
       :ok = Checkpoint.ensure("banner-#{System.unique_integer([:positive])}")
+      # The turn checkpoint only counts as a rollback target if something changed since.
+      File.write!(in_root("recover.txt"), "edited after the turn started")
     end
 
     test "adds a banner with a recovery link and a rollback button" do
@@ -295,7 +352,7 @@ defmodule EliaWeb.RecoveryTest do
 
       assert body =~ ~s(id="elia-recovery-banner")
       assert body =~ ~s(href="/recover")
-      assert body =~ "Roll back to the checkpoint before the last agent turn"
+      assert body =~ "Roll back to the last checkpoint before a change"
 
       body_tag = :binary.match(body, ~s(<body class="x">)) |> elem(0)
       banner = :binary.match(body, "elia-recovery-banner") |> elem(0)

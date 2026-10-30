@@ -23,7 +23,6 @@ defmodule EliaWeb.Recovery do
   @path ["recover"]
   @listed 20
   @accepted 100
-  @turn_label "before agent turn"
 
   @impl true
   def init(opts), do: Keyword.put_new(opts, :checkpoints, Elia.Checkpoint)
@@ -58,10 +57,12 @@ defmodule EliaWeb.Recovery do
   end
 
   defp index(conn) do
+    entries = checkpoints(conn).list(@listed)
+    recommended = recommended(conn, entries)
+
     rows =
-      for {cp, i} <- Enum.with_index(ordered(checkpoints(conn).list(@listed))) do
-        # `ordered/1` puts the newest agent-turn checkpoint first.
-        tag = if i == 0 and turn?(cp), do: " <strong>(recommended)</strong>", else: ""
+      for cp <- ordered(entries, recommended) do
+        tag = if cp == recommended, do: " <strong>(recommended)</strong>", else: ""
 
         """
         <tr>
@@ -237,10 +238,12 @@ defmodule EliaWeb.Recovery do
   end
 
   defp banner(conn) do
+    entries = checkpoints(conn).list(@listed)
+
     action =
-      case Enum.find(checkpoints(conn).list(@listed), &turn?/1) do
+      case recommended(conn, entries) do
         nil -> ""
-        cp -> button(cp.sha, "Roll back to the checkpoint before the last agent turn", :banner)
+        cp -> button(cp.sha, "Roll back to the last checkpoint before a change", :banner)
       end
 
     """
@@ -256,14 +259,18 @@ defmodule EliaWeb.Recovery do
 
   ## Helpers
 
-  defp ordered(checkpoints) do
-    case Enum.find(checkpoints, &turn?/1) do
-      nil -> checkpoints
-      cp -> [cp | List.delete(checkpoints, cp)]
+  # CKPT-9: the newest agent-turn checkpoint that rolling back would change.
+  defp recommended(conn, entries) do
+    store = checkpoints(conn)
+
+    case store.current_tree() do
+      {:ok, tree} -> store.recommended(entries, tree)
+      _ -> nil
     end
   end
 
-  defp turn?(%{label: label}), do: String.starts_with?(label, @turn_label)
+  defp ordered(entries, nil), do: entries
+  defp ordered(entries, recommended), do: [recommended | List.delete(entries, recommended)]
 
   defp short(sha), do: sha |> String.slice(0, 12) |> esc()
 

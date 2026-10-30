@@ -19,9 +19,8 @@ reloader, so it works even when the project doesn't compile.
   its own, so anyone who can reach the chat UI can already approve commands.
   Forgery protection is RECOVER-9.
 - **RECOVER-3** `GET /recover` shows the 20 newest checkpoints (short sha,
-  time, label), each with a roll-back button. The newest checkpoint taken
-  before an agent turn is marked as recommended and listed first. Other
-  methods get a 405.
+  time, label), each with a roll-back button. The recommended checkpoint
+  (CKPT-9) is marked as recommended and listed first. Other methods get a 405.
 - **RECOVER-4** `POST /recover` with a `checkpoint` field rolls the workspace
   back to that checkpoint (CKPT-5). The request needs a same-origin `Origin`
   header (RECOVER-9), otherwise it gets a 403. The

@@ -29,6 +29,16 @@ state.
   the sha to undo with. Running code doesn't change until `hot_reload`.
 - **CKPT-8** Turn → checkpoint mappings are kept in memory only and are lost
   on restart. The refs stay.
+- **CKPT-9** Each entry from `list/1` also has the `tree` of the snapshot, and
+  `current_tree/0` returns the tree of the workspace as it is now.
+  `recommended(checkpoints, current_tree)` picks the best rollback target from
+  the newest-first list: the newest checkpoint labelled
+  `before agent turn …` whose tree differs from `current_tree`, looking only
+  at checkpoints older than the newest one whose tree equals `current_tree`
+  (at all of them if none does). It returns `nil` if there is none. So a
+  rollback to it always changes something, and never goes forward to a state
+  that was just left (e.g. a turn checkpoint taken by a read-only shell
+  command after the damage was done).
 
 ## Implementation
 

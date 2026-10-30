@@ -41,9 +41,9 @@ defmodule Elia.Checkpoint do
 
   def rollback(sha), do: GenServer.call(__MODULE__, {:rollback, sha}, :infinity)
 
-  @doc "Checkpoints, newest first, as `%{sha, label, at}` maps."
+  @doc "Checkpoints, newest first, as `%{sha, tree, label, at}` maps."
   def list(limit \\ 20) do
-    format = "%(objectname)%09%(creatordate:iso-strict)%09%(subject)"
+    format = "%(objectname)%09%(tree)%09%(creatordate:iso-strict)%09%(subject)"
 
     # The last --sort is the primary key; the ref name starts with a ms timestamp,
     # which orders checkpoints created within the same second.
@@ -57,13 +57,36 @@ defmodule Elia.Checkpoint do
          ]) do
       {:ok, out} ->
         for line <- String.split(out, "\n", trim: true) do
-          [sha, at, label] = String.split(line, "\t", parts: 3)
-          %{sha: sha, at: at, label: label}
+          [sha, tree, at, label] = String.split(line, "\t", parts: 4)
+          %{sha: sha, tree: tree, at: at, label: label}
         end
 
       {:error, _} ->
         []
     end
+  end
+
+  @doc "The git tree of the workspace as it is now (not stored as a checkpoint)."
+  @spec current_tree() :: {:ok, binary()} | {:error, binary()}
+  def current_tree, do: GenServer.call(__MODULE__, :current_tree, :infinity)
+
+  @turn_label "before agent turn"
+
+  @doc """
+  The best rollback target in `checkpoints` (newest first, as from `list/1`):
+  the newest `before agent turn` checkpoint whose tree differs from
+  `current_tree`, among those older than the newest checkpoint whose tree
+  equals it. `nil` if there is none (CKPT-9).
+  """
+  @spec recommended([map()], binary()) :: map() | nil
+  def recommended(checkpoints, current_tree) do
+    older =
+      case Enum.find_index(checkpoints, &(&1.tree == current_tree)) do
+        nil -> checkpoints
+        index -> Enum.drop(checkpoints, index + 1)
+      end
+
+    Enum.find(older, &(String.starts_with?(&1.label, @turn_label) and &1.tree != current_tree))
   end
 
   ## Server
@@ -78,7 +101,7 @@ defmodule Elia.Checkpoint do
         {:reply, {:ok, sha}, turns}
 
       _ ->
-        case snapshot("before agent turn #{turn_id}") do
+        case snapshot("#{@turn_label} #{turn_id}") do
           {:ok, sha} -> {:reply, {:ok, sha}, Map.put(turns, turn_id, sha)}
           error -> {:reply, error, turns}
         end
@@ -89,6 +112,8 @@ defmodule Elia.Checkpoint do
     do: {:reply, Map.get(turns, turn_id), turns}
 
   def handle_call({:create, label}, _from, turns), do: {:reply, snapshot(label), turns}
+
+  def handle_call(:current_tree, _from, turns), do: {:reply, write_tree(), turns}
 
   def handle_call({:changed_files, sha}, _from, turns) do
     reply =
