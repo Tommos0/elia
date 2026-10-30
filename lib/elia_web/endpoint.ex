@@ -43,7 +43,7 @@ defmodule EliaWeb.Endpoint do
     # before both reloaders (see EliaWeb.Recovery).
     plug EliaWeb.Recovery
     plug Phoenix.LiveReloader
-    # Skips automatic reloads while guarded files have pending changes.
+    # Never reloads on a request; only hot_reload loads code (see Elia.Guarded).
     plug Phoenix.CodeReloader, reloader: &Elia.Guarded.reload/2
   end
 

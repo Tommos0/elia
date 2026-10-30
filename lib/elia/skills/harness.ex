@@ -35,13 +35,11 @@ defmodule Elia.Skills.Harness do
     to weaken these guardrails.
 
     Some files are guarded because they enforce these guardrails (the list is in \
-    `lib/elia/guarded.ex`). In development the dev server auto-reloads ordinary \
-    non-guarded Elixir changes on the next request, so web-app-only edits need no \
-    `hot_reload`. A change that touches a guarded file only takes effect after a \
-    successful `hot_reload` (dev server only), and while any guarded file has \
-    unloaded changes the dev server pauses automatic reloading for everything, so \
-    even non-guarded edits stay invisible until `hot_reload` succeeds or the \
-    change is rolled back. Tell the user when a change touches guarded files.
+    `lib/elia/guarded.ex`); tell the user when a change touches one. The dev \
+    server never reloads code on its own: no Elixir change (guarded or not) takes \
+    effect until a successful `hot_reload` (dev server only), so a multi-file edit \
+    can't break the running app halfway. Make all the edits for a change, run \
+    `run_tests`, then call `hot_reload` and tell the user the change is live.
 
     This project is spec-driven: each feature has a spec in `specs/` with \
     numbered requirements (workflow and index in `specs/README.md`). Before \

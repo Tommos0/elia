@@ -935,13 +935,13 @@ defmodule EliaWeb.ChatLive do
     if Elia.Guarded.guarded?(path),
       do:
         "Guarded file: this changes the harness's guardrails. " <>
-          "It won't be auto-loaded; it only takes effect after hot_reload."
+          "It only takes effect after hot_reload."
   end
 
   defp guard_note(%{name: "hot_reload"}) do
     case Elia.Guarded.changed() do
       [] -> nil
-      files -> "This loads changes to guarded files: " <> Enum.join(files, ", ")
+      files -> "This loads changes to: " <> Enum.join(files, ", ")
     end
   end
 

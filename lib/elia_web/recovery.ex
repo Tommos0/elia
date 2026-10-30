@@ -124,13 +124,12 @@ defmodule EliaWeb.Recovery do
     pending =
       case Elia.Guarded.changed() do
         [] ->
-          "<p>Automatic reloading resumes on the next request.</p>"
+          "<p>The workspace matches the running code.</p>"
 
         files ->
           """
-          <p>Automatic reloading is still paused because guarded files differ from
-          the running code. Run <code>hot_reload</code> from the agent, or roll back
-          further.</p>
+          <p>These files differ from the running code. The app only picks up
+          changes after <code>hot_reload</code> from the agent.</p>
           <ul>#{Enum.map_join(files, &"<li><code>#{esc(&1)}</code></li>")}</ul>
           """
       end

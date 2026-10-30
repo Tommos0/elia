@@ -49,14 +49,13 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   harness runs `mix test` at the end; on failure the turn's changes are rolled
   back and the agent is told why (at most twice per turn).
 - **Hot reload**: `hot_reload` (dev server only) runs the whole suite before
-  loading new code into the running app.
+  loading new code into the running app. The dev server never reloads code on
+  its own, so edits to `lib/`, `config/` and mix files stay pending until
+  `hot_reload` succeeds. A multi-file edit can't break the running app halfway.
 - **Guarded files**: the files that enforce these guardrails (listed in
   `Elia.Guarded`: harness, checkpoints, workspace policy, the tool loop,
   built-in skills, endpoint, config, mix files and the guardrail tests) are
-  flagged in approval prompts. The dev server normally reloads code on each
-  request. While a guarded file differs from the loaded code, it pauses all
-  automatic reloading, so guarded changes only reach the running app through
-  `hot_reload`. Reloading resumes once they're loaded or rolled back.
+  flagged in approval prompts.
 - **Recovery**: in the dev server, `/recover` (also through a proxy; POSTs must be same-origin) lists
   checkpoints and rolls the workspace back to one. It's served before the code
   reloader, so it works even when the app shows a compilation error, and

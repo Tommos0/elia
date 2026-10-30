@@ -13,10 +13,8 @@ Specs: `specs/guarded-files.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, 
 
 ## Guarded files
 
-- The guarded list is `@patterns` in `lib/elia/guarded.ex` (spec: GUARD-1). It covers the harness, checkpoint, workspace, tool, shell, skills registry, application, agent loop, `lib/elia/skills/*.ex`, the endpoint, `config/**`, `mix.exs`, `mix.lock`, and two self-modification tests.
+- The guarded list is `@patterns` in `lib/elia/guarded.ex` (spec: GUARD-1). It covers the harness, checkpoint, workspace, tool, shell, skills registry, application, agent loop, `lib/elia/skills/*.ex`, the endpoint, `config/**`, `mix.exs`, `mix.lock`, and two self-modification tests. The approval UI flags writes to them.
 - **Never** edit `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` to weaken the guardrails.
-- A change to a guarded file only takes effect after a successful `hot_reload` (dev server only).
-- While any guarded file has unloaded changes, the dev server pauses automatic reloading for everything, so even non-guarded edits stay invisible until `hot_reload` succeeds or the change is rolled back.
 - Tell the user when a change touches guarded files.
 
 ## Recovery
@@ -26,9 +24,10 @@ Specs: `specs/guarded-files.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, 
 
 ## When `hot_reload` is needed
 
-- **Not needed** for non-guarded Elixir changes, such as LiveViews and components. The dev server reloads them on the next request (GUARD-7).
-- **Needed** only to load changes to guarded files.
-- `hot_reload` runs the full test suite first. If tests fail, the turn's changes are rolled back.
+- **Always, for any Elixir change** (`lib/`, `config/`, `mix.exs`), guarded or not. The dev server never reloads code on a request (GUARD-8), so edits stay *pending* (GUARD-10) and the running app keeps the old code until `hot_reload` succeeds. This means a multi-file edit can't break the app halfway: finish all the edits, run `run_tests`, then call `hot_reload`.
+- Browser live reload doesn't watch `lib/` either (GUARD-13). Reload the page after `hot_reload` to see UI changes.
+- `hot_reload` runs the full test suite first, then recompiles and loads everything. If tests fail, the turn's changes are rolled back. A compile error is returned and the running app is unaffected.
+- Not needed for `skills/**` (use `reload_skills`) or for tests and docs.
 
 ## Adding a skill
 

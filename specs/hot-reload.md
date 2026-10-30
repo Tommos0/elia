@@ -16,8 +16,9 @@ only after the whole test suite passes.
   back to the turn's checkpoint, if there is one, and skills are reloaded. The
   error says whether a rollback happened and includes the test output.
 - **HOT-5** If the tests pass, the project is recompiled and the changed
-  modules are loaded. The guarded files' current contents are recorded as
-  loaded (GUARD-3), and skills are reloaded.
+  modules are loaded. This is the only way code changes reach the running app
+  (GUARD-8). The code files' current contents are recorded as loaded
+  (GUARD-10), and skills are reloaded.
 - **HOT-6** A compile error is returned with the compiler output, truncated
   to 20,000 characters.
 

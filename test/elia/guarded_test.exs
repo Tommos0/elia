@@ -35,36 +35,79 @@ defmodule Elia.GuardedTest do
     refute Guarded.guarded?("/etc/passwd")
   end
 
-  test "reloads automatically when only unguarded files changed" do
+  # GUARD-8: the reloader never reloads, whichever file changed.
+  test "GUARD-8: never reloads, even when only unguarded files changed" do
     File.write!(in_root("lib/elia/agent.ex"), "changed")
-    assert Guarded.changed() == []
     assert :ok = Guarded.reload(:endpoint, delegate: delegate())
-    assert_received {:reloaded, :endpoint}
+    refute_received {:reloaded, _}
   end
 
-  test "pauses automatic reloads while guarded files have unloaded changes" do
+  # GUARD-9, GUARD-10
+  test "GUARD-10: unguarded code files are pending too" do
+    assert Guarded.changed() == []
+    File.write!(in_root("lib/elia/agent.ex"), "changed")
     File.write!(in_root("lib/elia/harness.ex"), "weakened")
     File.write!(in_root("lib/elia/skills/sneaky.ex"), "new")
-    assert Guarded.changed() == ["lib/elia/harness.ex", "lib/elia/skills/sneaky.ex"]
+
+    assert Guarded.changed() ==
+             ["lib/elia/agent.ex", "lib/elia/harness.ex", "lib/elia/skills/sneaky.ex"]
 
     assert :ok = Guarded.reload(:endpoint, delegate: delegate())
     refute_received {:reloaded, _}
-
-    # Restoring the files (e.g. a rollback) resumes automatic reloading.
-    File.write!(in_root("lib/elia/harness.ex"), "original")
-    File.rm!(in_root("lib/elia/skills/sneaky.ex"))
-    assert :ok = Guarded.reload(:endpoint, delegate: delegate())
-    assert_received {:reloaded, :endpoint}
   end
 
-  test "deleting a guarded file also pauses reloads until it is loaded" do
+  # GUARD-12
+  test "GUARD-12: restoring the files clears the pending changes" do
+    File.write!(in_root("lib/elia/agent.ex"), "changed")
+    File.write!(in_root("lib/elia/skills/sneaky.ex"), "new")
+    assert length(Guarded.changed()) == 2
+
+    File.write!(in_root("lib/elia/agent.ex"), "original")
+    File.rm!(in_root("lib/elia/skills/sneaky.ex"))
+    assert Guarded.changed() == []
+  end
+
+  test "GUARD-10, GUARD-12: a deleted file is pending until it is loaded" do
     File.rm!(in_root("lib/elia/harness.ex"))
     assert Guarded.changed() == ["lib/elia/harness.ex"]
 
     # A successful hot_reload marks the current state as loaded.
     Guarded.mark_loaded()
     assert Guarded.changed() == []
-    assert :ok = Guarded.reload(:endpoint, delegate: delegate())
-    assert_received {:reloaded, :endpoint}
+  end
+
+  test "GUARD-9: files outside the code files are not tracked" do
+    File.mkdir_p!(in_root("skills/x"))
+    File.write!(in_root("skills/x/SKILL.md"), "hi")
+    assert Guarded.changed() == []
+  end
+
+  # GUARD-11
+  test "GUARD-11: warns once per distinct set of pending files" do
+    File.write!(in_root("lib/elia/agent.ex"), "changed")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        Guarded.reload(:endpoint)
+        Guarded.reload(:endpoint)
+      end)
+
+    assert [_] = Regex.scan(~r/held until hot_reload \(lib\/elia\/agent\.ex\)/, log)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        File.write!(in_root("lib/elia/harness.ex"), "weakened")
+        Guarded.reload(:endpoint)
+      end)
+
+    assert log =~ "lib/elia/agent.ex, lib/elia/harness.ex"
+  end
+
+  # GUARD-13
+  test "GUARD-13: live reload doesn't watch lib files" do
+    {config, _} = Config.Reader.read_imports!("config/runtime.exs", env: :dev)
+    live_reload = config[:elia][EliaWeb.Endpoint][:live_reload]
+    refute Enum.any?(live_reload[:patterns], &Regex.match?(&1, "lib/elia_web/live/chat_live.ex"))
+    assert Enum.any?(live_reload[:patterns], &Regex.match?(&1, "priv/static/assets/app.css"))
   end
 end

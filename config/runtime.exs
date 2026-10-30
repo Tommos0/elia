@@ -30,14 +30,12 @@ if config_env() == :dev do
   config :elia, EliaWeb.Endpoint,
     live_reload: [
       web_console_logger: true,
-      # Used if LiveView live-reload notifications are enabled; stays guarded.
+      # Never reloads on notification; only hot_reload loads code.
       reloader: {Elia.Guarded, :reload, [[]]},
       patterns: [
-        # Static assets, except user uploads
-        ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
-        # Router, Controllers, LiveViews and LiveComponents
-        ~r"lib/elia_web/router\.ex$",
-        ~r"lib/elia_web/(controllers|live|components)/.*\.(ex|heex)$"
+        # Static assets, except user uploads. lib/ files are not watched: saving
+        # them doesn't change the running app until hot_reload (GUARD-13).
+        ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"
       ]
     ]
 end

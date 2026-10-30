@@ -81,8 +81,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-18** A call awaiting approval shows Approve and Deny buttons
   (`#approve-<call_id>`, `#deny-<call_id>`).
 - **UI-19** When a call awaiting approval writes a guarded file, or is a
-  `hot_reload` while guarded files have unloaded changes, the card shows a
-  warning naming the effect (see GUARD-1).
+  `hot_reload` while code files have unloaded changes, the card shows a
+  warning naming the effect (see GUARD-1, GUARD-6). The `hot_reload` warning
+  lists the pending files.
 - **UI-20** Once a result arrives, the card has a collapsible "Output"
   section, styled as an error when the result is an error.
 

@@ -28,9 +28,10 @@ reloader, so it works even when the project doesn't compile.
   400 and nothing runs.
 - **RECOVER-5** After a successful rollback, skills are reloaded and the page
   shows the sha restored, an undo button (a rollback to the snapshot taken
-  just before, CKPT-5), a link back to the app, and the guarded files whose
-  changes are still unloaded, if any (GUARD-3). Without pending guarded
-  changes, automatic reloading resumes on the next request (GUARD-5).
+  just before, CKPT-5), a link back to the app, and the code files whose
+  changes are still unloaded, if any (GUARD-10). The page says that the running
+  app only changes after `hot_reload` (GUARD-8), and when no file is pending
+  that the workspace matches the running code.
 - **RECOVER-6** If the rollback fails, the page shows the error with a 500
   and the workspace is left as git left it.
 - **RECOVER-7** An HTML response with status 500 gets a banner at the top of

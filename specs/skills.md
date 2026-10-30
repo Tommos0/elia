@@ -29,7 +29,8 @@ system prompt from them. It can be reloaded while the app runs.
   `run_tests`, `hot_reload`, `list_checkpoints`, `rollback`).
 - **SKILL-8** The `harness` skill's instructions tell the model to prefer a
   folder skill over changing Elixir code, to run tests before finishing, and
-  to tell the user when a change touches guarded files.
+  to tell the user when a change touches guarded files. They also say that
+  Elixir changes only take effect after `hot_reload` (GUARD-8).
 - **SKILL-9** The `harness` skill's instructions tell the model that the
   project is spec-driven: before changing Elixir code it updates or adds the
   feature's spec in `specs/` (see `specs/README.md`), keeps requirement IDs

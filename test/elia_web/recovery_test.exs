@@ -362,7 +362,7 @@ defmodule EliaWeb.RecoveryTest do
       assert Enum.any?(Elia.Skills.current(), &(&1.name == "recover-skill"))
     end
 
-    test "lists guarded files whose changes are still unloaded" do
+    test "RECOVER-5: lists code files whose changes are still unloaded" do
       File.mkdir_p!(in_root("lib/elia"))
       File.write!(in_root("lib/elia/harness.ex"), "v0")
       Guarded.mark_loaded()
@@ -373,15 +373,15 @@ defmodule EliaWeb.RecoveryTest do
       conn = rollback_request(sha)
       assert conn.status == 200
       assert conn.resp_body =~ "lib/elia/harness.ex"
-      assert conn.resp_body =~ "still paused"
+      assert conn.resp_body =~ "only picks up"
 
       File.write!(in_root("lib/elia/harness.ex"), "v0")
       {:ok, clean} = Checkpoint.create("loaded state")
       File.write!(in_root("lib/elia/harness.ex"), "v2")
 
       conn = rollback_request(clean)
-      assert conn.resp_body =~ "resumes on the next request"
-      refute conn.resp_body =~ "still paused"
+      assert conn.resp_body =~ "matches the running code"
+      refute conn.resp_body =~ "only picks up"
     end
   end
 

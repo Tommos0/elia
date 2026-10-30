@@ -1,14 +1,17 @@
 defmodule Elia.Guarded do
   @moduledoc """
-  Files that enforce the harness's guardrails, and a gate that keeps changes to
-  them out of the running app until they go through `Elia.Harness.hot_reload/1`.
+  The gate that keeps code changes out of the running app until they go through
+  `Elia.Harness.hot_reload/1`, and the list of files that enforce the harness's
+  guardrails.
 
-  In development Phoenix recompiles the whole project on each request. It can't
-  skip individual files, so `reload/2` (used as the endpoint's code reloader)
-  skips automatic reloading entirely while any guarded file differs from what
-  was last loaded: at boot, or by a successful `hot_reload`. Once the guarded
-  files match again (after `hot_reload` or a rollback), automatic reloading
-  resumes.
+  Phoenix recompiles the whole project on each dev request, so two sequential
+  edits can leave the app half-changed and broken. `reload/2` (used as the
+  endpoint's code reloader) therefore never reloads anything. Code files
+  (`lib/**`, `config/**`, `mix.exs`, `mix.lock`) are *pending* while they differ
+  from what was last loaded: at boot, or by a successful `hot_reload`.
+
+  *Guarded* files are the subset that enforces the guardrails themselves; the
+  approval UI flags writes to them.
   """
 
   require Logger
@@ -35,6 +38,8 @@ defmodule Elia.Guarded do
     test/elia/guarded_test.exs
   )
 
+  @code_patterns ~w(lib/** config/** mix.exs mix.lock)
+
   @loaded {__MODULE__, :loaded}
   @warned {__MODULE__, :warned}
 
@@ -59,12 +64,12 @@ defmodule Elia.Guarded do
     Regex.compile!("^" <> source <> "$")
   end
 
-  @doc "Guarded files that currently exist, relative to the workspace root."
+  @doc "Code files that currently exist, relative to the workspace root."
   @spec files() :: [binary()]
   def files do
     root = Workspace.root()
 
-    @patterns
+    @code_patterns
     |> Enum.flat_map(&Path.wildcard(Path.join(root, &1), match_dot: true))
     |> Enum.filter(&File.regular?/1)
     |> Enum.map(&Workspace.relative/1)
@@ -86,7 +91,7 @@ defmodule Elia.Guarded do
     end)
   end
 
-  @doc "Records the guarded files' current contents as loaded into the running app."
+  @doc "Records the code files' current contents as loaded into the running app."
   @spec mark_loaded() :: :ok
   def mark_loaded do
     :persistent_term.put(@loaded, fingerprint())
@@ -94,7 +99,7 @@ defmodule Elia.Guarded do
     :ok
   end
 
-  @doc "Guarded files added, removed or changed since they were last loaded."
+  @doc "Code files added, removed or changed since they were last loaded."
   @spec changed() :: [binary()]
   def changed do
     loaded = :persistent_term.get(@loaded, nil) || %{}
@@ -108,19 +113,16 @@ defmodule Elia.Guarded do
 
   @doc """
   Code reloader for the endpoint (`plug Phoenix.CodeReloader, reloader: ...`).
-  Delegates to `Phoenix.CodeReloader.reload/2` (or `opts[:delegate]`) unless
-  guarded files have pending changes, in which case nothing is reloaded.
+  Never reloads: it only logs a warning when code files have pending changes.
+  `Elia.Harness.hot_reload/1` calls `Phoenix.CodeReloader.reload/1` directly.
   """
-  def reload(endpoint, opts \\ []) do
+  def reload(_endpoint, _opts \\ []) do
     case changed() do
-      [] ->
-        delegate = Keyword.get(opts, :delegate, &Phoenix.CodeReloader.reload/2)
-        delegate.(endpoint, Keyword.delete(opts, :delegate))
-
-      pending ->
-        warn_once(pending)
-        :ok
+      [] -> :ok
+      pending -> warn_once(pending)
     end
+
+    :ok
   end
 
   defp warn_once(pending) do
@@ -128,8 +130,8 @@ defmodule Elia.Guarded do
       :persistent_term.put(@warned, pending)
 
       Logger.warning(
-        "Automatic code reloading is paused: guarded files changed " <>
-          "(#{Enum.join(pending, ", ")}). Use hot_reload or roll back to resume."
+        "Code changes are held until hot_reload (#{Enum.join(pending, ", ")}). " <>
+          "Run hot_reload or roll back."
       )
     end
   end
