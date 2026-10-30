@@ -124,6 +124,16 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, time, "1 hour ago")
   end
 
+  # UI-37: header labels collapse to icons on narrow screens.
+  test "header buttons hide their labels below the sm breakpoint", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    for id <- ~w(chats-link files-link sessions-link system-link settings-link) do
+      assert has_element?(view, "header ##{id}[title]")
+      assert has_element?(view, "header ##{id} span.sr-only.sm\\:not-sr-only")
+    end
+  end
+
   # UI-32: the header's Chats button goes to "/" and precedes Sessions.
   test "header has a Chats button left of Sessions that opens a fresh chat", %{conn: conn} do
     id = Agent.new_id()

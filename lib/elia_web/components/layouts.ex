@@ -43,42 +43,12 @@ defmodule EliaWeb.Layouts do
           </span>
           Elia
         </.link>
-        <div class="flex items-center gap-2">
-          <.link
-            navigate={~p"/"}
-            id="chats-link"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-chat-bubble-left-right" class="size-4" /> Chats
-          </.link>
-          <.link
-            navigate={~p"/files"}
-            id="files-link"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-folder" class="size-4" /> Files
-          </.link>
-          <.link
-            navigate={~p"/sessions"}
-            id="sessions-link"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-signal" class="size-4" /> Sessions
-          </.link>
-          <.link
-            navigate={~p"/system"}
-            id="system-link"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-chart-bar" class="size-4" /> System
-          </.link>
-          <.link
-            navigate={~p"/settings"}
-            id="settings-link"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
-          </.link>
+        <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
+          <.nav_link to={~p"/"} id="chats-link" icon="hero-chat-bubble-left-right" label="Chats" />
+          <.nav_link to={~p"/files"} id="files-link" icon="hero-folder" label="Files" />
+          <.nav_link to={~p"/sessions"} id="sessions-link" icon="hero-signal" label="Sessions" />
+          <.nav_link to={~p"/system"} id="system-link" icon="hero-chart-bar" label="System" />
+          <.nav_link to={~p"/settings"} id="settings-link" icon="hero-cog-6-tooth" label="Settings" />
           <.theme_toggle />
         </div>
       </header>
@@ -89,6 +59,26 @@ defmodule EliaWeb.Layouts do
     </div>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :to, :string, required: true
+  attr :id, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+
+  # Header button: icon only below `sm` (UI-37), icon and label from `sm` up.
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@to}
+      id={@id}
+      title={@label}
+      class="flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 sm:px-3 sm:py-1.5"
+    >
+      <.icon name={@icon} class="size-4" />
+      <span class="sr-only sm:not-sr-only">{@label}</span>
+    </.link>
     """
   end
 

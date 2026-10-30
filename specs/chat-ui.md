@@ -42,6 +42,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
   the left of "Sessions". It goes where the logo at the top left goes: `/`,
   which opens a fresh chat (UI-1).
+- **UI-37** The header never overflows horizontally on narrow screens. Below
+  the `sm` breakpoint the header buttons show only their icon (the label stays
+  in the DOM for screen readers and as the link's `title`), with tighter
+  spacing; from `sm` up they show icon and label.
 
 ### Transcript
 
