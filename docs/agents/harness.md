@@ -19,6 +19,11 @@ Specs: `specs/guarded-files.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, 
 - While any guarded file has unloaded changes, the dev server pauses automatic reloading for everything, so even non-guarded edits stay invisible until `hot_reload` succeeds or the change is rolled back.
 - Tell the user when a change touches guarded files.
 
+## Recovery
+
+- In the dev server, `/recover` (`EliaWeb.Recovery`, spec: `specs/recovery.md`) rolls the workspace back to a checkpoint. It sits before the code reloader in the endpoint, so it works when the app doesn't compile. Crash pages (HTML 500) get a banner linking to it.
+- It's guarded and may only call other guarded modules (RECOVER-8). Don't make it depend on reloadable app code.
+
 ## When `hot_reload` is needed
 
 - **Not needed** for non-guarded Elixir changes, such as LiveViews and components. The dev server reloads them on the next request (GUARD-7).

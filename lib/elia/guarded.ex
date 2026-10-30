@@ -27,6 +27,7 @@ defmodule Elia.Guarded do
     lib/elia/agent/loop.ex
     lib/elia/skills/*.ex
     lib/elia_web/endpoint.ex
+    lib/elia_web/recovery.ex
     config/**
     mix.exs
     mix.lock

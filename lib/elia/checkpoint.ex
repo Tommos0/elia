@@ -45,8 +45,11 @@ defmodule Elia.Checkpoint do
   def list(limit \\ 20) do
     format = "%(objectname)%09%(creatordate:iso-strict)%09%(subject)"
 
+    # The last --sort is the primary key; the ref name starts with a ms timestamp,
+    # which orders checkpoints created within the same second.
     case git([
            "for-each-ref",
+           "--sort=-refname",
            "--sort=-creatordate",
            "--count=#{limit}",
            "--format=#{format}",

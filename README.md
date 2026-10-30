@@ -57,6 +57,10 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   request. While a guarded file differs from the loaded code, it pauses all
   automatic reloading, so guarded changes only reach the running app through
   `hot_reload`. Reloading resumes once they're loaded or rolled back.
+- **Recovery**: in the dev server, `/recover` (local requests only) lists
+  checkpoints and rolls the workspace back to one. It's served before the code
+  reloader, so it works even when the app shows a compilation error, and
+  crash pages get a banner linking to it (`EliaWeb.Recovery`).
 
 The shell tool can do anything you approve, including bypassing these
 policies, so read commands before approving them.

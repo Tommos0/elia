@@ -39,6 +39,9 @@ defmodule EliaWeb.Endpoint do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket,
       websocket: [code_reloader: false]
 
+    # Recovery must answer even when the project doesn't compile, so it sits
+    # before both reloaders (see EliaWeb.Recovery).
+    plug EliaWeb.Recovery
     plug Phoenix.LiveReloader
     # Skips automatic reloads while guarded files have pending changes.
     plug Phoenix.CodeReloader, reloader: &Elia.Guarded.reload/2

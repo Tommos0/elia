@@ -65,3 +65,4 @@ deleting it.
 | [Turn verification](verification.md) | `VERIFY` | `run_tests` and end-of-turn test runs with rollback |
 | [Hot reload](hot-reload.md) | `HOT` | Loading tested code into the running dev server |
 | [Guarded files](guarded-files.md) | `GUARD` | Keeping guardrail changes out of the app until hot reload |
+| [Recovery](recovery.md) | `RECOVER` | `/recover` page and crash-page banner that roll back to a checkpoint without the app |

@@ -1,0 +1,289 @@
+defmodule EliaWeb.Recovery do
+  @moduledoc """
+  Rolls the workspace back to a checkpoint when the dev app is too broken to
+  ask the agent for help (spec: `specs/recovery.md`).
+
+  The endpoint puts this plug *before* `Phoenix.CodeReloader`, so `/recover`
+  answers even when the project doesn't compile. For every other local
+  request it registers a `before_send` hook that adds a banner linking here
+  to HTML 500 pages (Phoenix's compilation error page and the debugger page).
+
+  This module is guarded (see `Elia.Guarded`) and only calls other guarded
+  modules, so its running version stays the boot-time one while the rest of
+  the app is broken.
+
+  Option `:checkpoints` (default `Elia.Checkpoint`) is the module providing
+  `list/1` and `rollback/1`; tests use it to simulate failures.
+  """
+
+  @behaviour Plug
+
+  import Plug.Conn
+
+  @path ["recover"]
+  @loopback_hosts ~w(localhost 127.0.0.1 ::1 [::1])
+  @forwarding_headers ~w(forwarded x-forwarded-for x-forwarded-host cf-connecting-ip)
+  @listed 20
+  @accepted 100
+  @turn_label "before agent turn"
+
+  @impl true
+  def init(opts), do: Keyword.put_new(opts, :checkpoints, Elia.Checkpoint)
+
+  @impl true
+  def call(conn, opts) do
+    conn = put_private(conn, :elia_recovery_checkpoints, Keyword.fetch!(opts, :checkpoints))
+
+    case conn.path_info do
+      @path -> conn |> handle() |> halt()
+      _ -> if local?(conn), do: register_before_send(conn, &add_banner/1), else: conn
+    end
+  end
+
+  defp checkpoints(conn), do: conn.private.elia_recovery_checkpoints
+
+  ## Requests
+
+  defp handle(conn) do
+    cond do
+      not local?(conn) ->
+        page(conn, 403, "Forbidden", "<p>Recovery is only available from this machine.</p>")
+
+      conn.method == "GET" ->
+        index(conn)
+
+      conn.method == "POST" ->
+        post(conn)
+
+      true ->
+        conn
+        |> put_resp_header("allow", "GET, POST")
+        |> page(405, "Method not allowed", "<p>Use GET or POST.</p>")
+    end
+  end
+
+  defp index(conn) do
+    rows =
+      for {cp, i} <- Enum.with_index(ordered(checkpoints(conn).list(@listed))) do
+        # `ordered/1` puts the newest agent-turn checkpoint first.
+        tag = if i == 0 and turn?(cp), do: " <strong>(recommended)</strong>", else: ""
+
+        """
+        <tr>
+          <td><code>#{short(cp.sha)}</code></td>
+          <td>#{esc(cp.at)}</td>
+          <td>#{esc(cp.label)}#{tag}</td>
+          <td>#{button(cp.sha, "Roll back")}</td>
+        </tr>
+        """
+      end
+
+    body =
+      case rows do
+        [] ->
+          "<p>There are no checkpoints yet.</p>"
+
+        rows ->
+          """
+          <p>Restores the workspace files to a checkpoint. The current state is
+          snapshotted first, so you can undo it afterwards.</p>
+          <table>
+            <tr><th>Checkpoint</th><th>Taken</th><th>Label</th><th></th></tr>
+            #{rows}
+          </table>
+          """
+      end
+
+    page(conn, 200, "Recover", body <> ~s(<p><a href="/">Back to the app</a></p>))
+  end
+
+  defp post(conn) do
+    with true <- same_origin?(conn),
+         {:ok, body, conn} <- read_body(conn, length: 4_096) do
+      rollback(conn, decode(body)["checkpoint"])
+    else
+      false -> page(conn, 403, "Forbidden", "<p>Cross-origin request refused.</p>")
+      _ -> page(conn, 400, "Bad request", "<p>Could not read the request.</p>")
+    end
+  end
+
+  defp rollback(conn, sha) do
+    store = checkpoints(conn)
+
+    if is_binary(sha) and Enum.any?(store.list(@accepted), &(&1.sha == sha)) do
+      case store.rollback(sha) do
+        {:ok, undo} ->
+          reload_skills()
+          page(conn, 200, "Rolled back", rolled_back(sha, undo))
+
+        {:error, reason} ->
+          page(conn, 500, "Rollback failed", "<pre>#{esc(reason)}</pre>")
+      end
+    else
+      page(conn, 400, "Unknown checkpoint", "<p>That checkpoint isn't in the recent list.</p>")
+    end
+  end
+
+  defp rolled_back(sha, undo) do
+    pending =
+      case Elia.Guarded.changed() do
+        [] ->
+          "<p>Automatic reloading resumes on the next request.</p>"
+
+        files ->
+          """
+          <p>Automatic reloading is still paused because guarded files differ from
+          the running code. Run <code>hot_reload</code> from the agent, or roll back
+          further.</p>
+          <ul>#{Enum.map_join(files, &"<li><code>#{esc(&1)}</code></li>")}</ul>
+          """
+      end
+
+    """
+    <p>Restored the workspace to <code>#{short(sha)}</code>.</p>
+    #{pending}
+    <p>#{button(undo, "Undo this rollback")}</p>
+    <p><a href="/">Back to the app</a></p>
+    """
+  end
+
+  defp reload_skills do
+    Elia.Skills.reload()
+  rescue
+    _ -> :ok
+  end
+
+  defp decode(body) do
+    URI.decode_query(body)
+  rescue
+    ArgumentError -> %{}
+  end
+
+  ## Local-only checks
+
+  defp local?(conn) do
+    loopback?(conn.remote_ip) and normalize(conn.host) in @loopback_hosts and
+      Enum.all?(@forwarding_headers, &(get_req_header(conn, &1) == []))
+  end
+
+  defp loopback?({127, _, _, _}), do: true
+  defp loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp loopback?({0, 0, 0, 0, 0, 0xFFFF, hi, _}), do: hi in 0x7F00..0x7FFF
+  defp loopback?(_), do: false
+
+  defp same_origin?(conn) do
+    with [origin] <- get_req_header(conn, "origin"),
+         %URI{scheme: scheme, host: host, port: port} when is_binary(host) <- URI.parse(origin) do
+      scheme == to_string(conn.scheme) and normalize(host) == normalize(conn.host) and
+        port == conn.port
+    else
+      _ -> false
+    end
+  end
+
+  defp normalize(host), do: host |> String.replace(["[", "]"], "") |> String.downcase()
+
+  ## Banner on crash pages
+
+  defp add_banner(%Plug.Conn{status: 500} = conn) do
+    with true <- html?(conn),
+         [] <- get_resp_header(conn, "content-encoding"),
+         body when is_binary(body) or is_list(body) <- conn.resp_body,
+         html = IO.iodata_to_binary(body),
+         [{start, len}] <- Regex.run(~r/<body[^>]*>/i, html, return: :index) do
+      cut = start + len
+      <<head::binary-size(cut), rest::binary>> = html
+      %{conn | resp_body: [head, banner(conn), rest]}
+    else
+      _ -> conn
+    end
+  rescue
+    _ -> conn
+  catch
+    :exit, _ -> conn
+  end
+
+  defp add_banner(conn), do: conn
+
+  defp html?(conn) do
+    case get_resp_header(conn, "content-type") do
+      ["text/html" <> _ | _] -> true
+      _ -> false
+    end
+  end
+
+  defp banner(conn) do
+    action =
+      case Enum.find(checkpoints(conn).list(@listed), &turn?/1) do
+        nil -> ""
+        cp -> button(cp.sha, "Roll back to the checkpoint before the last agent turn", :banner)
+      end
+
+    """
+    <div id="elia-recovery-banner" style="position:fixed;top:0;left:0;right:0;z-index:2147483647;\
+    background:#7f1d1d;color:#fff;padding:8px 12px;font:14px/1.4 system-ui,sans-serif;\
+    display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <strong>Elia recovery</strong>
+      #{action}
+      <a href="/recover" style="color:#fff;text-decoration:underline">Choose a checkpoint</a>
+    </div>
+    """
+  end
+
+  ## Helpers
+
+  defp ordered(checkpoints) do
+    case Enum.find(checkpoints, &turn?/1) do
+      nil -> checkpoints
+      cp -> [cp | List.delete(checkpoints, cp)]
+    end
+  end
+
+  defp turn?(%{label: label}), do: String.starts_with?(label, @turn_label)
+
+  defp short(sha), do: sha |> String.slice(0, 12) |> esc()
+
+  defp esc(text), do: text |> to_string() |> Plug.HTML.html_escape()
+
+  defp button(sha, text, style \\ :page) do
+    css =
+      case style do
+        :banner ->
+          "padding:4px 10px;border:0;border-radius:4px;background:#fff;color:#7f1d1d;cursor:pointer"
+
+        :page ->
+          "padding:4px 10px;cursor:pointer"
+      end
+
+    """
+    <form method="post" action="/recover" style="display:inline;margin:0">\
+    <input type="hidden" name="checkpoint" value="#{esc(sha)}">\
+    <button type="submit" style="#{css}">#{esc(text)}</button></form>\
+    """
+  end
+
+  defp page(conn, status, title, body) do
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>#{esc(title)} · Elia recovery</title>
+      <style>
+        body { font: 15px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #ddd; }
+      </style>
+    </head>
+    <body>
+      <h1>#{esc(title)}</h1>
+      #{body}
+    </body>
+    </html>
+    """
+
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(status, html)
+  end
+end

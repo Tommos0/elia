@@ -11,7 +11,7 @@ effect only through `hot_reload`, which runs the tests first.
 - **GUARD-1** These workspace paths are guarded:
   `lib/elia/{harness,checkpoint,workspace,guarded,tool,shell,skills,application}.ex`,
   `lib/elia/agent/loop.ex`, `lib/elia/skills/*.ex`,
-  `lib/elia_web/endpoint.ex`, `config/**`, `mix.exs`, `mix.lock`,
+  `lib/elia_web/endpoint.ex`, `lib/elia_web/recovery.ex`, `config/**`, `mix.exs`, `mix.lock`,
   `test/elia/self_modification_test.exs` and `test/elia/guarded_test.exs`.
   Only paths in the core class can be guarded.
 - **GUARD-2** At boot, the SHA-256 hashes of the guarded files are recorded

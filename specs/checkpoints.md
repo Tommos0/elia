@@ -36,4 +36,4 @@ state.
 
 ## Tests
 
-`test/elia/self_modification_test.exs`.
+`test/elia/self_modification_test.exs`, `test/elia_web/recovery_test.exs` (CKPT-6 ordering).
