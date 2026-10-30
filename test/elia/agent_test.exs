@@ -209,6 +209,27 @@ defmodule Elia.AgentTest do
     assert Agent.snapshot(id).last_usage == nil
   end
 
+  # CTX-10: usage carries the estimate for the history that request sent, which
+  # excludes the reply it produced.
+  test "usage records the estimate of the request's history", %{id: id} do
+    FakeLLM.push(fn _request, _on_event ->
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text(String.duplicate("long reply ", 100))]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{"input_tokens" => 10}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "hi")
+    assert_receive {:agent, ^id, {:usage, usage}}, 5000
+    await_status(id, :idle)
+
+    assert usage["estimated_input_tokens"] == Elia.LLM.Context.build([Message.user("hi")]).total
+    assert Agent.snapshot(id).last_usage == usage
+  end
+
   # MODEL-3
   test "a turn uses the model selected when it starts", %{id: id} do
     Elia.LLMCase.reset_settings()

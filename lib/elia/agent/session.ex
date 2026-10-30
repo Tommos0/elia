@@ -176,6 +176,12 @@ defmodule Elia.Agent.Session do
   def handle_info({:loop_append, message}, state), do: {:noreply, append(state, message)}
 
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
+    # CTX-10: remember what we estimated for the history this request sent, so
+    # the context indicator can calibrate against the provider's figure.
+    skills = Keyword.get(state.loop_opts, :skills) || Elia.Skills.current()
+    estimate = Elia.LLM.Context.build(state.messages, skills).total
+    usage = Map.put(usage, "estimated_input_tokens", estimate)
+
     broadcast(state, {:usage, usage})
     {:noreply, %{state | last_usage: usage}}
   end

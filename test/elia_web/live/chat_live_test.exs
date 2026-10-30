@@ -323,6 +323,55 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#context-provider-usage")
   end
 
+  # CTX-10: the total follows the provider's figure, including on a remount, and
+  # a reset clears the adjustment.
+  test "the context total is calibrated by provider usage", %{conn: conn} do
+    id = Agent.new_id()
+
+    FakeLLM.push(fn _request, _on_event ->
+      msg = FakeLLM.assistant([Message.text("Done.")])
+
+      {:ok,
+       %{message: msg, stop_reason: :end_turn, model: "fake", usage: %{"input_tokens" => 90_000}}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "hello"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    view |> element("#context-indicator") |> render_click()
+    assert view |> element("#context-total") |> render() =~ "90K"
+    assert view |> element("#context-breakdown") |> render() =~ "Provider adjustment"
+
+    {:ok, remounted, _html} = live(conn, ~p"/c/#{id}")
+    remounted |> element("#context-indicator") |> render_click()
+    assert remounted |> element("#context-total") |> render() =~ "90K"
+
+    send(view.pid, {:agent, id, {:reset, []}})
+    refute view |> element("#context-breakdown") |> render() =~ "Provider adjustment"
+  end
+
+  # CTX-10: an estimate above the provider's figure shows a negative adjustment.
+  test "a negative provider adjustment is shown with its sign", %{conn: conn} do
+    id = Agent.new_id()
+
+    FakeLLM.push(fn _request, _on_event ->
+      msg = FakeLLM.assistant([Message.text("Done.")])
+      {:ok, %{message: msg, stop_reason: :end_turn, model: "fake", usage: %{"input_tokens" => 1}}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "hello"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    view |> element("#context-indicator") |> render_click()
+    assert view |> element("#context-breakdown") |> render() =~ ~r/>\s*-\d+K?\s*</
+  end
+
   # CTX-2: the percentage and the coloured bar show when the window is known.
   test "context indicator shows the percentage and bar", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")

@@ -6,7 +6,7 @@ defmodule Elia.LLM.Tokens do
   four characters (rounded up), the common heuristic for English prose and
   JSON payloads. They are only an approximation of the provider's tokenizer;
   when the provider reports real usage after a turn, that figure is shown
-  alongside (see `Elia.LLM.Context`).
+  alongside and calibrates the total (see `Elia.LLM.Context`).
   """
 
   alias Elia.LLM.Message
@@ -29,7 +29,11 @@ defmodule Elia.LLM.Tokens do
   @doc "Estimated tokens for a single content block (text, reasoning, call, result)."
   @spec estimate_block(map()) :: non_neg_integer()
   def estimate_block(%{type: :text, text: text}), do: estimate(text)
-  def estimate_block(%{type: :reasoning, text: text}), do: estimate(text)
+
+  # CTX-9: the signature is sent back with the block.
+  def estimate_block(%{type: :reasoning, text: text} = block),
+    do: estimate(text) + signature_tokens(block)
+
   def estimate_block(%{type: :tool_call, input: input}), do: estimate(encode(input))
 
   def estimate_block(%{type: :tool_result, content: content}),
@@ -39,6 +43,13 @@ defmodule Elia.LLM.Tokens do
   def estimate_block(%{type: :opaque, raw: {_provider, raw}}), do: estimate(encode(raw))
 
   def estimate_block(_block), do: 0
+
+  # Base64: 3 bytes per 4 characters, at about 4 bytes per token.
+  defp signature_tokens(%{raw: {_provider, %{"signature" => signature}}})
+       when is_binary(signature),
+       do: div(String.length(signature) * 3 + 15, 16)
+
+  defp signature_tokens(_block), do: 0
 
   @doc "A tool result's content as plain text (handles binary and list payloads)."
   @spec result_text(term()) :: binary()

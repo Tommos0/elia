@@ -21,7 +21,8 @@ files, skills, tool definitions and more — each with an estimated token count.
   `AGENTS.md` when present, and each skill's instructions),
   the tool definitions, and every message (user text, assistant text,
   reasoning, tool calls and tool results). Each text or payload belongs to
-  exactly one bucket, so the bucket totals sum to the overall estimate.
+  exactly one bucket, so the bucket totals sum to the overall estimate (which
+  includes the provider adjustment, CTX-10, when there is one).
 - **CTX-4** Clicking the indicator toggles a breakdown panel (`#context-breakdown`)
   that lists the parts of the context with their estimated tokens and an item
   count: System prompt (with an "Agent instructions" child, a "Project
@@ -50,6 +51,19 @@ files, skills, tool definitions and more — each with an estimated token count.
   are reloaded, and when the model selection or its catalog changes. The
   estimate is updated incrementally per message rather than recomputed on
   every render.
+- **CTX-9** A reasoning block's estimate includes its provider signature when
+  it has one, since the signature is sent back with the block. Signatures are
+  base64, so they are sized by their decoded bytes (3 per 4 characters) at about
+  four bytes per token.
+- **CTX-10** The local estimate is calibrated against the provider's report.
+  With each usage report the session records `estimated_input_tokens`, its
+  estimate for the history that request sent. The difference between the
+  CTX-6 figure and that estimate becomes the context's adjustment, shown in the
+  breakdown as a "Provider adjustment" bucket when non-zero and included in the
+  total. Later messages and skill changes are estimated on top of it, so the
+  total stays anchored to the last report as the conversation grows. A negative
+  adjustment is capped so the total never drops below zero. A usage report
+  without both figures, or a reset of the conversation, clears the adjustment.
 
 ## Implementation
 

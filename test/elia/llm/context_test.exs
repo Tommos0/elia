@@ -247,5 +247,62 @@ defmodule Elia.LLM.ContextTest do
     assert Context.provider_input_tokens(nil) == nil
   end
 
+  # CTX-10: the gap to the provider's figure becomes a bucket of the total.
+  test "calibrate anchors the total to the provider's figure" do
+    context = Context.new([Message.user("hello")], skills())
+    estimate = Context.breakdown(context).total
+    usage = %{"input_tokens" => estimate + 500, "estimated_input_tokens" => estimate}
+
+    breakdown = context |> Context.calibrate(usage) |> Context.breakdown()
+
+    assert breakdown.total == estimate + 500
+    assert breakdown.total == Enum.sum(Enum.map(breakdown.buckets, &bucket_tokens(&1)))
+
+    assert %{label: "Provider adjustment", tokens: 500} =
+             Enum.find(breakdown.buckets, &(&1.id == :adjustment))
+  end
+
+  # CTX-10: later messages and skill changes are estimated on top of the anchor.
+  test "the adjustment survives later messages and skill changes" do
+    context = Context.new([], skills())
+    estimate = Context.breakdown(context).total
+    usage = %{"input_tokens" => estimate + 500, "estimated_input_tokens" => estimate}
+    calibrated = Context.calibrate(context, usage)
+
+    message = Message.user("one more")
+
+    assert Context.breakdown(Context.add(calibrated, message)).total ==
+             Context.breakdown(Context.add(context, message)).total + 500
+
+    assert Context.breakdown(Context.put_skills(calibrated, [])).total ==
+             Context.breakdown(Context.put_skills(context, [])).total + 500
+  end
+
+  # CTX-10: a large negative adjustment can't take the total below zero.
+  test "a negative adjustment is capped at the estimate" do
+    context = Context.new([], skills())
+    estimate = Context.breakdown(context).total
+    usage = %{"input_tokens" => 1, "estimated_input_tokens" => estimate + 1000}
+
+    breakdown = context |> Context.calibrate(usage) |> Context.breakdown()
+
+    assert breakdown.total == 0
+    assert %{tokens: tokens} = Enum.find(breakdown.buckets, &(&1.id == :adjustment))
+    assert tokens == -estimate
+  end
+
+  # CTX-10: without both figures there is no adjustment, and none is left over.
+  test "calibrate clears the adjustment without both figures" do
+    context = Context.new([], skills())
+    estimate = Context.breakdown(context).total
+    usage = %{"input_tokens" => estimate + 500, "estimated_input_tokens" => estimate}
+    calibrated = Context.calibrate(context, usage)
+
+    for partial <- [nil, %{}, %{"input_tokens" => 5}, %{"estimated_input_tokens" => 5}] do
+      assert Context.breakdown(Context.calibrate(calibrated, partial)) ==
+               Context.breakdown(context)
+    end
+  end
+
   defp bucket_tokens(bucket), do: Context.bucket_tokens(bucket)
 end

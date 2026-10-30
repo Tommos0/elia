@@ -50,7 +50,7 @@ defmodule EliaWeb.ChatLive do
         catalogs: %{}
       )
       |> stream(:models, [])
-      |> put_context(Context.new(snapshot.messages))
+      |> put_context(Context.new(snapshot.messages) |> Context.calibrate(snapshot.last_usage))
       |> load_messages(snapshot.messages)
 
     {:ok, socket}
@@ -583,6 +583,9 @@ defmodule EliaWeb.ChatLive do
   defp format_context(tokens) when tokens >= 1000, do: "#{div(tokens, 1000)}K ctx"
   defp format_context(tokens), do: "#{tokens} ctx"
 
+  # CTX-10: the provider adjustment can be negative.
+  defp format_tokens(tokens) when tokens < 0, do: "-#{format_tokens(-tokens)}"
+
   defp format_tokens(tokens) when tokens >= 1_000_000,
     do: "#{Float.round(tokens / 1_000_000, 1) |> trim_float()}M"
 
@@ -1001,7 +1004,11 @@ defmodule EliaWeb.ChatLive do
     |> stream_models()
   end
 
-  defp apply_event({:usage, usage}, socket), do: assign(socket, last_usage: usage)
+  defp apply_event({:usage, usage}, socket) do
+    socket
+    |> assign(last_usage: usage)
+    |> put_context(Context.calibrate(socket.assigns.context, usage))
+  end
 
   defp apply_event({:delta, :text, text}, socket) do
     # Progress notes before a text block are superseded by the answer.

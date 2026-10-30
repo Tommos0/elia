@@ -20,6 +20,8 @@ defmodule Elia.LLM.Context do
     * `:files` "Files" - `read_file`/`write_file`/`edit_file` calls & results
     * `:shell` "Shell" - `shell` calls & results
     * `:other_tools` "Other tools" - any other tool calls & results
+    * `:adjustment` "Provider adjustment" - the gap to the provider's last
+      reported figure, when there is one (may be negative)
   """
 
   alias Elia.LLM.{Message, Tokens}
@@ -31,8 +33,9 @@ defmodule Elia.LLM.Context do
 
   # system/tools: the fixed buckets derived from skills; messages: message
   # count; names: tool_call_id => tool name, so results land with their call;
-  # tally: bucket id => {count, tokens}.
-  defstruct system: nil, tools: nil, messages: 0, names: %{}, tally: %{}
+  # tally: bucket id => {count, tokens}; adjustment: provider figure minus our
+  # estimate for the last reported request (CTX-10).
+  defstruct system: nil, tools: nil, messages: 0, names: %{}, tally: %{}, adjustment: 0
 
   @type t :: %__MODULE__{}
 
@@ -40,7 +43,7 @@ defmodule Elia.LLM.Context do
           id: atom() | binary(),
           label: binary(),
           count: non_neg_integer(),
-          tokens: non_neg_integer(),
+          tokens: integer(),
           children: [bucket()]
         }
 
@@ -135,11 +138,43 @@ defmodule Elia.LLM.Context do
     }
 
     buckets = [context.system, context.tools, messages | parts(context, @tool_parts)]
-    %{total: buckets |> Enum.map(&bucket_tokens/1) |> Enum.sum(), buckets: buckets}
+    estimate = buckets |> Enum.map(&bucket_tokens/1) |> Enum.sum()
+
+    # CTX-10: the total never drops below zero, so a large negative
+    # adjustment (e.g. after skills shrank) is capped.
+    adjustment = max(context.adjustment, -estimate)
+
+    buckets =
+      if adjustment == 0,
+        do: buckets,
+        else:
+          buckets ++
+            [%{id: :adjustment, label: "Provider adjustment", count: 0, tokens: adjustment}]
+
+    %{total: estimate + adjustment, buckets: buckets}
+  end
+
+  @doc """
+  Calibrates the estimate against the provider's report of the last request
+  (CTX-10). `usage` carries the provider's counts and the session's
+  `"estimated_input_tokens"` for the same request; the difference becomes the
+  adjustment. Without both (or with `nil`), the adjustment is cleared.
+  """
+  @spec calibrate(t(), map() | nil) :: t()
+  def calibrate(%__MODULE__{} = context, usage) do
+    adjustment =
+      with provider when is_integer(provider) <- provider_input_tokens(usage),
+           estimate when is_integer(estimate) <- usage["estimated_input_tokens"] do
+        provider - estimate
+      else
+        _ -> 0
+      end
+
+    %{context | adjustment: adjustment}
   end
 
   @doc "A bucket's tokens, summing its children when it has any."
-  @spec bucket_tokens(bucket()) :: non_neg_integer()
+  @spec bucket_tokens(bucket()) :: integer()
   def bucket_tokens(%{children: children}),
     do: children |> Enum.map(&bucket_tokens/1) |> Enum.sum()
 
@@ -172,8 +207,8 @@ defmodule Elia.LLM.Context do
   defp add_block(context, %{type: :text, text: text}),
     do: tally(context, :assistant, Tokens.estimate(text))
 
-  defp add_block(context, %{type: :reasoning, text: text}),
-    do: tally(context, :reasoning, Tokens.estimate(text))
+  defp add_block(context, %{type: :reasoning} = block),
+    do: tally(context, :reasoning, Tokens.estimate_block(block))
 
   defp add_block(context, %{type: :tool_call, id: id, name: name} = block) do
     %{context | names: Map.put(context.names, id, name)}
