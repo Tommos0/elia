@@ -29,6 +29,15 @@ defmodule Elia.Agent do
   def deny(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :deny})
 
   @doc """
+  Turns auto-approval of `tool_name` on or off for the chat (APPR-8). Turning
+  it on also approves that tool's pending calls (APPR-11). Turning it on for a
+  tool that never needs approval returns `{:error, :not_approvable}` (APPR-13).
+  """
+  @spec set_auto_approve(binary(), binary(), boolean()) :: :ok | {:error, :not_approvable}
+  def set_auto_approve(id, tool_name, on?) when is_binary(tool_name) and is_boolean(on?),
+    do: GenServer.call(Session.via(id), {:set_auto_approve, tool_name, on?})
+
+  @doc """
   Sets the chat's model (MODEL-1). Also remembers it as the default for new
   chats (MODEL-15).
   """

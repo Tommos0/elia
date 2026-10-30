@@ -48,7 +48,10 @@ defmodule EliaWeb.ChatLive do
         model_query: "",
         search_form: to_form(%{"q" => ""}, as: :model_search),
         # provider key => :loading | {:ok, models} | {:error, message}
-        catalogs: %{}
+        catalogs: %{},
+        auto_approve: snapshot.auto_approve,
+        auto_approve_open: false,
+        approvable_tools: approvable_tools(Elia.Skills.current())
       )
       |> stream(:models, [])
       |> put_context(Context.new(snapshot.messages) |> Context.calibrate(snapshot.last_usage))
@@ -185,12 +188,17 @@ defmodule EliaWeb.ChatLive do
           </div>
 
           <div class="border-t border-base-300 bg-base-100">
-            <div class="mx-auto max-w-3xl px-4 pt-3 sm:px-6">
+            <div class="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 pt-3 sm:px-6">
               <.model_picker
                 selection={@selection}
                 open={@picker_open}
                 search_form={@search_form}
                 streams={@streams}
+              />
+              <.auto_approve_picker
+                open={@auto_approve_open}
+                tools={@approvable_tools}
+                enabled={@auto_approve}
               />
             </div>
             <.form
@@ -442,6 +450,84 @@ defmodule EliaWeb.ChatLive do
       </span>
       <span class="tabular-nums text-base-content/60">{format_tokens(@bucket.tokens)}</span>
     </li>
+    """
+  end
+
+  attr :open, :boolean, required: true
+  attr :tools, :list, required: true
+  attr :enabled, :list, required: true
+
+  # UI-38, UI-39
+  defp auto_approve_picker(assigns) do
+    ~H"""
+    <div class="relative inline-block max-w-full">
+      <button
+        type="button"
+        id="auto-approve-button"
+        phx-click="toggle_auto_approve_picker"
+        aria-haspopup="true"
+        aria-expanded={to_string(@open)}
+        class={[
+          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+          @open && "border-primary/50 bg-primary/5",
+          !@open &&
+            "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+        ]}
+      >
+        <.icon name="hero-shield-check" class="size-3.5 shrink-0 opacity-70" />
+        <span class="font-medium">Auto-approve</span>
+        <span
+          :if={@enabled != []}
+          id="auto-approve-count"
+          class="rounded-full bg-warning/20 px-1.5 text-[11px] font-medium tabular-nums text-warning"
+        >
+          {length(@enabled)}
+        </span>
+      </button>
+
+      <div
+        :if={@open}
+        id="auto-approve"
+        phx-click-away="close_auto_approve_picker"
+        phx-window-keydown="close_auto_approve_picker"
+        phx-key="Escape"
+        class="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
+      >
+        <p class="border-b border-base-300 px-3 py-2 text-xs text-base-content/60">
+          Auto-approved tools run in this chat without asking, including changes to guarded files.
+        </p>
+        <ul class="max-h-72 overflow-y-auto py-1">
+          <li :for={tool <- @tools} class="px-1">
+            <button
+              type="button"
+              id={"auto-approve-#{tool.name}"}
+              phx-click="toggle_auto_approve"
+              phx-value-tool={tool.name}
+              role="switch"
+              aria-checked={to_string(tool.name in @enabled)}
+              class="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-base-200"
+            >
+              <.icon name={tool_icon(tool.name)} class="size-4 shrink-0 text-base-content/60" />
+              <span class="min-w-0 flex-1 truncate font-medium">{tool.name}</span>
+              <span class={[
+                "relative h-5 w-9 shrink-0 rounded-full transition",
+                tool.name in @enabled && "bg-warning",
+                tool.name not in @enabled && "bg-base-300"
+              ]}>
+                <span class={[
+                  "absolute top-0.5 size-4 rounded-full bg-base-100 shadow transition-all",
+                  tool.name in @enabled && "left-[1.125rem]",
+                  tool.name not in @enabled && "left-0.5"
+                ]} />
+              </span>
+            </button>
+          </li>
+          <li :if={@tools == []} class="px-3 py-2 text-xs text-base-content/40">
+            No tools need approval
+          </li>
+        </ul>
+      </div>
+    </div>
     """
   end
 
@@ -739,6 +825,15 @@ defmodule EliaWeb.ChatLive do
       >
         <span class="mr-auto text-xs text-base-content/60">Allow this?</span>
         <button
+          id={"always-allow-#{@item.call_id}"}
+          phx-click="always_allow"
+          phx-value-tool={@item.name}
+          title={"Approve this and every later #{@item.name} call in this chat"}
+          class="rounded-lg px-3 py-1 text-xs font-medium text-base-content/70 transition hover:bg-base-300"
+        >
+          Always allow
+        </button>
+        <button
           id={"deny-#{@item.call_id}"}
           phx-click="deny"
           phx-value-id={@item.call_id}
@@ -877,6 +972,22 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
+  def handle_event("always_allow", %{"tool" => tool}, socket) do
+    set_auto_approve(socket, tool, true)
+  end
+
+  def handle_event("toggle_auto_approve", %{"tool" => tool}, socket) do
+    set_auto_approve(socket, tool, tool not in socket.assigns.auto_approve)
+  end
+
+  def handle_event("toggle_auto_approve_picker", _params, socket) do
+    {:noreply, assign(socket, auto_approve_open: !socket.assigns.auto_approve_open)}
+  end
+
+  def handle_event("close_auto_approve_picker", _params, socket) do
+    {:noreply, assign(socket, auto_approve_open: false)}
+  end
+
   def handle_event("stop", _params, socket) do
     Agent.stop(socket.assigns.session_id)
     {:noreply, socket}
@@ -952,6 +1063,24 @@ defmodule EliaWeb.ChatLive do
 
   defp noreply(socket), do: {:noreply, socket}
 
+  defp set_auto_approve(socket, tool, on?) do
+    case Agent.set_auto_approve(socket.assigns.session_id, tool, on?) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :not_approvable} ->
+        {:noreply, put_flash(socket, :error, "#{tool} never asks for approval.")}
+    end
+  end
+
+  # Tools the user can auto-approve: those that can need approval (APPR-13).
+  defp approvable_tools(skills) do
+    skills
+    |> Elia.Skills.tools()
+    |> Enum.filter(&(&1.approval != :never))
+    |> Enum.sort_by(& &1.name)
+  end
+
   # Rebuilds the picker list: a header per provider, then its matching models.
   defp stream_models(%{assigns: %{picker_open: false}} = socket), do: socket
 
@@ -1008,7 +1137,10 @@ defmodule EliaWeb.ChatLive do
 
   @impl true
   def handle_info({:skills_reloaded, skills}, socket) do
-    {:noreply, put_context(socket, Context.put_skills(socket.assigns.context, skills))}
+    socket
+    |> assign(approvable_tools: approvable_tools(skills))
+    |> put_context(Context.put_skills(socket.assigns.context, skills))
+    |> noreply()
   end
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
@@ -1040,6 +1172,8 @@ defmodule EliaWeb.ChatLive do
     |> assign(selection: selection, context_window: LLM.context_window(selection))
     |> stream_models()
   end
+
+  defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
 
   defp apply_event({:usage, usage}, socket) do
     socket

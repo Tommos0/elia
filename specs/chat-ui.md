@@ -95,6 +95,20 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-24** While the agent isn't idle, the input is disabled and the send
   button is replaced by a Stop button that stops the turn (SESS-8).
 
+- **UI-38** The composer has an "Auto-approve" button (`#auto-approve-button`)
+  next to the model picker. It shows how many tools the chat auto-approves
+  (`#auto-approve-count`, hidden at zero) and opens a popover
+  (`#auto-approve`) that Escape or a click outside closes.
+- **UI-39** The popover lists each tool that can need approval (APPR-13) with a
+  switch (`#auto-approve-<tool name>`) that reflects and toggles APPR-8 for
+  this chat, and a note that auto-approved tools run without review,
+  including on guarded files. Tools from folder skills appear after a skill
+  reload. The switch state follows `{:auto_approve, names}` events (SESS-16),
+  so every tab on the chat stays in sync.
+- **UI-40** A call awaiting approval has an "Always allow" button
+  (`#always-allow-<call_id>`) that turns auto-approval on for its tool
+  (APPR-11, which also approves this call).
+
 ### Markdown
 
 - **UI-25** Assistant text, both saved and streaming (UI-10), renders as
@@ -124,5 +138,6 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ## Tests
 
-`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/page_title_test.exs`,
+`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
+`test/elia_web/live/page_title_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

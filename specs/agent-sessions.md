@@ -23,9 +23,11 @@ progress so any number of UIs can follow it.
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
   `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`,
-  `{:model, selection}` (the chat's model selection changed, MODEL-1).
+  `{:model, selection}` (the chat's model selection changed, MODEL-1),
+  `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
-  status and the chat's model selection (`nil` if none yet), so a UI that connects mid-turn can render the current state.
+  status, the chat's model selection (`nil` if none yet) and its
+  auto-approved tool names (sorted list), so a UI that connects mid-turn can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
   returns to idle and broadcasts the notice "Stopped.". Stopping an idle
@@ -47,8 +49,14 @@ progress so any number of UIs can follow it.
   `{:model, selection}`. It is allowed mid-turn (MODEL-3).
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
-  their defaults and the saved model selection is loaded (SESS-14), so
-  snapshots and turns don't crash.
+  their defaults and the saved model selection (SESS-14) and auto-approved
+  tools (SESS-16) are loaded, so snapshots and turns don't crash. Fields the
+  state already has are kept.
+- **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
+  `set_auto_approve/3` (chat id, tool name, boolean) turns auto-approval for a
+  tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
+  messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the
+  sorted list. It is allowed mid-turn (APPR-11).
 
 ## Out of scope
 

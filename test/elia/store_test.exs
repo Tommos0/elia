@@ -21,6 +21,26 @@ defmodule Elia.StoreTest do
     assert Store.load_model("../bad") == nil
   end
 
+  # STORE-1, STORE-14, STORE-15
+  test "a chat's auto-approved tools are saved with it and default to none" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_auto_approve(id) == []
+
+    :ok = Store.save(id, [Message.user("hi")], auto_approve: ["shell", "edit_file"])
+    assert Store.load_auto_approve(id) == ["shell", "edit_file"]
+    assert [%Message{}] = Store.load(id)
+
+    # An empty list leaves the key out, so turning the last tool off clears it.
+    :ok = Store.save(id, [Message.user("hi")], auto_approve: [])
+    assert Store.load_auto_approve(id) == []
+
+    assert Store.load_auto_approve("missing-chat") == []
+    assert Store.load_auto_approve("../bad") == []
+  end
+
   # STORE-3: a fresh dev VM hasn't loaded the modules whose atoms a saved
   # chat uses; loading must load them before the safe decode.
   test "loading a chat loads app modules first so the safe decode succeeds" do

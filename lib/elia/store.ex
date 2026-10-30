@@ -15,7 +15,8 @@ defmodule Elia.Store do
   def valid_id?(id), do: is_binary(id) and Regex.match?(@id_format, id)
 
   @doc """
-  Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1), kept
+  Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1) and
+  `opts[:auto_approve]` its auto-approved tool names (STORE-14); each is kept
   alongside the messages when given.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
@@ -28,6 +29,13 @@ defmodule Elia.Store do
     now = DateTime.utc_now()
     chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
+
+    chat =
+      case opts[:auto_approve] do
+        [_ | _] = names -> Map.put(chat, :auto_approve, names)
+        _ -> chat
+      end
+
     data = :erlang.term_to_binary(chat)
 
     with :ok <- File.write(tmp, data), do: File.rename(tmp, path)
@@ -53,6 +61,19 @@ defmodule Elia.Store do
       model
     else
       _ -> nil
+    end
+  end
+
+  @doc "The chat's saved auto-approved tool names, or `[]` (STORE-15)."
+  @spec load_auto_approve(binary()) :: [binary()]
+  def load_auto_approve(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{auto_approve: [_ | _] = names} <- decode(data),
+         true <- Enum.all?(names, &is_binary/1) do
+      names
+    else
+      _ -> []
     end
   end
 

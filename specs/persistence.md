@@ -9,8 +9,9 @@ reopened.
 
 - **STORE-1** A chat is saved to `.elia/sessions/<id>.term` as an Erlang term
   `%{version: 1, messages: [...], updated_at: DateTime}`, plus `model: selection`
-  when the chat has its own model selection (MODEL-1); files without it load
-  as having none. Terms are used instead of JSON so provider raw blocks are
+  when the chat has its own model selection (MODEL-1), plus
+  `auto_approve: [tool name]` when the chat auto-approves any tool (APPR-8);
+  files without these load as having none. Terms are used instead of JSON so provider raw blocks are
   kept exactly (LLM-6).
 - **STORE-2** Writes are atomic: the data goes to a `.tmp` file, which is then
   renamed into place.
@@ -42,6 +43,12 @@ reopened.
 - **STORE-13** Loading a chat replaces invalid UTF-8 in its text and tool
   results as in LLM-28, so a chat saved with such bytes can still be opened.
   Provider raw blocks stay exact (LLM-6).
+
+- **STORE-14** `save/3` takes `auto_approve:` (a list of tool-name strings) and
+  stores it only when the list isn't empty, so turning the last tool off
+  removes it from the file.
+- **STORE-15** Loading a chat's auto-approved tools returns `[]` when the chat
+  is missing, unreadable, corrupt or has none.
 
 ## Implementation
 

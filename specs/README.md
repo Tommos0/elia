@@ -51,7 +51,7 @@ deleting it.
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser with a plain-text file viewer |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
-| [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, and how decisions apply |
+| [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, how decisions apply, per-chat auto-approval |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
 | [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic and OpenRouter backends |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
