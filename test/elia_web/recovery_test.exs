@@ -217,11 +217,74 @@ defmodule EliaWeb.RecoveryTest do
       assert Checkpoint.recommended([], "T2") == nil
     end
 
+    test "CKPT-9: a state recreated by editing isn't mistaken for a rollback result" do
+      cp = fn name, tree, label -> %{sha: name, tree: tree, at: "", label: label} end
+      turn = fn name, tree -> cp.(name, tree, "before agent turn #{name}") end
+
+      # Rolled back to `x` (tree TX) away from TB; later the workspace was edited
+      # back into TB. The clean checkpoint `clean` is newer than the rollback
+      # snapshot holding TB and must still be found.
+      history = [
+        turn.("clean", "TC"),
+        cp.("snap", "TB", "before rollback to x"),
+        turn.("x", "TX"),
+        turn.("w", "TW")
+      ]
+
+      assert %{sha: "clean"} = Checkpoint.recommended(history, "TB")
+    end
+
     test "CKPT-9: lists tree hashes and the workspace's current tree" do
       {:ok, sha} = Checkpoint.create("tree check")
       {:ok, tree} = Checkpoint.current_tree()
 
       assert %{tree: ^tree} = Enum.find(Checkpoint.list(), &(&1.sha == sha))
+    end
+
+    test "RECOVER-3: the clean checkpoint is recommended after a rollback and a re-edit" do
+      # The sequence from the dev server: a stale broken state, a rollback to it,
+      # a clean turn, then the same breakage edited in again.
+      File.write!(in_root("recover.txt"), "stale-crash")
+      stale_turn = "stale-#{System.unique_integer([:positive])}"
+      :ok = Checkpoint.ensure(stale_turn)
+      stale = Checkpoint.for_turn(stale_turn)
+
+      File.write!(in_root("recover.txt"), "crash")
+      assert rollback_request(stale).status == 200
+      assert File.read!(in_root("recover.txt")) == "stale-crash"
+
+      File.write!(in_root("recover.txt"), "clean")
+      clean_turn = "clean-#{System.unique_integer([:positive])}"
+      :ok = Checkpoint.ensure(clean_turn)
+      clean = Checkpoint.for_turn(clean_turn)
+
+      File.write!(in_root("recover.txt"), "crash")
+
+      body = request(:get, "/recover").resp_body
+      assert body =~ ~r/before agent turn #{clean_turn}\s*<strong>\(recommended\)/
+      refute body =~ ~r/before agent turn #{stale_turn}\s*<strong>\(recommended\)/
+
+      assert rollback_request(clean).status == 200
+      assert File.read!(in_root("recover.txt")) == "clean"
+    end
+
+    test "RECOVER-3: after rolling back, the recommendation moves further back" do
+      File.write!(in_root("recover.txt"), "older")
+      older_turn = "older-#{System.unique_integer([:positive])}"
+      :ok = Checkpoint.ensure(older_turn)
+
+      File.write!(in_root("recover.txt"), "good")
+      good_turn = "good-#{System.unique_integer([:positive])}"
+      :ok = Checkpoint.ensure(good_turn)
+      good = Checkpoint.for_turn(good_turn)
+
+      File.write!(in_root("recover.txt"), "crash")
+      :ok = Checkpoint.ensure("after-#{System.unique_integer([:positive])}")
+
+      assert rollback_request(good).status == 200
+      body = request(:get, "/recover").resp_body
+
+      assert body =~ ~r/before agent turn #{older_turn}\s*<strong>\(recommended\)/
     end
 
     test "RECOVER-3: a turn checkpoint taken after the damage isn't recommended" do

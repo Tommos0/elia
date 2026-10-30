@@ -32,13 +32,17 @@ state.
 - **CKPT-9** Each entry from `list/1` also has the `tree` of the snapshot, and
   `current_tree/0` returns the tree of the workspace as it is now.
   `recommended(checkpoints, current_tree)` picks the best rollback target from
-  the newest-first list: the newest checkpoint labelled
-  `before agent turn …` whose tree differs from `current_tree`, looking only
-  at checkpoints older than the newest one whose tree equals `current_tree`
-  (at all of them if none does). It returns `nil` if there is none. So a
-  rollback to it always changes something, and never goes forward to a state
-  that was just left (e.g. a turn checkpoint taken by a read-only shell
-  command after the damage was done).
+  the newest-first list: the newest checkpoint labelled `before agent turn …`
+  whose tree differs from `current_tree`. It returns `nil` if there is none,
+  so a rollback to it always changes something.
+
+  If the workspace is exactly the result of the most recent rollback (the
+  newest `before rollback to <sha>` snapshot names a checkpoint in the list
+  whose tree equals `current_tree`), only checkpoints older than that target
+  are considered, so the recommendation moves further back and never forward
+  to a state that was just left, such as a turn checkpoint taken by a
+  read-only shell command after the damage was done. A state that merely
+  recurs through editing doesn't count: then all checkpoints are considered.
 
 ## Implementation
 

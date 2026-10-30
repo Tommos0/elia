@@ -71,22 +71,41 @@ defmodule Elia.Checkpoint do
   def current_tree, do: GenServer.call(__MODULE__, :current_tree, :infinity)
 
   @turn_label "before agent turn"
+  @rollback_label "before rollback to "
 
   @doc """
   The best rollback target in `checkpoints` (newest first, as from `list/1`):
   the newest `before agent turn` checkpoint whose tree differs from
-  `current_tree`, among those older than the newest checkpoint whose tree
-  equals it. `nil` if there is none (CKPT-9).
+  `current_tree`. When the workspace is exactly the result of the most recent
+  rollback, only checkpoints older than that rollback's target are considered.
+  `nil` if there is none (CKPT-9).
   """
   @spec recommended([map()], binary()) :: map() | nil
   def recommended(checkpoints, current_tree) do
-    older =
-      case Enum.find_index(checkpoints, &(&1.tree == current_tree)) do
+    candidates =
+      case rolled_back_to(checkpoints, current_tree) do
         nil -> checkpoints
         index -> Enum.drop(checkpoints, index + 1)
       end
 
-    Enum.find(older, &(String.starts_with?(&1.label, @turn_label) and &1.tree != current_tree))
+    Enum.find(
+      candidates,
+      &(String.starts_with?(&1.label, @turn_label) and &1.tree != current_tree)
+    )
+  end
+
+  # Index of the checkpoint the latest rollback went to, if the workspace is
+  # still exactly that checkpoint.
+  defp rolled_back_to(checkpoints, current_tree) do
+    with %{label: @rollback_label <> prefix} <-
+           Enum.find(checkpoints, &String.starts_with?(&1.label, @rollback_label)),
+         index when is_integer(index) <-
+           Enum.find_index(checkpoints, &String.starts_with?(&1.sha, prefix)),
+         true <- Enum.at(checkpoints, index).tree == current_tree do
+      index
+    else
+      _ -> nil
+    end
   end
 
   ## Server
