@@ -164,6 +164,17 @@ defmodule Elia.LLM.AnthropicTest do
            }
   end
 
+  # LLM-29
+  test "the shipped config asks for summarized thinking" do
+    shipped = Config.Reader.read!("config/config.exs", env: :test)[:elia][Anthropic]
+    assert shipped[:thinking_display] == "summarized"
+
+    body =
+      Anthropic.build_body(%{messages: [Message.user("hi")]}, thinking_display: "summarized")
+
+    assert body["thinking"]["display"] == "summarized"
+  end
+
   test "drops reasoning from other providers and merges consecutive user turns" do
     history = [
       Message.user("one"),

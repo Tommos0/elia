@@ -61,7 +61,8 @@ config :elia, Elia.LLM, provider: Elia.LLM.Anthropic
 
 config :elia, Elia.LLM.Anthropic,
   model: "claude-opus-5-5",
-  effort: "high"
+  effort: "high",
+  thinking_display: "summarized"
 
 config :elia, Elia.Skills, builtin: [Elia.Skills.Shell, Elia.Skills.Files, Elia.Skills.Harness]
 

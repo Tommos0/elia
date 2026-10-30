@@ -59,6 +59,12 @@ access to many other models.
   the `thinking-binding-controls-2026-08-01` beta header, so the API drops
   stale thinking blocks instead of failing with a 400 `Invalid signature`.
 
+- **LLM-29** The shipped config sets `thinking_display: "summarized"`, so
+  every thinking block carries a summary of the reasoning that the chat UI can
+  show (UI-29). The code default stays `"updates"` (sparse progress notes, most
+  blocks empty). `"summarized"` sends no `thinking-display-updates` beta
+  header, and `"omitted"` returns no thinking text at all.
+
 ### Registry
 
 - **LLM-15** `Elia.LLM.providers/0` lists the registered providers as
