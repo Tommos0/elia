@@ -291,4 +291,12 @@ defmodule Elia.AgentTest do
     {:ok, _} = Elia.LLM.select("openrouter", "vendor/second")
     assert %{model: "vendor/first"} = Agent.snapshot(id).selection
   end
+
+  # SESS-15
+  test "a session with state from before :selection existed is upgraded", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :selection))
+
+    assert %{selection: nil, messages: []} = Agent.snapshot(id)
+  end
 end

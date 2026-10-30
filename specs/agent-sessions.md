@@ -45,6 +45,10 @@ progress so any number of UIs can follow it.
   `select_model/4` sets it, saves it with the history once the chat has
   messages (a chat with no messages is not written to disk), and broadcasts
   `{:model, selection}`. It is allowed mid-turn (MODEL-3).
+- **SESS-15** A session process whose state predates a struct field (e.g. one
+  that outlived a hot reload) is upgraded on its next call: missing fields get
+  their defaults and the saved model selection is loaded (SESS-14), so
+  snapshots and turns don't crash.
 
 ## Out of scope
 

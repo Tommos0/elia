@@ -55,6 +55,14 @@ defmodule Elia.Agent.Session do
   end
 
   @impl true
+  # SESS-15: upgrade state from before `:selection` existed (a session that
+  # outlived a hot reload).
+  def handle_call(msg, from, state) when not is_map_key(state, :selection) do
+    upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state) |> Map.delete(:__struct__))
+    selection = if upgraded.persist, do: Elia.Store.load_model(upgraded.id)
+    handle_call(msg, from, %{upgraded | selection: selection})
+  end
+
   def handle_call(:snapshot, _from, state) do
     {:reply, Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection]),
      state}
