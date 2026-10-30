@@ -99,4 +99,18 @@ defmodule Elia.ExplorerTest do
     assert {:error, :directory} = Explorer.read(@dir)
     assert {:error, :not_a_directory} = Explorer.list("#{@dir}/b.txt")
   end
+
+  # EXPL-11
+  test "maps file names to highlight.js languages" do
+    assert Explorer.language("lib/elia/agent.ex") == "elixir"
+    assert Explorer.language("mix.lock") == "elixir"
+    assert Explorer.language("lib/x.HEEX") == "xml"
+    assert Explorer.language("assets/js/app.js") == "javascript"
+    assert Explorer.language("Makefile") == "makefile"
+    assert Explorer.language("a/b/Dockerfile") == "dockerfile"
+    assert Explorer.language("config/config.toml") == "ini"
+    assert Explorer.language("notes.txt") == nil
+    assert Explorer.language("LICENSE") == nil
+    assert Explorer.language(".gitignore") == nil
+  end
 end

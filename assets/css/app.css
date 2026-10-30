@@ -176,3 +176,69 @@
 }
 .markdown th { background: var(--color-base-200); font-weight: 600; }
 .markdown img { max-width: 100%; border-radius: 0.5rem; }
+
+/* Syntax highlighting for the file explorer (EXPL-14). highlight.js only adds
+   `hljs-*` classes; the colours come from the daisyUI theme so they follow the
+   light/dark toggle. */
+.hljs-comment,
+.hljs-quote {
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-name,
+.hljs-meta .hljs-keyword {
+  color: var(--color-primary);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: var(--color-success);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link {
+  color: var(--color-warning);
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-attr,
+.hljs-attribute,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--color-info);
+}
+
+.hljs-built_in,
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-params {
+  color: var(--color-accent);
+}
+
+.hljs-meta {
+  color: var(--color-secondary);
+}
+
+.hljs-deletion {
+  color: var(--color-error);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

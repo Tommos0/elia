@@ -69,6 +69,65 @@ defmodule Elia.Explorer do
     end
   end
 
+  @extensions %{
+    ".ex" => "elixir",
+    ".exs" => "elixir",
+    ".heex" => "xml",
+    ".eex" => "xml",
+    ".leex" => "xml",
+    ".html" => "xml",
+    ".htm" => "xml",
+    ".xml" => "xml",
+    ".svg" => "xml",
+    ".erl" => "erlang",
+    ".hrl" => "erlang",
+    ".js" => "javascript",
+    ".mjs" => "javascript",
+    ".cjs" => "javascript",
+    ".ts" => "typescript",
+    ".css" => "css",
+    ".json" => "json",
+    ".md" => "markdown",
+    ".markdown" => "markdown",
+    ".sh" => "bash",
+    ".bash" => "bash",
+    ".yml" => "yaml",
+    ".yaml" => "yaml",
+    ".toml" => "ini",
+    ".ini" => "ini",
+    ".cfg" => "ini",
+    ".py" => "python",
+    ".rb" => "ruby",
+    ".rs" => "rust",
+    ".go" => "go",
+    ".c" => "c",
+    ".h" => "c",
+    ".cpp" => "cpp",
+    ".cc" => "cpp",
+    ".hpp" => "cpp",
+    ".sql" => "sql",
+    ".diff" => "diff",
+    ".patch" => "diff",
+    ".mk" => "makefile"
+  }
+
+  @basenames %{
+    "makefile" => "makefile",
+    "dockerfile" => "dockerfile",
+    "mix.lock" => "elixir",
+    ".formatter.exs" => "elixir"
+  }
+
+  @doc """
+  The highlight.js language for a file path, from its base name or extension
+  (EXPL-11), or `nil` when unknown.
+  """
+  @spec language(String.t()) :: String.t() | nil
+  def language(path) do
+    base = path |> Path.basename() |> String.downcase()
+    Map.get(@basenames, base) || Map.get(@extensions, Path.extname(base))
+  end
+
   @doc """
   Expands `rel` against the workspace root and checks it may be browsed.
   Returns the absolute path.

@@ -7,6 +7,8 @@ defmodule EliaWeb.FilesLive do
 
   alias Elia.{Explorer, SystemStats, Workspace}
 
+  @highlight_max 128 * 1024
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, assign(socket, page_title: "Files")}
@@ -94,6 +96,12 @@ defmodule EliaWeb.FilesLive do
     if List.last(parts) == "", do: Enum.drop(parts, -1), else: parts
   end
 
+  # EXPL-12: only small, complete files are highlighted.
+  defp language(%{truncated?: false, size: size, path: path}) when size <= @highlight_max,
+    do: Explorer.language(path)
+
+  defp language(_viewer), do: nil
+
   defp gutter(0), do: ""
   defp gutter(count), do: Enum.map_join(1..count, "\n", &Integer.to_string/1)
 
@@ -108,10 +116,15 @@ defmodule EliaWeb.FilesLive do
       case assigns.viewer do
         %{content: content} ->
           count = content |> lines() |> length()
-          assign(assigns, line_count: count, gutter: gutter(count))
+
+          assign(assigns,
+            line_count: count,
+            gutter: gutter(count),
+            language: language(assigns.viewer)
+          )
 
         _ ->
-          assign(assigns, line_count: 0, gutter: "")
+          assign(assigns, line_count: 0, gutter: "", language: nil)
       end
 
     ~H"""
@@ -210,12 +223,20 @@ defmodule EliaWeb.FilesLive do
               </p>
               <div class="min-h-0 flex-1 overflow-auto font-mono text-[13px] leading-5">
                 <div class="flex min-w-max py-3">
-                  <pre
+                  <%!-- Plain divs: whitespace must be kept exactly, and <pre> drops a leading newline. --%>
+                  <div
                     id="file-gutter"
+                    phx-no-format
                     aria-hidden="true"
-                    class="sticky left-0 select-none bg-base-100 px-3 text-right text-base-content/35"
-                  >{@gutter}</pre>
-                  <pre id="file-content" class="pr-6 pl-3">{"\n" <> @viewer.content}</pre>
+                    class="sticky left-0 select-none whitespace-pre bg-base-100 px-3 text-right text-base-content/35"
+                  >{@gutter}</div>
+                  <div
+                    id="file-content"
+                    phx-no-format
+                    phx-hook="Highlight"
+                    data-language={@language}
+                    class="whitespace-pre pr-6 pl-3"
+                  >{@viewer.content}</div>
                 </div>
               </div>
             <% true -> %>

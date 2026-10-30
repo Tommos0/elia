@@ -102,4 +102,35 @@ defmodule EliaWeb.FilesLiveTest do
       refute has_element?(view, "#parent-dir"), path
     end
   end
+
+  # EXPL-12, EXPL-13
+  test "names the language for the highlight hook", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/hello.ex"}")
+    assert has_element?(view, "#file-content[phx-hook=Highlight][data-language=elixir]")
+    # The server still sends the plain text.
+    refute render(element(view, "#file-content")) =~ "<span"
+    assert has_element?(view, "#file-content", "defmodule Hello do")
+  end
+
+  # EXPL-12
+  test "unknown file types are not highlighted", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/inner/deep.txt"}")
+    assert has_element?(view, "#file-content")
+    refute has_element?(view, "#file-content[data-language]")
+  end
+
+  # EXPL-12
+  test "large and truncated files are not highlighted", %{conn: conn} do
+    # Over 128 KiB but under the 256 KiB read limit.
+    File.write!(in_root("#{@dir}/large.ex"), String.duplicate("x = 1\n", 30_000))
+    File.write!(in_root("#{@dir}/huge.ex"), String.duplicate("x = 1\n", 60_000))
+
+    {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/large.ex"}")
+    refute has_element?(view, "#file-truncated")
+    refute has_element?(view, "#file-content[data-language]")
+
+    {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/huge.ex"}")
+    assert has_element?(view, "#file-truncated")
+    refute has_element?(view, "#file-content[data-language]")
+  end
 end
