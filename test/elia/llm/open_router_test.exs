@@ -268,4 +268,71 @@ defmodule Elia.LLM.OpenRouterTest do
 
     assert %{type: :tool_call, input: %{}, invalid_input: "{bad"} = call
   end
+
+  defp stub_credits(credits_response, key_response \\ nil) do
+    Req.Test.stub(OpenRouter, fn conn ->
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer or-key"]
+
+      case {conn.request_path, credits_response, key_response} do
+        {"/api/v1/credits", {status, body}, _} ->
+          conn |> Plug.Conn.put_status(status) |> Req.Test.json(body)
+
+        {"/api/v1/key", _, {status, body}} ->
+          conn |> Plug.Conn.put_status(status) |> Req.Test.json(body)
+      end
+    end)
+  end
+
+  # LLM-25, LLM-26
+  test "balance reads the account credits" do
+    stub_credits({200, %{"data" => %{"total_credits" => 10, "total_usage" => 2.5}}})
+
+    assert {:ok, %{scope: :account, total: 10.0, used: 2.5, remaining: 7.5}} =
+             OpenRouter.balance("or-key")
+
+    assert {:ok, %{scope: :account, remaining: 7.5}} = Elia.LLM.balance("openrouter")
+  end
+
+  # LLM-26
+  test "balance falls back to the key's usage and limit without a management key" do
+    stub_credits(
+      {403, %{"error" => %{"message" => "management key required"}}},
+      {200, %{"data" => %{"usage" => 1.25, "limit" => 5, "limit_remaining" => 3.75}}}
+    )
+
+    assert {:ok, %{scope: :key, used: 1.25, total: 5.0, remaining: 3.75}} =
+             OpenRouter.balance("or-key")
+
+    stub_credits(
+      {401, %{}},
+      {200, %{"data" => %{"usage" => 1, "limit" => nil, "limit_remaining" => nil}}}
+    )
+
+    assert {:ok, %{scope: :key, used: 1.0, total: nil, remaining: nil}} =
+             OpenRouter.balance("or-key")
+  end
+
+  # LLM-26
+  test "balance reports other failures" do
+    stub_credits({500, %{"error" => %{"message" => "boom"}}})
+    assert {:error, "OpenRouter API error 500: boom"} = OpenRouter.balance("or-key")
+
+    stub_credits({403, %{}}, {401, %{"error" => %{"message" => "Invalid key"}}})
+    assert {:error, "OpenRouter API error 401: Invalid key"} = OpenRouter.balance("or-key")
+  end
+
+  # LLM-25
+  test "Elia.LLM.balance/1 handles missing keys and unsupported providers" do
+    configure(OpenRouter)
+    assert {:error, "No API key"} = Elia.LLM.balance("openrouter")
+    assert Elia.LLM.balance("anthropic") == :unsupported
+    assert Elia.LLM.balance("nope") == :unsupported
+    assert Elia.LLM.balance_supported?("openrouter")
+    refute Elia.LLM.balance_supported?("anthropic")
+  end
+
+  # LLM-27
+  test "every provider has a billing URL" do
+    assert Enum.all?(Elia.LLM.providers(), &String.starts_with?(&1.billing_url, "https://"))
+  end
 end

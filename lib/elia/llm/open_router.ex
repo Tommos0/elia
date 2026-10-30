@@ -59,6 +59,46 @@ defmodule Elia.LLM.OpenRouter do
     end
   end
 
+  # `/credits` is the account balance but needs a management key; an ordinary
+  # key falls back to its own usage and limit from `/key`.
+  @impl true
+  def balance(api_key) do
+    case Req.get(request_options("/credits", api_key)) do
+      {:ok, %Req.Response{status: 200, body: %{"data" => %{"total_credits" => total} = data}}}
+      when is_number(total) ->
+        used = data["total_usage"] || 0
+        {:ok, %{scope: :account, used: used / 1, total: total / 1, remaining: (total - used) / 1}}
+
+      {:ok, %Req.Response{status: status}} when status in [401, 403] ->
+        key_balance(api_key)
+
+      {:ok, resp} ->
+        {:error, "OpenRouter API error #{resp.status}: #{body_error(resp.body)}"}
+
+      {:error, exception} ->
+        {:error, "OpenRouter request failed: #{Exception.message(exception)}"}
+    end
+  end
+
+  defp key_balance(api_key) do
+    case Req.get(request_options("/key", api_key)) do
+      {:ok, %Req.Response{status: 200, body: %{"data" => data}}} when is_map(data) ->
+        {:ok,
+         %{
+           scope: :key,
+           used: (data["usage"] || 0) / 1,
+           total: if(is_number(data["limit"]), do: data["limit"] / 1),
+           remaining: if(is_number(data["limit_remaining"]), do: data["limit_remaining"] / 1)
+         }}
+
+      {:ok, resp} ->
+        {:error, "OpenRouter API error #{resp.status}: #{body_error(resp.body)}"}
+
+      {:error, exception} ->
+        {:error, "OpenRouter request failed: #{Exception.message(exception)}"}
+    end
+  end
+
   # The catalog is public; only models that can call tools can run Elia's loop.
   @impl true
   def list_models(_api_key) do

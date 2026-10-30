@@ -13,9 +13,21 @@ defmodule Elia.LLM do
   alias Elia.Settings
 
   @providers [
-    %{key: "anthropic", name: "Anthropic", module: Elia.LLM.Anthropic},
-    %{key: "openrouter", name: "OpenRouter", module: Elia.LLM.OpenRouter}
+    %{
+      key: "anthropic",
+      name: "Anthropic",
+      module: Elia.LLM.Anthropic,
+      billing_url: "https://console.anthropic.com/settings/billing"
+    },
+    %{
+      key: "openrouter",
+      name: "OpenRouter",
+      module: Elia.LLM.OpenRouter,
+      billing_url: "https://openrouter.ai/settings/credits"
+    }
   ]
+
+  @selection_topic "llm:selection"
 
   @selection_topic "llm:selection"
 
@@ -73,6 +85,33 @@ defmodule Elia.LLM do
 
   def delete_key(key) do
     with :ok <- Settings.delete({:api_key, key}), do: Catalog.clear(key)
+  end
+
+  ## Credits
+
+  @doc "Whether the provider can report a credit balance."
+  @spec balance_supported?(binary()) :: boolean()
+  def balance_supported?(key) do
+    case provider_info(key) do
+      %{module: module} -> Code.ensure_loaded?(module) and function_exported?(module, :balance, 1)
+      nil -> false
+    end
+  end
+
+  @doc "The credit balance for a provider's active key."
+  @spec balance(binary()) ::
+          {:ok, Elia.LLM.Provider.balance()} | {:error, binary()} | :unsupported
+  def balance(key) do
+    cond do
+      not balance_supported?(key) ->
+        :unsupported
+
+      api_key = api_key(key) ->
+        provider_info(key).module.balance(elem(api_key, 1))
+
+      true ->
+        {:error, "No API key"}
+    end
   end
 
   ## Model selection

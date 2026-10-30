@@ -16,12 +16,31 @@ defmodule EliaWeb.SettingsLive do
         # key => {:ok | :error, message}
         results: %{},
         # key => :check | :save | :check_current while a request is in flight
-        pending: %{}
+        pending: %{},
+        # key => :loading | {:ok, balance} | {:error, message}
+        balances: %{}
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
       |> refresh_keys()
 
-    {:ok, socket}
+    {:ok, if(connected?(socket), do: load_balances(socket), else: socket)}
+  end
+
+  defp load_balances(socket) do
+    Enum.reduce(socket.assigns.providers, socket, &load_balance(&2, &1.key))
+  end
+
+  # Starts a background balance lookup when the provider has a key and
+  # reports credits, unless one is already running.
+  defp load_balance(socket, key) do
+    if socket.assigns.keys[key] && LLM.balance_supported?(key) &&
+         socket.assigns.balances[key] != :loading do
+      socket
+      |> assign(balances: Map.put(socket.assigns.balances, key, :loading))
+      |> start_async({:balance, key}, fn -> LLM.balance(key) end)
+    else
+      socket
+    end
   end
 
   defp empty_form(key), do: to_form(%{"api_key" => ""}, as: key)
@@ -122,9 +141,45 @@ defmodule EliaWeb.SettingsLive do
                 <span class="break-words">{elem(result, 1)}</span>
               </div>
 
+              <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-4">
+                <div class="flex items-center gap-2 text-xs text-base-content/70">
+                  <.icon name="hero-banknotes" class="size-4 shrink-0" />
+                  <.balance_line
+                    :if={@keys[info.key]}
+                    provider={info.key}
+                    supported={LLM.balance_supported?(info.key)}
+                    balance={@balances[info.key]}
+                  />
+                  <span :if={!@keys[info.key]} id={"balance-#{info.key}"}>
+                    Add a key to see credits.
+                  </span>
+                  <button
+                    :if={@keys[info.key] && LLM.balance_supported?(info.key)}
+                    type="button"
+                    id={"refresh-balance-#{info.key}"}
+                    phx-click="refresh_balance"
+                    phx-value-provider={info.key}
+                    disabled={@balances[info.key] == :loading}
+                    class="rounded-md p-1 transition hover:bg-base-200 disabled:opacity-50"
+                    aria-label="Refresh balance"
+                  >
+                    <.icon name="hero-arrow-path" class="size-3.5" />
+                  </button>
+                </div>
+                <a
+                  id={"topup-#{info.key}"}
+                  href={info.billing_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10"
+                >
+                  <.icon name="hero-plus-circle" class="size-4" /> Add credits
+                </a>
+              </div>
+
               <div
                 :if={@keys[info.key]}
-                class="mt-4 flex items-center justify-end gap-2 border-t border-base-300 pt-4"
+                class="mt-2 flex items-center justify-end gap-2"
               >
                 <button
                   type="button"
@@ -195,6 +250,43 @@ defmodule EliaWeb.SettingsLive do
     """
   end
 
+  attr :provider, :string, required: true
+  attr :supported, :boolean, required: true
+  attr :balance, :any, default: nil
+
+  defp balance_line(assigns) do
+    ~H"""
+    <span id={"balance-#{@provider}"}>
+      <%= cond do %>
+        <% !@supported -> %>
+          Balance isn't available through the API; see the billing page.
+        <% @balance in [nil, :loading] -> %>
+          Loading…
+        <% match?({:error, _}, @balance) -> %>
+          <span class="text-error">Couldn't load credits: {elem(@balance, 1)}</span>
+        <% true -> %>
+          {format_balance(elem(@balance, 1))}
+      <% end %>
+    </span>
+    """
+  end
+
+  @doc false
+  def format_balance(%{scope: :account} = balance) do
+    "#{usd(balance.remaining)} remaining (#{usd(balance.used)} used of #{usd(balance.total)})"
+  end
+
+  def format_balance(%{scope: :key} = balance) do
+    limit =
+      if balance.total && balance.remaining,
+        do: " · #{usd(balance.remaining)} left of #{usd(balance.total)} key limit",
+        else: ""
+
+    "#{usd(balance.used)} used" <> limit
+  end
+
+  defp usd(amount), do: "$" <> :erlang.float_to_binary(amount / 1, decimals: 2)
+
   defp spinner(assigns) do
     ~H"""
     <.icon name="hero-arrow-path" class="size-4 motion-safe:animate-spin" />
@@ -240,6 +332,10 @@ defmodule EliaWeb.SettingsLive do
     end
   end
 
+  def handle_event("refresh_balance", %{"provider" => key}, socket) do
+    {:noreply, load_balance(socket, key)}
+  end
+
   def handle_event("remove", %{"provider" => key}, socket) do
     socket =
       case LLM.delete_key(key) do
@@ -250,7 +346,11 @@ defmodule EliaWeb.SettingsLive do
           put_result(socket, key, {:error, "Could not remove: #{inspect(reason)}"})
       end
 
-    {:noreply, refresh_keys(socket)}
+    {:noreply,
+     socket
+     |> refresh_keys()
+     |> assign(balances: Map.delete(socket.assigns.balances, key))
+     |> load_balance(key)}
   end
 
   defp run(socket, key, action, fun) do
@@ -265,6 +365,18 @@ defmodule EliaWeb.SettingsLive do
   end
 
   @impl true
+  def handle_async({:balance, key}, result, socket) do
+    balance =
+      case result do
+        {:ok, {:ok, balance}} -> {:ok, balance}
+        {:ok, {:error, message}} -> {:error, message}
+        {:ok, :unsupported} -> {:error, "Not supported"}
+        {:exit, reason} -> {:error, Exception.format_exit(reason)}
+      end
+
+    {:noreply, assign(socket, balances: Map.put(socket.assigns.balances, key, balance))}
+  end
+
   def handle_async({:key, key, action}, result, socket) do
     socket = assign(socket, pending: Map.delete(socket.assigns.pending, key))
 
@@ -285,7 +397,17 @@ defmodule EliaWeb.SettingsLive do
           put_result(socket, key, {:error, "Check failed: #{Exception.format_exit(reason)}"})
       end
 
-    {:noreply, refresh_keys(socket)}
+    socket = refresh_keys(socket)
+
+    socket =
+      if action == :save and match?({:ok, :ok}, result),
+        do:
+          socket
+          |> assign(balances: Map.delete(socket.assigns.balances, key))
+          |> load_balance(key),
+        else: socket
+
+    {:noreply, socket}
   end
 
   defp put_result(socket, key, result) do

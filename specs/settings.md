@@ -51,6 +51,22 @@ remove a key for each provider.
 - **CONF-12** The page shows where the settings database lives.
 - **CONF-13** The header links to `/settings` (`#settings-link`).
 
+### Credits
+
+- **CONF-14** A card with an active key (CONF-5) shows a credit line
+  (`#balance-<key>`). For a provider with `balance/1` (LLM-25) it is loaded
+  in the background when the page connects, and again after a key is saved or
+  removed, and shows "Loading…", then the remaining and used amounts in USD,
+  or the error message. An `:account` balance reads "$R remaining ($U used of
+  $T)"; a `:key` balance reads "$U used" plus " · $R left of $L key limit"
+  when the key has a limit. For a provider without `balance/1` it says the
+  balance isn't available through the API and to see the billing page.
+- **CONF-15** Every card has an "Add credits" link (`#topup-<key>`) to the
+  provider's `billing_url` (LLM-27) that opens in a new tab with
+  `rel="noopener noreferrer"`. It shows whether or not a key is set.
+- **CONF-16** A "Refresh" button (`#refresh-balance-<key>`) next to the credit
+  line of a provider with `balance/1` reloads the balance.
+
 ## Configuration
 
 ```elixir
@@ -67,7 +83,7 @@ Tests use a scratch file under the system temp directory.
 ## Implementation
 
 `Elia.Settings`, `Elia.LLM` (`api_key/1`, `check_key/2`, `save_key/2`,
-`delete_key/1`), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
+`delete_key/1`, `balance/1`), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
 
 ## Tests
 

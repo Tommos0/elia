@@ -55,10 +55,10 @@ access to many other models.
 ### Registry
 
 - **LLM-15** `Elia.LLM.providers/0` lists the registered providers as
-  `%{key, name, module}`: `"anthropic"` (`Elia.LLM.Anthropic`) and
+  `%{key, name, module, billing_url}`: `"anthropic"` (`Elia.LLM.Anthropic`) and
   `"openrouter"` (`Elia.LLM.OpenRouter`).
-- **LLM-16** Providers may implement `check_key/1` (CONF-6) and
-  `list_models/1` (MODEL-5, MODEL-6).
+- **LLM-16** Providers may implement `check_key/1` (CONF-6),
+  `list_models/1` (MODEL-5, MODEL-6) and `balance/1` (LLM-25).
 
 ### OpenRouter
 
@@ -89,6 +89,26 @@ access to many other models.
   LLM-10. Other errors return the API's error message.
 - **LLM-24** Tool arguments that fail to parse become empty input, with the
   raw text kept in `invalid_input` (as LLM-11).
+
+### Credits
+
+- **LLM-25** Providers may implement `balance/1`, which makes one
+  authenticated request and returns `{:ok, balance}` or `{:error, message}`.
+  A balance is `%{scope: :account | :key, used: float, total: float | nil,
+  remaining: float | nil}` in USD. `Elia.LLM.balance/1` returns the balance
+  for the provider's active key (CONF-5), `{:error, "No API key"}` without
+  one, and `:unsupported` for a provider without `balance/1`.
+- **LLM-26** OpenRouter's `balance/1` calls `GET /api/v1/credits`
+  (`total_credits`, `total_usage`) for an `:account` balance, with
+  `remaining = total - used`. If that is refused with 401 or 403 (the
+  endpoint needs a management key) it falls back to `GET /api/v1/key` and
+  returns a `:key` balance from `usage`, `limit` and `limit_remaining`
+  (`total` and `remaining` are `nil` for a key without a limit). Other
+  failures return `{:error, message}` like LLM-23.
+- **LLM-27** Anthropic has no balance endpoint, so it doesn't implement
+  `balance/1`. Each registry entry (LLM-15) has a `billing_url`, the web page
+  where credits are added: `https://console.anthropic.com/settings/billing`
+  and `https://openrouter.ai/settings/credits`.
 
 ## Configuration
 

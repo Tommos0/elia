@@ -25,6 +25,16 @@ defmodule EliaWeb.SettingsLiveTest do
     :ok
   end
 
+  # Valid key, with a credits endpoint that reports $7.50 of $10 left.
+  defp stub_balance(credits) do
+    Req.Test.stub(OpenRouter, fn conn ->
+      case conn.request_path do
+        "/api/v1/credits" -> credits.(conn)
+        _ -> Req.Test.json(conn, %{"data" => %{}})
+      end
+    end)
+  end
+
   defp submit(view, key, api_key, action) do
     view
     |> form("#key-form-#{key}", %{key => %{"api_key" => api_key}})
@@ -85,5 +95,89 @@ defmodule EliaWeb.SettingsLiveTest do
     assert LLM.api_key("openrouter") == nil
     assert has_element?(view, "#key-status-openrouter", "Not set")
     refute has_element?(view, "#remove-openrouter")
+  end
+
+  # CONF-15
+  test "every card links to the provider's billing page", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    for info <- LLM.providers() do
+      assert has_element?(view, ~s|a#topup-#{info.key}[href="#{info.billing_url}"]|)
+      assert has_element?(view, ~s|a#topup-#{info.key}[target="_blank"][rel~="noopener"]|)
+    end
+
+    refute has_element?(view, "#refresh-balance-openrouter")
+    assert has_element?(view, "#balance-openrouter", "Add a key")
+  end
+
+  # CONF-14, CONF-16
+  test "shows the OpenRouter account balance and can refresh it", %{conn: conn} do
+    configure(OpenRouter, api_key: "sk-or-env-1234")
+    {:ok, agent} = Agent.start_link(fn -> 2.5 end)
+
+    stub_balance(fn conn ->
+      used = Agent.get(agent, & &1)
+      Req.Test.json(conn, %{"data" => %{"total_credits" => 10, "total_usage" => used}})
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    render_async(view)
+    assert has_element?(view, "#balance-openrouter", "$7.50 remaining ($2.50 used of $10.00)")
+
+    Agent.update(agent, fn _ -> 4 end)
+    view |> element("#refresh-balance-openrouter") |> render_click()
+    render_async(view)
+    assert has_element?(view, "#balance-openrouter", "$6.00 remaining")
+  end
+
+  # CONF-14
+  test "shows a key's usage and limit, and errors", %{conn: conn} do
+    configure(OpenRouter, api_key: "sk-or-env-1234")
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      case conn.request_path do
+        "/api/v1/credits" ->
+          conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
+
+        "/api/v1/key" ->
+          Req.Test.json(conn, %{
+            "data" => %{"usage" => 1.5, "limit" => 5, "limit_remaining" => 3.5}
+          })
+      end
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    render_async(view)
+    assert has_element?(view, "#balance-openrouter", "$1.50 used · $3.50 left of $5.00 key limit")
+
+    stub_balance(fn conn ->
+      conn |> Plug.Conn.put_status(500) |> Req.Test.json(%{"error" => %{"message" => "boom"}})
+    end)
+
+    view |> element("#refresh-balance-openrouter") |> render_click()
+    render_async(view)
+    assert has_element?(view, "#balance-openrouter", "Couldn't load credits")
+    assert has_element?(view, "#balance-openrouter", "boom")
+  end
+
+  # CONF-14
+  test "a provider without a balance API says so", %{conn: conn} do
+    configure(Anthropic, api_key: "sk-ant-env-wxyz")
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(view, "#balance-anthropic", "isn't available through the API")
+    refute has_element?(view, "#refresh-balance-anthropic")
+  end
+
+  # CONF-14
+  test "saving a key loads its balance", %{conn: conn} do
+    stub_balance(fn conn ->
+      Req.Test.json(conn, %{"data" => %{"total_credits" => 3, "total_usage" => 1}})
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    submit(view, "openrouter", "good-key-1234", "save")
+    render_async(view)
+    assert has_element?(view, "#balance-openrouter", "$2.00 remaining")
   end
 end

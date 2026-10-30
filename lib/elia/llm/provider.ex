@@ -56,5 +56,20 @@ defmodule Elia.LLM.Provider do
   @doc "Models available with `api_key` (which may be `nil`)."
   @callback list_models(api_key :: binary() | nil) :: {:ok, [model()]} | {:error, binary()}
 
-  @optional_callbacks default_model: 0, check_key: 1, list_models: 1
+  @typedoc """
+  Money spent and left, in USD. `scope` says whether it is the whole account
+  or just the API key's own limit; `total` and `remaining` are `nil` when
+  there is no limit.
+  """
+  @type balance :: %{
+          scope: :account | :key,
+          used: float(),
+          total: float() | nil,
+          remaining: float() | nil
+        }
+
+  @doc "The credit balance for `api_key`, when the provider exposes one."
+  @callback balance(api_key :: binary()) :: {:ok, balance()} | {:error, binary()}
+
+  @optional_callbacks default_model: 0, check_key: 1, list_models: 1, balance: 1
 end
