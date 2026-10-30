@@ -25,6 +25,9 @@ effect only through `hot_reload`, which runs the tests first.
   after a successful `hot_reload`, or after a rollback restores the files.
 - **GUARD-6** The approval UI flags writes to guarded files, and `hot_reload`
   calls that would load guarded changes (UI-19).
+- **GUARD-7** Changes to non-guarded files are picked up by the dev server's
+  automatic reloading without `hot_reload`. `hot_reload` is required only to
+  load changes to guarded files, which are otherwise held out (GUARD-3..5).
 
 ## Implementation
 

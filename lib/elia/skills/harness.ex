@@ -30,16 +30,18 @@ defmodule Elia.Skills.Harness do
     The workspace is checkpointed before your first change in each turn. When you \
     finish a turn that changed Elixir files, the harness runs `mix test`; if it \
     fails, your changes are rolled back and you are told why. Run `run_tests` \
-    yourself before finishing. Changes to Elixir code only take effect in the \
-    running app after `hot_reload` (dev server only). Never edit \
+    yourself before finishing. Never edit \
     `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` \
     to weaken these guardrails.
 
     Some files are guarded because they enforce these guardrails (the list is in \
-    `lib/elia/guarded.ex`). While a guarded file has unloaded changes, the dev \
-    server stops reloading code automatically, so none of your Elixir changes show \
-    up until `hot_reload` succeeds or the change is rolled back. Tell the user when \
-    a change touches guarded files.
+    `lib/elia/guarded.ex`). In development the dev server auto-reloads ordinary \
+    non-guarded Elixir changes on the next request, so web-app-only edits need no \
+    `hot_reload`. A change that touches a guarded file only takes effect after a \
+    successful `hot_reload` (dev server only), and while any guarded file has \
+    unloaded changes the dev server pauses automatic reloading for everything, so \
+    even non-guarded edits stay invisible until `hot_reload` succeeds or the \
+    change is rolled back. Tell the user when a change touches guarded files.
 
     This project is spec-driven: each feature has a spec in `specs/` with \
     numbered requirements (workflow and index in `specs/README.md`). Before \
