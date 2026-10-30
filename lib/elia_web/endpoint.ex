@@ -13,8 +13,9 @@ defmodule EliaWeb.Endpoint do
 
   # Sockets never reload code on connect: reloads go through the guarded
   # reloader on HTTP requests below (see Elia.Guarded).
-  # peer_data and user_agent feed the sessions page (EliaWeb.ClientTracker).
-  @connect_info [:peer_data, :user_agent, session: @session_options]
+  # peer_data and user_agent feed the sessions page (EliaWeb.ClientTracker);
+  # x_headers exposes X-Forwarded-For from reverse proxies like Cloudflare.
+  @connect_info [:peer_data, :x_headers, :user_agent, session: @session_options]
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: @connect_info, code_reloader: false],

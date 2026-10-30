@@ -25,7 +25,11 @@ defmodule EliaWeb.ClientTracker do
   def on_mount(:default, _params, _session, socket) do
     if connected?(socket) do
       meta = %{
-        ip: format_ip(get_connect_info(socket, :peer_data)),
+        ip:
+          client_ip(
+            get_connect_info(socket, :peer_data),
+            get_connect_info(socket, :x_headers)
+          ),
         user_agent: get_connect_info(socket, :user_agent) || "",
         connected_at: DateTime.utc_now(),
         path: nil
@@ -55,6 +59,22 @@ defmodule EliaWeb.ClientTracker do
     end
 
     {:cont, assign(socket, :client_path, path)}
+  end
+
+  # Best-effort real client IP. Behind a reverse proxy the socket peer is the
+  # proxy itself (e.g. 127.0.0.1 through a Cloudflare Zero Trust tunnel), so
+  # prefer the X-Forwarded-For header the proxy sets, which lists the client
+  # first. Falls back to the socket peer. (Phoenix only exposes "x-" prefixed
+  # headers to LiveView connect_info, so Cloudflare's CF-Connecting-IP can't
+  # be read here — cloudflared sets X-Forwarded-For anyway.)
+  defp client_ip(peer_data, x_headers) do
+    x_headers
+    |> Map.new()
+    |> Map.get("x-forwarded-for")
+    |> case do
+      nil -> format_ip(peer_data)
+      value -> value |> String.split(",") |> hd() |> String.trim()
+    end
   end
 
   defp format_ip(%{address: address}), do: address |> :inet.ntoa() |> to_string()

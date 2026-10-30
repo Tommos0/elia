@@ -42,6 +42,19 @@ defmodule EliaWeb.SessionsLiveTest do
     assert has_element?(view, "#client-sessions a[href='/c/#{id}']", "New chat")
   end
 
+  # CLIENT-10
+  test "takes the first address of X-Forwarded-For when it is a chain", %{conn: conn} do
+    proxied =
+      firefox_conn()
+      |> put_req_header("x-forwarded-for", "203.0.113.7, 10.0.0.1")
+
+    {:ok, _chat, _} = live(proxied, ~p"/c/#{Agent.new_id()}")
+
+    {:ok, view, _} = live(conn, ~p"/sessions")
+    assert has_element?(view, "#client-sessions li", "203.0.113.7")
+    refute has_element?(view, "#client-sessions li", "10.0.0.1")
+  end
+
   # CLIENT-3, CLIENT-7
   test "updates live as tabs connect and navigate", %{conn: conn} do
     {:ok, view, _} = live(conn, ~p"/sessions")

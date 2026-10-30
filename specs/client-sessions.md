@@ -20,7 +20,7 @@ sessions ([Agent sessions](agent-sessions.md)), which are conversations.
   render) aren't tracked.
 - **CLIENT-2** Each client session records:
   - a random id;
-  - the IP address of the socket peer, formatted as IPv4 or IPv6;
+  - the IP address of the client, formatted as IPv4 or IPv6;
   - the raw `User-Agent` header (empty if missing);
   - when it connected (UTC);
   - the path it's on.
@@ -29,6 +29,10 @@ sessions ([Agent sessions](agent-sessions.md)), which are conversations.
   session and starts a new one.
 - **CLIENT-4** Tracking works across nodes (Phoenix Presence over
   `Elia.PubSub`).
+- **CLIENT-10** The recorded IP is the real client IP even behind a reverse
+  proxy. If the request carries an `X-Forwarded-For` header (set by e.g. a
+  Cloudflare Zero Trust tunnel), the first (client) address in it is used;
+  otherwise the socket peer is used.
 
 ### Sessions page
 
@@ -57,9 +61,10 @@ sessions ([Agent sessions](agent-sessions.md)), which are conversations.
 - Grouping tabs by browser or cookie session.
 - Disconnecting or blocking a session.
 - Access control. Elia has no authentication, so anyone who can reach the
-  app can see this page and the IP addresses on it.
-- `X-Forwarded-For` and other proxy headers. Behind a reverse proxy, the IP
-  shown is the proxy's.
+  app can see this page and the IP addresses on it. Proxy headers are trusted
+  as-is (Elia doesn't run behind an untrusted proxy); a client that can
+  connect directly could spoof `X-Forwarded-For`, so the shown IP is
+  best-effort.
 
 ## Implementation
 
