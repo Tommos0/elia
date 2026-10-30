@@ -43,6 +43,49 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "var(--sidebar-width,16rem)"
   end
 
+  # UI-36: on small screens the chat list opens as a drawer from a toggle button.
+  test "chats toggle opens and closes the drawer", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#chats-toggle[aria-expanded='false']")
+    refute has_element?(view, "#chats-backdrop")
+    assert has_element?(view, "#sidebar.hidden")
+
+    view |> element("#chats-toggle") |> render_click()
+    assert has_element?(view, "#chats-toggle[aria-expanded='true']")
+    assert has_element?(view, "#chats-backdrop")
+    refute has_element?(view, "#sidebar.hidden")
+    assert has_element?(view, "#sidebar #new-chat")
+    assert has_element?(view, "#sidebar #chat-list")
+
+    view |> element("#chats-toggle") |> render_click()
+    refute has_element?(view, "#chats-backdrop")
+    assert has_element?(view, "#sidebar.hidden")
+  end
+
+  # UI-36: the backdrop and Escape close the drawer.
+  test "backdrop and Escape close the chats drawer", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    view |> element("#chats-toggle") |> render_click()
+    view |> element("#chats-backdrop") |> render_click()
+    refute has_element?(view, "#chats-backdrop")
+
+    view |> element("#chats-toggle") |> render_click()
+    assert has_element?(view, "#sidebar[phx-key='Escape'][phx-window-keydown]")
+    render_keydown(view, "close_chats", %{"key" => "Escape"})
+    refute has_element?(view, "#chats-backdrop")
+  end
+
+  # UI-36: the toggle and backdrop only exist for small screens.
+  test "chats toggle and backdrop are hidden on large screens", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "div.lg\\:hidden #chats-toggle")
+    view |> element("#chats-toggle") |> render_click()
+    assert has_element?(view, "#chats-backdrop.lg\\:hidden")
+  end
+
   # UI-33: hovering a sidebar chat shows its full description.
   test "sidebar chat links carry the full description as a tooltip", %{conn: conn} do
     id = Agent.new_id()

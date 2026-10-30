@@ -19,7 +19,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 - **UI-4** On large screens a sidebar lists the 30 most recently started
   chats (STORE-12), newest first, each linking to `/c/<id>`. The open chat is
-  highlighted.
+  highlighted. Small screens get the same list through a drawer (UI-36).
 - **UI-34** Each sidebar chat shows when it was started in human-readable
   relative form ("just now", "10 minutes ago", "3 hours ago", "2 days ago",
   then a date after a week), in a `<time>` element whose `datetime` is the

@@ -41,6 +41,7 @@ defmodule EliaWeb.ChatLive do
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
         chats: Elia.Store.list(30),
+        chats_open: false,
         now: DateTime.utc_now(),
         selection: LLM.selection(snapshot.selection),
         picker_open: false,
@@ -60,10 +61,26 @@ defmodule EliaWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="flex h-full">
+      <div class="relative flex h-full">
+        <%!-- UI-36: backdrop for the small-screen chat drawer --%>
+        <button
+          :if={@chats_open}
+          type="button"
+          id="chats-backdrop"
+          phx-click="toggle_chats"
+          aria-label="Close chats"
+          class="absolute inset-0 z-20 bg-black/40 lg:hidden"
+        ></button>
         <aside
           id="sidebar"
-          class="relative hidden w-[var(--sidebar-width,16rem)] shrink-0 flex-col border-r border-base-300 bg-base-200/30 lg:flex"
+          phx-window-keydown={@chats_open && "close_chats"}
+          phx-key="Escape"
+          class={[
+            "flex-col border-r border-base-300 lg:relative lg:z-auto lg:flex lg:w-[var(--sidebar-width,16rem)] lg:max-w-none lg:shrink-0 lg:bg-base-200/30 lg:shadow-none",
+            @chats_open &&
+              "absolute inset-y-0 left-0 z-30 flex w-72 max-w-[85vw] bg-base-100 shadow-xl",
+            !@chats_open && "hidden"
+          ]}
         >
           <div
             id="sidebar-resize"
@@ -73,7 +90,7 @@ defmodule EliaWeb.ChatLive do
             aria-label="Resize sidebar"
             tabindex="0"
             title="Drag to resize, double-click to reset"
-            class="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none transition-colors hover:bg-primary/30 focus-visible:bg-primary/30 focus-visible:outline-none active:bg-primary/40"
+            class="absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none transition-colors hover:bg-primary/30 focus-visible:bg-primary/30 focus-visible:outline-none active:bg-primary/40 lg:block"
           >
           </div>
           <p class="px-4 pt-4 pb-2 text-xs font-medium uppercase tracking-wider text-base-content/50">
@@ -113,6 +130,18 @@ defmodule EliaWeb.ChatLive do
           </nav>
         </aside>
         <div class="flex min-w-0 flex-1 flex-col">
+          <div class="border-b border-base-300 px-4 py-1.5 sm:px-6 lg:hidden">
+            <button
+              type="button"
+              id="chats-toggle"
+              phx-click="toggle_chats"
+              aria-expanded={to_string(@chats_open)}
+              aria-controls="sidebar"
+              class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition hover:bg-base-200 active:scale-95"
+            >
+              <.icon name="hero-bars-3" class="size-4" /> Chats
+            </button>
+          </div>
           <.context_header
             total={@context_breakdown.total}
             context_length={@context_window.context_length}
@@ -824,6 +853,14 @@ defmodule EliaWeb.ChatLive do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_event("toggle_chats", _params, socket) do
+    {:noreply, assign(socket, chats_open: !socket.assigns.chats_open)}
+  end
+
+  def handle_event("close_chats", _params, socket) do
+    {:noreply, assign(socket, chats_open: false)}
   end
 
   def handle_event("toggle_context", _params, socket) do
