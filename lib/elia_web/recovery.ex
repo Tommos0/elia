@@ -4,7 +4,7 @@ defmodule EliaWeb.Recovery do
   ask the agent for help (spec: `specs/recovery.md`).
 
   The endpoint puts this plug *before* `Phoenix.CodeReloader`, so `/recover`
-  answers even when the project doesn't compile. For every other local
+  answers even when the project doesn't compile. For every other
   request it registers a `before_send` hook that adds a banner linking here
   to HTML 500 pages (Phoenix's compilation error page and the debugger page).
 
@@ -21,8 +21,6 @@ defmodule EliaWeb.Recovery do
   import Plug.Conn
 
   @path ["recover"]
-  @loopback_hosts ~w(localhost 127.0.0.1 ::1 [::1])
-  @forwarding_headers ~w(forwarded x-forwarded-for x-forwarded-host cf-connecting-ip)
   @listed 20
   @accepted 100
   @turn_label "before agent turn"
@@ -36,7 +34,7 @@ defmodule EliaWeb.Recovery do
 
     case conn.path_info do
       @path -> conn |> handle() |> halt()
-      _ -> if local?(conn), do: register_before_send(conn, &add_banner/1), else: conn
+      _ -> register_before_send(conn, &add_banner/1)
     end
   end
 
@@ -45,17 +43,14 @@ defmodule EliaWeb.Recovery do
   ## Requests
 
   defp handle(conn) do
-    cond do
-      not local?(conn) ->
-        page(conn, 403, "Forbidden", "<p>Recovery is only available from this machine.</p>")
-
-      conn.method == "GET" ->
+    case conn.method do
+      "GET" ->
         index(conn)
 
-      conn.method == "POST" ->
+      "POST" ->
         post(conn)
 
-      true ->
+      _ ->
         conn
         |> put_resp_header("allow", "GET, POST")
         |> page(405, "Method not allowed", "<p>Use GET or POST.</p>")
@@ -159,30 +154,59 @@ defmodule EliaWeb.Recovery do
     ArgumentError -> %{}
   end
 
-  ## Local-only checks
+  ## Forgery protection
 
-  defp local?(conn) do
-    loopback?(conn.remote_ip) and normalize(conn.host) in @loopback_hosts and
-      Enum.all?(@forwarding_headers, &(get_req_header(conn, &1) == []))
-  end
-
-  defp loopback?({127, _, _, _}), do: true
-  defp loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
-  defp loopback?({0, 0, 0, 0, 0, 0xFFFF, hi, _}), do: hi in 0x7F00..0x7FFF
-  defp loopback?(_), do: false
-
+  # A POST must come from a page served at this address (RECOVER-9). Behind a
+  # proxy the server sees its own scheme and port, so the public ones are
+  # taken from the forwarding headers.
   defp same_origin?(conn) do
     with [origin] <- get_req_header(conn, "origin"),
-         %URI{scheme: scheme, host: host, port: port} when is_binary(host) <- URI.parse(origin) do
-      scheme == to_string(conn.scheme) and normalize(host) == normalize(conn.host) and
-        port == conn.port
+         %URI{scheme: scheme, host: host, port: port} = uri when scheme in ["http", "https"] <-
+           URI.parse(origin),
+         true <- is_binary(host) do
+      scheme == public_scheme(conn) and
+        Enum.any?(authorities(conn), fn {auth_host, auth_port} ->
+          normalize(auth_host) == normalize(host) and
+            (auth_port || URI.default_port(uri.scheme)) == port
+        end)
     else
       _ -> false
     end
   end
 
-  defp normalize(host), do: host |> String.replace(["[", "]"], "") |> String.downcase()
+  defp public_scheme(conn) do
+    case first_value(conn, "x-forwarded-proto") do
+      proto when proto in ["http", "https"] -> proto
+      _ -> to_string(conn.scheme)
+    end
+  end
 
+  # `{host, port | nil}` for the Host header, the first X-Forwarded-Host value
+  # and the server's own view of the request.
+  defp authorities(conn) do
+    from_headers =
+      for name <- ["host", "x-forwarded-host"],
+          value = first_value(conn, name),
+          %URI{host: host, port: port} when is_binary(host) <- [URI.parse("//" <> value)],
+          do: {host, port}
+
+    from_headers ++ [{conn.host, server_port(conn)}]
+  end
+
+  # The port the server saw, unless it's just the default for its scheme (a
+  # TLS-terminating proxy makes that differ from the public one).
+  defp server_port(conn) do
+    if conn.port == URI.default_port(to_string(conn.scheme)), do: nil, else: conn.port
+  end
+
+  defp first_value(conn, name) do
+    case get_req_header(conn, name) do
+      [value | _] -> value |> String.split(",") |> hd() |> String.trim() |> String.downcase()
+      [] -> nil
+    end
+  end
+
+  defp normalize(host), do: host |> String.replace(["[", "]"], "") |> String.downcase()
   ## Banner on crash pages
 
   defp add_banner(%Plug.Conn{status: 500} = conn) do

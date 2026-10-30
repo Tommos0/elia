@@ -12,7 +12,13 @@ defmodule EliaWeb.RecoveryTest do
   # Builds a request as the endpoint would see it from a local browser.
   defp request(method, path, opts \\ []) do
     conn = conn(method, path, opts[:body])
-    conn = %{conn | host: opts[:host] || "localhost", remote_ip: opts[:ip] || {127, 0, 0, 1}}
+
+    conn = %{
+      conn
+      | host: opts[:host] || "localhost",
+        port: opts[:port] || conn.port,
+        remote_ip: opts[:ip] || {127, 0, 0, 1}
+    }
 
     conn =
       Enum.reduce(opts[:headers] || [], conn, fn {key, value}, conn ->
@@ -69,22 +75,76 @@ defmodule EliaWeb.RecoveryTest do
     assert position.("plug EliaWeb.Recovery") < position.("plug Phoenix.CodeReloader")
   end
 
-  describe "RECOVER-2: local requests only" do
-    test "serves loopback requests", %{sha: _} do
-      assert request(:get, "/recover").status == 200
-      assert request(:get, "/recover", ip: {0, 0, 0, 0, 0, 0, 0, 1}, host: "::1").status == 200
-      assert request(:get, "/recover", ip: {0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 1}).status == 200
-      assert request(:get, "/recover", host: "127.0.0.1").status == 200
+  describe "RECOVER-9: reachable through a proxy, still same-origin only" do
+    @proxy [
+      {"x-forwarded-for", "203.0.113.9"},
+      {"x-forwarded-proto", "https"},
+      {"origin", "https://app.example.com"}
+    ]
+
+    test "serves any client, not just local ones" do
+      remote = [ip: {203, 0, 113, 9}, host: "app.example.com", headers: @proxy]
+      assert request(:get, "/recover", remote).status == 200
+      assert request(:get, "/recover", ip: {10, 0, 0, 5}).status == 200
     end
 
-    test "refuses remote peers, foreign hosts and forwarded requests", %{sha: sha} do
+    test "accepts the public origin seen through a TLS-terminating proxy", %{sha: sha} do
+      conn = rollback_request(sha, host: "app.example.com", headers: @proxy)
+      assert conn.status == 200
+      assert File.read!(in_root("recover.txt")) == "original"
+    end
+
+    test "matches X-Forwarded-Host and explicit ports", %{sha: sha} do
+      forwarded = [{"x-forwarded-host", "app.example.com, proxy.internal"} | @proxy]
+      assert rollback_request(sha, host: "localhost", headers: forwarded).status == 200
+
+      File.write!(in_root("recover.txt"), "changed")
+
+      ported = [
+        {"x-forwarded-proto", "https"},
+        {"origin", "https://app.example.com:8443"}
+      ]
+
+      assert rollback_request(sha, host: "app.example.com", port: 8443, headers: ported).status ==
+               200
+
+      # The explicit port must match too.
+      File.write!(in_root("recover.txt"), "changed")
+
+      assert rollback_request(sha, host: "app.example.com", port: 8444, headers: ported).status ==
+               403
+    end
+
+    test "refuses origins that don't match the public address", %{sha: sha} do
+      proxy = fn replacement -> List.keystore(@proxy, "origin", 0, replacement) end
+
       refused = [
-        request(:get, "/recover", ip: {10, 0, 0, 5}),
-        request(:get, "/recover", host: "example.com"),
-        request(:get, "/recover", headers: [{"x-forwarded-for", "203.0.113.9"}]),
-        request(:get, "/recover", headers: [{"cf-connecting-ip", "203.0.113.9"}]),
-        rollback_request(sha, ip: {10, 0, 0, 5}),
-        rollback_request(sha, host: "example.com", headers: [{"origin", "http://example.com"}])
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: proxy.({"origin", "http://app.example.com"})
+        ),
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: proxy.({"origin", "https://evil.example"})
+        ),
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: proxy.({"origin", "https://app.example.com:8443"})
+        ),
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: proxy.({"origin", "ftp://app.example.com"})
+        ),
+        rollback_request(sha, host: "app.example.com", headers: proxy.({"origin", "null"})),
+        # No X-Forwarded-Proto: the server saw plain http, so an https origin is foreign.
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: [{"origin", "https://app.example.com"}]
+        ),
+        rollback_request(sha,
+          host: "app.example.com",
+          headers: List.keydelete(@proxy, "origin", 0)
+        )
       ]
 
       for conn <- refused, do: assert(conn.status == 403)
@@ -247,8 +307,11 @@ defmodule EliaWeb.RecoveryTest do
       assert crash([], 200) == @crash
       assert crash([], 404) == @crash
       assert crash([], 500, "application/json") == @crash
-      assert crash(ip: {10, 0, 0, 5}) == @crash
-      assert crash(host: "example.com") == @crash
+    end
+
+    test "also appears for proxied requests" do
+      body = crash(ip: {203, 0, 113, 9}, host: "app.example.com", headers: @proxy)
+      assert body =~ ~s(id="elia-recovery-banner")
     end
 
     test "leaves compressed or body-less pages unchanged" do
