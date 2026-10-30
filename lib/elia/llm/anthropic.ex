@@ -24,6 +24,7 @@ defmodule Elia.LLM.Anthropic do
   @api_version "2026-10-21"
   @fallback_beta "server-side-fallback-2026-07-01"
   @thinking_updates_beta "thinking-display-updates-2026-08-18"
+  @thinking_binding_beta "thinking-binding-controls-2026-08-01"
   @retry_statuses [408, 429, 500, 502, 503, 504, 529]
   @max_retries 2
 
@@ -153,11 +154,19 @@ defmodule Elia.LLM.Anthropic do
 
   @doc false
   def build_body(request, config) do
+    # The system prompt changes between turns, which invalidates the signature
+    # of earlier thinking blocks; have the API drop those instead of erroring.
     thinking =
-      case config[:thinking_display] do
-        nil -> %{"type" => "adaptive"}
-        display -> %{"type" => "adaptive", "display" => display}
-      end
+      %{
+        "type" => "adaptive",
+        "block_binding" => %{"prefix_mismatch_behavior" => "drop_block"}
+      }
+      |> then(fn thinking ->
+        case config[:thinking_display] do
+          nil -> thinking
+          display -> Map.put(thinking, "display", display)
+        end
+      end)
 
     %{
       "model" => request[:model] || config[:model],
@@ -222,7 +231,8 @@ defmodule Elia.LLM.Anthropic do
     betas =
       [
         body["fallbacks"] && @fallback_beta,
-        get_in(body, ["thinking", "display"]) == "updates" && @thinking_updates_beta
+        get_in(body, ["thinking", "display"]) == "updates" && @thinking_updates_beta,
+        get_in(body, ["thinking", "block_binding"]) && @thinking_binding_beta
       ]
       |> Enum.filter(& &1)
 

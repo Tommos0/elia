@@ -117,13 +117,21 @@ defmodule Elia.LLM.AnthropicTest do
     assert {"anthropic-version", "2026-10-21"} in headers
     assert {"x-api-key", "test-key"} in headers
 
+    # LLM-28
     assert {"anthropic-beta",
-            "server-side-fallback-2026-07-01,thinking-display-updates-2026-08-18"} in headers
+            "server-side-fallback-2026-07-01,thinking-display-updates-2026-08-18," <>
+              "thinking-binding-controls-2026-08-01"} in headers
 
     assert body["model"] == "claude-opus-5-5"
     assert body["stream"] == true
     assert body["fallbacks"] == "default"
-    assert body["thinking"] == %{"type" => "adaptive", "display" => "updates"}
+
+    assert body["thinking"] == %{
+             "type" => "adaptive",
+             "display" => "updates",
+             "block_binding" => %{"prefix_mismatch_behavior" => "drop_block"}
+           }
+
     assert [%{"name" => "shell", "input_schema" => %{"required" => ["command"]}}] = body["tools"]
 
     # Our own blocks are echoed back exactly as received.

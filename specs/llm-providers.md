@@ -52,6 +52,13 @@ access to many other models.
   `:end_turn`; `max_tokens` and `model_context_window_exceeded` →
   `:max_tokens`; `tool_use`, `refusal` → same; anything else → `:other`.
 
+- **LLM-28** Thinking blocks are bound to the system prompt they were created
+  with, and the system prompt changes between turns (project instructions,
+  skills). Requests therefore set
+  `thinking.block_binding.prefix_mismatch_behavior` to `"drop_block"` and send
+  the `thinking-binding-controls-2026-08-01` beta header, so the API drops
+  stale thinking blocks instead of failing with a 400 `Invalid signature`.
+
 ### Registry
 
 - **LLM-15** `Elia.LLM.providers/0` lists the registered providers as
