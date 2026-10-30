@@ -66,7 +66,8 @@ defmodule Elia.Store do
         |> Enum.take(limit)
         |> Enum.map(fn {file, mtime} ->
           id = Path.rootname(file)
-          %{id: id, title: title(load(id)), updated_at: mtime}
+          messages = load(id)
+          %{id: id, title: title(messages), description: title(messages, 1000), updated_at: mtime}
         end)
 
       {:error, _} ->
@@ -76,11 +77,11 @@ defmodule Elia.Store do
 
   def delete(id), do: if(valid_id?(id), do: File.rm(path(id)), else: {:error, :invalid_id})
 
-  @doc "Display title for a conversation: its first user message, truncated."
-  def title(messages) do
+  @doc "Display title for a conversation: its first user message, cut to `max` characters."
+  def title(messages, max \\ 60) do
     case Enum.find(messages, &(&1.role == :user and not Map.get(&1.meta, :harness, false))) do
       nil -> "New chat"
-      message -> message |> Message.text_content() |> String.slice(0, 60)
+      message -> message |> Message.text_content() |> String.slice(0, max)
     end
   end
 

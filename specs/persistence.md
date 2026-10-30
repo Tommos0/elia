@@ -29,6 +29,9 @@ reopened.
   (WS-3).
 - **STORE-9** Loading a chat's model selection returns `nil` when the chat is
   missing, unreadable, corrupt or has none.
+- **STORE-10** Each listed chat also carries `description`: the same source
+  text as the title (STORE-7) but cut to 1000 characters instead of 60, or
+  "New chat" if there is none.
 
 ## Implementation
 

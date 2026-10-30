@@ -30,6 +30,18 @@ defmodule EliaWeb.ChatLiveTest do
     assert length(Regex.scan(~r/id="new-chat"/, html)) == 1
   end
 
+  # UI-33: hovering a sidebar chat shows its full description.
+  test "sidebar chat links carry the full description as a tooltip", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    text = String.duplicate("word ", 40) <> "END"
+    :ok = Elia.Store.save(id, [Message.user(text)])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#chat-link-#{id}[title='#{text}']")
+  end
+
   # UI-32: the header's Chats button goes to "/" and precedes Sessions.
   test "header has a Chats button left of Sessions that opens a fresh chat", %{conn: conn} do
     id = Agent.new_id()

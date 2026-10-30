@@ -75,6 +75,7 @@ defmodule EliaWeb.ChatLive do
               :for={chat <- @chats}
               navigate={~p"/c/#{chat.id}"}
               id={"chat-link-#{chat.id}"}
+              title={chat.description}
               class={[
                 "block truncate rounded-lg px-3 py-2 text-sm transition",
                 chat.id == @session_id && "bg-base-300 font-medium",
