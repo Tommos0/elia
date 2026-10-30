@@ -23,6 +23,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-5** With no saved chats, the sidebar shows "No chats yet".
 - **UI-6** When a turn ends (status becomes idle), the sidebar and page title
   refresh.
+- **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
+  list that starts a fresh chat.
 
 ### Transcript
 

@@ -65,13 +65,6 @@ defmodule EliaWeb.Layouts do
           >
             <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
           </.link>
-          <.link
-            navigate={~p"/"}
-            id="new-chat"
-            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition hover:bg-base-200"
-          >
-            <.icon name="hero-plus" class="size-4" /> New chat
-          </.link>
           <.theme_toggle />
         </div>
       </header>

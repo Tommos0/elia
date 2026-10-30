@@ -64,6 +64,13 @@ defmodule EliaWeb.ChatLive do
           <p class="px-4 pt-4 pb-2 text-xs font-medium uppercase tracking-wider text-base-content/50">
             Chats
           </p>
+          <.link
+            navigate={~p"/"}
+            id="new-chat"
+            class="mx-2 mb-1 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition hover:bg-base-200"
+          >
+            <.icon name="hero-plus" class="size-4" /> New chat
+          </.link>
           <nav id="chat-list" class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
             <.link
               :for={chat <- @chats}

@@ -15,6 +15,21 @@ defmodule EliaWeb.ChatLiveTest do
     assert {:error, {:live_redirect, %{to: "/c/" <> _id}}} = live(conn, ~p"/")
   end
 
+  # UI-31: the "New chat" button sits above the chat list in the sidebar.
+  test "sidebar shows a New chat button above the chat list", %{conn: conn} do
+    id = Agent.new_id()
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#new-chat[href='/']", "New chat")
+    # The button lives in the sidebar, before the chat list.
+    aside = Regex.run(~r/<aside.*?<\/aside>/s, html) |> hd()
+    assert aside =~ "id=\"new-chat\""
+    assert String.split(aside, "id=\"chat-list\"") |> hd() =~ "id=\"new-chat\""
+    # And appears exactly once overall (the header no longer carries it).
+    assert length(Regex.scan(~r/id="new-chat"/, html)) == 1
+  end
+
   test "chatting with an approval round-trip", %{conn: conn} do
     id = Agent.new_id()
 
