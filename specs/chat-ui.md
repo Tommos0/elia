@@ -139,6 +139,13 @@ stream in, approves or denies tool calls, and switches between saved chats.
   "Reasoning…". Expanding the streaming block keeps it expanded as more text
   arrives.
 
+### Sub-tasks
+
+- **UI-31** A `{:subtask, …}` agent event (SUBTASK-7) is accepted and ignored
+  by the chat page: the child is an ordinary chat in the chat list, and the
+  `spawn_task` call renders like any other tool call. Task cards and links
+  come in a later phase.
+
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`.

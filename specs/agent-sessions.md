@@ -24,7 +24,9 @@ progress so any number of UIs can follow it.
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
   `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`,
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
-  `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16).
+  `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
+  `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
+  or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet) and its
   auto-approved tool names (sorted list), so a UI that connects mid-turn can render the current state.
@@ -57,6 +59,15 @@ progress so any number of UIs can follow it.
   tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
   messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the
   sorted list. It is allowed mid-turn (APPR-11).
+
+- **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16)
+  and `selection` (a model selection, MODEL-1) set the new session's values
+  instead of the saved ones. Neither stores the selection as the default model
+  (MODEL-15). The session saves its task metadata with the history (STORE-16),
+  and a session whose state predates the `task` field is upgraded as in SESS-15.
+- **SESS-18** `Elia.Agent.update_task/2` (chat id, map of changes) merges the
+  changes into the chat's task metadata and saves it. It returns
+  `{:error, :not_a_task}` for a chat that has none.
 
 ## Out of scope
 

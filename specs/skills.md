@@ -26,7 +26,8 @@ system prompt from them. It can be reloaded while the app runs.
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)) and `harness` (`reload_skills`,
-  `run_tests`, `hot_reload`, `list_checkpoints`, `rollback`).
+  `run_tests`, `hot_reload`, `list_checkpoints`, `rollback`) and `tasks`
+  (`spawn_task`, [Sub-tasks](subtasks.md)).
 - **SKILL-8** The `harness` skill's instructions tell the model to prefer a
   folder skill over changing Elixir code, to run tests before finishing, and
   to tell the user when a change touches guarded files. They also say that
@@ -49,11 +50,15 @@ system prompt from them. It can be reloaded while the app runs.
 - **SKILL-13** Only the root `AGENTS.md` is injected. Files it points to (such
   as `docs/agents/*.md`) are not; the model reads them on demand.
 
+- **SKILL-14** `Elia.Skills.resolve/1` turns a session's `skills` option into a
+  skill list: a list is used as is, a function of no arguments is called, and
+  `nil` means the registry's current skills.
+
 ## Configuration
 
 ```elixir
 config :elia, Elia.Skills,
-  builtin: [Elia.Skills.Shell, Elia.Skills.Files, Elia.Skills.Harness]
+  builtin: [Elia.Skills.Shell, Elia.Skills.Files, Elia.Skills.Harness, Elia.Skills.Tasks]
 ```
 
 ## Implementation

@@ -14,8 +14,9 @@ defmodule Elia.Agent.Loop do
     * `{:loop_await_approval, task_pid, calls}` - reply with
       `{:approval_decisions, %{call_id => :approve | :deny}}`
 
-  Options: `:session_id`, `:turn_id`, `:skills` (fixed skill list instead of
-  the registry), `:verify` (default `true`), `:llm` (extra request fields).
+  Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
+  function returning one, instead of the registry), `:max_steps` (default 50),
+  `:verify` (default `true`), `:llm` (extra request fields).
   """
 
   alias Elia.LLM.Message
@@ -31,22 +32,23 @@ defmodule Elia.Agent.Loop do
     ctx = %{
       session: session,
       skills: Keyword.get(opts, :skills),
+      max_steps: Keyword.get(opts, :max_steps, @max_steps),
       verify: Keyword.get(opts, :verify, true),
       verify_failures: 0,
-      tool_ctx: %{session_id: opts[:session_id], turn_id: opts[:turn_id]},
+      tool_ctx: %{session_id: opts[:session_id], turn_id: opts[:turn_id], loop_opts: opts},
       llm_opts: Keyword.get(opts, :llm, %{})
     }
 
     step(ctx, history, 1)
   end
 
-  defp step(_ctx, _history, step) when step > @max_steps do
-    {:error, "Stopped after #{@max_steps} steps without finishing"}
+  defp step(%{max_steps: max}, _history, step) when step > max do
+    {:error, "Stopped after #{max} steps without finishing"}
   end
 
   defp step(ctx, history, step) do
     # Re-read every step so skills reloaded mid-turn are usable right away.
-    skills = ctx.skills || Elia.Skills.current()
+    skills = Elia.Skills.resolve(ctx.skills)
     tools = Map.new(Elia.Skills.tools(skills), &{&1.name, &1})
 
     request =
@@ -182,7 +184,7 @@ defmodule Elia.Agent.Loop do
 
     {output, is_error} =
       try do
-        case Tool.call(tool, call.input, ctx.tool_ctx) do
+        case Tool.call(tool, call.input, Map.put(ctx.tool_ctx, :call_id, call.id)) do
           {:ok, output} -> {output, false}
           {:error, output} -> {output, true}
         end

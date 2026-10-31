@@ -149,4 +149,49 @@ defmodule Elia.StoreTest do
              %Message{content: [%{content: "�"}]}
            ] = Store.load(id)
   end
+
+  # STORE-16
+  test "a chat's task metadata is saved with it and defaults to nil" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    task = %{parent_id: "p1", title: "Do it", brief: "B", status: "running", start_commit: "abc"}
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_task(id) == nil
+
+    :ok = Store.save(id, [Message.user("hi")], task: task)
+    assert Store.load_task(id) == task
+    assert [%Message{}] = Store.load(id)
+
+    assert Store.load_task("missing-chat") == nil
+    assert Store.load_task("../bad") == nil
+  end
+
+  # STORE-17
+  test "listed task chats carry their parent, status and task title" do
+    done = Elia.Agent.new_id()
+    lost = Elia.Agent.new_id()
+    plain = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([done, lost, plain], &Store.delete/1) end)
+
+    Store.save(done, [Message.user("preamble")],
+      task: %{parent_id: "p1", title: "Finished one", status: "done"}
+    )
+
+    Store.save(lost, [Message.user("preamble")],
+      task: %{parent_id: "p1", title: "Lost one", status: "running"}
+    )
+
+    Store.save(plain, [Message.user("just a chat")])
+
+    list = Store.list(1000)
+    assert %{title: "Finished one", parent_id: "p1", task_status: "done"} = entry(list, done)
+    # Saved as running, but it isn't the active child: its session was lost.
+    assert %{task_status: "interrupted"} = entry(list, lost)
+    plain_entry = entry(list, plain)
+    refute Map.has_key?(plain_entry, :parent_id)
+    assert plain_entry.title == "just a chat"
+  end
+
+  defp entry(list, id), do: Enum.find(list, &(&1.id == id))
 end

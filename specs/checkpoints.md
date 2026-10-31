@@ -44,6 +44,12 @@ state.
   read-only shell command after the damage was done. A state that merely
   recurs through editing doesn't count: then all checkpoints are considered.
 
+- **CKPT-10** `rebase(turn_id)` replaces the checkpoint of a turn that has one
+  with a new snapshot of the workspace as it is now, labelled
+  `before agent turn <id> (after sub-task)`. A turn with none is left alone
+  (its first change takes one, CKPT-2). Used when a sub-task ends so a later
+  rollback of the parent keeps the child's work (SUBTASK-14).
+
 ## Implementation
 
 `Elia.Checkpoint`, `Elia.Skills.Harness`.

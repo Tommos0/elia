@@ -7,6 +7,8 @@ defmodule Elia.Agent do
 
   def subscribe(id), do: Phoenix.PubSub.subscribe(Elia.PubSub, topic(id))
 
+  def unsubscribe(id), do: Phoenix.PubSub.unsubscribe(Elia.PubSub, topic(id))
+
   def new_id, do: Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
 
   @doc "Returns the session's pid, starting it if needed."
@@ -49,4 +51,12 @@ defmodule Elia.Agent do
   end
 
   def stop(id), do: GenServer.call(Session.via(id), :stop)
+
+  @doc """
+  Merges `changes` into the task metadata of a sub-task chat and saves it
+  (SESS-18). `{:error, :not_a_task}` for a chat without task metadata.
+  """
+  @spec update_task(binary(), map()) :: :ok | {:error, :not_a_task}
+  def update_task(id, changes) when is_map(changes),
+    do: GenServer.call(Session.via(id), {:update_task, changes})
 end

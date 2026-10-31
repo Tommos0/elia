@@ -79,6 +79,22 @@ defmodule Elia.Harness do
     end
   end
 
+  @doc """
+  Whether `turn_id` took a checkpoint and has changed core Elixir files since,
+  the condition under which `verify/1` runs the tests (VERIFY-7). Changes
+  nothing.
+  """
+  @spec core_elixir_changed?(term()) :: boolean() | {:error, binary()}
+  def core_elixir_changed?(turn_id) do
+    with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
+         {:ok, files} <- Checkpoint.changed_files(sha) do
+      Enum.any?(files, &core_elixir?/1)
+    else
+      nil -> false
+      {:error, reason} -> {:error, "Could not check changes: #{reason}"}
+    end
+  end
+
   defp core_elixir?(path) do
     Path.extname(path) in @elixir_exts and Workspace.classify(path) == :core
   end

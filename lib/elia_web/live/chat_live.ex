@@ -1185,6 +1185,9 @@ defmodule EliaWeb.ChatLive do
 
   defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
 
+  # UI-31: sub-task events are not rendered yet.
+  defp apply_event({:subtask, _call_id, _child_id, _status}, socket), do: socket
+
   defp apply_event({:usage, usage}, socket) do
     socket
     |> assign(last_usage: usage)

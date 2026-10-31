@@ -39,6 +39,15 @@ defmodule Elia.Skills do
   def tools(skills \\ current()), do: Enum.flat_map(skills, & &1.tools)
 
   @doc """
+  Turns a session's `skills` option into a skill list: a list as is, a function
+  of no arguments called, `nil` meaning the registry's current skills (SKILL-14).
+  """
+  @spec resolve([Elia.Skill.t()] | (-> [Elia.Skill.t()]) | nil) :: [Elia.Skill.t()]
+  def resolve(nil), do: current()
+  def resolve(fun) when is_function(fun, 0), do: fun.()
+  def resolve(skills) when is_list(skills), do: skills
+
+  @doc """
   The system prompt's pieces, in order, each as `{kind, text}`: the agent
   instructions (`:base`), the project instructions when there are any
   (`:project`), then one `{:skill, skill}` section per skill. The texts carry

@@ -36,6 +36,20 @@ defmodule Elia.Checkpoint do
 
   def create(label), do: GenServer.call(__MODULE__, {:create, label}, :infinity)
 
+  @doc """
+  Replaces `turn_id`'s checkpoint with a snapshot of the workspace as it is now
+  (CKPT-10). A turn without a checkpoint is left alone.
+  """
+  @spec rebase(term()) :: :ok | {:error, binary()}
+  def rebase(nil), do: :ok
+
+  def rebase(turn_id) do
+    case GenServer.call(__MODULE__, {:rebase, turn_id}, :infinity) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "Could not checkpoint the workspace: #{reason}"}
+    end
+  end
+
   @doc "Absolute paths of files that differ between checkpoint `sha` and now."
   def changed_files(sha), do: GenServer.call(__MODULE__, {:changed_files, sha}, :infinity)
 
@@ -129,6 +143,19 @@ defmodule Elia.Checkpoint do
 
   def handle_call({:for_turn, turn_id}, _from, turns),
     do: {:reply, Map.get(turns, turn_id), turns}
+
+  def handle_call({:rebase, turn_id}, _from, turns) do
+    case turns do
+      %{^turn_id => _old} ->
+        case snapshot("#{@turn_label} #{turn_id} (after sub-task)") do
+          {:ok, sha} -> {:reply, :ok, Map.put(turns, turn_id, sha)}
+          error -> {:reply, error, turns}
+        end
+
+      _ ->
+        {:reply, :ok, turns}
+    end
+  end
 
   def handle_call({:create, label}, _from, turns), do: {:reply, snapshot(label), turns}
 

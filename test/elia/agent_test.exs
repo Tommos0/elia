@@ -32,7 +32,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(edit_file hot_reload list_checkpoints read_file reload_skills rollback run_tests shell write_file)
+             ~w(edit_file hot_reload list_checkpoints read_file reload_skills rollback run_tests shell spawn_task write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -319,5 +319,43 @@ defmodule Elia.AgentTest do
     :sys.replace_state(pid, &Map.delete(&1, :selection))
 
     assert %{selection: nil, messages: []} = Agent.snapshot(id)
+  end
+
+  # SESS-15, SESS-17
+  test "a session with state from before :task_meta existed is upgraded", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :task_meta))
+
+    assert %{messages: []} = Agent.snapshot(id)
+    assert {:error, :not_a_task} = Agent.update_task(id, %{status: "done"})
+  end
+
+  # SESS-17, SESS-18
+  test "task metadata is saved with the chat and can be updated" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    task = %{parent_id: "p", title: "T", brief: "B", status: "running"}
+    selection = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
+    default = Elia.Settings.get(:model)
+
+    {:ok, _pid} =
+      Agent.ensure_started(id,
+        task: task,
+        selection: selection,
+        loop_opts: [llm: %{provider: FakeLLM}]
+      )
+
+    Agent.subscribe(id)
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    assert Elia.Store.load_task(id) == task
+    assert Elia.Store.load_model(id) == selection
+    # SESS-17: the selection isn't stored as the default model.
+    assert Elia.Settings.get(:model) == default
+
+    :ok = Agent.update_task(id, %{status: "done"})
+    assert %{status: "done", title: "T"} = Elia.Store.load_task(id)
   end
 end

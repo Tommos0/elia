@@ -14,7 +14,8 @@ the end, the turn's changes are verified.
   `AGENTS.md` edited mid-turn applies from the next step.
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
-- **LOOP-3** A turn stops with an error after 50 steps.
+- **LOOP-3** A turn stops with an error after the step limit: 50 steps unless
+  the `:max_steps` option says otherwise (LOOP-16).
 - **LOOP-4** If the model refuses (`stop_reason: :refusal`), the loop returns
   `:refused` and runs none of that response's tool calls.
 - **LOOP-5** If a response hits the output limit without calling a tool, the
@@ -42,6 +43,16 @@ the end, the turn's changes are verified.
   ends with an error saying tests kept failing.
 - **LOOP-15** Verification can be disabled with the `verify: false` option
   (used in tests).
+
+- **LOOP-16** The `max_steps` option sets the step limit of LOOP-3 for the
+  turn. Sessions pass it from their loop options (used by sub-tasks, SUBTASK-12).
+- **LOOP-17** The `skills` option is a list of skills or a function of no
+  arguments returning one (`Elia.Skills.resolve/1`). A function is called every
+  step (LOOP-1); the session also uses it for the context breakdown and for
+  which tools can be auto-approved.
+- **LOOP-18** Besides `session_id` and `turn_id`, the tool context holds
+  `call_id` (the id of the call being run) and `loop_opts` (the loop's
+  options, so a tool can start a session like this one, SUBTASK-5).
 
 ## Implementation
 

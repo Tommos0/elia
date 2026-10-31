@@ -23,6 +23,8 @@ defmodule Elia.Agent.Session do
     :turn_start,
     # The chat's own model selection (MODEL-1); nil until chosen or pinned.
     :selection,
+    # Sub-task metadata when the chat was started by `spawn_task` (STORE-16).
+    :task_meta,
     messages: [],
     status: :idle,
     # Tool names the user lets run without asking in this chat (APPR-8).
@@ -53,17 +55,28 @@ defmodule Elia.Agent.Session do
        loop_opts: Keyword.get(opts, :loop_opts, []),
        persist: persist,
        messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
-       selection: if(persist, do: Elia.Store.load_model(opts[:id])),
+       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
+       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
        auto_approve: initial_auto_approve(opts[:id], persist)
      }}
   end
 
   @impl true
-  # SESS-15: upgrade state from before `:selection` or `:auto_approve` existed
-  # (a session that outlived a hot reload). Fields it already has are kept.
+  # SESS-15: upgrade state from before `:selection`, `:auto_approve` or
+  # `:task_meta` existed (a session that outlived a hot reload). Fields it
+  # already has are kept.
   def handle_call(msg, from, state)
-      when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) do
+      when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
+             not is_map_key(state, :task_meta) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
+
+    upgraded =
+      if is_map_key(state, :task_meta),
+        do: upgraded,
+        else: %{
+          upgraded
+          | task_meta: if(upgraded.persist, do: Elia.Store.load_task(upgraded.id))
+        }
 
     upgraded =
       if is_map_key(state, :selection),
@@ -130,6 +143,16 @@ defmodule Elia.Agent.Session do
     # with its first message.
     state = if state.messages == [], do: state, else: save(state)
     broadcast(state, {:model, selection})
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:update_task, _changes}, _from, %{task_meta: nil} = state) do
+    {:reply, {:error, :not_a_task}, state}
+  end
+
+  def handle_call({:update_task, changes}, _from, state) do
+    # SESS-18
+    state = save(%{state | task_meta: Map.merge(state.task_meta, changes)})
     {:reply, :ok, state}
   end
 
@@ -204,7 +227,7 @@ defmodule Elia.Agent.Session do
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
     # CTX-10: remember what we estimated for the history this request sent, so
     # the context indicator can calibrate against the provider's figure.
-    skills = Keyword.get(state.loop_opts, :skills) || Elia.Skills.current()
+    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills))
     estimate = Elia.LLM.Context.build(state.messages, skills).total
     usage = Map.put(usage, "estimated_input_tokens", estimate)
 
@@ -312,7 +335,7 @@ defmodule Elia.Agent.Session do
 
   # APPR-13: only tools that can need approval.
   defp approvable?(state, name) do
-    skills = Keyword.get(state.loop_opts, :skills) || Elia.Skills.current()
+    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills))
     Enum.any?(Elia.Skills.tools(skills), &(&1.name == name and &1.approval != :never))
   end
 
@@ -338,7 +361,11 @@ defmodule Elia.Agent.Session do
     auto = names(Map.get(state, :auto_approve, MapSet.new()))
 
     with {:error, reason} <-
-           Elia.Store.save(state.id, state.messages, model: state.selection, auto_approve: auto) do
+           Elia.Store.save(state.id, state.messages,
+             model: state.selection,
+             auto_approve: auto,
+             task: Map.get(state, :task_meta)
+           ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end
 

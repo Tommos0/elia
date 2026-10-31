@@ -50,6 +50,17 @@ reopened.
 - **STORE-15** Loading a chat's auto-approved tools returns `[]` when the chat
   is missing, unreadable, corrupt or has none.
 
+- **STORE-16** `save/3` takes `task:` (a map) and stores it as `task` with the
+  chat. It holds the metadata of a chat started by `spawn_task`: `parent_id`,
+  `title`, `brief`, `started_at`, `status` (`"running"`, `"done"`, `"blocked"`,
+  `"failed"` or `"unfinished"`), `start_commit` and, once finished, `result`.
+  `load_task/1` returns it, or `nil` when the chat is missing, unreadable,
+  corrupt or has none.
+- **STORE-17** A listed chat that has task metadata also carries `parent_id`
+  and `task_status`, and its `title` is the task's title (STORE-7 doesn't
+  apply). A task saved as `"running"` whose child isn't the active one
+  (SUBTASK-11) is listed as `"interrupted"`, as its session was lost.
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.

@@ -29,9 +29,15 @@ gets a chance to fix them.
   that includes both the rollback error and the test output.
 - **VERIFY-6** Changes under `skills/` never cause a test run.
 
+- **VERIFY-7** `Elia.Harness.core_elixir_changed?/1` says whether the turn took
+  a checkpoint and changed core `.ex`, `.exs` or `.heex` files since (the
+  condition of VERIFY-3), without running or rolling back anything. It returns
+  `{:error, reason}` when the changes can't be checked.
+
 ## Implementation
 
-`Elia.Harness.run_tests/1`, `Elia.Harness.verify/1`.
+`Elia.Harness.run_tests/1`, `Elia.Harness.verify/1`,
+`Elia.Harness.core_elixir_changed?/1`.
 
 ## Tests
 

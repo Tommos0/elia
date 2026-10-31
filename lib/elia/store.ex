@@ -16,8 +16,9 @@ defmodule Elia.Store do
 
   @doc """
   Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1) and
-  `opts[:auto_approve]` its auto-approved tool names (STORE-14); each is kept
-  alongside the messages when given.
+  `opts[:auto_approve]` its auto-approved tool names (STORE-14), and
+  `opts[:task]` the sub-task metadata of a chat started by `spawn_task`
+  (STORE-16); each is kept alongside the messages when given.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -29,6 +30,7 @@ defmodule Elia.Store do
     now = DateTime.utc_now()
     chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
+    chat = if task = opts[:task], do: Map.put(chat, :task, task), else: chat
 
     chat =
       case opts[:auto_approve] do
@@ -77,6 +79,22 @@ defmodule Elia.Store do
     end
   end
 
+  @doc """
+  The saved sub-task metadata of a chat started by `spawn_task`, or `nil`
+  (STORE-16): `%{parent_id, title, brief, started_at, status, start_commit,
+  result}`.
+  """
+  @spec load_task(binary()) :: map() | nil
+  def load_task(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{task: %{parent_id: _} = task} <- decode(data) do
+      task
+    else
+      _ -> nil
+    end
+  end
+
   @doc "Saved conversations, most recently started first (STORE-12)."
   def list(limit \\ 50) do
     case File.ls(dir()) do
@@ -88,13 +106,33 @@ defmodule Elia.Store do
         |> Enum.take(limit)
         |> Enum.map(fn entry ->
           {messages, entry} = Map.pop(entry, :messages)
-          Map.merge(entry, %{title: title(messages), description: title(messages, 1000)})
+          {task, entry} = Map.pop(entry, :task)
+
+          entry
+          |> Map.merge(%{title: title(messages), description: title(messages, 1000)})
+          |> put_task(task)
         end)
 
       {:error, _} ->
         []
     end
   end
+
+  # STORE-17: a sub-task chat is listed under its task title, with its parent
+  # and status. A task saved as running whose child isn't the active one lost
+  # its session (app restart), so it is shown as interrupted.
+  defp put_task(entry, %{parent_id: parent_id} = task) do
+    status =
+      case task[:status] do
+        "running" -> if Elia.Tasks.running?(entry.id), do: "running", else: "interrupted"
+        status -> status
+      end
+
+    title = if is_binary(task[:title]) and task.title != "", do: task.title, else: entry.title
+    Map.merge(entry, %{title: title, parent_id: parent_id, task_status: status})
+  end
+
+  defp put_task(entry, _task), do: entry
 
   defp list_entry(file) do
     path = Path.join(dir(), file)
@@ -111,6 +149,7 @@ defmodule Elia.Store do
     %{
       id: Path.rootname(file),
       messages: Map.get(chat, :messages, []),
+      task: Map.get(chat, :task),
       created_at: Map.get(chat, :created_at) || mtime,
       updated_at: Map.get(chat, :updated_at) || mtime
     }

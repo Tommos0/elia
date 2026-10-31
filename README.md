@@ -27,7 +27,8 @@ it at boot without a login.
 | `Elia.LLM` / `Elia.LLM.Provider` | Provider-neutral model calls; `Elia.LLM.Anthropic` is the default backend |
 | `Elia.Agent.Session` / `Elia.Agent.Loop` | One process per chat; the tool-use loop with approvals |
 | `Elia.Skills` | Registry of built-in and folder skills, reloadable at runtime |
-| `Elia.Skills.{Shell,Files,Harness}` | Built-in skills: shell, file editing, self-management |
+| `Elia.Skills.{Shell,Files,Harness,Tasks}` | Built-in skills: shell, file editing, self-management, sub-tasks |
+| `Elia.Tasks` | Lock and spawn/await for sub-task chats (`spawn_task`, `finish_task`) |
 | `Elia.Checkpoint` | Workspace snapshots under `refs/elia/checkpoints/` |
 | `Elia.Harness` | Test runs, end-of-turn verification, rollback, hot reload |
 | `Elia.Store` | Saved conversations in `.elia/sessions/` |
