@@ -219,6 +219,7 @@ defmodule Elia.Tasks do
 
     task = %{
       parent_id: parent_id,
+      parent_call_id: ctx[:call_id],
       title: String.trim(input["title"]),
       brief: input["brief"],
       started_at: DateTime.utc_now(),

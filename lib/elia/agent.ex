@@ -9,6 +9,21 @@ defmodule Elia.Agent do
 
   def unsubscribe(id), do: Phoenix.PubSub.unsubscribe(Elia.PubSub, topic(id))
 
+  def activity_topic, do: "agent:activity"
+
+  def subscribe_activity, do: Phoenix.PubSub.subscribe(Elia.PubSub, activity_topic())
+
+  @doc """
+  Ids of the sessions with a tool call awaiting approval (SESS-19), read from
+  the registry without calling the sessions.
+  """
+  @spec awaiting_approval() :: [binary()]
+  def awaiting_approval do
+    Registry.select(Elia.Agent.Registry, [
+      {{:"$1", :_, :"$2"}, [{:==, :"$2", :awaiting_approval}], [:"$1"]}
+    ])
+  end
+
   def new_id, do: Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
 
   @doc "Returns the session's pid, starting it if needed."

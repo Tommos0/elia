@@ -164,7 +164,22 @@ the spec before code, and tell the user which guarded files change.
 
 ### 2. UI: link, status, approvals
 
-- [ ] Spec, implementation, tests, commit
+- [x] Spec, implementation, tests, commit (see `specs/chat-ui.md`, UI-43 to UI-49)
+
+Decisions made in phase 2:
+
+- The card links to the child through `parent_call_id` in the child's saved
+  task metadata (SUBTASK-15, STORE-18) rather than only through the transient
+  `:subtask` event, so it survives a reload. Children from before phase 2 have
+  no call id and show no card.
+- The spec's UI-31 was reused by phase 1 (it collided with the "New chat"
+  button); that entry is struck through and replaced by UI-43/44.
+- Approval badges come from a global `Elia.Agent.activity_topic/0`
+  (`{:chat_status, id, status}`) and the session's status kept as its registry
+  value (`Elia.Agent.awaiting_approval/0`), not from per-chat subscriptions
+  (SESS-19). Children are nested, not put in a separate "Tasks" group.
+- The child's own page gets `{:task, metadata}` events (SESS-20) so its header
+  and result update when `Elia.Tasks` saves the final status.
 
 Depends on 1.
 

@@ -21,6 +21,7 @@ defmodule EliaWeb.ChatLive do
 
     if connected?(socket) do
       Agent.subscribe(id)
+      Agent.subscribe_activity()
       Elia.Skills.subscribe()
       Process.send_after(self(), :tick_now, 60_000)
     end
@@ -41,6 +42,14 @@ defmodule EliaWeb.ChatLive do
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
         chats: Elia.Store.list(30),
+        # UI-47: chats with a tool call awaiting approval, kept live.
+        awaiting: Agent.awaiting_approval(),
+        # UI-44: spawn_task call id => %{child_id, status}.
+        tasks: task_children(id),
+        # UI-48: this chat's own task metadata, when it is a task chat.
+        task: snapshot.task,
+        task_status: task_status(id, snapshot.task),
+        parent_title: parent_title(snapshot.task),
         chats_open: false,
         now: DateTime.utc_now(),
         selection: LLM.selection(snapshot.selection),
@@ -107,28 +116,27 @@ defmodule EliaWeb.ChatLive do
             <.icon name="hero-plus" class="size-4" /> New chat
           </.link>
           <nav id="chat-list" class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-            <.link
-              :for={chat <- @chats}
-              navigate={~p"/c/#{chat.id}"}
-              id={"chat-link-#{chat.id}"}
-              title={chat.description}
-              class={[
-                "block rounded-lg px-3 py-2 text-sm transition",
-                chat.id == @session_id && "bg-base-300 font-medium",
-                chat.id != @session_id &&
-                  "text-base-content/70 hover:bg-base-200 hover:text-base-content"
-              ]}
-            >
-              <span class="block truncate">{chat.title}</span>
-              <time
-                id={"chat-time-#{chat.id}"}
-                datetime={DateTime.to_iso8601(chat.created_at)}
-                title={Calendar.strftime(chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
-                class="block text-xs font-normal text-base-content/50"
+            <%= for {chat, children} <- chat_tree(@chats) do %>
+              <.chat_row
+                chat={chat}
+                active={chat.id == @session_id}
+                now={@now}
+                awaiting={chat.id in @awaiting}
+              />
+              <div
+                :if={children != []}
+                id={"chat-children-#{chat.id}"}
+                class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
               >
-                {EliaWeb.TimeAgo.format(chat.created_at, @now)}
-              </time>
-            </.link>
+                <.chat_row
+                  :for={child <- children}
+                  chat={child}
+                  active={child.id == @session_id}
+                  now={@now}
+                  awaiting={child.id in @awaiting}
+                />
+              </div>
+            <% end %>
             <p :if={@chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
           </nav>
         </aside>
@@ -145,6 +153,12 @@ defmodule EliaWeb.ChatLive do
               <.icon name="hero-bars-3" class="size-4" /> Chats
             </button>
           </div>
+          <.task_header
+            :if={@task}
+            task={@task}
+            status={@task_status}
+            parent_title={@parent_title}
+          />
           <.context_header
             total={@context_breakdown.total}
             context_length={@context_window.context_length}
@@ -337,6 +351,133 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
     </Layouts.app>
+    """
+  end
+
+  attr :chat, :map, required: true
+  attr :active, :boolean, required: true
+  attr :now, :any, required: true
+  attr :awaiting, :boolean, default: false
+
+  # UI-4, UI-34, UI-46, UI-47
+  defp chat_row(assigns) do
+    ~H"""
+    <.link
+      navigate={~p"/c/#{@chat.id}"}
+      id={"chat-link-#{@chat.id}"}
+      title={@chat.description}
+      class={[
+        "block rounded-lg px-3 py-2 text-sm transition",
+        @active && "bg-base-300 font-medium",
+        !@active && "text-base-content/70 hover:bg-base-200 hover:text-base-content"
+      ]}
+    >
+      <span class="flex items-center gap-1.5">
+        <.task_status_icon
+          :if={Map.get(@chat, :task_status)}
+          id={"chat-task-status-#{@chat.id}"}
+          status={@chat.task_status}
+        />
+        <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
+        <span
+          :if={@awaiting}
+          id={"chat-approval-#{@chat.id}"}
+          title="Needs approval"
+          class="inline-flex shrink-0 items-center rounded-full bg-warning/20 p-0.5 text-warning"
+        >
+          <.icon name="hero-hand-raised" class="size-3" />
+          <span class="sr-only">Needs approval</span>
+        </span>
+      </span>
+      <time
+        id={"chat-time-#{@chat.id}"}
+        datetime={DateTime.to_iso8601(@chat.created_at)}
+        title={Calendar.strftime(@chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
+        class="block text-xs font-normal text-base-content/50"
+      >
+        {EliaWeb.TimeAgo.format(@chat.created_at, @now)}
+      </time>
+    </.link>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :status, :string, required: true
+
+  # UI-44, UI-46: a task's status as an icon.
+  defp task_status_icon(assigns) do
+    {icon, class} =
+      case assigns.status do
+        "running" -> {"hero-arrow-path", "text-info motion-safe:animate-spin"}
+        "done" -> {"hero-check-circle", "text-success"}
+        "blocked" -> {"hero-pause-circle", "text-warning"}
+        "failed" -> {"hero-x-circle", "text-error"}
+        "unfinished" -> {"hero-question-mark-circle", "text-warning"}
+        _ -> {"hero-exclamation-triangle", "text-base-content/50"}
+      end
+
+    assigns = assign(assigns, icon: icon, class: class)
+
+    ~H"""
+    <span id={@id} data-status={@status} title={"Task #{@status}"} class="inline-flex shrink-0">
+      <.icon name={@icon} class={["size-3.5", @class]} />
+    </span>
+    """
+  end
+
+  attr :task, :map, required: true
+  attr :status, :string, required: true
+  attr :parent_title, :string, required: true
+
+  # UI-48
+  defp task_header(assigns) do
+    assigns = assign(assigns, result: Map.get(assigns.task, :result))
+
+    ~H"""
+    <div id="task-header" class="border-b border-base-300 bg-base-200/40">
+      <div class="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-xs sm:px-6">
+        <div class="flex items-center gap-2">
+          <.task_status_icon id="task-header-status" status={@status} />
+          <span class="text-base-content/60">Task of</span>
+          <.link
+            navigate={~p"/c/#{@task.parent_id}"}
+            id="task-parent-link"
+            class="min-w-0 truncate font-medium text-primary transition hover:underline"
+          >
+            {@parent_title}
+          </.link>
+          <span class="ml-auto shrink-0 capitalize text-base-content/60">{@status}</span>
+        </div>
+        <details :if={@task[:brief]} id="task-header-brief" class="group/brief">
+          <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
+            <.icon name="hero-chevron-right" class="size-3 transition group-open/brief:rotate-90" />
+            Brief
+          </summary>
+          <div class="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded-lg bg-base-100/70 px-3 py-2">
+            {@task.brief}
+          </div>
+        </details>
+        <div :if={@result} id="task-result" class="space-y-1 rounded-lg bg-base-100/70 px-3 py-2">
+          <p class="font-medium">Result</p>
+          <p class="whitespace-pre-wrap">{@result["summary"]}</p>
+          <p :if={@result["commit"]}>
+            Commit <code class="font-mono">{String.slice(@result["commit"], 0, 8)}</code>
+          </p>
+          <div :if={@result["files"] not in [nil, []]}>
+            <p class="text-base-content/60">Changed files</p>
+            <ul class="font-mono">
+              <li :for={file <- @result["files"]} class="truncate">{file}</li>
+            </ul>
+          </div>
+          <div :if={@result["questions"] not in [nil, []]}>
+            <p class="text-base-content/60">Open questions</p>
+            <ul class="list-disc pl-4">
+              <li :for={question <- @result["questions"]}>{question}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -800,6 +941,43 @@ defmodule EliaWeb.ChatLive do
         <.tool_badge status={@item.status} is_error={@item.is_error} />
       </div>
       <pre class="overflow-x-auto px-3 py-2 font-mono text-xs leading-relaxed"><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span>{tool_summary(@item)}</pre>
+      <%!-- UI-43: task card --%>
+      <details
+        :if={@item.name == "spawn_task" && is_binary(@item.input["brief"])}
+        id={"task-brief-#{@item.call_id}"}
+        open={@item.status == :awaiting_approval}
+        class="group/brief border-t border-base-300"
+      >
+        <summary class="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs text-base-content/60 hover:text-base-content">
+          <.icon name="hero-chevron-right" class="size-3 transition group-open/brief:rotate-90" />
+          Brief
+        </summary>
+        <div class="max-h-96 overflow-auto whitespace-pre-wrap bg-base-200/40 px-3 py-2 text-xs leading-relaxed">
+          {@item.input["brief"]}
+        </div>
+      </details>
+      <div
+        :if={Map.get(@item, :task)}
+        id={"task-card-#{@item.call_id}"}
+        class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-2 text-xs"
+      >
+        <.task_status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
+        <span class="capitalize text-base-content/70">{@item.task.status}</span>
+        <span
+          :if={@item.task.awaiting}
+          id={"task-awaiting-#{@item.call_id}"}
+          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
+        >
+          <.icon name="hero-hand-raised" class="size-3" /> Waiting for approval in the task chat
+        </span>
+        <.link
+          navigate={~p"/c/#{@item.task.child_id}"}
+          id={"task-link-#{@item.call_id}"}
+          class="ml-auto flex items-center gap-1 font-medium text-primary transition hover:underline"
+        >
+          Open task chat <.icon name="hero-arrow-right" class="size-3" />
+        </.link>
+      </div>
       <details
         :if={detail = tool_detail(@item)}
         open={@item.status == :awaiting_approval}
@@ -914,9 +1092,14 @@ defmodule EliaWeb.ChatLive do
 
   defp tool_icon("shell"), do: "hero-command-line"
   defp tool_icon(name) when name in ~w(read_file write_file edit_file), do: "hero-document-text"
+  defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
 
   defp tool_summary(%{name: "shell", input: %{"command" => command}}), do: command
+
+  defp tool_summary(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
+    do: title
+
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
   defp tool_summary(%{input: input}), do: Jason.encode!(input, pretty: true)
@@ -1155,6 +1338,23 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
+  # UI-47: follows every chat's status, to flag those awaiting approval.
+  def handle_info({:chat_status, id, status}, socket) do
+    awaiting = socket.assigns.awaiting
+    now_awaiting? = status == :awaiting_approval
+
+    if now_awaiting? == id in awaiting do
+      {:noreply, socket}
+    else
+      awaiting = if now_awaiting?, do: [id | awaiting], else: List.delete(awaiting, id)
+      socket = assign(socket, awaiting: awaiting)
+
+      # UI-44: the card of the task chat that is waiting.
+      call_ids = for {call_id, %{child_id: ^id}} <- socket.assigns.tasks, do: call_id
+      {:noreply, Enum.reduce(call_ids, socket, &refresh_task_card(&2, &1))}
+    end
+  end
+
   # Keeps the sidebar's relative times current (UI-34).
   def handle_info(:tick_now, socket) do
     Process.send_after(self(), :tick_now, 60_000)
@@ -1185,8 +1385,23 @@ defmodule EliaWeb.ChatLive do
 
   defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
 
-  # UI-31: sub-task events are not rendered yet.
-  defp apply_event({:subtask, _call_id, _child_id, _status}, socket), do: socket
+  # UI-44, UI-49: the card's status and link follow the child.
+  defp apply_event({:subtask, call_id, child_id, status}, socket) do
+    tasks = Map.put(socket.assigns.tasks, call_id, %{child_id: child_id, status: status})
+
+    socket
+    |> assign(tasks: tasks, chats: Elia.Store.list(30))
+    |> refresh_task_card(call_id)
+  end
+
+  # UI-48, UI-49: this chat's own task metadata changed.
+  defp apply_event({:task, task}, socket) do
+    assign(socket,
+      task: task,
+      task_status: task_status(socket.assigns.session_id, task),
+      chats: Elia.Store.list(30)
+    )
+  end
 
   defp apply_event({:usage, usage}, socket) do
     socket
@@ -1237,6 +1452,54 @@ defmodule EliaWeb.ChatLive do
     |> assign(last_usage: nil)
     |> put_context(Context.new(messages))
     |> load_messages(messages)
+  end
+
+  ## Task cards (UI-43 to UI-48)
+
+  # The task chats this chat started, by the `spawn_task` call that started each.
+  defp task_children(id) do
+    for %{parent_call_id: call_id} = child <- Elia.Store.children(id),
+        is_binary(call_id),
+        into: %{},
+        do: {call_id, %{child_id: child.id, status: child.task_status}}
+  end
+
+  defp task_card(socket, call_id) do
+    case socket.assigns.tasks do
+      %{^call_id => %{child_id: child_id, status: status}} ->
+        %{child_id: child_id, status: status, awaiting: child_id in socket.assigns.awaiting}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp refresh_task_card(socket, call_id) do
+    case socket.assigns.calls do
+      %{^call_id => call} -> put_call(socket, %{call | task: task_card(socket, call_id)})
+      _ -> socket
+    end
+  end
+
+  # A task saved as running without a live turn lost its session (STORE-17).
+  defp task_status(_id, nil), do: nil
+
+  defp task_status(id, %{status: "running"}),
+    do: if(Elia.Tasks.running?(id), do: "running", else: "interrupted")
+
+  defp task_status(_id, %{status: status}), do: status
+
+  defp parent_title(%{parent_id: parent_id}),
+    do: parent_id |> Elia.Store.load() |> Elia.Store.title()
+
+  defp parent_title(_task), do: nil
+
+  # UI-45: task chats nested under their parent; orphans stay at the top level.
+  defp chat_tree(chats) do
+    ids = MapSet.new(chats, & &1.id)
+    {nested, top} = Enum.split_with(chats, &(Map.get(&1, :parent_id) in ids))
+    by_parent = nested |> Enum.reverse() |> Enum.group_by(& &1.parent_id)
+    Enum.map(top, &{&1, Map.get(by_parent, &1.id, [])})
   end
 
   ## Transcript items
@@ -1307,6 +1570,7 @@ defmodule EliaWeb.ChatLive do
           call_id: call.id,
           name: call.name,
           input: call.input,
+          task: task_card(socket, call.id),
           status: Map.get(socket.assigns.tool_status, call.id, :pending),
           output: nil,
           is_error: false

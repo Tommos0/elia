@@ -26,10 +26,12 @@ progress so any number of UIs can follow it.
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
-  or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself).
+  or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
+  `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
-  status, the chat's model selection (`nil` if none yet) and its
-  auto-approved tool names (sorted list), so a UI that connects mid-turn can render the current state.
+  status, the chat's model selection (`nil` if none yet), its
+  auto-approved tool names (sorted list) and its task metadata (`task`, `nil`
+  for an ordinary chat), so a UI that connects mid-turn can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
   returns to idle and broadcasts the notice "Stopped.". Stopping an idle
@@ -68,6 +70,14 @@ progress so any number of UIs can follow it.
 - **SESS-18** `Elia.Agent.update_task/2` (chat id, map of changes) merges the
   changes into the chat's task metadata and saves it. It returns
   `{:error, :not_a_task}` for a chat that has none.
+- **SESS-19** Every status change (SESS-4) is also broadcast on
+  `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
+  follow every chat without subscribing to each. A session also keeps its
+  status as its value in `Elia.Agent.Registry`, and
+  `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
+  is `:awaiting_approval`, without calling them.
+- **SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
+  merged metadata on the chat's topic.
 
 ## Out of scope
 

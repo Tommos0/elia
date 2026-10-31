@@ -141,10 +141,48 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ### Sub-tasks
 
-- **UI-31** A `{:subtask, …}` agent event (SUBTASK-7) is accepted and ignored
-  by the chat page: the child is an ordinary chat in the chat list, and the
-  `spawn_task` call renders like any other tool call. Task cards and links
-  come in a later phase.
+A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
+so it opens at `/c/<child id>` like any chat.
+
+- ~~**UI-31** A `{:subtask, …}` agent event is accepted and ignored by the chat
+  page.~~ Removed: the ID collided with the "New chat" button requirement above
+  (the phase 1 spec reused it); replaced by UI-43 and UI-44.
+- **UI-43** A `spawn_task` call renders as a task card: the tool card's summary
+  is the task `title` instead of the raw JSON input (UI-15), and a "Brief"
+  section (`#task-brief-<call_id>`) shows the `brief`, expanded while the call
+  awaits approval. The usual badge (UI-16) and approval buttons (UI-18) stay.
+- **UI-44** Once the child exists, the card shows its status
+  (`#task-status-<call_id>`, with `data-status` set to `running`, `done`,
+  `blocked`, `failed`, `unfinished` or `interrupted`) and a link to the child
+  chat (`#task-link-<call_id>`). The status follows `{:subtask, call_id,
+  child_id, status}` events (SUBTASK-7), and the link and status also appear
+  when the chat is opened later, from the children's saved metadata
+  (`parent_call_id`, STORE-18). While the child waits for the user to approve a
+  tool call in its own chat (SESS-19), the card says so
+  (`#task-awaiting-<call_id>`).
+- **UI-45** The sidebar nests a task chat under its parent chat, indented and
+  ordered by start time (oldest first). A task chat whose parent isn't in the
+  list is shown on its own at the top level. The row (`#chat-link-<id>`) uses
+  the task's title (STORE-17).
+- **UI-46** Each task chat in the sidebar shows its status as an icon
+  (`#chat-task-status-<id>`, with `data-status` as in UI-44, and a `title`
+  naming the status): a spinner while running, and a distinct icon for each
+  other status.
+- **UI-47** Any chat in the sidebar that has a tool call awaiting approval
+  (SESS-4) shows a badge (`#chat-approval-<id>`, title "Needs approval"), so a
+  pending prompt in a child chat is not missed from the parent or any other
+  chat. The badge follows status changes of every chat live (SESS-19) and is
+  right on first render.
+- **UI-48** A task chat shows a header (`#task-header`) above the transcript
+  with "Task of" and a link to the parent chat (`#task-parent-link`, labelled
+  with the parent's title), the task's status (UI-44's `data-status`, on
+  `#task-header-status`), and a collapsible "Brief" (`#task-header-brief`).
+  Once the task has finished, it also shows the result (`#task-result`): the
+  summary, the commit (first 8 characters), the changed files and the open
+  questions. The header follows `{:task, metadata}` events (SESS-20).
+- **UI-49** The sidebar refreshes when a `{:subtask, …}` or `{:task, …}` event
+  arrives, so a new task chat and its final status show without waiting for the
+  turn to end (UI-6).
 
 ## Implementation
 
@@ -153,5 +191,5 @@ stream in, approves or denies tool calls, and switches between saved chats.
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
-`test/elia_web/live/page_title_test.exs`,
+`test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

@@ -1,7 +1,7 @@
 # Sub-tasks
 
-Status: Implemented (phase 1 of [the plan](plans/subagents.md): core only, no
-dedicated UI)
+Status: Implemented (phases 1 and 2 of [the plan](plans/subagents.md): core,
+and task cards, a nested chat list and a task header in the chat UI)
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context, wait for it, and get back a short structured result. The
@@ -100,9 +100,16 @@ and approvals are global.
   (SUBTASK-4). A parent with no checkpoint yet takes one at its first change
   after the child, as usual.
 
+### UI support (phase 2)
+
+- **SUBTASK-15** The saved task metadata also records `parent_call_id`, the id
+  of the parent's `spawn_task` call (STORE-18), so the parent's page can show
+  the child's card and link after a reload. The UI itself is specified in
+  `chat-ui.md` (UI-43 to UI-49).
+
 ## Out of scope (later phases of the plan)
 
-Task cards and a nested chat list (phase 2); cancel, wall-clock budget, restart
+Cancel, wall-clock budget, restart
 recovery and rollback on failure (phase 3); read-only children (phase 4).
 
 ## Implementation
@@ -119,4 +126,4 @@ Guarded files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
 ## Tests
 
 `test/elia/tasks_test.exs`, `test/elia/store_test.exs`,
-`test/elia/agent_test.exs`.
+`test/elia/agent_test.exs`, `test/elia_web/live/task_ui_test.exs`.

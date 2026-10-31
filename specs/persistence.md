@@ -60,6 +60,11 @@ reopened.
   and `task_status`, and its `title` is the task's title (STORE-7 doesn't
   apply). A task saved as `"running"` whose child isn't the active one
   (SUBTASK-11) is listed as `"interrupted"`, as its session was lost.
+- **STORE-18** Task metadata also holds `parent_call_id`, the id of the parent's
+  `spawn_task` call (SUBTASK-15), and a listed task chat carries it too.
+  `Elia.Store.children/1` (parent chat id) returns the listed entries
+  (STORE-17) of the task chats whose `parent_id` it is, oldest first, with no
+  limit, so the parent's page can link each `spawn_task` call to its child.
 
 ## Implementation
 

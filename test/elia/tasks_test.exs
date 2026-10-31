@@ -210,6 +210,10 @@ defmodule Elia.TasksTest do
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "running"}}
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "done"}}
 
+    # SUBTASK-15, STORE-18: the parent's call is recorded for the UI.
+    assert %{parent_call_id: "s1"} = Store.load_task(child)
+    assert [%{id: ^child, parent_call_id: "s1"}] = Store.children(parent)
+
     # SUBTASK-5, 13: saved metadata, with the final status and the result.
     assert %{
              parent_id: ^parent,

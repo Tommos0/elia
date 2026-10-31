@@ -96,14 +96,26 @@ defmodule Elia.Store do
   end
 
   @doc "Saved conversations, most recently started first (STORE-12)."
-  def list(limit \\ 50) do
+  def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
+
+  @doc """
+  The task chats started by `parent_id`, oldest first, as listed entries
+  (STORE-18).
+  """
+  @spec children(binary()) :: [map()]
+  def children(parent_id) do
+    all_entries()
+    |> Enum.filter(&(Map.get(&1, :parent_id) == parent_id))
+    |> Enum.reverse()
+  end
+
+  defp all_entries do
     case File.ls(dir()) do
       {:ok, files} ->
         files
         |> Enum.filter(&String.ends_with?(&1, ".term"))
         |> Enum.map(&list_entry/1)
         |> Enum.sort_by(&DateTime.to_unix(&1.created_at, :microsecond), :desc)
-        |> Enum.take(limit)
         |> Enum.map(fn entry ->
           {messages, entry} = Map.pop(entry, :messages)
           {task, entry} = Map.pop(entry, :task)
@@ -129,7 +141,13 @@ defmodule Elia.Store do
       end
 
     title = if is_binary(task[:title]) and task.title != "", do: task.title, else: entry.title
-    Map.merge(entry, %{title: title, parent_id: parent_id, task_status: status})
+
+    Map.merge(entry, %{
+      title: title,
+      parent_id: parent_id,
+      task_status: status,
+      parent_call_id: task[:parent_call_id]
+    })
   end
 
   defp put_task(entry, _task), do: entry

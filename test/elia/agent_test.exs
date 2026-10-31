@@ -357,5 +357,32 @@ defmodule Elia.AgentTest do
 
     :ok = Agent.update_task(id, %{status: "done"})
     assert %{status: "done", title: "T"} = Elia.Store.load_task(id)
+    # SESS-20, SESS-7
+    assert_receive {:agent, ^id, {:task, %{status: "done", title: "T"}}}
+    assert %{task: %{status: "done"}} = Agent.snapshot(id)
+  end
+
+  # SESS-7
+  test "an ordinary chat's snapshot has no task", %{id: id} do
+    assert %{task: nil} = Agent.snapshot(id)
+  end
+
+  # SESS-19
+  test "status changes go to the activity topic and the registry", %{id: id} do
+    Agent.subscribe_activity()
+    refute id in Agent.awaiting_approval()
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "run it")
+    assert_receive {:chat_status, ^id, :running}
+    assert_receive {:chat_status, ^id, :awaiting_approval}
+    assert id in Agent.awaiting_approval()
+
+    :ok = Agent.approve(id, "c1")
+    assert_receive {:chat_status, ^id, :idle}, 5000
+    refute id in Agent.awaiting_approval()
   end
 end

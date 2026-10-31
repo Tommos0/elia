@@ -8,7 +8,7 @@ defmodule Elia.Agent.Session do
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:error, text}`, `{:reset, messages}`,
-  `{:model, selection}`, `{:auto_approve, names}`.
+  `{:model, selection}`, `{:auto_approve, names}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -95,7 +95,10 @@ defmodule Elia.Agent.Session do
   end
 
   def handle_call(:snapshot, _from, state) do
-    snapshot = Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection])
+    snapshot =
+      Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection])
+      |> Map.put(:task, Map.get(state, :task_meta))
+
     {:reply, Map.put(snapshot, :auto_approve, names(state.auto_approve)), state}
   end
 
@@ -151,8 +154,9 @@ defmodule Elia.Agent.Session do
   end
 
   def handle_call({:update_task, changes}, _from, state) do
-    # SESS-18
+    # SESS-18, SESS-20
     state = save(%{state | task_meta: Map.merge(state.task_meta, changes)})
+    broadcast(state, {:task, state.task_meta})
     {:reply, :ok, state}
   end
 
@@ -391,6 +395,15 @@ defmodule Elia.Agent.Session do
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})
+    # SESS-19
+    Registry.update_value(Elia.Agent.Registry, state.id, fn _ -> status end)
+
+    Phoenix.PubSub.broadcast(
+      Elia.PubSub,
+      Elia.Agent.activity_topic(),
+      {:chat_status, state.id, status}
+    )
+
     %{state | status: status}
   end
 

@@ -193,5 +193,27 @@ defmodule Elia.StoreTest do
     assert plain_entry.title == "just a chat"
   end
 
+  # STORE-18
+  test "children/1 lists a chat's task chats oldest first, with their call ids" do
+    parent = Elia.Agent.new_id()
+    first = Elia.Agent.new_id()
+    second = Elia.Agent.new_id()
+    other = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([first, second, other], &Store.delete/1) end)
+
+    task = fn parent_id, call_id ->
+      %{parent_id: parent_id, parent_call_id: call_id, title: "T #{call_id}", status: "done"}
+    end
+
+    Store.save(first, [Message.user("x")], task: task.(parent, "c1"))
+    Store.save(second, [Message.user("x")], task: task.(parent, "c2"))
+    Store.save(other, [Message.user("x")], task: task.("someone-else", "c3"))
+
+    assert [%{id: ^first, parent_call_id: "c1"}, %{id: ^second, parent_call_id: "c2"}] =
+             Store.children(parent)
+
+    assert Store.children("nobody") == []
+  end
+
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))
 end
