@@ -66,4 +66,5 @@ deleting it.
 | [Hot reload](hot-reload.md) | `HOT` | Loading tested code into the running dev server |
 | [Guarded files](guarded-files.md) | `GUARD` | Holding all code changes out of the running app until hot reload; the guarded list |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
+| [Installable web app](pwa.md) | `PWA` | Manifest, icons and service worker so the app installs on a phone |
 | [Recovery](recovery.md) | `RECOVER` | `/recover` page and crash-page banner that roll back to a checkpoint without the app |
