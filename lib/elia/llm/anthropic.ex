@@ -120,9 +120,8 @@ defmodule Elia.LLM.Anthropic do
           url: config[:base_url] <> "/v1/models",
           params: params,
           headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}],
-          retry: false,
           receive_timeout: :timer.seconds(15)
-        ],
+        ] ++ Elia.LLM.Retry.get_options(),
         config[:req_options]
       )
 

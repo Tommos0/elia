@@ -73,6 +73,12 @@ access to many other models.
   retried, so no streamed event is ever emitted twice; it returns
   `{:error, "Anthropic API request failed: ..."}`. Other transport errors are
   not retried.
+- **LLM-31** LLM-30 also applies to OpenRouter's streaming call (with an
+  `OpenRouter API request failed: ...` error), and to the `GET` requests of
+  both providers (model list, key check, balance; their errors keep their
+  existing "... request failed: ..." wording). A `GET` has no streamed
+  events, so it is retried on a closed connection (up to two times, at once)
+  whatever has been received.
 
 ### Registry
 
@@ -161,7 +167,7 @@ Tests use `Elia.FakeLLM`.
 ## Implementation
 
 `Elia.LLM`, `Elia.LLM.Provider`, `Elia.LLM.Message`, `Elia.LLM.Anthropic`,
-`Elia.LLM.OpenRouter`, `Elia.LLM.SSE`.
+`Elia.LLM.OpenRouter`, `Elia.LLM.Retry`, `Elia.LLM.SSE`.
 
 ## Tests
 

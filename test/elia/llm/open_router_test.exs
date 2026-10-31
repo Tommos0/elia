@@ -321,6 +321,75 @@ defmodule Elia.LLM.OpenRouterTest do
     assert {:error, "OpenRouter API error 401: Invalid key"} = OpenRouter.balance("or-key")
   end
 
+  # LLM-31
+  test "retries a stream on a closed connection, and gives up after two retries" do
+    counter = :counters.new(1, [])
+    test_pid = self()
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :closed)
+      else
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, :second_request)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(
+          200,
+          "data: #{Jason.encode!(delta(%{"content" => "hi"}))}\n\n" <>
+            "data: #{Jason.encode!(finish("stop"))}\n\ndata: [DONE]\n\n"
+        )
+      end
+    end)
+
+    assert {:ok, %{stop_reason: :end_turn}} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert_received :second_request
+    assert :counters.get(counter, 1) == 2
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :closed)
+    end)
+
+    assert {:error, "OpenRouter API request failed: socket closed"} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 5
+  end
+
+  # LLM-31
+  test "GET requests retry on a closed connection" do
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :closed)
+      else
+        Req.Test.json(conn, %{"data" => %{"total_credits" => 10, "total_usage" => 2.5}})
+      end
+    end)
+
+    assert {:ok, %{remaining: 7.5}} = OpenRouter.balance("or-key")
+    assert :counters.get(counter, 1) == 2
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :closed)
+    end)
+
+    assert {:error, "OpenRouter request failed: socket closed"} =
+             OpenRouter.balance("or-key")
+
+    assert :counters.get(counter, 1) == 5
+  end
+
   # LLM-25
   test "Elia.LLM.balance/1 handles missing keys and unsupported providers" do
     configure(OpenRouter)

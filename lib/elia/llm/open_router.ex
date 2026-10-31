@@ -150,9 +150,8 @@ defmodule Elia.LLM.OpenRouter do
       [
         url: config[:base_url] <> path,
         headers: auth ++ [{"x-title", "Elia"}],
-        retry: false,
         receive_timeout: :timer.seconds(15)
-      ],
+      ] ++ Elia.LLM.Retry.get_options(),
       config[:req_options]
     )
   end
@@ -246,6 +245,8 @@ defmodule Elia.LLM.OpenRouter do
   ## Transport
 
   defp do_stream(body, api_key, config, on_event, attempt) do
+    Process.put(:elia_open_router_received, false)
+
     options =
       Keyword.merge(
         [
@@ -255,6 +256,7 @@ defmodule Elia.LLM.OpenRouter do
           retry: false,
           receive_timeout: :timer.minutes(10),
           into: fn {:data, chunk}, {req, resp} ->
+            Process.put(:elia_open_router_received, true)
             {:cont, {req, handle_chunk(resp, chunk, on_event)}}
           end
         ],
@@ -274,6 +276,16 @@ defmodule Elia.LLM.OpenRouter do
 
       {:ok, %Req.Response{status: status} = resp} ->
         {:error, "OpenRouter API error #{status}: #{error_message(resp)}"}
+
+      # LLM-31: a pooled connection that went stale while idle.
+      {:error, %Req.TransportError{reason: :closed} = exception}
+      when attempt < @max_retries ->
+        if Process.get(:elia_open_router_received) do
+          {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}
+        else
+          Logger.warning("OpenRouter connection was closed, retrying on a fresh one")
+          do_stream(body, api_key, config, on_event, attempt + 1)
+        end
 
       {:error, exception} ->
         {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}

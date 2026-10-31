@@ -271,6 +271,34 @@ defmodule Elia.LLM.AnthropicTest do
     assert :counters.get(counter, 1) == 4
   end
 
+  # LLM-31
+  test "Anthropic GET requests retry on a closed connection" do
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :closed)
+      else
+        Req.Test.json(conn, %{"data" => []})
+      end
+    end)
+
+    assert :ok = Anthropic.check_key("test-key")
+    assert :counters.get(counter, 1) == 2
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :closed)
+    end)
+
+    assert {:error, "Anthropic API request failed: socket closed"} =
+             Anthropic.check_key("test-key")
+
+    assert :counters.get(counter, 1) == 5
+  end
+
   # LLM-7, CONF-5
   test "without a key, returns an error and makes no request; a stored key is used" do
     Application.put_env(:elia, Anthropic, req_options: [plug: {Req.Test, __MODULE__}])
