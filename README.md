@@ -7,7 +7,7 @@ guardrails.
 ```sh
 export ANTHROPIC_API_KEY=...
 mix setup
-mix phx.server          # http://localhost:4000
+mix phx.server          # http://localhost:7000
 ```
 
 To have the server restart itself after a crash, run `bin/serve` instead of
