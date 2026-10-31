@@ -58,6 +58,33 @@ defmodule Elia.SelfModificationTest do
     after
       File.rm_rf!(in_root("skills/notes"))
     end
+
+    # FILE-11
+    test "concurrent edits of one file all apply" do
+      path = "skills/notes/concurrent.txt"
+      lines = for i <- 1..30, do: "line#{i}"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), Enum.join(lines, "\n") <> "\n")
+
+      results =
+        lines
+        |> Task.async_stream(
+          fn line ->
+            Files.edit_file(
+              %{"path" => path, "old_string" => line <> "\n", "new_string" => line <> "!\n"},
+              %{}
+            )
+          end,
+          max_concurrency: 30,
+          ordered: false
+        )
+        |> Enum.map(fn {:ok, result} -> result end)
+
+      assert Enum.all?(results, &match?({:ok, _}, &1))
+      assert File.read!(in_root(path)) == Enum.map_join(lines, "", &(&1 <> "!\n"))
+    after
+      File.rm_rf!(in_root("skills/notes"))
+    end
   end
 
   describe "checkpoints" do

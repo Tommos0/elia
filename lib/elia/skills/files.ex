@@ -141,28 +141,39 @@ defmodule Elia.Skills.Files do
   def write_file(%{"path" => path, "content" => content}, ctx) do
     {abs, _} = Workspace.resolve(path)
 
-    with :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
-         :ok <- File.mkdir_p(Path.dirname(abs)),
-         :ok <- File.write(abs, content) do
-      {:ok, "Wrote #{Workspace.relative(abs)} (#{byte_size(content)} bytes)"}
-    else
-      {:error, reason} when is_atom(reason) ->
-        {:error, "Cannot write #{path}: #{:file.format_error(reason)}"}
+    with_file_lock(abs, fn ->
+      with :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
+           :ok <- File.mkdir_p(Path.dirname(abs)),
+           :ok <- File.write(abs, content) do
+        {:ok, "Wrote #{Workspace.relative(abs)} (#{byte_size(content)} bytes)"}
+      else
+        {:error, reason} when is_atom(reason) ->
+          {:error, "Cannot write #{path}: #{:file.format_error(reason)}"}
 
-      {:error, reason} ->
-        {:error, reason}
-    end
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end)
   end
 
   def edit_file(%{"path" => path, "old_string" => old, "new_string" => new} = input, ctx) do
     {abs, _} = Workspace.resolve(path)
 
-    with {:ok, text} <- File.read(abs) |> file_error(path),
-         {:ok, updated, count} <- replace(text, old, new, input["replace_all"] == true),
-         :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
-         :ok <- File.write(abs, updated) |> file_error(path) do
-      {:ok, "Edited #{Workspace.relative(abs)} (#{count} replacement#{if count != 1, do: "s"})"}
-    end
+    # The whole read-modify-write runs under the file's lock (FILE-11), so
+    # concurrent edits of one file each see the previous edit's result.
+    with_file_lock(abs, fn ->
+      with {:ok, text} <- File.read(abs) |> file_error(path),
+           {:ok, updated, count} <- replace(text, old, new, input["replace_all"] == true),
+           :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
+           :ok <- File.write(abs, updated) |> file_error(path) do
+        {:ok, "Edited #{Workspace.relative(abs)} (#{count} replacement#{if count != 1, do: "s"})"}
+      end
+    end)
+  end
+
+  # Serialises writers of one absolute path across processes (FILE-11).
+  defp with_file_lock(abs, fun) do
+    :global.trans({{__MODULE__, abs}, self()}, fun, [node()])
   end
 
   defp replace(_text, "", _new, _all?), do: {:error, "old_string must not be empty"}

@@ -31,6 +31,12 @@ workspace class.
 - **FILE-10** The skill's instructions open by telling the model to use these
   tools, not shell commands (`cat`, `sed`, `echo >`, scripts), to read, create
   and edit files, because the file tools apply the workspace policy (WS-1).
+- **FILE-11** Calls to `write_file` and `edit_file` for the same file are
+  serialised, so concurrent calls (LOOP-10) never lose each other's changes:
+  every successful call's change is in the final file. The order between
+  concurrent calls isn't guaranteed, so an edit that depends on another edit to
+  the same file may fail with "old_string not found". Calls for different files
+  don't wait for each other.
 
 ## Implementation
 
