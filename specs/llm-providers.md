@@ -65,6 +65,15 @@ access to many other models.
   blocks empty). `"summarized"` sends no `thinking-display-updates` beta
   header, and `"omitted"` returns no thinking text at all.
 
+- **LLM-30** A connection that was closed before any response data arrived
+  (`Req.TransportError` with reason `:closed`, shown as "socket closed") is
+  retried at once on a fresh connection, up to two times, sharing the retry
+  budget of LLM-10. It is typically a pooled connection that went stale while
+  the app sat idle. Once any response data has been received the call is not
+  retried, so no streamed event is ever emitted twice; it returns
+  `{:error, "Anthropic API request failed: ..."}`. Other transport errors are
+  not retried.
+
 ### Registry
 
 - **LLM-15** `Elia.LLM.providers/0` lists the registered providers as

@@ -272,6 +272,16 @@ defmodule Elia.LLM.Anthropic do
       {:ok, %Req.Response{status: status} = resp} ->
         {:error, "Anthropic API error #{status}: #{error_message(resp)}"}
 
+      # LLM-30: a pooled connection that went stale while idle.
+      {:error, %Req.TransportError{reason: :closed} = exception}
+      when attempt < @max_retries ->
+        if Process.get(:elia_anthropic_received) do
+          {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
+        else
+          Logger.warning("Anthropic connection was closed, retrying on a fresh one")
+          do_stream(body, api_key, config, on_event, attempt + 1)
+        end
+
       {:error, exception} ->
         {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
     end

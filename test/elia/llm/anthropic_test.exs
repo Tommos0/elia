@@ -213,6 +213,64 @@ defmodule Elia.LLM.AnthropicTest do
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
 
+  # LLM-30
+  test "retries on a fresh connection when the pooled one was closed" do
+    counter = :counters.new(1, [])
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :closed)
+      else
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, :second_request)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(
+          200,
+          sse([
+            %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+            %{"type" => "message_delta", "delta" => %{"stop_reason" => "end_turn"}}
+          ])
+        )
+      end
+    end)
+
+    assert {:ok, %{stop_reason: :end_turn}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert_received :second_request
+    assert :counters.get(counter, 1) == 2
+  end
+
+  # LLM-30
+  test "gives up after two retries of a closed connection; other transport errors aren't retried" do
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :closed)
+    end)
+
+    assert {:error, "Anthropic API request failed: socket closed"} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 3
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :timeout)
+    end)
+
+    assert {:error, "Anthropic API request failed: " <> _} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 4
+  end
+
   # LLM-7, CONF-5
   test "without a key, returns an error and makes no request; a stored key is used" do
     Application.put_env(:elia, Anthropic, req_options: [plug: {Req.Test, __MODULE__}])
