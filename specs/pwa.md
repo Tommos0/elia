@@ -16,7 +16,10 @@ offline mode.
   is `standalone`, and which has `background_color` and `theme_color`.
 - **PWA-2** The manifest lists PNG icons of 192×192 and 512×512 for purpose
   `any` and for purpose `maskable`. Every icon file it references is served.
-- **PWA-3** The root layout links the manifest (`rel="manifest"`), sets a
+- **PWA-3** The root layout links the manifest (`rel="manifest"`, with
+  `crossorigin="use-credentials"` so the browser sends cookies when fetching
+  it; behind an auth proxy such as Cloudflare Access it is otherwise redirected
+  to the login page and fails), sets a
   `theme-color` meta tag, and links a 180×180 `apple-touch-icon`.
 - **PWA-4** `/sw.js` is served from the site root, so its scope covers the
   whole app. It has a `fetch` handler that never calls `respondWith`, so the

@@ -43,7 +43,7 @@ defmodule EliaWeb.PwaTest do
   test "root layout links the manifest, theme color and apple touch icon", %{conn: conn} do
     html = conn |> get(~p"/settings") |> html_response(200)
 
-    assert html =~ ~s(rel="manifest" href="/manifest.webmanifest")
+    assert html =~ ~s(rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials")
     assert html =~ ~s(name="theme-color")
     assert html =~ ~s(rel="apple-touch-icon" href="/images/apple-touch-icon.png")
 
