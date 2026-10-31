@@ -19,9 +19,10 @@ offline mode.
 - **PWA-3** The root layout links the manifest (`rel="manifest"`), sets a
   `theme-color` meta tag, and links a 180×180 `apple-touch-icon`.
 - **PWA-4** `/sw.js` is served from the site root, so its scope covers the
-  whole app. It has a `fetch` handler that passes every request to the network
-  unchanged (no caching), and it activates immediately (`skipWaiting` and
-  `clients.claim`).
+  whole app. It has a `fetch` handler that never calls `respondWith`, so the
+  browser handles every request natively (no caching, no proxying; proxying
+  navigations through the worker can leave a blank page after a refresh), and
+  it activates immediately (`skipWaiting` and `clients.claim`).
 - **PWA-5** `assets/js/app.js` registers `/sw.js` when the browser supports
   service workers. A registration failure is ignored (logged only) and never
   breaks the page.

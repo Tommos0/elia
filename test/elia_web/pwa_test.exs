@@ -58,7 +58,7 @@ defmodule EliaWeb.PwaTest do
     assert js =~ "skipWaiting"
     assert js =~ "clients.claim"
     assert js =~ ~s("fetch")
-    assert js =~ "fetch(event.request)"
+    refute js =~ "respondWith"
     refute js =~ "caches."
   end
 
