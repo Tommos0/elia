@@ -7,7 +7,8 @@ defmodule Elia.MixProject do
       version: "0.1.0",
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
-      start_permanent: Mix.env() == :prod,
+      # If the app stops, halt the VM so bin/serve restarts it (RESTART-7).
+      start_permanent: Mix.env() != :test,
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),

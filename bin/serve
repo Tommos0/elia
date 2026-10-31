@@ -1,0 +1,82 @@
+#!/bin/sh
+# Runs the Elia server and starts it again whenever it dies (specs/auto-restart.md).
+#
+#   bin/serve
+#
+# Environment:
+#   ELIA_SERVE_CMD         command to run (default: elixir --sname elia -S mix phx.server)
+#   ELIA_SERVE_MIN_UPTIME  runs shorter than this many seconds are quick failures (default 10)
+#   ELIA_SERVE_MAX_DELAY   longest wait before restarting after quick failures (default 30)
+#
+# Exit status 0 from the server, or SIGINT/SIGTERM sent to this script, stops the loop.
+
+cd "$(dirname "$0")/.." || exit 1
+
+cmd=${ELIA_SERVE_CMD:-"elixir --sname elia -S mix phx.server"}
+min_uptime=${ELIA_SERVE_MIN_UPTIME:-10}
+max_delay=${ELIA_SERVE_MAX_DELAY:-30}
+
+# A crash loop must not fill the disk with erl_crash.dump files (RESTART-6).
+export ERL_CRASH_DUMP_SECONDS=0
+
+log() { echo "[serve] $*" >&2; }
+
+child=""
+sleeper=""
+stopping=0
+
+on_signal() {
+  stopping=1
+  [ -n "$child" ] && kill -TERM "$child" 2>/dev/null
+  [ -n "$sleeper" ] && kill "$sleeper" 2>/dev/null
+  return 0
+}
+trap on_signal INT TERM
+
+delay=0
+while :; do
+  started=$(date +%s)
+  log "starting: $cmd"
+  # exec in a subshell so $child is the server itself and gets our SIGTERM.
+  ( exec $cmd ) &
+  child=$!
+
+  # A trapped signal interrupts `wait`; keep waiting until the server is gone.
+  wait "$child"
+  status=$?
+  while kill -0 "$child" 2>/dev/null; do
+    wait "$child"
+    status=$?
+  done
+  child=""
+
+  if [ "$stopping" = 1 ]; then
+    log "stopped (exit status $status)"
+    exit 0
+  fi
+
+  if [ "$status" = 0 ]; then
+    log "exited cleanly, not restarting"
+    exit 0
+  fi
+
+  uptime=$(($(date +%s) - started))
+  if [ "$uptime" -lt "$min_uptime" ]; then
+    if [ "$delay" = 0 ]; then delay=1; else delay=$((delay * 2)); fi
+    [ "$delay" -gt "$max_delay" ] && delay=$max_delay
+  else
+    delay=0
+  fi
+
+  log "exited with status $status after ${uptime}s; restarting in ${delay}s"
+  if [ "$delay" -gt 0 ]; then
+    sleep "$delay" &
+    sleeper=$!
+    wait "$sleeper"
+    sleeper=""
+    if [ "$stopping" = 1 ]; then
+      log "stopped"
+      exit 0
+    fi
+  fi
+done

@@ -10,6 +10,10 @@ mix setup
 mix phx.server          # http://localhost:4000
 ```
 
+To have the server restart itself after a crash, run `bin/serve` instead of
+`mix phx.server` (see `specs/auto-restart.md`). Ctrl-C stops it for good; attach
+a shell with `iex --sname dbg --remsh elia`.
+
 ## Layout
 
 | Module | Role |
