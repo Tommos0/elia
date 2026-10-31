@@ -13,8 +13,8 @@ kept apart from the ones that apply in every project.
 ### The registry
 
 - **PROJ-1** A project is `%{id, name, folder, harness?}`: an id of 12
-  URL-safe characters (STORE-5), a `name` of 1–64 characters that isn't blank,
-  the absolute path of an existing directory `folder`, and `harness?` true only
+  URL-safe characters (STORE-5), a non-blank `name` (trimmed on save), the
+  absolute path of an existing directory `folder`, and `harness?` true only
   for Elia's own project.
 - **PROJ-2** Projects are saved as one Erlang term in `.elia/projects.term`
   (Elia's data dir, PROJ-13), written atomically like a session (STORE-2). A
