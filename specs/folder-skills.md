@@ -8,13 +8,15 @@ itself.
 
 ## Requirements
 
-- **FOLDER-1** Each directory directly under `skills/` is a candidate skill.
-  It must contain `SKILL.md`.
+- **FOLDER-1** Each directory directly under a `skills/` folder is a candidate
+  skill. It must contain `SKILL.md`. The `skills/` folders are Elia's own and,
+  for a chat with a project of its own, the project's (PROJ-18).
 - **FOLDER-2** `SKILL.md` starts with a `---` frontmatter block of
   `key: value` lines. `name` (matching `^[a-z0-9][a-z0-9_-]{0,63}$`) and
   `description` are required. The body after the frontmatter is the skill's
   instructions.
-- **FOLDER-3** The skill's instructions end with "Skill folder: <relative path>".
+- **FOLDER-3** The skill's instructions end with "Skill folder: <relative path>",
+  relative to the workspace root the skill was loaded from.
 - **FOLDER-4** The optional `tools.json` file is a JSON list of tools. Each
   has `name` (matching `^[a-zA-Z0-9_-]{1,64}$`), `description` and `command`,
   and optionally `input_schema` (an object schema; defaults to empty) and
@@ -27,7 +29,8 @@ itself.
 - **FOLDER-7** Tool input never goes into the command line. It is passed as
   JSON in `ELIA_INPUT`, and each top-level string, number or boolean field as
   `ELIA_ARG_<FIELD>` (upper-cased, with non-alphanumeric characters replaced
-  by `_`). `ELIA_WORKSPACE` holds the workspace root.
+  by `_`). `ELIA_WORKSPACE` holds the workspace root the skill was loaded from
+  (PROJ-12).
 - **FOLDER-8** Script tools always need approval, because the agent can write
   them without approval (WS-1).
 - **FOLDER-9** A script tool checkpoints the workspace before running

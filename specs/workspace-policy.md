@@ -3,8 +3,8 @@
 Status: Implemented
 
 The workspace is the directory the agent works in: by default, Elia's own
-source tree. Every path is put in a class that decides what the agent's
-tools may do with it.
+source tree, or the folder of the chat's project (PROJ-12). Every path is put
+in a class that decides what the agent's tools may do with it.
 
 ## Requirements
 
@@ -21,9 +21,10 @@ tools may do with it.
   can't escape the workspace (`skills/../../etc` is `:outside`).
 - **WS-3** A path under `skills/` that goes through a symlink is `:core`, so
   a symlink can't give extension rights to files elsewhere.
-- **WS-4** The workspace root is `config :elia, :workspace`, or the current
-  directory if unset. The skills folder is `<root>/skills` and harness data is
-  in `<root>/.elia`.
+- **WS-4** The workspace root is a project's folder (PROJ-12), or Elia's own
+  root — `config :elia, :workspace`, or the current directory if unset — for
+  Elia's own project. The skills folder is `<root>/skills` and harness data is
+  always in `<Elia root>/.elia` (PROJ-13).
 
 ## Implementation
 

@@ -25,20 +25,23 @@ system prompt from them. It can be reloaded while the app runs.
   skills with their tool names, plus an error result listing any folders that
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
-  `files` ([File tools](file-tools.md)) and `harness` (`reload_skills`,
-  `run_tests`, `hot_reload`, `list_checkpoints`, `rollback`) and `tasks`
-  (`spawn_task`, [Sub-tasks](subtasks.md)).
-- **SKILL-8** The `harness` skill's instructions tell the model to prefer a
-  folder skill over changing Elixir code, to run tests before finishing, and
-  to tell the user when a change touches guarded files. They also say that
-  Elixir changes only take effect after `hot_reload` (GUARD-8).
-- **SKILL-9** The `harness` skill's instructions tell the model that the
-  project is spec-driven: before changing Elixir code it updates or adds the
-  feature's spec in `specs/` (see `specs/README.md`), keeps requirement IDs
-  stable, and cites the IDs it touched in the tests it writes. Folder skills
-  don't need a spec.
-- **SKILL-10** When `AGENTS.md` exists in the workspace root and isn't blank,
-  its contents are injected into the system prompt as a section headed
+  `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
+  `run_tests`), `tasks` (`spawn_task`, [Sub-tasks](subtasks.md)) and
+  `self-modification` (`hot_reload`, `list_checkpoints`, `rollback`). The last
+  one is a chat's only when its project is Elia's own (PROJ-17).
+- **SKILL-8** The `harness` skill's instructions apply in every project: they
+  tell the model to prefer a folder skill over changing code, to reload skills
+  with `reload_skills`, and to run the tests before finishing. Folder skills
+  are written without approval, but their tools always ask.
+- **SKILL-9** The `self-modification` skill's instructions tell the model that
+  Elixir changes need the user's approval and only take effect after
+  `hot_reload` (GUARD-8); that the workspace is checkpointed before its first
+  change in a turn and that a failing `mix test` rolls the change back; and
+  that the project is spec-driven: before changing Elixir code it updates or
+  adds the feature's spec in `specs/` (see `specs/README.md`), keeps
+  requirement IDs stable and cites the IDs it touched in the tests it writes.
+- **SKILL-10** When `AGENTS.md` exists in a chat's project folder and isn't
+  blank, its contents are injected into the system prompt as a section headed
   `## Project instructions (AGENTS.md)`, after the base prompt and before the
   skill sections.
 - **SKILL-11** The file is read each time the system prompt is built, so an
@@ -47,12 +50,13 @@ system prompt from them. It can be reloaded while the app runs.
 - **SKILL-12** The injected contents are capped at 32,000 bytes. Longer files
   are cut at a character boundary, end with a note saying they were truncated,
   and a warning is logged.
-- **SKILL-13** Only the root `AGENTS.md` is injected. Files it points to (such
-  as `docs/agents/*.md`) are not; the model reads them on demand.
+- **SKILL-13** Only the root `AGENTS.md` of that folder is injected. Files it
+  points to (such as `docs/agents/*.md`) are not; the model reads them on
+  demand.
 
-- **SKILL-14** `Elia.Skills.resolve/1` turns a session's `skills` option into a
-  skill list: a list is used as is, a function of no arguments is called, and
-  `nil` means the registry's current skills.
+- **SKILL-14** `Elia.Skills.resolve/2` turns a session's `skills` option and
+  project into a skill list: a list is used as is, a function of no arguments
+  is called, and `nil` means the project's skills (PROJ-21).
 
 ## Configuration
 
@@ -63,8 +67,8 @@ config :elia, Elia.Skills,
 
 ## Implementation
 
-`Elia.Skill`, `Elia.Skills` (`project_instructions/1`, `system_sections/2`),
-`Elia.Skills.Harness`.
+`Elia.Skill`, `Elia.Skills` (`project_instructions/1`, `system_sections/2`,
+`for_project/1`), `Elia.Skills.Harness`, `Elia.Skills.SelfModification`.
 
 ## Tests
 

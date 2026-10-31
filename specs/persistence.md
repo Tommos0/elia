@@ -67,6 +67,11 @@ reopened.
   (STORE-17) of the task chats whose `parent_id` it is, oldest first, with no
   limit, so the parent's page can link each `spawn_task` call to its child.
 
+- **STORE-19** `save/3` takes `project:` (a project id) and stores it as
+  `project_id`; `load_project/1` returns it, or `nil` when the chat is missing,
+  unreadable, corrupt or has none (PROJ-9).
+- **STORE-20** Each listed chat carries `project_id`, or `nil` when it has none.
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.

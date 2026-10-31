@@ -17,9 +17,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ### Chat list
 
-- **UI-4** On large screens a sidebar lists the 30 most recently started
-  chats (STORE-12), newest first, each linking to `/c/<id>`. The open chat is
-  highlighted. Small screens get the same list through a drawer (UI-36).
+- **UI-4** On large screens a sidebar lists the 30 most recently started chats
+  (STORE-12), newest first, grouped by project (PROJ-24), each linking to
+  `/c/<id>`. The open chat is highlighted. Small screens get the same list
+  through a drawer (UI-36).
 - **UI-34** Each sidebar chat shows when it was started in human-readable
   relative form ("just now", "10 minutes ago", "3 hours ago", "2 days ago",
   then a date after a week), in a `<time>` element whose `datetime` is the
@@ -29,7 +30,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-6** When a turn ends (status becomes idle), the sidebar and page title
   refresh.
 - **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
-  list that starts a fresh chat.
+  list that starts a fresh chat in the default project (PROJ-26).
 - **UI-33** Each sidebar chat link has a `title` attribute with the chat's
   description (STORE-10), so hovering shows the full text (up to 1000
   characters) rather than the truncated line.

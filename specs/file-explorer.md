@@ -10,7 +10,8 @@ deliberately small: a directory listing next to a plain-text viewer.
 
 ### Browsing (`Elia.Explorer`)
 
-- **EXPL-1** Paths are relative to the workspace root. A path that resolves
+- **EXPL-1** Paths are relative to the workspace root (the browsed project's
+  folder, EXPL-15). A path that resolves
   outside the workspace, or into a `:protected` path (WS-1: `.git`, `_build`,
   `deps`, `.elia`), is refused as forbidden and never read or listed.
 - **EXPL-2** Any path that goes through a symlink is refused as forbidden, so a
@@ -43,6 +44,14 @@ deliberately small: a directory listing next to a plain-text viewer.
 - **EXPL-9** A path that is forbidden or missing shows a message, and the
   listing falls back to the workspace root.
 - **EXPL-10** The app header has a "Files" link to `/files`.
+
+- **EXPL-15** The page browses one project at a time: a `project` query
+  parameter names it, and paths are relative to that project's folder
+  (PROJ-22). `/files` with a missing or unknown id browses Elia's own project,
+  and EXPL-1–EXPL-5 apply to whichever folder is in view.
+- **EXPL-16** The page names the project it browses and has a control
+  (`#project-picker`) to switch to another one, which keeps the current path
+  when it exists there and falls back to the root when it doesn't.
 
 ### Syntax highlighting
 
