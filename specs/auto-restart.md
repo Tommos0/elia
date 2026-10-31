@@ -31,12 +31,32 @@ crash takes the VM down instead of leaving it empty.
 - **RESTART-7** In the `dev` and `prod` environments the application is
   permanent (`start_permanent` in `mix.exs`): if it stops, the VM halts with a
   non-zero status, which `bin/serve` turns into a restart. In `test` it isn't.
+- **RESTART-8** `deploy/elia.service` is a systemd **user** unit template that
+  runs `bin/serve` from the project root. It contains the placeholders `@ROOT@`
+  (project root) and `@PATH@` (the `PATH` that finds `elixir` and `erl`). It
+  sets `MIX_ENV=dev`, reads optional extra environment (API keys, `PORT`) from
+  `~/.config/elia/env` (the file may be missing), uses `Restart=on-failure`
+  and `KillMode=mixed` (SIGTERM goes to `bin/serve` only, RESTART-3), and is
+  `WantedBy=default.target`.
+- **RESTART-9** `bin/install-service` renders the template with the project
+  root and the caller's `PATH` into
+  `${XDG_CONFIG_HOME:-~/.config}/systemd/user/elia.service` (no placeholder is
+  left in it), then runs `systemctl --user daemon-reload` and
+  `systemctl --user enable elia.service`. With `--now` it enables and starts
+  the unit in one step (`enable --now`). The systemctl program can be replaced
+  with `SYSTEMCTL`.
+- **RESTART-10** `bin/install-service` refuses, before writing anything, a
+  project root that contains whitespace, `%` or `$` (they'd need escaping in
+  the unit), and exits non-zero. A `%` in `PATH` is written as `%%`.
 
 ## Out of scope
 
 - Restarting a server that wasn't started through `bin/serve`: nothing outside
   the VM exists to bring it back. Use a service manager (systemd, etc.) for
-  that, with `bin/serve` as the command.
+  that, with `bin/serve` as the command (RESTART-8).
+- Starting the user service at boot without a login: that needs
+  `loginctl enable-linger $USER`, which is a system setting the installer
+  doesn't change.
 - Keeping the interactive IEx shell: `bin/serve` runs without one. Attach with
   `iex --sname dbg --remsh elia`.
 - Restoring in-memory state. Chats are on disk (`Elia.Store`), but a turn
@@ -44,8 +64,9 @@ crash takes the VM down instead of leaving it empty.
 
 ## Implementation
 
-`bin/serve`; `start_permanent` in `mix.exs`.
+`bin/serve`; `start_permanent` in `mix.exs`; `deploy/elia.service` and
+`bin/install-service` (systemd user service).
 
 ## Tests
 
-`test/elia/serve_script_test.exs`.
+`test/elia/serve_script_test.exs`, `test/elia/install_service_test.exs`.

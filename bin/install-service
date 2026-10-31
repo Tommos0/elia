@@ -1,0 +1,45 @@
+#!/bin/sh
+# Installs the systemd user service for Elia (specs/auto-restart.md).
+#
+#   bin/install-service          # install and enable (starts at login)
+#   bin/install-service --now    # ... and start it right away
+#
+# Environment:
+#   XDG_CONFIG_HOME  where ~/.config is (the unit goes in systemd/user/)
+#   SYSTEMCTL        systemctl program to use (default: systemctl)
+set -eu
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+# These would need escaping in a unit file (RESTART-10).
+case $root in
+  *[[:space:]%\$]*)
+    echo "install-service: project path '$root' contains whitespace, % or \$; move it first" >&2
+    exit 1
+    ;;
+esac
+
+unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+unit=$unit_dir/elia.service
+systemctl=${SYSTEMCTL:-systemctl}
+
+# Escapes a value for use in the replacement part of a sed s||| command.
+esc() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+
+mkdir -p "$unit_dir"
+sed \
+  -e "s|@ROOT@|$(esc "$root")|g" \
+  -e "s|@PATH@|$(esc "$(printf '%s' "$PATH" | sed -e 's/%/%%/g')")|g" \
+  "$root/deploy/elia.service" > "$unit"
+echo "install-service: wrote $unit"
+
+"$systemctl" --user daemon-reload
+if [ "${1:-}" = "--now" ]; then
+  "$systemctl" --user enable --now elia.service
+else
+  "$systemctl" --user enable elia.service
+  echo "install-service: start it with: systemctl --user start elia.service"
+fi
+
+echo "install-service: logs: journalctl --user -u elia -f"
+echo "install-service: to run at boot without logging in: loginctl enable-linger \$USER"

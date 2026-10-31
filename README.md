@@ -14,6 +14,12 @@ To have the server restart itself after a crash, run `bin/serve` instead of
 `mix phx.server` (see `specs/auto-restart.md`). Ctrl-C stops it for good; attach
 a shell with `iex --sname dbg --remsh elia`.
 
+To run it as a systemd user service (starts at login, restarts on failure), stop
+any running server and run `bin/install-service --now`. Put API keys in
+`~/.config/elia/env` (`ANTHROPIC_API_KEY=...`), follow the logs with
+`journalctl --user -u elia -f`, and run `loginctl enable-linger $USER` to start
+it at boot without a login.
+
 ## Layout
 
 | Module | Role |

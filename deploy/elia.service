@@ -1,0 +1,25 @@
+# systemd user unit for Elia (specs/auto-restart.md, RESTART-8).
+# Install with bin/install-service, which fills in the project root and PATH below.
+
+[Unit]
+Description=Elia (local AI harness)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+Environment=PATH=@PATH@
+Environment=MIX_ENV=dev
+# Optional: API keys, PORT, ... as KEY=value lines. The file may be missing.
+EnvironmentFile=-%h/.config/elia/env
+ExecStart=@ROOT@/bin/serve
+# bin/serve restarts the server itself; this only covers bin/serve dying.
+Restart=on-failure
+RestartSec=5
+# SIGTERM goes to bin/serve only, which stops the server cleanly.
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
