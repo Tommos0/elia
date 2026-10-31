@@ -151,6 +151,33 @@ defmodule Elia.SelfModificationTest do
     end
   end
 
+  describe "self-modification" do
+    # SKILL-7, PROJ-17
+    test "is a built-in skill with the guardrail tools" do
+      assert Elia.Skills.SelfModification in Elia.Skills.builtin()
+      assert Elia.Skills.SelfModification.name() == "self-modification"
+
+      assert Elia.Skills.SelfModification.tools() |> Enum.map(& &1.name) |> Enum.sort() ==
+               ~w(hot_reload list_checkpoints rollback)
+    end
+
+    # SKILL-9, PROJ-17
+    test "instructions carry the guardrails and the spec workflow" do
+      instructions = Elia.Skills.SelfModification.instructions()
+
+      assert instructions =~ "approval"
+      assert instructions =~ "checkpoint"
+      assert instructions =~ "rolled back"
+      assert instructions =~ "hot_reload"
+      assert instructions =~ "lib/elia/guarded.ex"
+      assert instructions =~ "specs/README.md"
+      assert instructions =~ "requirement IDs"
+      assert instructions =~ "Never renumber"
+      # Folder skills apply in every project: they are the harness skill's.
+      refute instructions =~ "folder skill"
+    end
+  end
+
   describe "run_tests" do
     test "rejects arguments that could run arbitrary code" do
       assert {:error, "Unsupported test argument: skills/x_test.exs"} =

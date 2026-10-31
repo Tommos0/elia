@@ -1,9 +1,13 @@
 defmodule Elia.Skills do
   @moduledoc """
   Registry of the skills available to the agent: built-in modules from config
-  plus folder skills under `Elia.Workspace.skills_dir/0`, reloadable at runtime.
+  plus folder skills under a workspace's `skills/` dir, reloadable at runtime.
 
       config :elia, Elia.Skills, builtin: [Elia.Skills.Shell, ...]
+
+  A chat's skills depend on its project (PROJ-17 - PROJ-21): `for_project/1`
+  combines the built-ins, Elia's own folder skills and the project's, and
+  `resolve/2` resolves a session's `skills` option against that.
   """
 
   use GenServer
@@ -15,6 +19,7 @@ defmodule Elia.Skills do
   @topic "skills"
   @project_file "AGENTS.md"
   @project_max_bytes 32_000
+  @self_modification "self-modification"
 
   @base_prompt """
   You are Elia, an assistant running inside a local harness. You can use the \
@@ -39,13 +44,49 @@ defmodule Elia.Skills do
   def tools(skills \\ current()), do: Enum.flat_map(skills, & &1.tools)
 
   @doc """
-  Turns a session's `skills` option into a skill list: a list as is, a function
-  of no arguments called, `nil` meaning the registry's current skills (SKILL-14).
+  Turns a session's `skills` option into a skill list for its project: a list
+  as is, a function of no arguments called, `nil` meaning the project's skills
+  (SKILL-14, PROJ-21). `nil` as the project means Elia's own.
   """
-  @spec resolve([Elia.Skill.t()] | (-> [Elia.Skill.t()]) | nil) :: [Elia.Skill.t()]
-  def resolve(nil), do: current()
-  def resolve(fun) when is_function(fun, 0), do: fun.()
-  def resolve(skills) when is_list(skills), do: skills
+  @spec resolve([Elia.Skill.t()] | (-> [Elia.Skill.t()]) | nil, Elia.Projects.t() | nil) ::
+          [Elia.Skill.t()]
+  def resolve(skills, project \\ nil)
+
+  def resolve(nil, project) do
+    {skills, _errors} = for_project(project)
+    skills
+  end
+
+  def resolve(fun, _project) when is_function(fun, 0), do: fun.()
+  def resolve(skills, _project) when is_list(skills), do: skills
+
+  @doc """
+  The skills available in `project`, with the load errors (PROJ-17 - PROJ-21):
+  the built-in skills, then the folder skills of Elia's `skills/` dir and those
+  of the project's own `skills/` dir, in that order. `nil` means Elia's own
+  project.
+
+  The `self-modification` skill is left out unless the project is Elia's own
+  (PROJ-17), and the project's folder is skipped when it *is* Elia's own root,
+  so Elia's skills are not loaded twice (PROJ-18). A project's folder skills
+  follow FOLDER-1 - FOLDER-9 like Elia's; a folder that fails to load is logged
+  and returned as `{relative_folder, reason}` while the rest still load
+  (PROJ-19). Everything is read again on every call, so a skill written into the
+  project applies from the next model step without `reload_skills` (PROJ-20).
+  """
+  @spec for_project(Elia.Projects.t() | nil) :: {[Elia.Skill.t()], [{binary(), binary()}]}
+  def for_project(project \\ nil) do
+    project = project || Elia.Projects.harness()
+
+    {skills, errors} = load_folder_skills(builtin_skills(project), Elia.Workspace.root())
+
+    if Path.expand(project.folder) == Elia.Workspace.root() do
+      {skills, errors}
+    else
+      {project_skills, project_errors} = load_folder_skills(skills, project.folder)
+      {project_skills, errors ++ project_errors}
+    end
+  end
 
   @doc """
   The system prompt's pieces, in order, each as `{kind, text}`: the agent
@@ -133,8 +174,33 @@ defmodule Elia.Skills do
   end
 
   defp load do
-    builtin = Enum.map(builtin(), &Elia.Skill.from_module/1)
-    dir = Elia.Workspace.skills_dir()
+    {skills, errors} =
+      load_folder_skills(builtin_skills(Elia.Projects.harness()), Elia.Workspace.root())
+
+    %{skills: skills, errors: errors}
+  end
+
+  # The built-in skills, without `self-modification` unless `project` is Elia's
+  # own (PROJ-17).
+  defp builtin_skills(project) do
+    skills = Enum.map(builtin(), &Elia.Skill.from_module/1)
+
+    if harness_project?(project),
+      do: skills,
+      else: Enum.reject(skills, &(&1.name == @self_modification))
+  end
+
+  defp harness_project?(project) do
+    Map.get(project, :harness?, false) or Map.get(project, :id) == "harness"
+  end
+
+  # Appends the folder skills under `root` to `skills`, applying FOLDER-1 -
+  # FOLDER-9 as `Elia.Skills.Folder` does. A folder that fails to load, or whose
+  # skill or tool name is taken, is left out: the failure is logged and returned
+  # as `{folder, reason}`, with the folder relative to `root`, while the other
+  # skills still load (SKILL-3, SKILL-4, PROJ-19).
+  defp load_folder_skills(skills, root) do
+    dir = Elia.Workspace.skills_dir(root)
 
     folders =
       case File.ls(dir) do
@@ -146,17 +212,18 @@ defmodule Elia.Skills do
       end
 
     {skills, errors} =
-      Enum.reduce(folders, {builtin, []}, fn folder, {skills, errors} ->
+      Enum.reduce(folders, {skills, []}, fn folder, {skills, errors} ->
         with {:ok, skill} <- Folder.load(folder),
              :ok <- check_conflicts(skill, skills) do
           {skills ++ [skill], errors}
         else
-          {:error, reason} -> {skills, errors ++ [{Elia.Workspace.relative(folder), reason}]}
+          {:error, reason} ->
+            {skills, errors ++ [{Elia.Workspace.relative(folder, root), reason}]}
         end
       end)
 
     for {folder, reason} <- errors, do: Logger.warning("Skill #{folder} not loaded: #{reason}")
-    %{skills: skills, errors: errors}
+    {skills, errors}
   end
 
   defp check_conflicts(skill, skills) do

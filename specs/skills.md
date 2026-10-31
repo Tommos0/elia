@@ -62,7 +62,13 @@ system prompt from them. It can be reloaded while the app runs.
 
 ```elixir
 config :elia, Elia.Skills,
-  builtin: [Elia.Skills.Shell, Elia.Skills.Files, Elia.Skills.Harness, Elia.Skills.Tasks]
+  builtin: [
+    Elia.Skills.Shell,
+    Elia.Skills.Files,
+    Elia.Skills.Harness,
+    Elia.Skills.Tasks,
+    Elia.Skills.SelfModification
+  ]
 ```
 
 ## Implementation

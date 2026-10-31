@@ -1,15 +1,20 @@
 defmodule Elia.Skills.Harness do
-  @moduledoc "Tools for the agent to extend and maintain the harness itself."
+  @moduledoc """
+  Extending Elia with folder skills, in every project (PROJ-16, SKILL-8).
+
+  What only applies to Elia's own code — approval, checkpoints, guarded files
+  and `hot_reload` — is `Elia.Skills.SelfModification` (PROJ-17).
+  """
 
   @behaviour Elia.Skill
 
-  alias Elia.{Checkpoint, Harness, Workspace}
+  alias Elia.Harness
 
   @impl true
   def name, do: "harness"
 
   @impl true
-  def description, do: "Extend Elia with new skills and safely change its own code."
+  def description, do: "Extend Elia with new skills instead of changing its code."
 
   @impl true
   def instructions do
@@ -23,30 +28,11 @@ defmodule Elia.Skills.Harness do
     2. Call `reload_skills` and fix any reported errors. New tools are available \
     from your next step.
 
-    Folder skills need no approval to write, but their tools always ask the user \
-    before running.
+    In a project of your own the skill goes in that project's `skills/` folder, \
+    and it applies from your next step without `reload_skills`. Folder skills \
+    need no approval to write, but their tools always ask the user before running.
 
-    Changing Elixir code (`lib/`, `config/`, `test/`) needs the user's approval. \
-    The workspace is checkpointed before your first change in each turn. When you \
-    finish a turn that changed Elixir files, the harness runs `mix test`; if it \
-    fails, your changes are rolled back and you are told why. Run `run_tests` \
-    yourself before finishing. Never edit \
-    `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` \
-    to weaken these guardrails.
-
-    Some files are guarded because they enforce these guardrails (the list is in \
-    `lib/elia/guarded.ex`); tell the user when a change touches one. The dev \
-    server never reloads code on its own: no Elixir change (guarded or not) takes \
-    effect until a successful `hot_reload` (dev server only), so a multi-file edit \
-    can't break the running app halfway. Make all the edits for a change, run \
-    `run_tests`, then call `hot_reload` and tell the user the change is live.
-
-    This project is spec-driven: each feature has a spec in `specs/` with \
-    numbered requirements (workflow and index in `specs/README.md`). Before \
-    changing Elixir code, update the affected spec or add one for a new feature, \
-    then implement it and cite the requirement IDs you touched in your tests \
-    (e.g. `# SHELL-3`). Never renumber or reuse requirement IDs. Folder skills \
-    don't need a spec.
+    Run `run_tests` before finishing, so you know the change works.
     """
   end
 
@@ -70,33 +56,6 @@ defmodule Elia.Skills.Harness do
           "properties" => %{"args" => %{"type" => "array", "items" => %{"type" => "string"}}}
         },
         run: fn input -> Harness.run_tests(input["args"] || []) end
-      },
-      %Elia.Tool{
-        name: "hot_reload",
-        description:
-          "Run the full test suite, then recompile and load changed Elixir code into the " <>
-            "running app. If tests fail, the turn's changes are rolled back instead.",
-        input_schema: %{"type" => "object", "properties" => %{}},
-        approval: :required,
-        run: fn _input, ctx -> Harness.hot_reload(ctx[:turn_id]) end
-      },
-      %Elia.Tool{
-        name: "list_checkpoints",
-        description: "List recent workspace checkpoints, newest first.",
-        input_schema: %{"type" => "object", "properties" => %{}},
-        run: fn _ -> list_checkpoints() end
-      },
-      %Elia.Tool{
-        name: "rollback",
-        description:
-          "Restore the workspace to a checkpoint (default: the one taken at the start of " <>
-            "this turn). The current state is checkpointed first, so this can be undone.",
-        input_schema: %{
-          "type" => "object",
-          "properties" => %{"checkpoint" => %{"type" => "string", "description" => "Commit sha"}}
-        },
-        approval: :required,
-        run: &rollback/2
       }
     ]
   end
@@ -117,31 +76,6 @@ defmodule Elia.Skills.Harness do
       errors ->
         failed = Enum.map_join(errors, "\n", fn {folder, reason} -> "- #{folder}: #{reason}" end)
         {:error, "Loaded skills:\n#{loaded}\n\nFailed to load:\n#{failed}"}
-    end
-  end
-
-  defp list_checkpoints do
-    case Checkpoint.list() do
-      [] ->
-        {:ok, "No checkpoints yet."}
-
-      list ->
-        {:ok, Enum.map_join(list, "\n", &"#{String.slice(&1.sha, 0, 12)}  #{&1.at}  #{&1.label}")}
-    end
-  end
-
-  defp rollback(input, ctx) do
-    target = input["checkpoint"] || Checkpoint.for_turn(ctx[:turn_id])
-
-    with target when is_binary(target) <-
-           target || {:error, "No checkpoint was taken in this turn."},
-         {:ok, undo} <- Checkpoint.rollback(target) do
-      Elia.Skills.reload()
-
-      {:ok,
-       "Restored #{Workspace.root()} to #{String.slice(target, 0, 12)}. " <>
-         "Undo with rollback to #{String.slice(undo, 0, 12)}. Running code is unchanged " <>
-         "until hot_reload."}
     end
   end
 end

@@ -65,7 +65,13 @@ config :elia, Elia.LLM.Anthropic,
   thinking_display: "summarized"
 
 config :elia, Elia.Skills,
-  builtin: [Elia.Skills.Shell, Elia.Skills.Files, Elia.Skills.Harness, Elia.Skills.Tasks]
+  builtin: [
+    Elia.Skills.Shell,
+    Elia.Skills.Files,
+    Elia.Skills.Harness,
+    Elia.Skills.Tasks,
+    Elia.Skills.SelfModification
+  ]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
