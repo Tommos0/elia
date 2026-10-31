@@ -16,9 +16,10 @@ defmodule Elia.Store do
 
   @doc """
   Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1) and
-  `opts[:auto_approve]` its auto-approved tool names (STORE-14), and
-  `opts[:task]` the sub-task metadata of a chat started by `spawn_task`
-  (STORE-16); each is kept alongside the messages when given.
+  `opts[:auto_approve]` its auto-approved tool names (STORE-14), `opts[:task]`
+  the sub-task metadata of a chat started by `spawn_task` (STORE-16) and
+  `opts[:project]` the id of the project it belongs to (STORE-19); each is kept
+  alongside the messages when given.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -31,6 +32,7 @@ defmodule Elia.Store do
     chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
     chat = if task = opts[:task], do: Map.put(chat, :task, task), else: chat
+    chat = if project = opts[:project], do: Map.put(chat, :project_id, project), else: chat
 
     chat =
       case opts[:auto_approve] do
@@ -90,6 +92,19 @@ defmodule Elia.Store do
          {:ok, data} <- File.read(path(id)),
          %{task: %{parent_id: _} = task} <- decode(data) do
       task
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "The id of the project a chat belongs to, or `nil` (STORE-19, PROJ-9)."
+  @spec load_project(binary()) :: binary() | nil
+  def load_project(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{project_id: project_id} <- decode(data),
+         true <- is_binary(project_id) do
+      project_id
     else
       _ -> nil
     end
@@ -168,6 +183,7 @@ defmodule Elia.Store do
       id: Path.rootname(file),
       messages: Map.get(chat, :messages, []),
       task: Map.get(chat, :task),
+      project_id: Map.get(chat, :project_id),
       created_at: Map.get(chat, :created_at) || mtime,
       updated_at: Map.get(chat, :updated_at) || mtime
     }

@@ -215,5 +215,23 @@ defmodule Elia.StoreTest do
     assert Store.children("nobody") == []
   end
 
+  # STORE-19, STORE-20
+  test "a chat's project id is saved with it and defaults to nil" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_project(id) == nil
+    assert %{project_id: nil} = entry(Store.list(1000), id)
+
+    :ok = Store.save(id, [Message.user("hi")], project: "proj-1")
+    assert Store.load_project(id) == "proj-1"
+    assert %{project_id: "proj-1"} = entry(Store.list(1000), id)
+    assert [%Message{}] = Store.load(id)
+
+    assert Store.load_project("missing-chat") == nil
+    assert Store.load_project("../bad") == nil
+  end
+
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))
 end
