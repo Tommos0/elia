@@ -27,10 +27,18 @@ defmodule Elia.Skills.Tasks do
     The user approves each spawn, and approves the sub-task's own tool calls in \
     its chat.
 
-    The result is JSON: `status` (`done`, `blocked`, `failed` or `unfinished`), \
-    `summary`, `commit` (new HEAD, or null), `files` (changed paths) and \
-    `questions`. Check it before relying on it, for example by reading the \
+    The result is JSON: `status` (`done`, `blocked`, `failed`, `unfinished` or \
+    `cancelled`), `reason` (`budget`, `cancelled`, `crashed`, `error` or null), \
+    `summary`, `task_id`, `commit` (new HEAD, or null), `files` (changed paths) \
+    and `questions`. Check it before relying on it, for example by reading the \
     changed files, and tell the user what happened.
+
+    A sub-task that isn't `done` also reports `start_commit` and `tree_clean` \
+    (false when it left uncommitted changes). The harness never undoes its work \
+    by itself. To discard it, call `reset_task` with the `task_id`: it resets the \
+    workspace to `start_commit` (the user approves it first). Offer this to the \
+    user rather than doing it by default, since the sub-task's partial work may \
+    be worth keeping or finishing.
     """
   end
 
@@ -57,12 +65,36 @@ defmodule Elia.Skills.Tasks do
             "max_steps" => %{
               "type" => "integer",
               "description" => "Step limit for the sub-task (default 50, at most 100)"
+            },
+            "max_minutes" => %{
+              "type" => "number",
+              "description" =>
+                "Wall-clock limit in minutes, not counting time spent waiting for approvals " <>
+                  "(default 30, at most 120)"
             }
           },
           "required" => ["title", "brief"]
         },
         approval: :required,
         run: fn input, ctx -> Elia.Tasks.spawn_task(input, ctx) end
+      },
+      %Elia.Tool{
+        name: "reset_task",
+        description:
+          "Reset the workspace to the commit a sub-task started from, discarding its commits " <>
+            "and uncommitted changes. Only for a sub-task that didn't finish as done.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "task_id" => %{
+              "type" => "string",
+              "description" => "The `task_id` from the sub-task's result"
+            }
+          },
+          "required" => ["task_id"]
+        },
+        approval: :required,
+        run: fn input, ctx -> Elia.Tasks.reset_task(input, ctx) end
       }
     ]
   end

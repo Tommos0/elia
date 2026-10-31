@@ -18,6 +18,8 @@ defmodule Elia.Tasks do
 
   @default_steps 50
   @max_steps 100
+  @default_minutes 30
+  @max_minutes 120
   @statuses ~w(done blocked failed)
 
   @preamble """
@@ -78,15 +80,41 @@ defmodule Elia.Tasks do
   @doc """
   Takes the lock for a child (SUBTASK-11): `:ok`, or `:busy` when a child is
   already active. Both sessions are monitored; the lock is released when
-  either dies.
+  either dies. `meta` may hold `:owner` (the process running `spawn_task`,
+  also monitored, SUBTASK-19), `:call_id` and `:start_commit`, which the lock
+  needs to finish the job itself when that process dies.
   """
-  @spec acquire(binary(), pid() | nil, binary(), pid() | nil) :: :ok | :busy
-  def acquire(parent_id, parent_pid, child_id, child_pid),
-    do: call({:acquire, parent_id, parent_pid, child_id, child_pid})
+  @spec acquire(binary(), pid() | nil, binary(), pid() | nil, map()) :: :ok | :busy
+  def acquire(parent_id, parent_pid, child_id, child_pid, meta \\ %{}),
+    do: call({:acquire, parent_id, parent_pid, child_id, child_pid, meta})
 
   @doc "Releases the lock if `child_id` holds it."
   @spec release(binary()) :: :ok
   def release(child_id), do: call({:release, child_id})
+
+  @doc """
+  Called by a session when its running turn is stopped (SESS-22). If it is the
+  active child, the child is marked cancelled (SUBTASK-16). If it is the
+  parent of the active child, the child is marked cancelled and its turn is
+  stopped too (SUBTASK-17). Does nothing when no sub-task is active.
+  """
+  @spec note_stop(binary()) :: :ok
+  def note_stop(session_id) do
+    if Process.whereis(__MODULE__) do
+      case GenServer.call(__MODULE__, {:note_stop, session_id}) do
+        {:stop_child, child_id} -> stop_session(child_id)
+        _ -> :ok
+      end
+    end
+
+    :ok
+  end
+
+  defp stop_session(id) do
+    Elia.Agent.stop(id)
+  catch
+    :exit, _ -> :ok
+  end
 
   defp call(msg) do
     ensure_started()
@@ -124,11 +152,27 @@ defmodule Elia.Tasks do
   end
 
   defp check_input(input) do
+    minutes = input["max_minutes"]
+
     cond do
-      blank?(input["title"]) -> {:error, "title must not be blank"}
-      blank?(input["brief"]) -> {:error, "brief must not be blank"}
-      true -> :ok
+      blank?(input["title"]) ->
+        {:error, "title must not be blank"}
+
+      blank?(input["brief"]) ->
+        {:error, "brief must not be blank"}
+
+      minutes != nil and not (is_number(minutes) and minutes > 0) ->
+        {:error, "max_minutes must be a positive number"}
+
+      true ->
+        :ok
     end
+  end
+
+  # SUBTASK-18: wall-clock budget in milliseconds.
+  defp budget_ms(input) do
+    minutes = input["max_minutes"] || Application.get_env(:elia, :task_minutes, @default_minutes)
+    trunc(min(minutes, @max_minutes) * 60_000)
   end
 
   defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
@@ -246,7 +290,12 @@ defmodule Elia.Tasks do
         selection: child_selection(parent_id, model)
       )
 
-    with :ok <- lock(parent_id, child_id, child_pid) do
+    with :ok <-
+           lock(parent_id, child_id, child_pid, %{
+             owner: self(),
+             call_id: ctx[:call_id],
+             start_commit: start_commit
+           }) do
       Elia.Agent.subscribe(child_id)
       monitor = Process.monitor(child_pid)
 
@@ -259,8 +308,23 @@ defmodule Elia.Tasks do
             @preamble <> "\n# Task: #{task.title}\n\n" <> task.brief
           )
 
-        outcome = await(child_id, monitor, nil)
-        result = build_result(child_id, start_commit, outcome)
+        budget = budget_ms(input)
+        now = System.monotonic_time(:millisecond)
+        outcome = await(child_id, monitor, %{deadline: now + budget, paused: nil, error: nil})
+
+        outcome =
+          case outcome do
+            :budget ->
+              stop_session(child_id)
+
+              {:budget,
+               "Budget exceeded: the sub-task ran for more than #{minutes(budget)} and was stopped."}
+
+            other ->
+              other
+          end
+
+        result = build_result(child_id, start_commit, outcome, take_state(child_id))
 
         update_saved(child_id, task, %{status: result["status"], result: result})
         Checkpoint.rebase(ctx[:turn_id])
@@ -279,6 +343,15 @@ defmodule Elia.Tasks do
     end
   end
 
+  defp minutes(ms) do
+    minutes = ms / 60_000
+
+    text =
+      if minutes == trunc(minutes), do: "#{trunc(minutes)}", else: "#{Float.round(minutes, 2)}"
+
+    "#{text} #{if minutes == 1, do: "minute", else: "minutes"}"
+  end
+
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
   defp child_selection(parent_id, model) do
     parent = Elia.Agent.snapshot(parent_id).selection
@@ -288,14 +361,14 @@ defmodule Elia.Tasks do
       else: parent
   end
 
-  defp lock(parent_id, child_id, child_pid) do
+  defp lock(parent_id, child_id, child_pid, meta) do
     parent_pid =
       case Registry.lookup(Elia.Agent.Registry, parent_id) do
         [{pid, _}] -> pid
         [] -> nil
       end
 
-    acquire(parent_id, parent_pid, child_id, child_pid)
+    acquire(parent_id, parent_pid, child_id, child_pid, meta)
   end
 
   defp saved_status(child_id) do
@@ -313,53 +386,91 @@ defmodule Elia.Tasks do
     )
   end
 
-  # Waits for the child's turn to end: its session goes idle (SUBTASK-8).
-  defp await(child_id, monitor, error) do
+  # Waits for the child's turn to end: its session goes idle (SUBTASK-8). Gives
+  # up with `:budget` when the wall-clock deadline passes; time spent waiting
+  # for the user's approval doesn't count (SUBTASK-18).
+  defp await(child_id, monitor, wait) do
+    timeout =
+      if wait.paused,
+        do: :infinity,
+        else: max(wait.deadline - System.monotonic_time(:millisecond), 0)
+
     receive do
       {:agent, ^child_id, {:status, :idle}} ->
-        {:ended, error}
+        {:ended, wait.error}
+
+      {:agent, ^child_id, {:status, :awaiting_approval}} ->
+        await(child_id, monitor, %{
+          wait
+          | paused: wait.paused || System.monotonic_time(:millisecond)
+        })
+
+      {:agent, ^child_id, {:status, :running}} when wait.paused != nil ->
+        paused_for = System.monotonic_time(:millisecond) - wait.paused
+        await(child_id, monitor, %{wait | paused: nil, deadline: wait.deadline + paused_for})
 
       {:agent, ^child_id, {:error, text}} ->
-        await(child_id, monitor, text)
+        await(child_id, monitor, %{wait | error: text})
 
       {:agent, ^child_id, _event} ->
-        await(child_id, monitor, error)
+        await(child_id, monitor, wait)
 
       {:DOWN, ^monitor, :process, _pid, reason} ->
         {:crashed, "The sub-task session stopped: #{Exception.format_exit(reason)}"}
+    after
+      timeout -> :budget
     end
   end
 
-  defp build_result(child_id, start_commit, outcome) do
-    finish = take_finish(child_id)
+  # `state` is what the lock holds about the child: `finish` (SUBTASK-3) and
+  # `cancelled` (SUBTASK-16).
+  defp build_result(child_id, start_commit, outcome, state) do
+    finish = state.finish
 
-    {status, summary} =
+    {status, reason, summary} =
       case outcome do
         {:crashed, text} ->
-          {"failed", text}
+          {"failed", "crashed", text}
+
+        {:budget, text} ->
+          {"failed", "budget", text}
+
+        {:ended, _error} when state.cancelled ->
+          {"cancelled", "cancelled", "The sub-task was stopped by the user."}
 
         {:ended, error} when is_binary(error) ->
-          {"failed", error}
+          reason = if String.starts_with?(error, "Stopped after "), do: "budget", else: "error"
+          {"failed", reason, error}
 
         {:ended, nil} when finish != nil ->
-          {finish.status, finish.summary}
+          {finish.status, nil, finish.summary}
 
         {:ended, nil} ->
-          {"unfinished", last_text(child_id) || "The task ended without a summary."}
+          {"unfinished", nil, last_text(child_id) || "The task ended without a summary."}
       end
 
     head = git_out(["rev-parse", "HEAD"])
 
-    %{
+    result = %{
+      "task_id" => child_id,
       "status" => status,
+      "reason" => reason,
       "summary" => summary,
       "commit" => if(head != start_commit, do: head),
       "files" => changed_files(start_commit),
       "questions" => if(finish, do: finish.questions, else: [])
     }
+
+    if status == "done",
+      do: result,
+      else:
+        Map.merge(result, %{
+          "start_commit" => start_commit,
+          "tree_clean" => git_out(["status", "--porcelain"]) == ""
+        })
   end
 
-  defp take_finish(child_id), do: call({:take_finish, child_id})
+  defp take_state(child_id), do: call({:take_state, child_id}) || %{finish: nil, cancelled: false}
 
   defp last_text(child_id) do
     Elia.Agent.snapshot(child_id).messages
@@ -403,6 +514,100 @@ defmodule Elia.Tasks do
       )
   end
 
+  ## Reset
+
+  @doc """
+  The `reset_task` tool (SUBTASK-22): resets the workspace to the start commit
+  of a task of the caller that didn't finish as `done`. `ctx` is the tool
+  context (LOOP-18).
+  """
+  @spec reset_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
+  def reset_task(input, ctx) do
+    with {:ok, task} <- reset_target(ctx[:session_id], input["task_id"]),
+         :ok <- check_none_active(),
+         {:ok, head} <- head(),
+         :ok <- check_ancestor(task.start_commit, head) do
+      commits = git_out(["log", "--oneline", "#{task.start_commit}..HEAD"]) || ""
+      files = changed_files(task.start_commit)
+
+      with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit]),
+           {_, 0} <- git(["clean", "-fdq"]) do
+        Checkpoint.rebase(ctx[:turn_id])
+
+        {:ok,
+         "Workspace reset to #{String.slice(task.start_commit, 0, 8)}.\n" <>
+           "Discarded commits:\n#{if commits == "", do: "(none)", else: commits}\n" <>
+           "Files that differed:\n#{if files == [], do: "(none)", else: Enum.join(files, "\n")}"}
+      else
+        {out, _} -> {:error, "git could not reset the workspace: #{String.trim(out)}"}
+      end
+    end
+  end
+
+  defp reset_target(parent_id, task_id) do
+    task = if is_binary(task_id), do: Store.load_task(task_id)
+
+    cond do
+      task == nil or task.parent_id != parent_id ->
+        {:error, "Not reset: #{inspect(task_id)} is not a sub-task started from this chat."}
+
+      task.status == "done" ->
+        {:error, "Not reset: that sub-task finished as done; there is nothing to undo."}
+
+      not (is_binary(task[:start_commit]) and task.start_commit != "") ->
+        {:error, "Not reset: that sub-task has no start commit."}
+
+      true ->
+        {:ok, task}
+    end
+  end
+
+  defp check_none_active do
+    case active() do
+      nil -> :ok
+      %{child_id: id} -> {:error, "Not reset: sub-task #{id} is still active."}
+    end
+  end
+
+  defp check_ancestor(start_commit, head) do
+    case git(["merge-base", "--is-ancestor", start_commit, head]) do
+      {_, 0} ->
+        :ok
+
+      _ ->
+        {:error,
+         "Not reset: the task's start commit is not an ancestor of HEAD, so the history " <>
+           "was changed since. Reset by hand if you are sure."}
+    end
+  end
+
+  ## Cleanup when the process running spawn_task dies
+
+  # SUBTASK-19. Runs in its own process, never in the lock server.
+  defp finalize(active) do
+    child_id = active.child_id
+    stop_session(child_id)
+
+    case Store.load_task(child_id) do
+      %{status: "running"} = task ->
+        outcome =
+          if active.cancelled,
+            do: {:ended, nil},
+            else: {:crashed, "The process waiting for this sub-task stopped."}
+
+        state = %{finish: active.finish, cancelled: active.cancelled}
+        start_commit = task[:start_commit] || active[:start_commit]
+        result = build_result(child_id, start_commit, outcome, state)
+        update_saved(child_id, task, %{status: result["status"], result: result})
+
+      _ ->
+        :ok
+    end
+
+    release(child_id)
+    broadcast(active.parent_id, active[:call_id], child_id, saved_status(child_id))
+  end
+
   defp git(args), do: System.cmd("git", args, cd: Workspace.root(), stderr_to_stdout: true)
 
   defp git_out(args, trim? \\ true) do
@@ -423,14 +628,28 @@ defmodule Elia.Tasks do
   def handle_call(:active, _from, %{active: active} = state),
     do: {:reply, Map.take(active, [:child_id, :parent_id]), state}
 
-  def handle_call({:acquire, parent_id, parent_pid, child_id, child_pid}, _from, %{active: nil}) do
+  def handle_call({:acquire, parent_id, parent_pid, child_id, child_pid, meta}, _from, %{
+        active: nil
+      }) do
     refs = for pid <- [parent_pid, child_pid], is_pid(pid), do: Process.monitor(pid)
+    owner = meta[:owner]
 
-    active = %{child_id: child_id, parent_id: parent_id, refs: refs, finish: nil}
+    active = %{
+      child_id: child_id,
+      parent_id: parent_id,
+      refs: refs,
+      owner_ref: if(is_pid(owner), do: Process.monitor(owner)),
+      owner: owner,
+      call_id: meta[:call_id],
+      start_commit: meta[:start_commit],
+      finish: nil,
+      cancelled: false
+    }
+
     {:reply, :ok, %{active: active}}
   end
 
-  def handle_call({:acquire, _, _, _, _}, _from, state), do: {:reply, :busy, state}
+  def handle_call({:acquire, _, _, _, _, _}, _from, state), do: {:reply, :busy, state}
 
   def handle_call({:release, child_id}, _from, %{active: %{child_id: child_id}} = state),
     do: {:reply, :ok, clear(state)}
@@ -443,24 +662,44 @@ defmodule Elia.Tasks do
 
   def handle_call({:finish, _child_id, _record}, _from, state), do: {:reply, :not_active, state}
 
+  def handle_call({:note_stop, id}, _from, %{active: %{child_id: id} = active}),
+    do: {:reply, :ok, %{active: %{active | cancelled: true}}}
+
+  def handle_call({:note_stop, id}, _from, %{active: %{parent_id: id} = active}),
+    do: {:reply, {:stop_child, active.child_id}, %{active: %{active | cancelled: true}}}
+
+  def handle_call({:note_stop, _id}, _from, state), do: {:reply, :ok, state}
+
   def handle_call(
-        {:take_finish, child_id},
+        {:take_state, child_id},
         _from,
         %{active: %{child_id: child_id} = active} = state
       ),
-      do: {:reply, active.finish, state}
+      do: {:reply, Map.take(active, [:finish, :cancelled]), state}
 
-  def handle_call({:take_finish, _child_id}, _from, state), do: {:reply, nil, state}
+  def handle_call({:take_state, _child_id}, _from, state), do: {:reply, nil, state}
 
   @impl true
+  # SUBTASK-19: the process running spawn_task died with the lock held. Finish
+  # the job in another process, keeping the lock until it is done.
+  def handle_info(
+        {:DOWN, ref, :process, _pid, _reason},
+        %{active: %{owner_ref: ref} = active} = state
+      ) do
+    active = %{active | owner_ref: nil}
+    Task.Supervisor.start_child(Elia.Agent.TaskSupervisor, fn -> finalize(active) end)
+    {:noreply, %{state | active: active}}
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{active: %{refs: refs}} = state) do
     if ref in refs, do: {:noreply, clear(state)}, else: {:noreply, state}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
 
-  defp clear(%{active: %{refs: refs}}) do
+  defp clear(%{active: %{refs: refs} = active}) do
     Enum.each(refs, &Process.demonitor(&1, [:flush]))
+    if active[:owner_ref], do: Process.demonitor(active.owner_ref, [:flush])
     %{active: nil}
   end
 

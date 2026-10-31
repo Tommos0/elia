@@ -53,7 +53,8 @@ reopened.
 - **STORE-16** `save/3` takes `task:` (a map) and stores it as `task` with the
   chat. It holds the metadata of a chat started by `spawn_task`: `parent_id`,
   `title`, `brief`, `started_at`, `status` (`"running"`, `"done"`, `"blocked"`,
-  `"failed"` or `"unfinished"`), `start_commit` and, once finished, `result`.
+  `"failed"`, `"unfinished"` or `"cancelled"`), `start_commit` and, once
+  finished, `result`.
   `load_task/1` returns it, or `nil` when the chat is missing, unreadable,
   corrupt or has none.
 - **STORE-17** A listed chat that has task metadata also carries `parent_id`

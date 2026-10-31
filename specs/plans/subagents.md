@@ -198,7 +198,27 @@ Read first: `docs/agents/phoenix-liveview.md`, `docs/agents/frontend.md`,
 
 ### 3. Control and robustness
 
-- [ ] Spec, implementation, tests, commit
+- [x] Spec, implementation, tests, commit (see `specs/subtasks.md`, SUBTASK-16 to 22)
+
+Decisions made in phase 3:
+
+- A stopped turn tells `Elia.Tasks` (`note_stop/1`, SESS-22), which marks the
+  child cancelled and, when the stopped chat is the parent, stops the child.
+  The lock server also monitors the process running `spawn_task` and finishes
+  the job itself (in another process, keeping the lock) if that dies, because
+  a stopped parent kills that process before it can clean up (SUBTASK-19). The
+  lock server never calls a session, so it can't deadlock with one.
+- The wall-clock limit is the `max_minutes` input (default 30, max 120, setting
+  `:task_minutes`). Time spent awaiting approval in the child doesn't count.
+  Both limits give `status: "failed"`, `reason: "budget"`.
+- The result gained `task_id` and `reason`, and for non-`done` results
+  `start_commit` and `tree_clean` (SUBTASK-21). `reset_task(task_id)` (approved,
+  parent only) resets to the start commit with `git reset --hard` + `git clean
+  -fd`, only when the start commit is an ancestor of `HEAD`, and rebases the
+  parent's checkpoint (SUBTASK-22).
+- Restart recovery is general, not only for `spawn_task`: any session whose
+  saved history ends in unanswered tool calls closes them at start (SESS-21).
+  The `interrupted` status already existed (STORE-17).
 
 Depends on 1; order with 2 is free.
 

@@ -32,7 +32,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(edit_file hot_reload list_checkpoints read_file reload_skills rollback run_tests shell spawn_task write_file)
+             ~w(edit_file hot_reload list_checkpoints read_file reload_skills reset_task rollback run_tests shell spawn_task write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -365,6 +365,35 @@ defmodule Elia.AgentTest do
   # SESS-7
   test "an ordinary chat's snapshot has no task", %{id: id} do
     assert %{task: nil} = Agent.snapshot(id)
+  end
+
+  # SESS-21, SUBTASK-20
+  test "a session closes tool calls left unanswered by an app restart" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    call = FakeLLM.tool_call("c1", "shell", %{"command" => "sleep 100"})
+
+    :ok =
+      Elia.Store.save(id, [Message.user("run it"), FakeLLM.assistant([call])])
+
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert %{status: :idle, messages: [_, _, %Message{role: :tool, content: [result]}]} =
+             Agent.snapshot(id)
+
+    assert %{tool_call_id: "c1", is_error: true, content: "The app restarted" <> _} = result
+    # Saved, so the next start doesn't do it again.
+    assert [_, _, %Message{role: :tool}] = Elia.Store.load(id)
+
+    # A finished chat is left alone.
+    done = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(done) end)
+    :ok = Elia.Store.save(done, [Message.user("hi"), FakeLLM.assistant([Message.text("hello")])])
+    {:ok, pid} = Agent.ensure_started(done)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    assert [_, _] = Agent.snapshot(done).messages
   end
 
   # SESS-19

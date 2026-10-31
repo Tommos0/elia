@@ -413,6 +413,7 @@ defmodule EliaWeb.ChatLive do
         "blocked" -> {"hero-pause-circle", "text-warning"}
         "failed" -> {"hero-x-circle", "text-error"}
         "unfinished" -> {"hero-question-mark-circle", "text-warning"}
+        "cancelled" -> {"hero-stop-circle", "text-base-content/60"}
         _ -> {"hero-exclamation-triangle", "text-base-content/50"}
       end
 

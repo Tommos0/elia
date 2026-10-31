@@ -49,16 +49,18 @@ defmodule Elia.Agent.Session do
   def init(opts) do
     persist = Keyword.get(opts, :persist, true)
 
-    {:ok,
-     %__MODULE__{
-       id: opts[:id],
-       loop_opts: Keyword.get(opts, :loop_opts, []),
-       persist: persist,
-       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
-       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
-       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
-       auto_approve: initial_auto_approve(opts[:id], persist)
-     }}
+    state = %__MODULE__{
+      id: opts[:id],
+      loop_opts: Keyword.get(opts, :loop_opts, []),
+      persist: persist,
+      messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
+      selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
+      task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
+      auto_approve: initial_auto_approve(opts[:id], persist)
+    }
+
+    # SESS-21: tool calls the app stopped in the middle of never got a result.
+    {:ok, close_dangling_tool_calls(state, "The app restarted while this tool was running.")}
   end
 
   @impl true
@@ -192,6 +194,8 @@ defmodule Elia.Agent.Session do
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:stop, _from, state) do
+    # SESS-22: a stopped sub-task is cancelled; stopping its parent stops it.
+    Elia.Tasks.note_stop(state.id)
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])
 

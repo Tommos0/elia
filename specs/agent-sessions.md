@@ -79,6 +79,16 @@ progress so any number of UIs can follow it.
 - **SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
   merged metadata on the chat's topic.
 
+- **SESS-21** When a session starts and the last message of its saved history
+  is an assistant message whose tool calls have no results (the app stopped
+  while they ran), the calls are closed with an error result ("The app
+  restarted while this tool was running.") and the history is saved, as in
+  SESS-12, so the chat can go on (SUBTASK-20).
+- **SESS-22** Stopping a running turn (SESS-8) first tells `Elia.Tasks`
+  (SUBTASK-16, SUBTASK-17): if this chat is the active sub-task it is marked
+  cancelled, and if it is the parent of the active sub-task that child's turn
+  is stopped too.
+
 ## Out of scope
 
 - Several turns running at once in one session.

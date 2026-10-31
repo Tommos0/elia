@@ -1,7 +1,8 @@
 # Sub-tasks
 
-Status: Implemented (phases 1 and 2 of [the plan](plans/subagents.md): core,
-and task cards, a nested chat list and a task header in the chat UI)
+Status: Implemented (phases 1 to 3 of [the plan](plans/subagents.md): core,
+task cards, a nested chat list and a task header in the chat UI, and cancel,
+budget, crash recovery and reset)
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context, wait for it, and get back a short structured result. The
@@ -107,21 +108,72 @@ and approvals are global.
   the child's card and link after a reload. The UI itself is specified in
   `chat-ui.md` (UI-43 to UI-49).
 
+### Control and robustness (phase 3)
+
+- **SUBTASK-16** Stopping the active child's turn (SESS-8) ends the child with
+  status `"cancelled"` and reason `"cancelled"` (SUBTASK-21), whatever
+  `finish_task` said. The summary says the user stopped it. `spawn_task` returns
+  that result to the parent as an ordinary tool result (not an error), the lock
+  is released and the saved task metadata gets the status (SUBTASK-13).
+- **SUBTASK-17** Stopping the parent's turn (SESS-8) while it waits for a child
+  first stops that child's turn, so the child is also `"cancelled"`. The parent's
+  `spawn_task` call gets the usual "Cancelled by the user." result, since the
+  process running it is killed. The child's final metadata, the lock release and
+  the final `{:subtask, …}` event (SUBTASK-7, SUBTASK-13) are then done by
+  `Elia.Tasks` itself (SUBTASK-19), not by that process.
+- **SUBTASK-18** Budget: besides `max_steps` (SUBTASK-12), `spawn_task` takes
+  `max_minutes`, a positive number of minutes of wall-clock time (default 30,
+  at most 120; the application setting `:task_minutes` changes the default). The
+  time a child spends with its status `:awaiting_approval` doesn't count. When
+  the time is up, the child's turn is stopped and the result is status
+  `"failed"` with reason `"budget"` and a summary naming the limit. A child that
+  hits its step limit (SUBTASK-10) also has reason `"budget"`.
+- **SUBTASK-19** If the process running `spawn_task` dies while it holds the
+  lock (it was killed by SUBTASK-17, or crashed), `Elia.Tasks` finishes the job
+  itself without blocking the lock: the child's turn is stopped if it is still
+  running, the saved status becomes `"cancelled"` (when it was stopped by the
+  user, SUBTASK-16/17) or `"failed"` and the result is saved (only if the saved
+  status is still `"running"`), the lock is released and the final
+  `{:subtask, …}` event is broadcast. The lock server never calls a session
+  itself, so it can't deadlock with one.
+- **SUBTASK-20** After an app restart, a task saved as `"running"` is shown as
+  `"interrupted"` (STORE-17), and a parent whose `spawn_task` call was still
+  waiting gets that call closed with an error result when its session starts
+  (SESS-21). No lock is held: it lives in memory.
+- **SUBTASK-21** The result (SUBTASK-9) also has `task_id` (the child's chat id)
+  and `reason`, which is `null` unless the status is not `"done"` because of
+  `"budget"`, `"cancelled"`, `"crashed"` (the child session died, SUBTASK-8) or
+  `"error"` (the turn ended with another error). When the status isn't `"done"`
+  it also has `start_commit` and `tree_clean` (`git status --porcelain` is
+  empty), so the parent knows whether uncommitted changes were left behind.
+- **SUBTASK-22** The tool `reset_task` (parent only, in the skill `tasks`,
+  approval `:required`) takes `task_id` (from a result) and resets the workspace
+  to the task's `start_commit` with `git reset --hard` and `git clean -fd`
+  (ignored files are kept), then replaces the caller's turn checkpoint
+  (CKPT-10) so a later rollback can't restore the discarded work. It is never
+  run automatically. It is refused, as a tool error and without changing
+  anything, when: the chat isn't a task of the caller; its status is `"done"`;
+  a child is active (SUBTASK-11), which includes this one; the task has no
+  `start_commit`; or the `start_commit` isn't an ancestor of `HEAD`. A task
+  that was interrupted by a restart (SUBTASK-20) can be reset. Its output lists
+  what was discarded (commits and changed files).
+
 ## Out of scope (later phases of the plan)
 
-Cancel, wall-clock budget, restart
-recovery and rollback on failure (phase 3); read-only children (phase 4).
+Read-only children (phase 4).
 
 ## Implementation
 
-`Elia.Tasks` (lock, spawn, await), `Elia.Skills.Tasks` (the skills and tools),
-`Elia.Store` (metadata), `Elia.Agent.Session` (task metadata, `selection`
-option), `Elia.Agent.Loop` (`max_steps`, skill functions, tool context),
-`Elia.Checkpoint.rebase/1`, `Elia.Harness.core_elixir_changed?/1`.
+`Elia.Tasks` (lock, spawn, await, cancel, reset), `Elia.Skills.Tasks` (the
+skills and tools), `Elia.Store` (metadata), `Elia.Agent.Session` (task
+metadata, `selection` option, stop, dangling calls), `Elia.Agent.Loop`
+(`max_steps`, skill functions, tool context), `Elia.Checkpoint.rebase/1`,
+`Elia.Harness.core_elixir_changed?/1`.
 
 Guarded files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
 `lib/elia/skills/tasks.ex`, `lib/elia/checkpoint.ex`, `lib/elia/harness.ex`,
-`config/config.exs`. None of the guardrails is weakened.
+`config/config.exs`. None of the guardrails is weakened. (Phase 3 touches
+`lib/elia/skills/tasks.ex` only.)
 
 ## Tests
 

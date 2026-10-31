@@ -242,6 +242,19 @@ defmodule EliaWeb.TaskUITest do
     refute has_element?(view, "#task-result")
   end
 
+  # UI-50
+  test "a cancelled task has its own status icon", %{conn: conn, parent: parent, child: child} do
+    save_parent(parent)
+    save_child(child, parent, %{status: "cancelled"})
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    assert has_element?(view, "#chat-task-status-#{child}[data-status='cancelled']")
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{child}")
+    assert has_element?(view, "#task-header-status[data-status='cancelled']")
+  end
+
   # UI-48, SESS-20
   test "the task header follows task events", %{conn: conn, parent: parent, child: child} do
     save_parent(parent)

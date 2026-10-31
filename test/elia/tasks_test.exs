@@ -133,9 +133,12 @@ defmodule Elia.TasksTest do
     assert "shell" in child
   end
 
-  # SUBTASK-2
-  test "spawn_task needs approval" do
-    assert [%Elia.Tool{name: "spawn_task", approval: :required}] = Elia.Skills.Tasks.tools()
+  # SUBTASK-2, SUBTASK-22
+  test "spawn_task and reset_task need approval" do
+    assert [
+             %Elia.Tool{name: "spawn_task", approval: :required},
+             %Elia.Tool{name: "reset_task", approval: :required}
+           ] = Elia.Skills.Tasks.tools()
   end
 
   # SUBTASK-2, 5, 6, 7, 8, 9, 11, 13, SUBTASK-4 (depth)
@@ -201,8 +204,14 @@ defmodule Elia.TasksTest do
              "summary" => "Made child.txt",
              "questions" => ["Rename it?"],
              "files" => ["child.txt"],
-             "commit" => commit
-           } = Jason.decode!(content)
+             "commit" => commit,
+             "task_id" => ^child,
+             "reason" => nil
+           } = decoded = Jason.decode!(content)
+
+    # SUBTASK-21: a done task has no start commit or tree state.
+    refute Map.has_key?(decoded, "tree_clean")
+    refute Map.has_key?(decoded, "start_commit")
 
     assert commit == String.trim(head)
 
@@ -249,8 +258,14 @@ defmodule Elia.TasksTest do
              "summary" => "I looked around but never reported.",
              "commit" => nil,
              "files" => [],
-             "questions" => []
+             "questions" => [],
+             "reason" => nil,
+             "tree_clean" => true,
+             "start_commit" => start
            } = Jason.decode!(content)
+
+    # SUBTASK-21
+    assert byte_size(start) == 40
 
     assert [%{task_status: "unfinished"}] = children_of(parent)
   end
@@ -268,7 +283,11 @@ defmodule Elia.TasksTest do
 
     {content, false} = last_tool_result()
 
-    assert %{"status" => "failed", "summary" => "Stopped after 1 steps" <> _} =
+    assert %{
+             "status" => "failed",
+             "reason" => "budget",
+             "summary" => "Stopped after 1 steps" <> _
+           } =
              Jason.decode!(content)
 
     assert [%{task_status: "failed"}] = children_of(parent)
@@ -299,8 +318,11 @@ defmodule Elia.TasksTest do
 
     {content, false} = last_tool_result()
 
-    assert %{"status" => "failed", "summary" => "The sub-task session stopped" <> _} =
-             Jason.decode!(content)
+    assert %{
+             "status" => "failed",
+             "reason" => "crashed",
+             "summary" => "The sub-task session stopped" <> _
+           } = Jason.decode!(content)
 
     assert Tasks.active() == nil
     assert %{status: "failed"} = Store.load_task(child)
@@ -475,6 +497,247 @@ defmodule Elia.TasksTest do
     File.mkdir_p!(Path.join(root, "lib"))
     File.write!(Path.join(root, "lib/broken.ex"), "oops")
     assert Elia.Harness.core_elixir_changed?("verify-turn") == true
+  end
+
+  # Runs the parent into a spawn_task call whose child blocks in its first model
+  # call. Returns the child's id once it is running.
+  defp spawn_blocked_child(parent, input \\ %{}) do
+    test_pid = self()
+    input = Map.merge(%{"title" => "T", "brief" => "B"}, input)
+
+    FakeLLM.push(FakeLLM.assistant([spawn_call(input)]))
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:child_blocked, Tasks.active()})
+      receive do: (:never -> :ok)
+    end)
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    assert_receive {:child_blocked, %{child_id: child}}, 20_000
+    child
+  end
+
+  # SUBTASK-16
+  test "stopping the child cancels it and the parent gets that as a result", %{parent: parent} do
+    child = spawn_blocked_child(parent)
+    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+
+    :ok = Agent.stop(child)
+    await_status(parent, :idle)
+
+    {content, false} = last_tool_result()
+
+    assert %{"status" => "cancelled", "reason" => "cancelled", "task_id" => ^child} =
+             Jason.decode!(content)
+
+    assert Tasks.active() == nil
+    assert %{status: "cancelled"} = Store.load_task(child)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}
+  end
+
+  # SUBTASK-17, SESS-22
+  test "stopping the parent stops and cancels its child", %{parent: parent} do
+    child = spawn_blocked_child(parent)
+
+    :ok = Agent.stop(parent)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}, 20_000
+
+    assert Tasks.active() == nil
+    assert %{status: "cancelled", result: %{"reason" => "cancelled"}} = Store.load_task(child)
+    assert Agent.snapshot(child).status == :idle
+
+    assert %Message{role: :tool, content: [%{content: "Cancelled by the user.", is_error: true}]} =
+             List.last(Agent.snapshot(parent).messages)
+  end
+
+  # SUBTASK-19
+  test "when the process running spawn_task dies, the lock finishes the job", %{parent: parent} do
+    child = spawn_blocked_child(parent)
+
+    Process.exit(:sys.get_state(Tasks).active.owner, :kill)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "failed"}}, 20_000
+    await_status(parent, :idle)
+
+    assert Tasks.active() == nil
+    assert Agent.snapshot(child).status == :idle
+    assert %{status: "failed", result: %{"reason" => "crashed"}} = Store.load_task(child)
+  end
+
+  # SUBTASK-18
+  test "a child that runs out of time has failed with reason budget", %{parent: parent} do
+    child = spawn_blocked_child(parent, %{"max_minutes" => 0.01})
+    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+    await_status(parent, :idle)
+
+    {content, false} = last_tool_result()
+
+    assert %{"status" => "failed", "reason" => "budget", "summary" => "Budget exceeded" <> _} =
+             Jason.decode!(content)
+
+    assert Tasks.active() == nil
+    assert Agent.snapshot(child).status == :idle
+    assert %{status: "failed"} = Store.load_task(child)
+  end
+
+  # SUBTASK-18
+  test "time spent waiting for approval doesn't count against the budget", %{parent: parent} do
+    Agent.subscribe_activity()
+
+    FakeLLM.push(
+      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_minutes" => 0.02})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "true"})]))
+
+    FakeLLM.push(FakeLLM.assistant([finish_call("done", "Fine")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
+    assert_receive {:chat_status, ^child, :awaiting_approval}, 20_000
+
+    # Longer than the whole budget (1.2 s).
+    refute_receive {:agent, ^parent, {:subtask, "s1", ^child, _}}, 1_800
+
+    :ok = Agent.approve(child, "c1")
+    await_status(parent, :idle)
+
+    {content, false} = last_tool_result()
+    assert %{"status" => "done", "reason" => nil} = Jason.decode!(content)
+  end
+
+  # SUBTASK-21, SUBTASK-22
+  test "a blocked child reports the tree state and the parent can reset the workspace", %{
+    parent: parent
+  } do
+    test_pid = self()
+    {start, 0} = git(["rev-parse", "HEAD"])
+    start = String.trim(start)
+
+    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
+
+    FakeLLM.push(fn _request, _on_event ->
+      commit_file("child.txt")
+      File.write!(Path.join(Elia.Workspace.root(), "dirty.txt"), "wip")
+      reply([finish_call("blocked", "Stuck", ["Which one?"])])
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+
+    FakeLLM.push(fn request, _on_event ->
+      %Message{role: :tool, content: [%{content: content}]} = List.last(request.messages)
+      send(test_pid, {:result, Jason.decode!(content)})
+
+      reply([
+        FakeLLM.tool_call("r1", "reset_task", %{"task_id" => Jason.decode!(content)["task_id"]})
+      ])
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Reset.")]))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    await_status(parent, :awaiting_approval)
+
+    # Not automatic: the reset waits for approval, and nothing changed yet.
+    assert File.exists?(Path.join(Elia.Workspace.root(), "dirty.txt"))
+
+    assert_receive {:result,
+                    %{
+                      "status" => "blocked",
+                      "reason" => nil,
+                      "tree_clean" => false,
+                      "start_commit" => ^start,
+                      "files" => files
+                    }}
+
+    assert files == ["child.txt", "dirty.txt"]
+
+    :ok = Agent.approve(parent, "r1")
+    await_status(parent, :idle)
+
+    root = Elia.Workspace.root()
+    refute File.exists?(Path.join(root, "child.txt"))
+    refute File.exists?(Path.join(root, "dirty.txt"))
+    assert {head, 0} = git(["rev-parse", "HEAD"])
+    assert String.trim(head) == start
+    assert {"", 0} = git(["status", "--porcelain"])
+
+    {content, false} = last_tool_result()
+    assert content =~ "Workspace reset to #{String.slice(start, 0, 8)}"
+    assert content =~ "child work"
+  end
+
+  # SUBTASK-22
+  test "reset_task refuses what it shouldn't touch and resets an interrupted task", %{
+    parent: parent
+  } do
+    root = Elia.Workspace.root()
+    {start, 0} = git(["rev-parse", "HEAD"])
+    start = String.trim(start)
+    ctx = %{session_id: parent, turn_id: nil}
+
+    save = fn changes ->
+      id = Agent.new_id()
+
+      task =
+        Map.merge(
+          %{parent_id: parent, title: "T", brief: "B", status: "failed", start_commit: start},
+          changes
+        )
+
+      :ok = Store.save(id, [Message.user("x")], task: task)
+      id
+    end
+
+    dirty = fn -> File.write!(Path.join(root, "dirty.txt"), "wip") end
+
+    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{"task_id" => "nope"}, ctx)
+    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{}, ctx)
+
+    other = save.(%{parent_id: "someone-else"})
+    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{"task_id" => other}, ctx)
+
+    done = save.(%{status: "done"})
+
+    assert {:error, "Not reset: that sub-task finished as done" <> _} =
+             Tasks.reset_task(%{"task_id" => done}, ctx)
+
+    no_start = save.(%{start_commit: nil})
+
+    assert {:error, "Not reset: that sub-task has no start commit." <> _} =
+             Tasks.reset_task(%{"task_id" => no_start}, ctx)
+
+    # A child is active.
+    failed = save.(%{})
+    assert :ok = Tasks.acquire("p1", nil, "c1", nil)
+    dirty.()
+
+    assert {:error, "Not reset: sub-task c1 is still active." <> _} =
+             Tasks.reset_task(%{"task_id" => failed}, ctx)
+
+    assert File.exists?(Path.join(root, "dirty.txt"))
+    assert :ok = Tasks.release("c1")
+
+    # Saved as running with no live session: interrupted, so it can be reset.
+    interrupted = save.(%{status: "running"})
+    assert {:ok, "Workspace reset" <> _} = Tasks.reset_task(%{"task_id" => interrupted}, ctx)
+    refute File.exists?(Path.join(root, "dirty.txt"))
+
+    # The history was rewritten since the task started.
+    {_, 0} = git(["commit", "-q", "--amend", "--allow-empty", "-m", "rewritten"])
+    dirty.()
+
+    assert {:error, "Not reset: the task's start commit is not an ancestor" <> _} =
+             Tasks.reset_task(%{"task_id" => failed}, ctx)
+
+    assert File.exists?(Path.join(root, "dirty.txt"))
   end
 
   # SUBTASK-3, 11

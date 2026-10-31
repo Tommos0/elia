@@ -153,7 +153,7 @@ so it opens at `/c/<child id>` like any chat.
   awaits approval. The usual badge (UI-16) and approval buttons (UI-18) stay.
 - **UI-44** Once the child exists, the card shows its status
   (`#task-status-<call_id>`, with `data-status` set to `running`, `done`,
-  `blocked`, `failed`, `unfinished` or `interrupted`) and a link to the child
+  `blocked`, `failed`, `unfinished`, `cancelled` or `interrupted`) and a link to the child
   chat (`#task-link-<call_id>`). The status follows `{:subtask, call_id,
   child_id, status}` events (SUBTASK-7), and the link and status also appear
   when the chat is opened later, from the children's saved metadata
@@ -183,6 +183,9 @@ so it opens at `/c/<child id>` like any chat.
 - **UI-49** The sidebar refreshes when a `{:subtask, …}` or `{:task, …}` event
   arrives, so a new task chat and its final status show without waiting for the
   turn to end (UI-6).
+
+- **UI-50** The status `cancelled` (SUBTASK-16) has its own icon, wherever a
+  task status is shown (UI-44, UI-46, UI-48), with `data-status="cancelled"`.
 
 ## Implementation
 
