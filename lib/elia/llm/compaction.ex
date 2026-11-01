@@ -409,9 +409,14 @@ defmodule Elia.LLM.Compaction do
     parts =
       for block <- content, block.type != :reasoning, into: [] do
         case block do
-          %{type: :text, text: text} -> text
-          %{type: :tool_call, name: name, input: input} -> "called #{name} #{input_summary(input)}"
-          _other -> ""
+          %{type: :text, text: text} ->
+            text
+
+          %{type: :tool_call, name: name, input: input} ->
+            "called #{name} #{input_summary(input)}"
+
+          _other ->
+            ""
         end
       end
 
@@ -424,8 +429,11 @@ defmodule Elia.LLM.Compaction do
         label = note_label(Map.get(calls, id))
 
         case result_text(block) do
-          text when is_binary(text) and text != "" -> "#{label} returned:\n#{cut(text, @chunk_chars)}"
-          _ -> "#{label} returned nothing"
+          text when is_binary(text) and text != "" ->
+            "#{label} returned:\n#{cut(text, @chunk_chars)}"
+
+          _ ->
+            "#{label} returned nothing"
         end
       end
 
@@ -452,7 +460,8 @@ defmodule Elia.LLM.Compaction do
 
   # COMPACT-14, COMPACT-15, COMPACT-16
   defp cold(message, index, ctx, pins) do
-    drop? = ctx.state.level >= @top_level and message.role != :user and not pinned_turn?(ctx, index)
+    drop? =
+      ctx.state.level >= @top_level and message.role != :user and not pinned_turn?(ctx, index)
 
     if drop? do
       status = if covered_by_summary?(ctx.state, index), do: :summarized, else: :elided
@@ -473,8 +482,10 @@ defmodule Elia.LLM.Compaction do
       if content == [] do
         {%{status: :elided, blocks: blocks, elided: elided, pinned: false}, nil, elided}
       else
-        status = if elided > 0, do: :truncated, else: :sent
-        {%{status: status, blocks: blocks, elided: elided, pinned: false}, %{message | content: content}, elided}
+        status = if Enum.any?(blocks, fn {_, s} -> s == :elided end), do: :truncated, else: :sent
+
+        {%{status: status, blocks: blocks, elided: elided, pinned: false},
+         %{message | content: content}, elided}
       end
     else
       sent(message)
@@ -484,8 +495,10 @@ defmodule Elia.LLM.Compaction do
   defp prune(%Message{role: :tool} = message, _index, ctx, pins) do
     if ctx.state.level >= 2 do
       {content, blocks, elided} = elide_results(message.content, pins, ctx.calls)
-      status = if elided > 0, do: :truncated, else: :sent
-      {%{status: status, blocks: blocks, elided: elided, pinned: false}, %{message | content: content}, elided}
+      status = if Enum.any?(blocks, fn {_, s} -> s == :elided end), do: :truncated, else: :sent
+
+      {%{status: status, blocks: blocks, elided: elided, pinned: false},
+       %{message | content: content}, elided}
     else
       sent(message)
     end
@@ -600,7 +613,9 @@ defmodule Elia.LLM.Compaction do
   @spec pinned?(t(), non_neg_integer(), non_neg_integer() | nil) :: boolean()
   def pinned?(state, index, block \\ nil) do
     state = from_map(state)
-    pinned_message?(state.pins, index) or (block != nil and pinned_block?(state.pins, index, block))
+
+    pinned_message?(state.pins, index) or
+      (block != nil and pinned_block?(state.pins, index, block))
   end
 
   @doc "Pins a message (`block` nil) or one of its blocks."
@@ -630,37 +645,47 @@ defmodule Elia.LLM.Compaction do
   defp block_pinned?(blocks, i) when is_list(blocks), do: i in blocks
   defp block_pinned?(_blocks, _i), do: false
 
-  # COMPACT-4: a call and its result go together, so a pin anywhere in a turn
-  # keeps that turn whole rather than splitting a pair.
+  # COMPACT-4: a call and its result go together, so a pin keeps the message it
+  # touches and the message it is paired with, rather than splitting them.
   defp keep_indexes(messages, pins) do
-    if pins == [] do
+    pinned = for {i, _} <- pins, is_integer(i), into: MapSet.new(), do: i
+
+    if MapSet.size(pinned) == 0 do
       MapSet.new()
     else
-      for {start, stop} <- turn_ranges(messages),
-          Enum.any?(pins, fn {i, _} -> i >= start and i <= stop end),
-          i <- start..stop,
-          into: MapSet.new(),
-          do: i
+      indexed = Enum.with_index(messages)
+
+      Enum.reduce(pinned, pinned, fn i, keep ->
+        case Enum.at(messages, i) do
+          %Message{role: :assistant, content: content} ->
+            ids = for call <- content, call.type == :tool_call, do: call.id
+            pair(indexed, keep, &(&1.role == :tool and answers?(&1, ids)))
+
+          %Message{role: :tool, content: content} ->
+            ids = for result <- content, result.type == :tool_result, do: result.tool_call_id
+
+            pair(indexed, keep, fn message ->
+              message.role == :assistant and
+                Enum.any?(message.content, &(&1.type == :tool_call and &1.id in ids))
+            end)
+
+          _message ->
+            keep
+        end
+      end)
     end
   end
 
-  defp pinned_turn?(ctx, index), do: MapSet.member?(ctx.keep, index)
-
-  defp turn_ranges(messages) do
-    starts =
-      [0] ++
-        for {%Message{role: :user} = message, i} <- Enum.with_index(messages),
-            i > 0,
-            not Map.get(message.meta, :harness, false),
-            do: i
-
-    starts = Enum.uniq(starts)
-    count = length(messages)
-
-    starts
-    |> Enum.with_index()
-    |> Enum.map(fn {start, k} -> {start, (Enum.at(starts, k + 1) || count) - 1} end)
+  defp pair(indexed, keep, match?) do
+    Enum.reduce(indexed, keep, fn {message, j}, keep ->
+      if match?.(message), do: MapSet.put(keep, j), else: keep
+    end)
   end
+
+  defp answers?(%Message{content: content}, ids),
+    do: Enum.any?(content, &(&1.type == :tool_result and &1.tool_call_id in ids))
+
+  defp pinned_turn?(ctx, index), do: MapSet.member?(ctx.keep, index)
 
   @doc "The index the working set of the last `working_set` turns starts at (COMPACT-12)."
   @spec working_set_start([Message.t()], pos_integer()) :: non_neg_integer()
@@ -697,7 +722,13 @@ defmodule Elia.LLM.Compaction do
       if state.ledger == [] do
         []
       else
-        [harness(:ledger, "Ledger of exact facts (verbatim):\n\n" <> Enum.map_join(state.ledger, "\n", &"- #{&1}"))]
+        [
+          harness(
+            :ledger,
+            "Ledger of exact facts (verbatim):\n\n" <>
+              Enum.map_join(state.ledger, "\n", &"- #{&1}")
+          )
+        ]
       end
 
     summary ++ marker ++ ledger
@@ -736,7 +767,10 @@ defmodule Elia.LLM.Compaction do
   @spec add_ledger(t(), [binary()] | binary()) :: t()
   def add_ledger(state, entries) do
     state = from_map(state)
-    entries = entries |> List.wrap() |> Enum.map(&to_string/1) |> Enum.reject(&(String.trim(&1) == ""))
+
+    entries =
+      entries |> List.wrap() |> Enum.map(&to_string/1) |> Enum.reject(&(String.trim(&1) == ""))
+
     ledger = trim_ledger(state.ledger ++ entries)
     %{state | ledger: ledger}
   end

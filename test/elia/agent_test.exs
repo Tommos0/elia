@@ -620,7 +620,7 @@ defmodule Elia.AgentTest do
     pid
   end
 
-  # COMPACT-2, COMPACT-5, COMPACT-6, COMPACT-24, COMPACT-26
+  # COMPACT-2, COMPACT-5, COMPACT-6, COMPACT-24, COMPACT-26, SESS-24
   test "a turn over the trigger sends the model the request view, keeping the history" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -706,7 +706,7 @@ defmodule Elia.AgentTest do
     assert %{options: %{budget: 5, auto: false}} = Elia.Store.load_compaction(id)
   end
 
-  # COMPACT-10
+  # COMPACT-10, SESS-25
   test "compact now compacts an idle chat, ignoring the threshold and the target" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -735,7 +735,7 @@ defmodule Elia.AgentTest do
     assert %{level: 3} = Elia.Store.load_compaction(id)
   end
 
-  # COMPACT-10
+  # COMPACT-10, SESS-25
   test "compact now refuses while a turn is running" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -750,7 +750,7 @@ defmodule Elia.AgentTest do
     await_status(id, :idle)
   end
 
-  # COMPACT-21, COMPACT-24
+  # COMPACT-21, COMPACT-24, SESS-25, SESS-26
   test "pins are set, saved with the chat and reloaded on restart" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -900,7 +900,7 @@ defmodule Elia.AgentTest do
     assert Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
   end
 
-  # SESS-15
+  # SESS-15, SESS-26
   test "a session with state from before :compaction existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     :sys.replace_state(pid, &Map.delete(&1, :compaction))

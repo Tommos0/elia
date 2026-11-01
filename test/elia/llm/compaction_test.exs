@@ -15,7 +15,12 @@ defmodule Elia.LLM.CompactionTest do
           role: :assistant,
           content: [
             %{type: :reasoning, text: "thinking about task #{n} #{String.duplicate(text, 10)}"},
-            %{type: :tool_call, id: "c#{n}", name: "read_file", input: %{"path" => "file#{n}.txt"}}
+            %{
+              type: :tool_call,
+              id: "c#{n}",
+              name: "read_file",
+              input: %{"path" => "file#{n}.txt"}
+            }
           ]
         },
         %Message{
@@ -105,12 +110,14 @@ defmodule Elia.LLM.CompactionTest do
   # COMPACT-12
   test "the working set of recent turns is kept verbatim" do
     messages = history(1..4)
+
     state =
       Compaction.compact(messages, %Compaction{},
         target: 1,
         working_set: 2,
         summarizer: no_summary()
       )
+
     view = Compaction.view(messages, state)
 
     # Two turns of the four are the working set: indices 8..15.
@@ -125,12 +132,14 @@ defmodule Elia.LLM.CompactionTest do
   # COMPACT-4
   test "a tool call and its result are kept or dropped together" do
     messages = history(1..4)
+
     state =
       Compaction.compact(messages, %Compaction{},
         target: 1,
         working_set: 2,
         summarizer: no_summary()
       )
+
     view = Compaction.view(messages, state)
 
     ids =
@@ -151,12 +160,14 @@ defmodule Elia.LLM.CompactionTest do
   # COMPACT-4, COMPACT-11
   test "the view keeps the spoken record and starts as a user turn" do
     messages = history(1..5)
+
     state =
       Compaction.compact(messages, %Compaction{},
         target: 1,
         working_set: 2,
         summarizer: no_summary()
       )
+
     view = Compaction.view(messages, state)
 
     users =
@@ -227,7 +238,8 @@ defmodule Elia.LLM.CompactionTest do
     messages = history(1..3)
     view = Compaction.view(messages, %Compaction{level: 2, covered: 4})
 
-    [%Message{role: :tool, content: [result]} | _] = Enum.filter(view.messages, &(&1.role == :tool))
+    [%Message{role: :tool, content: [result]} | _] =
+      Enum.filter(view.messages, &(&1.role == :tool))
 
     assert result.content =~ "output elided by compaction"
     assert result.content =~ "read_file"
@@ -309,7 +321,13 @@ defmodule Elia.LLM.CompactionTest do
     summarizer = fn input -> send(test_pid, {:summary_input, input}) && {:ok, "folded"} end
 
     messages = history(1..4)
-    state = Compaction.compact(messages, %Compaction{}, target: 1, working_set: 2, summarizer: summarizer)
+
+    state =
+      Compaction.compact(messages, %Compaction{},
+        target: 1,
+        working_set: 2,
+        summarizer: summarizer
+      )
 
     assert_receive {:summary_input, first}
     assert first =~ "task 1"
@@ -417,6 +435,9 @@ defmodule Elia.LLM.CompactionTest do
              _ ->
                false
            end)
+
+    # The rest of that turn is still dropped: only the pair is kept.
+    assert view.statuses[3].status == :elided
   end
 
   # COMPACT-21

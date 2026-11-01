@@ -480,7 +480,9 @@ defmodule Elia.Agent.Session do
     do: %Compaction{} |> put_options(overrides)
 
   defp put_options(state, nil), do: state
-  defp put_options(state, overrides), do: %{state | options: Map.merge(state.options, Map.new(overrides))}
+
+  defp put_options(state, overrides),
+    do: %{state | options: Map.merge(state.options, Map.new(overrides))}
 
   # COMPACT-6: a turn compacts first when the request view's estimate exceeds
   # the trigger. Without a known window nothing automatic happens (COMPACT-7).
@@ -538,7 +540,8 @@ defmodule Elia.Agent.Session do
   defp context(state, messages),
     do: Context.build(messages, skills(state), instructions(state))
 
-  defp skills(state), do: Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
+  defp skills(state),
+    do: Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
 
   defp instructions(state), do: Elia.Skills.project_instructions(project(state).folder)
 

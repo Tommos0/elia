@@ -229,8 +229,25 @@ defmodule Elia.StoreTest do
     assert %{project_id: "proj-1"} = entry(Store.list(1000), id)
     assert [%Message{}] = Store.load(id)
 
-    assert Store.load_project("missing-chat") == nil
-    assert Store.load_project("../bad") == nil
+    assert Store.load_compaction("missing-chat") == nil
+    assert Store.load_compaction("../bad") == nil
+  end
+
+  # STORE-21
+  test "a chat's compaction state is saved with it and defaults to nil" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    compaction = %{level: 2, covered: 5, summary: "so far", pins: [{1, nil}], ledger: ["x"]}
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_compaction(id) == nil
+
+    :ok = Store.save(id, [Message.user("hi")], compaction: compaction)
+    assert Store.load_compaction(id) == compaction
+    assert [%Message{}] = Store.load(id)
+
+    assert Store.load_compaction("missing-chat") == nil
+    assert Store.load_compaction("../bad") == nil
   end
 
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))

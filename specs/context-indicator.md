@@ -20,16 +20,19 @@ files, skills, tool definitions and more — each with an estimated token count.
   model: the system prompt (agent instructions, the project instructions from
   the chat's project's `AGENTS.md` when present, and each skill's
   instructions),
-  the tool definitions, and every message (user text, assistant text,
-  reasoning, tool calls and tool results). Each text or payload belongs to
-  exactly one bucket, so the bucket totals sum to the overall estimate (which
-  includes the provider adjustment, CTX-10, when there is one).
+  the tool definitions, and every message of the **request view** (COMPACT-2):
+  user text, assistant text, reasoning, tool calls and tool results, plus the
+  summary, ledger and elision marker compaction puts at its head. Each text or
+  payload belongs to exactly one bucket, so the bucket totals sum to the overall
+  estimate (which includes the provider adjustment, CTX-10, when there is one).
 - **CTX-4** Clicking the indicator toggles a breakdown panel (`#context-breakdown`)
   that lists the parts of the context with their estimated tokens and an item
   count: System prompt (with an "Agent instructions" child, a "Project
   instructions" child when `AGENTS.md` is injected (SKILL-10), and one "Skill:
   <name>" child per skill), Tool definitions, Messages (with User, Assistant
-  and Reasoning children), Files, Shell and Other tools.
+  and Reasoning children), Files, Shell and Other tools. When the chat is
+  compacted it also shows an "Elided by compaction (not sent)" row
+  (`#context-elided`) with the tokens that were not sent (CTX-11).
 - **CTX-5** `read_file`, `write_file` and `edit_file` tool calls and results
   count under Files; `shell` calls and results under Shell; any other tool
   under Other tools.
@@ -61,21 +64,29 @@ files, skills, tool definitions and more — each with an estimated token count.
   estimated from their text, as before.
 - **CTX-10** The local estimate is calibrated against the provider's report.
   With each usage report the session records `estimated_input_tokens`, its
-  estimate for the history that request sent. The difference between the
+  estimate for the request view that request sent. The difference between the
   CTX-6 figure and that estimate becomes the context's adjustment, shown in the
   breakdown as a "Provider adjustment" bucket when non-zero and included in the
   total. Later messages and skill changes are estimated on top of it, so the
   total stays anchored to the last report as the conversation grows. A negative
   adjustment is capped so the total never drops below zero. A usage report
-  without both figures, or a reset of the conversation, clears the adjustment.
+  without both figures, a reset of the conversation, or a change to the request
+  view (COMPACT-26, COMPACT-27) clears the adjustment.
+- **CTX-11** When compaction has elided part of the chat, the indicator shows the
+  amount as a badge (`#context-elided-badge`) beside the size and as the
+  breakdown's "Elided by compaction (not sent)" row (`#context-elided`,
+  COMPACT-26). The elided tokens are **not** part of the estimate: the total is
+  what the model is sent.
 
 ## Implementation
 
 `Elia.LLM.Context`, `Elia.LLM.Tokens`, `Elia.LLM` (`context_window/0`),
-`Elia.LLM.Catalog` (`peek/1`), `Elia.Agent.Session`, `Elia.Agent.Loop`,
+`Elia.LLM.Catalog` (`peek/1`), `Elia.LLM.Compaction` (the request view the
+estimate is over, COMPACT-26), `Elia.Agent.Session`, `Elia.Agent.Loop`,
 `EliaWeb.ChatLive`.
 
 ## Tests
 
 `test/elia/llm/tokens_test.exs`, `test/elia/llm/context_test.exs`,
-`test/elia/llm/catalog_test.exs`, `test/elia_web/live/chat_live_test.exs`.
+`test/elia/llm/catalog_test.exs`, `test/elia_web/live/chat_live_test.exs`,
+`test/elia_web/live/compaction_test.exs`.

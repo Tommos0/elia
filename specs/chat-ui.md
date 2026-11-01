@@ -141,6 +141,32 @@ stream in, approves or denies tool calls, and switches between saved chats.
   "Reasoning…". Expanding the streaming block keeps it expanded as more text
   arrives.
 
+### Compaction
+
+The session keeps and shows the full history; the model is sent a smaller
+**request view** (COMPACT-2). The transcript is honest about which parts of it
+the model did or did not see, and the user can pin a message or compact the chat
+by hand.
+
+- **UI-51** The transcript always shows the whole conversation, including what
+  compaction elided (COMPACT-1), and annotates each item with its request-view
+  status (COMPACT-25): "Not sent to the model" for an item the model was not
+  sent, "Truncated for the model" for one it got only part of, and "Summarized
+  for the model" for one a summary stands in for. The note (`#status-<item>`,
+  where the item is `m<index>`, `m<index>-<block>` or `call-<call_id>`) is dim
+  and names the elided amount when there is one. An item the model was sent in
+  full carries no note.
+- **UI-52** Every transcript item has a pin toggle (`#pin-<item>`) that pins or
+  unpins its message (COMPACT-21, SESS-25) and shows the state: "Pin" when it is
+  not pinned, "Pinned" and `aria-pressed="true"` when it is.
+- **UI-53** A folded summary renders as a collapsible notice
+  (`#compaction-summary`, open by default) at the boundary of the region it
+  covers, with its text (`#compaction-summary-text`) and its length in words, so
+  the user sees the compression in place rather than a gap (COMPACT-19).
+- **UI-54** The composer has a "Compact" button (`#compact-button`) that
+  compacts the chat now (COMPACT-10), and flashes an error while a turn is
+  running.
+
 ### Sub-tasks
 
 A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
@@ -196,5 +222,6 @@ so it opens at `/c/<child id>` like any chat.
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
+`test/elia_web/live/compaction_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

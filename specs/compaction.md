@@ -1,6 +1,6 @@
 # Compaction
 
-Status: Draft
+Status: Implemented
 
 A long chat grows without bound: every step (LOOP-1) sends the model the whole
 history, so cost and latency rise with the length of the conversation until the
@@ -167,8 +167,36 @@ order, stopping as soon as the estimate is at or below the target:
 ledger and pins), `Elia.LLM.Context` (estimate over the request view),
 `EliaWeb.ChatLive` (annotations, the summary notice, "compact now").
 
+The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is a `level`
+(how far down the ladder the cold region has been taken), the `covered` index
+the cold region ended at last time (the aged-out marker), the `folded` index the
+summary has already taken in, the `summary`, the `ledger`, the `pins` and the
+chat's own option overrides. Rules apply only to messages before `covered`, so
+the view does not drift as the chat grows, and the ladder never moves back up:
+a region that was elided or summarized stays that way.
+
+Two things are deliberately not literal, and the code is where the choice
+lives:
+
+* **The summary is additive.** It is produced when the ladder cannot reach the
+  target (COMPACT-17) and is placed at the head of the view, but a user message
+  is never dropped (COMPACT-11), so the summarized region's own user messages
+  stay in the view and it can still exceed the target. The summary preserves the
+  *meaning* of what was dropped; the elision is what bounds the request.
+* **The summarizer sees pruned content.** Its input is the previous summary plus
+  the newly aged-out turns with reasoning dropped, tool results cut to 1,000
+  characters and user turns to 4,000 (COMPACT-18), so pruning happens before
+  summarizing.
+
+The summarizer is `loop_opts[:summarizer]`, a `(input -> {:ok, text} |
+{:error, term})` function, injectable exactly as `:llm` is (LOOP-16) so tests
+never call a provider; without one a provider call is made through the turn's
+own request (`:llm`), and any failure leaves the pruned view and no error
+(COMPACT-20).
+
 ## Tests
 
 `test/elia/llm/compaction_test.exs` (the ladder, boundary safety, bounded
-folding, pinning), `test/elia/agent_test.exs` (state, persistence, reset),
-`test/elia_web/live/chat_live_test.exs` (annotations, the notice, the estimate).
+folding, pinning), `test/elia/agent_test.exs` (state, persistence, the trigger,
+the manual action, the ledger), `test/elia_web/live/compaction_test.exs`
+(annotations, the notice, the estimate, the pin, "compact now").

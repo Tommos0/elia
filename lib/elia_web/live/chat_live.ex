@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLive do
 
   alias Elia.Agent
   alias Elia.LLM
-  alias Elia.LLM.{Context, Message}
+  alias Elia.LLM.{Compaction, Context, Message}
 
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
@@ -60,6 +60,11 @@ defmodule EliaWeb.ChatLive do
         last_usage: snapshot.last_usage,
         show_context: false,
         context_window: LLM.context_window(snapshot.selection),
+        # COMPACT-2: the full history, which the transcript always shows, and the
+        # chat's compaction state, from which the request view is derived.
+        messages: [],
+        compaction: %Compaction{},
+        context_elided: 0,
         draft: "",
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
@@ -84,17 +89,11 @@ defmodule EliaWeb.ChatLive do
         catalogs: %{},
         auto_approve: snapshot.auto_approve,
         auto_approve_open: false,
-        approvable_tools: approvable_tools(skills)
+        approvable_tools: approvable_tools(skills),
+        skills: skills
       )
       |> stream(:models, [])
-      |> put_context(
-        Context.new(
-          snapshot.messages,
-          skills,
-          Elia.Skills.project_instructions(project.folder)
-        )
-        |> Context.calibrate(snapshot.last_usage)
-      )
+      |> derive_view(snapshot.messages, snapshot.compaction, snapshot.last_usage)
       |> load_messages(snapshot.messages)
 
     {:ok, socket}
@@ -217,6 +216,7 @@ defmodule EliaWeb.ChatLive do
             show={@show_context}
             buckets={@context_breakdown.buckets}
             provider_tokens={Context.provider_input_tokens(@last_usage)}
+            elided={@context_elided}
           />
           <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
@@ -227,8 +227,9 @@ defmodule EliaWeb.ChatLive do
                     Elia can run shell commands on this machine. You approve every command.
                   </p>
                 </div>
-                <div :for={{dom_id, item} <- @streams.items} id={dom_id}>
+                <div :for={{dom_id, item} <- @streams.items} id={dom_id} class="group/item">
                   <.item item={item} />
+                  <.item_meta :if={Map.get(item, :request_status)} item={item} />
                 </div>
               </div>
 
@@ -266,6 +267,17 @@ defmodule EliaWeb.ChatLive do
                 tools={@approvable_tools}
                 enabled={@auto_approve}
               />
+              <%!-- COMPACT-10: compact this chat now, on demand --%>
+              <button
+                type="button"
+                id="compact-button"
+                phx-click="compact"
+                title="Elide the older turns of this chat's context now"
+                class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
+              >
+                <.icon name="hero-archive-box-arrow-down" class="size-3.5 shrink-0 opacity-70" />
+                <span class="font-medium">Compact</span>
+              </button>
               <%!-- DEPLOY-7, RESTART-11: deploy this chat's code and restart the server --%>
               <button
                 :if={@project.harness?}
@@ -551,6 +563,7 @@ defmodule EliaWeb.ChatLive do
   attr :show, :boolean, required: true
   attr :buckets, :list, required: true
   attr :provider_tokens, :integer, default: nil
+  attr :elided, :integer, default: 0
 
   defp context_header(assigns) do
     assigns = assign(assigns, :percent, percent_of(assigns.total, assigns.context_length))
@@ -569,6 +582,14 @@ defmodule EliaWeb.ChatLive do
           <.icon name="hero-cube" class="size-3.5 text-base-content/50" />
           <span class="font-medium text-base-content/70">Context</span>
           <span id="context-size" class="tabular-nums font-semibold">{format_tokens(@total)}</span>
+          <span
+            :if={@elided > 0}
+            id="context-elided-badge"
+            title={"#{@elided} tokens of this chat were elided by compaction and are not sent"}
+            class="tabular-nums text-base-content/40"
+          >
+            (−{format_tokens(@elided)})
+          </span>
           <span :if={@context_length} id="context-window" class="tabular-nums text-base-content/50">
             / {format_tokens(@context_length)}
           </span>
@@ -596,6 +617,19 @@ defmodule EliaWeb.ChatLive do
             What makes up the context
           </p>
           <.context_bucket_list buckets={@buckets} />
+          <%!-- COMPACT-26: the estimate is over the request view; the elided
+                amount is shown but is not part of it. --%>
+          <div
+            :if={@elided > 0}
+            id="context-elided"
+            class="flex items-center justify-between gap-3 rounded-lg bg-base-200/60 px-3 py-1.5"
+          >
+            <span class="flex items-center gap-1.5 text-base-content/60">
+              <.icon name="hero-eye-slash" class="size-3.5 shrink-0" />
+              <span>Elided by compaction (not sent)</span>
+            </span>
+            <span class="tabular-nums text-base-content/60">−{format_tokens(@elided)}</span>
+          </div>
           <div class="flex items-center justify-between border-t border-base-300/70 pt-2 text-base-content/70">
             <span>Estimated total</span>
             <span id="context-total" class="tabular-nums font-semibold">
@@ -964,6 +998,33 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  # COMPACT-19, COMPACT-25: the folded summary stands in for the turns the model
+  # was not sent, rendered where they end so the compression is visible in place.
+  defp item(%{item: %{kind: :summary}} = assigns) do
+    ~H"""
+    <details
+      id="compaction-summary"
+      open
+      class="group/summary rounded-xl border border-dashed border-base-300 bg-base-200/40 px-3 py-2 text-xs"
+    >
+      <summary class="flex cursor-pointer list-none items-center gap-1.5 font-medium text-base-content/70">
+        <.icon name="hero-archive-box" class="size-3.5 shrink-0 text-base-content/50" />
+        <span>Earlier turns summarized</span>
+        <span id="compaction-summary-length" class="font-normal text-base-content/40">
+          {length(String.split(@item.text))} words
+        </span>
+        <.icon name="hero-chevron-right" class="size-3 transition group-open/summary:rotate-90" />
+      </summary>
+      <div
+        id="compaction-summary-text"
+        class="mt-1.5 ml-1.5 whitespace-pre-wrap border-l-2 border-base-300 pl-3 text-base-content/70"
+      >
+        {@item.text}
+      </div>
+    </details>
+    """
+  end
+
   # UI-29, UI-30: collapsed by default; the client keeps `open` across patches
   # so an expanded streaming block stays expanded.
   defp item(%{item: %{kind: :reasoning}} = assigns) do
@@ -1126,6 +1187,63 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  attr :item, :map, required: true
+
+  # COMPACT-21, COMPACT-25: what the model was sent of this item, and a pin. The
+  # UI never implies the model saw something it did not.
+  defp item_meta(assigns) do
+    assigns =
+      assigns
+      |> assign(:id, request_id(assigns.item))
+      |> assign(:label, request_label(assigns.item))
+
+    ~H"""
+    <div class="mt-1 flex items-center gap-2 text-[11px]">
+      <button
+        :if={is_integer(Map.get(@item, :index))}
+        type="button"
+        id={"pin-#{@id}"}
+        phx-click="toggle_pin"
+        phx-value-index={@item.index}
+        aria-pressed={to_string(@item[:pinned] == true)}
+        title={
+          if @item[:pinned], do: "Unpin: compaction may elide it again", else: "Pin: never elide this"
+        }
+        class={[
+          "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-base-content/40 transition hover:bg-base-200 hover:text-base-content",
+          @item[:pinned] && "text-warning hover:text-warning"
+        ]}
+      >
+        <.icon name="hero-map-pin" class="size-3" />
+        <span>{if @item[:pinned], do: "Pinned", else: "Pin"}</span>
+      </button>
+      <span :if={@label} id={"status-#{@id}"} class="flex items-center gap-1 text-base-content/45">
+        <.icon name={request_icon(@item.request_status)} class="size-3 shrink-0" />
+        <span>{@label}</span>
+        <span :if={Map.get(@item, :elided) > 0} class="tabular-nums">
+          −{format_tokens(@item.elided)} tokens
+        </span>
+      </span>
+    </div>
+    """
+  end
+
+  defp request_id(%{kind: :tool, call_id: id}), do: "call-#{id}"
+  defp request_id(%{index: index, block: block}) when is_integer(block), do: "m#{index}-#{block}"
+  defp request_id(%{index: index}), do: "m#{index}"
+  defp request_id(_item), do: "item"
+
+  # A block-level rule (dropped reasoning, an elided tool result) decides for the
+  # block, unless a summary stands in for the whole message (COMPACT-25).
+  defp request_label(%{request_status: :summarized}), do: "Summarized for the model"
+  defp request_label(%{block_status: :elided}), do: "Not sent to the model"
+  defp request_label(%{request_status: :truncated}), do: "Truncated for the model"
+  defp request_label(%{request_status: :elided}), do: "Not sent to the model"
+  defp request_label(_item), do: nil
+
+  defp request_icon(:truncated), do: "hero-scissors"
+  defp request_icon(_status), do: "hero-eye-slash"
+
   attr :status, :atom, required: true
   attr :is_error, :boolean, default: false
 
@@ -1192,6 +1310,30 @@ defmodule EliaWeb.ChatLive do
 
   def handle_event("toggle_context", _params, socket) do
     {:noreply, assign(socket, show_context: !socket.assigns.show_context)}
+  end
+
+  # COMPACT-10
+  def handle_event("compact", _params, socket) do
+    case Agent.compact(socket.assigns.session_id) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :busy} ->
+        {:noreply, put_flash(socket, :error, "Elia is working; try again in a moment.")}
+    end
+  end
+
+  # COMPACT-21: the user pins a message so no rule may elide it.
+  def handle_event("toggle_pin", %{"index" => index}, socket) do
+    case Integer.parse(index) do
+      {index, ""} ->
+        on? = not Compaction.pinned?(socket.assigns.compaction, index)
+        Agent.set_pin(socket.assigns.session_id, index, nil, on?)
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("approve", %{"id" => call_id}, socket) do
@@ -1397,7 +1539,7 @@ defmodule EliaWeb.ChatLive do
     {skills, instructions} = project_skills(socket.assigns.project, skills)
 
     socket
-    |> assign(approvable_tools: approvable_tools(skills))
+    |> assign(skills: skills, approvable_tools: approvable_tools(skills))
     |> put_context(Context.put_skills(socket.assigns.context, skills, instructions))
     |> noreply()
   end
@@ -1442,15 +1584,42 @@ defmodule EliaWeb.ChatLive do
     assign(socket, context: context, context_breakdown: Context.breakdown(context))
   end
 
+  # COMPACT-2, COMPACT-26: the request view and the estimate over it. The loop
+  # and this page derive the view with the same function, so the transcript's
+  # annotations and the estimate can never disagree with what the model was sent.
+  # `usage` calibrates the total (CTX-10); nil clears the adjustment.
+  defp derive_view(socket, messages, compaction, usage \\ nil) do
+    %{project: project, skills: skills} = socket.assigns
+    view = Compaction.view(messages, compaction)
+
+    context =
+      Context.new(view.messages, skills, Elia.Skills.project_instructions(project.folder))
+      |> Context.calibrate(usage)
+
+    socket
+    |> assign(
+      messages: messages,
+      compaction: compaction,
+      view: view,
+      context_elided: view.elided
+    )
+    |> put_context(context)
+  end
+
   defp apply_event({:message, %Message{} = message}, socket) do
     socket =
       if message.role == :assistant,
         do: assign(socket, draft: "", draft_reasoning: ""),
         else: socket
 
+    messages = socket.assigns.messages ++ [message]
+    index = length(messages) - 1
+    status = Compaction.status(message, index, socket.assigns.compaction)
+
     socket
-    |> put_context(Context.add(socket.assigns.context, message))
-    |> insert_message(message)
+    |> assign(messages: messages)
+    |> fold_message(message, status)
+    |> insert_message(message, index, status)
   end
 
   defp apply_event({:model, selection}, socket) do
@@ -1483,6 +1652,15 @@ defmodule EliaWeb.ChatLive do
     socket
     |> assign(last_usage: usage)
     |> put_context(Context.calibrate(socket.assigns.context, usage))
+  end
+
+  # COMPACT-25: the request view changed, so the transcript's annotations, the
+  # summary notice and the estimate over the view are derived again. COMPACT-27:
+  # the CTX-10 adjustment (which calibrated the old view) is dropped with it.
+  defp apply_event({:compaction, compaction}, socket) do
+    socket
+    |> derive_view(socket.assigns.messages, Compaction.from_map(compaction))
+    |> load_messages(socket.assigns.messages)
   end
 
   defp apply_event({:delta, :text, text}, socket) do
@@ -1526,8 +1704,19 @@ defmodule EliaWeb.ChatLive do
   defp apply_event({:reset, messages}, socket) do
     socket
     |> assign(last_usage: nil)
-    |> put_context(Context.new(messages))
+    |> derive_view(messages, socket.assigns.compaction)
     |> load_messages(messages)
+  end
+
+  # A message that arrives while the chat is compacted may itself be cut (a huge
+  # user message, COMPACT-11), in which case the estimate is rebuilt from the
+  # view; otherwise it is folded in, as before (CTX-8).
+  defp fold_message(socket, message, %{status: :sent}) do
+    put_context(socket, Context.add(socket.assigns.context, message))
+  end
+
+  defp fold_message(socket, _message, _status) do
+    derive_view(socket, socket.assigns.messages, socket.assigns.compaction)
   end
 
   ## Task cards (UI-43 to UI-48)
@@ -1591,38 +1780,85 @@ defmodule EliaWeb.ChatLive do
 
   ## Transcript items
 
+  @sent %{status: :sent, blocks: %{}, elided: 0, pinned: false}
+
   defp load_messages(socket, messages) do
-    socket = socket |> assign(calls: %{}, message_count: 0) |> stream(:items, [], reset: true)
-    Enum.reduce(messages, socket, &insert_message(&2, &1))
+    view = Compaction.view(messages, socket.assigns.compaction)
+    count = length(messages)
+
+    socket =
+      socket
+      |> assign(calls: %{}, view: view, context_elided: view.elided)
+      |> stream(:items, [], reset: true)
+
+    socket =
+      messages
+      |> Enum.with_index()
+      |> Enum.reduce(socket, fn {message, index}, socket ->
+        socket
+        |> maybe_summary_notice(index, count)
+        |> insert_message(message, index, Map.get(view.statuses, index, @sent))
+      end)
+
+    # A summary covering every message of the chat has no message to sit before.
+    maybe_summary_notice(socket, count, count)
   end
 
-  defp insert_message(socket, %Message{role: :user, meta: %{harness: true}} = message) do
-    index = socket.assigns.message_count
-
-    socket
-    |> assign(message_count: index + 1)
-    |> stream_insert(:items, %{
-      id: "m#{index}",
-      kind: :notice,
-      text: Message.text_content(message)
-    })
+  # COMPACT-19, COMPACT-25: the summary renders as a notice at the boundary of
+  # the region it covers, so the user sees the compression in place.
+  defp maybe_summary_notice(socket, index, count) do
+    with %Compaction{summary: summary, folded: folded} <- socket.assigns.compaction,
+         true <- is_binary(summary) and String.trim(summary) != "",
+         true <- index == folded or (index == count and folded >= count) do
+      stream_insert(socket, :items, %{
+        id: "compaction-summary",
+        kind: :summary,
+        text: summary
+      })
+    else
+      _ -> socket
+    end
   end
 
-  defp insert_message(socket, %Message{role: :user} = message) do
-    index = socket.assigns.message_count
-
-    socket
-    |> assign(message_count: index + 1)
-    |> stream_insert(:items, %{id: "m#{index}", kind: :user, text: Message.text_content(message)})
+  defp insert_message(
+         socket,
+         %Message{role: :user, meta: %{harness: true}} = message,
+         index,
+         status
+       ) do
+    stream_item(
+      socket,
+      %{id: "m#{index}", kind: :notice, text: Message.text_content(message), index: index},
+      status
+    )
   end
 
-  defp insert_message(socket, %Message{role: :tool, content: results}) do
-    socket = assign(socket, message_count: socket.assigns.message_count + 1)
+  defp insert_message(socket, %Message{role: :user} = message, index, status) do
+    stream_item(
+      socket,
+      %{id: "m#{index}", kind: :user, text: Message.text_content(message), index: index},
+      status
+    )
+  end
 
+  defp insert_message(socket, %Message{role: :tool, content: results}, _index, status) do
     Enum.reduce(results, socket, fn result, socket ->
       case socket.assigns.calls do
         %{} = calls when is_map_key(calls, result.tool_call_id) ->
           call = calls[result.tool_call_id]
+
+          # COMPACT-25: an elided result is the card's own "not sent" note.
+          call =
+            if status.status == :sent do
+              call
+            else
+              %{
+                call
+                | request_status: status.status,
+                  block_status: Map.get(status.blocks, 0),
+                  elided: status.elided
+              }
+            end
 
           put_call(socket, %{
             call
@@ -1637,35 +1873,66 @@ defmodule EliaWeb.ChatLive do
     end)
   end
 
-  defp insert_message(socket, %Message{role: :assistant, content: content}) do
-    index = socket.assigns.message_count
-    socket = assign(socket, message_count: index + 1)
-
+  defp insert_message(socket, %Message{role: :assistant, content: content}, index, status) do
     content
     |> Enum.with_index()
     |> Enum.reduce(socket, fn
       {%{type: :text, text: text}, i}, socket when text != "" ->
-        stream_insert(socket, :items, %{id: "m#{index}-#{i}", kind: :assistant, text: text})
+        stream_item(
+          socket,
+          %{id: "m#{index}-#{i}", kind: :assistant, text: text, index: index, block: i},
+          status,
+          i
+        )
 
       {%{type: :reasoning, text: text}, i}, socket when text != "" ->
-        stream_insert(socket, :items, %{id: "m#{index}-#{i}", kind: :reasoning, text: text})
+        stream_item(
+          socket,
+          %{id: "m#{index}-#{i}", kind: :reasoning, text: text, index: index, block: i},
+          status,
+          i
+        )
 
-      {%{type: :tool_call} = call, _i}, socket ->
-        put_call(socket, %{
-          id: "call-#{call.id}",
-          kind: :tool,
-          call_id: call.id,
-          name: call.name,
-          input: call.input,
-          task: task_card(socket, call.id),
-          status: Map.get(socket.assigns.tool_status, call.id, :pending),
-          output: nil,
-          is_error: false
-        })
+      {%{type: :tool_call} = call, i}, socket ->
+        item =
+          annotate(
+            %{
+              id: "call-#{call.id}",
+              kind: :tool,
+              call_id: call.id,
+              name: call.name,
+              input: call.input,
+              index: index,
+              task: task_card(socket, call.id),
+              status: Map.get(socket.assigns.tool_status, call.id, :pending),
+              output: nil,
+              is_error: false
+            },
+            status,
+            i
+          )
+
+        put_call(socket, item)
 
       _other, socket ->
         socket
     end)
+  end
+
+  defp stream_item(socket, item, status, block \\ nil),
+    do: stream_insert(socket, :items, annotate(item, status, block))
+
+  # COMPACT-25: every item carries its request-view status, so the UI never
+  # implies the model saw something it did not.
+  defp annotate(item, status, block) do
+    block = block || Map.get(item, :block)
+
+    Map.merge(item, %{
+      request_status: status[:status] || :sent,
+      block_status: Map.get(status[:blocks] || %{}, block),
+      elided: status[:elided] || 0,
+      pinned: Map.get(status, :pinned, false)
+    })
   end
 
   defp put_call(socket, call) do
