@@ -47,6 +47,7 @@ deleting it.
 | [Projects](projects.md) | `PROJ` | Project folders; chats belong to a project, which supplies its own `AGENTS.md` and skills |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Context indicator](context-indicator.md) | `CTX` | Context size and window shown per chat, with a clickable breakdown |
+| [Compaction](compaction.md) | `COMPACT` | Keeps the full transcript but sends the model a smaller request view; pruning, a ledger and incremental summaries |
 | [Client sessions](client-sessions.md) | `CLIENT` | Sessions page listing open tabs with IP, browser and page |
 | [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser with a plain-text file viewer |
