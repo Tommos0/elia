@@ -22,7 +22,7 @@ defmodule Elia.Agent.Loop do
   COMPACT-29), so the view can shrink while the history does not.
 
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
-  function returning one, instead of the project's), `:max_steps` (default 50),
+  function returning one, instead of the project's), `:max_steps` (default 100),
   `:verify` (default `true`), `:llm` (extra request fields), `:project` (the
   chat's project), `:workspace` (the chat's workspace root: its own git
   worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12)
@@ -34,7 +34,7 @@ defmodule Elia.Agent.Loop do
   alias Elia.LLM.{Compaction, Message}
   alias Elia.Tool
 
-  @max_steps 50
+  @max_steps 100
   @max_verify_failures 2
 
   @type result :: :done | :refused | {:error, term()}

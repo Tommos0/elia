@@ -62,10 +62,6 @@ defmodule Elia.Skills.Tasks do
               "type" => "string",
               "description" => "Model id on the current provider (default: this chat's model)"
             },
-            "max_steps" => %{
-              "type" => "integer",
-              "description" => "Step limit for the sub-task (default 50, at most 100)"
-            },
             "max_minutes" => %{
               "type" => "number",
               "description" =>

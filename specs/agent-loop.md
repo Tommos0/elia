@@ -17,7 +17,7 @@ the end, the turn's changes are verified.
   They are the chat's project's skills and `AGENTS.md` (PROJ-15).
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
-- **LOOP-3** A turn stops with an error after the step limit: 50 steps unless
+- **LOOP-3** A turn stops with an error after the step limit: 100 steps unless
   the `:max_steps` option says otherwise (LOOP-16).
 - **LOOP-4** If the model refuses (`stop_reason: :refusal`), the loop returns
   `:refused` and runs none of that response's tool calls.

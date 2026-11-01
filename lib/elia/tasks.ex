@@ -16,7 +16,7 @@ defmodule Elia.Tasks do
   alias Elia.{Checkpoint, Harness, Store, Workspace}
   alias Elia.LLM.Message
 
-  @default_steps 50
+  @default_steps 100
   @max_steps 100
   @default_minutes 30
   @max_minutes 120
@@ -282,6 +282,9 @@ defmodule Elia.Tasks do
     root = repo_root(ctx)
     workspace = ctx[:workspace] || (project && project.folder)
 
+    # SUBTASK-12: the child's step limit defaults to the loop's own default. It
+    # isn't in `spawn_task`'s schema, so the model doesn't choose it; a caller
+    # (tests) may still pass `max_steps`.
     steps = input["max_steps"] |> Kernel.||(@default_steps) |> min(@max_steps) |> max(1)
 
     task = %{

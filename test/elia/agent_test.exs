@@ -88,6 +88,50 @@ defmodule Elia.AgentTest do
              List.last(second.messages)
   end
 
+  # LOOP-3
+  test "a turn with no max_steps option stops after the default 100 steps", %{} do
+    id = start_fake_skill_session([])
+    push_repeating_tool_call(101)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:error, "Stopped after 100 steps without finishing"}}, 10_000
+    await_status(id, :idle)
+  end
+
+  # LOOP-16
+  test "the max_steps option sets the turn's step limit", %{} do
+    id = start_fake_skill_session(max_steps: 3)
+    push_repeating_tool_call(4)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:error, "Stopped after 3 steps without finishing"}}, 10_000
+    await_status(id, :idle)
+  end
+
+  # Starts a session whose only skill is `fake_skill/1`, plus the given loop
+  # options, subscribed like the setup's (LOOP-3, LOOP-16).
+  defp start_fake_skill_session(loop_opts) do
+    id = Agent.new_id()
+    opts = Keyword.put(loop_opts, :skills, fn -> fake_skill("ok") end)
+    {:ok, pid} = Agent.ensure_started(id, loop_opts: opts)
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    id
+  end
+
+  # Scripts the model to ask for the fake skill's tool `times` times, so only
+  # the step limit ends the turn.
+  defp push_repeating_tool_call(times) do
+    fun = fn _request, _on_event ->
+      message = FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})])
+      {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
+    end
+
+    for _ <- 1..times, do: FakeLLM.push(fun)
+  end
+
   test "stopping while awaiting approval closes the dangling call", %{id: id} do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "sleep 5"})]))
 

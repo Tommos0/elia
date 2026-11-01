@@ -22,9 +22,10 @@ index and approvals are shared.
   every step (LOOP-17).
 - **SUBTASK-2** `spawn_task` takes `title` and `brief` (both required, not
   blank), and optionally `model` (a model id, used on the parent's provider;
-  default: the parent's own selection) and `max_steps` (default 50, at most
-  100). It needs the user's approval (APPR-1) and blocks until the child's turn
-  ends. Its output is the result (SUBTASK-9) as JSON.
+  default: the parent's own selection). It needs the user's approval (APPR-1)
+  and blocks until the child's turn ends. Its output is the result (SUBTASK-9)
+  as JSON. The child's step limit is not part of the tool's schema, so the
+  model doesn't choose it (SUBTASK-12).
 - **SUBTASK-3** `finish_task` takes `status` (`done`, `blocked` or `failed`),
   `summary` (required) and optionally `questions` (an array of strings). It
   never needs approval. It records the child's result and returns a message
@@ -86,7 +87,11 @@ index and approvals are shared.
   holds the one active child and its parent for the whole app. It is taken at
   spawn, released when the child ends, and also released when either session
   dies. `Elia.Tasks.active/0` returns `nil` or `%{child_id, parent_id}`.
-- **SUBTASK-12** `max_steps` is the child's loop step limit (LOOP-16).
+- **SUBTASK-12** The child's loop step limit is a loop option (LOOP-16),
+  defaulting to the loop's own default (LOOP-3). It isn't in `spawn_task`'s
+  schema, so the model doesn't choose it; a caller may still pass `max_steps`
+  (default 100, at most 100) to override it, which tests use to reach the limit
+  quickly.
 - **SUBTASK-13** When the child ends, its saved metadata gets the final
   `status` and the `result` (STORE-16, SESS-18), the lock is released, and the
   final `{:subtask, …}` event is broadcast.
