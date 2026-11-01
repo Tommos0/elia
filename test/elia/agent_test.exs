@@ -670,6 +670,51 @@ defmodule Elia.AgentTest do
     assert %{level: 3, summary: "Six turns of reading files."} = Agent.snapshot(id).compaction
   end
 
+  # COMPACT-1, COMPACT-9, COMPACT-28
+  test "a size-bounded working set sends a smaller request view, keeping the history" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    messages = big_history(4)
+    :ok = Elia.Store.save(id, messages)
+
+    start_compaction_session(id,
+      compaction: %{budget: 1},
+      loop_opts: [
+        llm: %{provider: FakeLLM},
+        summarizer: fn _ -> {:ok, "The first turns, folded."} end
+      ]
+    )
+
+    # The turn count alone (the default working set of six) covers every turn of
+    # a four-turn chat: the trigger fires, but nothing is cold and the whole
+    # history is sent.
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "one")
+    await_status(id, :idle)
+
+    assert Agent.snapshot(id).compaction.covered == 0
+    [first] = FakeLLM.requests()
+    assert length(first.messages) == length(messages) + 1
+
+    # Bounding the working set by size keeps only the current turn, so the model
+    # is sent a smaller view (COMPACT-28).
+    assert :ok = Agent.set_compaction(id, %{working_set_tokens: 1})
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "two")
+    await_status(id, :idle)
+
+    snapshot = Agent.snapshot(id)
+    assert snapshot.compaction.covered > 0
+    [_, second] = FakeLLM.requests()
+    assert length(second.messages) < length(first.messages)
+    assert Enum.any?(second.messages, &(&1.meta[:compaction] == :marker))
+
+    # COMPACT-1: the history itself is complete, and untouched.
+    assert length(snapshot.messages) == length(messages) + 4
+    assert Enum.slice(snapshot.messages, 0, length(messages)) == messages
+  end
+
   # COMPACT-7
   test "no window means no automatic compaction" do
     id = Agent.new_id()
@@ -699,10 +744,19 @@ defmodule Elia.AgentTest do
     :ok = Elia.Store.save(id, big_history(2))
     start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
 
-    assert :ok = Agent.set_compaction(id, %{budget: 5, working_set: 2, auto: false})
+    assert :ok =
+             Agent.set_compaction(id, %{
+               budget: 5,
+               working_set: 2,
+               working_set_tokens: 1000,
+               auto: false
+             })
+
     assert_receive {:agent, ^id, {:compaction, %{options: %{budget: 5}}}}
 
-    assert %{budget: 5, working_set: 2, auto: false} = Agent.snapshot(id).compaction.options
+    assert %{budget: 5, working_set: 2, working_set_tokens: 1000, auto: false} =
+             Agent.snapshot(id).compaction.options
+
     assert %{options: %{budget: 5, auto: false}} = Elia.Store.load_compaction(id)
   end
 

@@ -76,7 +76,8 @@ defmodule Elia.Agent do
 
   @doc """
   Sets this chat's compaction options (COMPACT-9): any of `:budget`,
-  `:fraction`, `:target_fraction`, `:working_set`, `:user_cap` and `:auto`.
+  `:fraction`, `:target_fraction`, `:working_set`, `:working_set_tokens`,
+  `:user_cap` and `:auto`.
   """
   @spec set_compaction(binary(), map() | keyword()) :: :ok
   def set_compaction(id, options), do: GenServer.call(Session.via(id), {:set_compaction, options})

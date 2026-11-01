@@ -59,17 +59,19 @@ config :phoenix, :json_library, Jason
 # AI harness. Swap the provider module to use another LLM backend.
 config :elia, Elia.LLM, provider: Elia.LLM.Anthropic
 
-# Compaction (COMPACT-6, COMPACT-8, COMPACT-9, COMPACT-11, COMPACT-12): a turn
-# compacts first when the estimated request exceeds `min(budget, fraction *
+# Compaction (COMPACT-6, COMPACT-8, COMPACT-9, COMPACT-11, COMPACT-12, COMPACT-28):
+# a turn compacts first when the estimated request exceeds `min(budget, fraction *
 # window)`, and reduces it to `target_fraction` of that, keeping the last
-# `working_set` turns verbatim and cutting a user message longer than `user_cap`
-# tokens with a marker. `auto` is whether that happens on its own; a chat can
-# override all of it (Elia.Agent.set_compaction/2).
+# `working_set` turns — or only the recent ones that fit in `working_set_tokens`,
+# whichever is smaller — verbatim and cutting a user message longer than
+# `user_cap` tokens with a marker. `auto` is whether that happens on its own; a
+# chat can override all of it (Elia.Agent.set_compaction/2).
 config :elia, Elia.LLM.Compaction,
   budget: 150_000,
   fraction: 0.8,
   target_fraction: 0.5,
   working_set: 6,
+  working_set_tokens: 40_000,
   user_cap: 8_000,
   auto: true
 

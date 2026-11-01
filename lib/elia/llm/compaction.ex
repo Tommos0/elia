@@ -40,13 +40,22 @@ defmodule Elia.LLM.Compaction do
 
   alias Elia.LLM.{Message, Tokens}
 
-  @option_keys [:budget, :fraction, :target_fraction, :working_set, :user_cap, :auto]
+  @option_keys [
+    :budget,
+    :fraction,
+    :target_fraction,
+    :working_set,
+    :working_set_tokens,
+    :user_cap,
+    :auto
+  ]
 
   @defaults %{
     budget: 150_000,
     fraction: 0.8,
     target_fraction: 0.5,
     working_set: 6,
+    working_set_tokens: 40_000,
     user_cap: 8_000,
     auto: true
   }
@@ -156,8 +165,8 @@ defmodule Elia.LLM.Compaction do
   `:budget` bounds cost and latency in tokens, `:fraction` is the share of the
   model's window to stay under, `:target_fraction` the share of the trigger to
   reduce to, `:working_set` the number of recent turns kept verbatim,
-  `:user_cap` the token cap for one user message and `:auto` whether a turn
-  compacted on its own.
+  `:working_set_tokens` the size cap on those turns, `:user_cap` the token cap
+  for one user message and `:auto` whether a turn compacted on its own.
   """
   @spec options(map() | keyword()) :: map()
   def options(overrides \\ %{}) do
@@ -307,9 +316,10 @@ defmodule Elia.LLM.Compaction do
     target = Map.get(opts, :target)
     overhead = Map.get(opts, :overhead, 0)
 
-    # COMPACT-12: everything before the working set is the cold prefix the
-    # ladder works on; the boundary becomes this chat's aged-out marker.
-    covered = max(state.covered, working_set_start(messages, options.working_set))
+    # COMPACT-12, COMPACT-28: everything before the working set is the cold
+    # prefix the ladder works on; the boundary becomes this chat's aged-out
+    # marker.
+    covered = max(state.covered, working_set_start(messages, options))
     state = %{state | covered: covered}
 
     {level, reached?} = walk(messages, state, options, target, overhead)
@@ -687,17 +697,50 @@ defmodule Elia.LLM.Compaction do
 
   defp pinned_turn?(ctx, index), do: MapSet.member?(ctx.keep, index)
 
-  @doc "The index the working set of the last `working_set` turns starts at (COMPACT-12)."
-  @spec working_set_start([Message.t()], pos_integer()) :: non_neg_integer()
-  def working_set_start(messages, working_set \\ @defaults.working_set) do
-    starts =
-      for {%Message{role: :user} = message, i} <- Enum.with_index(messages),
-          not Map.get(message.meta, :harness, false),
-          do: i
+  @doc """
+  The history index the working set starts at (COMPACT-12, COMPACT-28): the most
+  recent `working_set` turns that fit in `working_set_tokens` estimated tokens.
 
-    case Enum.take(starts, -max(working_set, 1)) do
-      [first | _] -> first
-      [] -> 0
+  Never more than `working_set` turns and always at least the current (last)
+  turn, so the last turn is never cold even when it alone exceeds the budget.
+  The boundary is always the user message that begins a turn (COMPACT-4); a
+  harness message (UI-9) is not a turn start.
+  """
+  @spec working_set_start([Message.t()], map() | keyword()) :: non_neg_integer()
+  def working_set_start(messages, opts \\ %{}) do
+    options = options(opts)
+
+    case Enum.take(turn_starts(messages), -max(options.working_set, 1)) do
+      [] ->
+        0
+
+      [first | rest] ->
+        ends = rest ++ [length(messages)]
+
+        [first | rest]
+        |> Enum.zip(ends)
+        |> Enum.map(fn {from, to} -> tokens(Enum.slice(messages, from, to - from)) end)
+        |> keep_within_budget([first | rest], options.working_set_tokens)
+    end
+  end
+
+  # COMPACT-12: the user messages that begin a turn; a harness message
+  # (COMPACT-19) is placed at the head of a view, not a turn of the chat.
+  defp turn_starts(messages) do
+    for {%Message{role: :user} = message, i} <- Enum.with_index(messages),
+        not Map.get(message.meta, :harness, false),
+        do: i
+  end
+
+  # COMPACT-28: drop the oldest turns while the working set is over budget,
+  # stopping at the current (last) turn, which is kept however big it is.
+  defp keep_within_budget(_sizes, [start], _budget), do: start
+
+  defp keep_within_budget(sizes, [start | rest], budget) do
+    if Enum.sum(sizes) <= budget do
+      start
+    else
+      keep_within_budget(tl(sizes), rest, budget)
     end
   end
 

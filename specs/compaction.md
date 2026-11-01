@@ -73,8 +73,8 @@ are not.
   trigger (half the trigger by default), so a chat does not recompact on every
   turn once it reaches the trigger.
 - **COMPACT-9** The budget, the fraction, the target, the size of the working
-  set (COMPACT-11) and whether automatic compaction is on are configurable per
-  chat.
+  set — in turns and in tokens (COMPACT-12, COMPACT-28) — and whether automatic
+  compaction is on are configurable per chat.
 - **COMPACT-10** A manual "compact now" action compacts an idle chat on demand,
   ignoring the threshold and the target.
 
@@ -84,7 +84,20 @@ are not.
   individual user message larger than a cap is truncated with an explicit marker
   rather than dropped.
 - **COMPACT-12** The most recent `K` turns (a "working set", 6 by default) are
-  kept verbatim, as are all pinned items (COMPACT-19).
+  kept verbatim, as are all pinned items (COMPACT-19). The turn count is an
+  upper bound only: the working set is also bounded by size, so older turns fall
+  out of it (COMPACT-28).
+- **COMPACT-28** The working set is the most recent turns that fit in
+  `working_set_tokens` estimated tokens (40,000 by default), but **never more
+  than `working_set` turns and always at least the current (last) turn**, so a
+  chat of few but very long turns — where the turn count alone puts every turn
+  inside the working set and nothing can be elided (COMPACT-12) — can still be
+  compacted, and the turn being worked on is never cold even when it alone
+  exceeds the budget. The cold prefix starts at the user message that begins the
+  oldest turn kept, so the boundary is always a turn boundary (COMPACT-4). The
+  default is about a quarter of the default budget of 150,000 (COMPACT-6), so
+  after the working set is set aside the ladder still has room to reach the
+  target (COMPACT-8).
 - **COMPACT-13** The first user message (the task statement) and any sub-task's
   brief are always kept.
 
@@ -176,6 +189,12 @@ chat's own option overrides. Rules apply only to messages before `covered`, so
 the view does not drift as the chat grows, and the ladder never moves back up:
 a region that was elided or summarized stays that way.
 
+The cold prefix starts where the working set does, and
+`Elia.LLM.Compaction.working_set_start/2` finds it: the last `working_set`
+turns, trimmed from the oldest while their estimate exceeds
+`working_set_tokens`, and never below the current turn (COMPACT-12,
+COMPACT-28).
+
 Two things are deliberately not literal, and the code is where the choice
 lives:
 
@@ -197,7 +216,8 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 
 ## Tests
 
-`test/elia/llm/compaction_test.exs` (the ladder, boundary safety, bounded
-folding, pinning), `test/elia/agent_test.exs` (state, persistence, the trigger,
-the manual action, the ledger), `test/elia_web/live/compaction_test.exs`
-(annotations, the notice, the estimate, the pin, "compact now").
+`test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
+boundary safety, bounded folding, pinning), `test/elia/agent_test.exs` (state,
+persistence, the trigger, the manual action, the ledger),
+`test/elia_web/live/compaction_test.exs` (annotations, the notice, the estimate,
+the pin, "compact now").

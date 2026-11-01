@@ -34,6 +34,31 @@ defmodule Elia.LLM.CompactionTest do
 
   defp options(overrides), do: Compaction.options(overrides)
 
+  # One turn of a chat, sized by `text`: a user message, a reasoning block and a
+  # tool call, the tool's result, and a reply. Four messages per turn, as in
+  # `history/2`, so turn `n` starts at index `(n - 1) * 4`.
+  defp turn(n, text) do
+    [
+      Message.user("task #{n}: #{text}"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :reasoning, text: text},
+          %{
+            type: :tool_call,
+            id: "c#{n}",
+            name: "read_file",
+            input: %{"path" => "file#{n}.txt"}
+          }
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("c#{n}", text)]},
+      %Message{role: :assistant, content: [Message.text("done #{n}")]}
+    ]
+  end
+
+  defp turn_tokens(messages, n), do: Compaction.tokens(Enum.slice(messages, (n - 1) * 4, 4))
+
   # A summarizer that never summarizes: the ladder-only tests use it so they
   # never reach a provider (COMPACT-20).
   defp no_summary, do: fn _ -> {:error, :none} end
@@ -125,6 +150,126 @@ defmodule Elia.LLM.CompactionTest do
     assert state.covered == 8
     assert Enum.slice(view.messages, -8, 8) == Enum.slice(messages, 8, 8)
     assert Enum.all?(8..15, &(view.statuses[&1].status == :sent))
+  end
+
+  ## The size-bounded working set (COMPACT-28)
+
+  # COMPACT-12, COMPACT-28
+  test "short turns still keep the last `working_set` turns" do
+    messages = Enum.flat_map(1..10, &turn(&1, "word "))
+
+    # Ten short turns are far below the token cap, so the turn count decides.
+    assert Compaction.tokens(messages) < 40_000
+    assert Compaction.working_set_start(messages, %{working_set: 6}) == 16
+
+    state =
+      Compaction.compact(messages, %Compaction{}, target: 1, summarizer: no_summary())
+
+    view = Compaction.view(messages, state)
+    assert state.covered == 16
+    assert Enum.all?(16..39, &(view.statuses[&1].status == :sent))
+    assert view.statuses[1].status == :elided
+  end
+
+  # COMPACT-28
+  test "a long recent turn ages the older turns out of the working set" do
+    # Turn 3 is huge, turns 1 and 2 are small. With the turn count alone every
+    # turn is in the working set, so nothing can be compacted at all.
+    messages =
+      turn(1, "word ") ++ turn(2, "word ") ++ turn(3, String.duplicate("big ", 6_000))
+
+    [t1, t2, t3] = for n <- 1..3, do: turn_tokens(messages, n)
+    assert Compaction.working_set_start(messages, %{working_set: 10}) == 0
+
+    # A budget that fits turns 2 and 3 but not turn 1 keeps only those: the cold
+    # prefix is turn 1 alone.
+    budget = t2 + t3
+    assert t1 + t2 + t3 > budget
+
+    assert Compaction.working_set_start(messages, %{
+             working_set: 10,
+             working_set_tokens: budget
+           }) == 4
+
+    state =
+      Compaction.compact(messages, %Compaction{},
+        target: 1,
+        working_set: 10,
+        working_set_tokens: budget,
+        summarizer: no_summary()
+      )
+
+    view = Compaction.view(messages, state)
+    assert state.covered == 4
+    assert view.statuses[1].status == :elided
+    assert view.statuses[4].status == :sent
+    assert view.statuses[8].status == :sent
+  end
+
+  # COMPACT-28
+  test "a turn bigger than the budget is never cold" do
+    # One huge turn is the current one, so the working set is still all of it.
+    huge = turn(1, String.duplicate("huge ", 20_000))
+    assert Compaction.tokens(huge) > 40_000
+    assert Compaction.working_set_start(huge, %{}) == 0
+    assert Compaction.view(huge, %Compaction{}).tokens == Compaction.tokens(huge)
+
+    # Two turns: the budget keeps the current turn alone, however big it is.
+    messages = turn(1, "word ") ++ turn(2, String.duplicate("huge ", 20_000))
+
+    assert Compaction.working_set_start(messages, %{working_set_tokens: 1}) == 4
+
+    state =
+      Compaction.compact(messages, %Compaction{},
+        target: 1,
+        working_set_tokens: 1,
+        summarizer: no_summary()
+      )
+
+    view = Compaction.view(messages, state)
+    assert state.covered == 4
+
+    # Nothing of the current turn is elided: it is the working set, however big
+    # it is. (Its user message is still subject to the COMPACT-11 cap.)
+    refute Enum.any?(4..7, &(view.statuses[&1].status == :elided))
+    assert Enum.all?(5..7, &(view.statuses[&1].status == :sent))
+  end
+
+  # COMPACT-4, COMPACT-28
+  test "the sized working set still starts at a user message" do
+    messages = turn(1, "word ") ++ turn(2, "word ")
+    t2 = turn_tokens(messages, 2)
+
+    start = Compaction.working_set_start(messages, %{working_set_tokens: t2})
+    assert start == 4
+    assert %Message{role: :user} = Enum.at(messages, start)
+
+    # A harness message at the head of a view (COMPACT-19) is not a turn start:
+    # the boundary is the user message that begins the turn.
+    harness = Message.harness("earlier context")
+    shifted = [harness | messages]
+
+    assert Compaction.working_set_start(shifted, %{working_set_tokens: t2}) == 5
+    assert %Message{role: :user, meta: %{harness: true}} = Enum.at(shifted, 0)
+  end
+
+  # COMPACT-9, COMPACT-28
+  test "the token cap on the working set is an option" do
+    assert options(%{}).working_set_tokens == 40_000
+    assert options(working_set_tokens: 123).working_set_tokens == 123
+    # The turn count is still there.
+    assert options(working_set_tokens: 123).working_set == 6
+
+    # A chat state's own option applies to its derivation (COMPACT-9).
+    messages = turn(1, "word ") ++ turn(2, "word ")
+
+    state =
+      Compaction.compact(messages, %Compaction{options: %{working_set_tokens: 1}},
+        target: 1,
+        summarizer: no_summary()
+      )
+
+    assert state.covered == 4
   end
 
   ## Boundary safety
@@ -367,7 +512,7 @@ defmodule Elia.LLM.CompactionTest do
 
     assert Message.text_content(head) =~ "They read three files."
     # The head is not a turn of its own: it doesn't become a working-set boundary.
-    assert Compaction.working_set_start(messages, 2) == 4
+    assert Compaction.working_set_start(messages, %{working_set: 2}) == 4
     assert Compaction.summary_block(state) == {8, "They read three files."}
   end
 
