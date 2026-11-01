@@ -227,8 +227,19 @@ defmodule EliaWeb.ChatLive do
                     Elia can run shell commands on this machine. You approve every command.
                   </p>
                 </div>
-                <div :for={{dom_id, item} <- @streams.items} id={dom_id} class="group/item">
-                  <.item item={item} />
+                <div
+                  :for={{dom_id, item} <- @streams.items}
+                  id={dom_id}
+                  class="group/item"
+                  data-request-status={request_status(item)}
+                >
+                  <%!-- UI-56: an item the model was not sent is dimmed, so a pruned region reads at a glance. --%>
+                  <div
+                    class={["transition-opacity", pruned?(item) && "opacity-40 hover:opacity-100"]}
+                    data-pruned={to_string(pruned?(item))}
+                  >
+                    <.item item={item} />
+                  </div>
                   <.item_meta :if={Map.get(item, :request_status)} item={item} />
                 </div>
               </div>
@@ -1196,6 +1207,7 @@ defmodule EliaWeb.ChatLive do
       assigns
       |> assign(:id, request_id(assigns.item))
       |> assign(:label, request_label(assigns.item))
+      |> assign(:pruned, pruned?(assigns.item))
 
     ~H"""
     <div class="mt-1 flex items-center gap-2 text-[11px]">
@@ -1217,8 +1229,19 @@ defmodule EliaWeb.ChatLive do
         <.icon name="hero-map-pin" class="size-3" />
         <span>{if @item[:pinned], do: "Pinned", else: "Pin"}</span>
       </button>
-      <span :if={@label} id={"status-#{@id}"} class="flex items-center gap-1 text-base-content/45">
-        <.icon name={request_icon(@item.request_status)} class="size-3 shrink-0" />
+      <span
+        :if={@label}
+        id={"status-#{@id}"}
+        class={
+          [
+            "flex items-center gap-1 text-base-content/45",
+            # UI-56: an item the model was not sent is dimmed, so its note reads as
+            # a chip rather than fading with it.
+            @pruned && "rounded-md bg-base-200 px-1.5 py-0.5 font-medium text-base-content/70"
+          ]
+        }
+      >
+        <.icon name={request_icon(request_status(@item))} class="size-3 shrink-0" />
         <span>{@label}</span>
         <span :if={Map.get(@item, :elided) > 0} class="tabular-nums">
           −{format_tokens(@item.elided)} tokens
@@ -1233,13 +1256,27 @@ defmodule EliaWeb.ChatLive do
   defp request_id(%{index: index}), do: "m#{index}"
   defp request_id(_item), do: "item"
 
+  # UI-56: an item the model was not sent at all is dimmed in the transcript; one
+  # it was sent, or got only part of (truncated), is not. The wrapper's
+  # `data-request-status` and the note (UI-51) come from this one rule.
+  defp pruned?(item), do: request_status(item) in [:elided, :summarized]
+
+  defp request_status(%{request_status: :summarized}), do: :summarized
+  defp request_status(%{block_status: :elided}), do: :elided
+  defp request_status(%{request_status: :truncated}), do: :truncated
+  defp request_status(%{request_status: :elided}), do: :elided
+  defp request_status(_item), do: :sent
+
   # A block-level rule (dropped reasoning, an elided tool result) decides for the
   # block, unless a summary stands in for the whole message (COMPACT-25).
-  defp request_label(%{request_status: :summarized}), do: "Summarized for the model"
-  defp request_label(%{block_status: :elided}), do: "Not sent to the model"
-  defp request_label(%{request_status: :truncated}), do: "Truncated for the model"
-  defp request_label(%{request_status: :elided}), do: "Not sent to the model"
-  defp request_label(_item), do: nil
+  defp request_label(item) do
+    case request_status(item) do
+      :summarized -> "Summarized for the model"
+      :truncated -> "Truncated for the model"
+      :elided -> "Not sent to the model"
+      :sent -> nil
+    end
+  end
 
   defp request_icon(:truncated), do: "hero-scissors"
   defp request_icon(_status), do: "hero-eye-slash"

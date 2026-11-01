@@ -172,6 +172,14 @@ by hand.
 - **UI-54** The composer has a "Compact" button (`#compact-button`) that
   compacts the chat now (COMPACT-10), and flashes an error while a turn is
   running.
+- **UI-56** An item the model was **not sent at all** — the "Not sent to the
+  model" and "Summarized for the model" cases of UI-51 — is de-emphasised, not
+  merely annotated: its content is dimmed (faded, and back to full opacity on
+  hover) and its note (UI-51) becomes a chip, so a pruned region reads at a
+  glance. Each transcript row carries its status in
+  `data-request-status` (`sent`, `elided`, `summarized` or `truncated`) and its
+  dimmed content in `[data-pruned]`. An item the model was sent in full, and
+  one it got only part of (truncated), are not dimmed.
 
 ### Sub-tasks
 

@@ -91,6 +91,60 @@ defmodule EliaWeb.CompactionTest do
     refute has_element?(view, "#status-m5-0")
   end
 
+  # UI-56: an item the model was not sent is dimmed, so a pruned region reads at
+  # a glance; one the model was sent is not.
+  test "a pruned item is dimmed and a sent one is not", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    {messages, compaction} = compacted_chat()
+    :ok = Elia.Store.save(id, messages, compaction: compaction)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    # The cold turn's reasoning block, its tool card and its answer are dimmed.
+    assert has_element?(
+             view,
+             "#items-m1-0[data-request-status='summarized'] [data-pruned='true']"
+           )
+
+    assert has_element?(
+             view,
+             "#items-call-r1[data-request-status='summarized'] [data-pruned='true']"
+           )
+
+    assert has_element?(
+             view,
+             "#items-m3-0[data-request-status='summarized'] [data-pruned='true']"
+           )
+
+    # Dimmed, not hidden: the text is still there, faded (COMPACT-1, UI-51).
+    assert has_element?(view, "#items-m3-0 [data-pruned='true'].opacity-40")
+
+    # The working set carries no dimming.
+    assert has_element?(view, "#items-m5-0[data-request-status='sent'] [data-pruned='false']")
+    refute has_element?(view, "#items-m5-0 [data-pruned='true']")
+  end
+
+  # UI-56: an item the model got only part of stays at full strength.
+  test "a truncated item is not dimmed", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    messages = [
+      Message.user("first task"),
+      Message.user("second task: " <> String.duplicate("long words ", 30)),
+      %Message{role: :assistant, content: [Message.text("Done with the second.")]}
+    ]
+
+    :ok = Elia.Store.save(id, messages, compaction: %{options: %{user_cap: 5}})
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#status-m1", "Truncated for the model")
+    assert has_element?(view, "#items-m1[data-request-status='truncated'] [data-pruned='false']")
+    refute has_element?(view, "#items-m1 [data-pruned='true']")
+  end
+
   # COMPACT-25, UI-51: the summary covers what was dropped, and says so.
   test "dropped turns covered by a summary are marked summarized", %{conn: conn} do
     id = Agent.new_id()
