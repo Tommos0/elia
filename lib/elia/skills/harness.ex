@@ -58,8 +58,39 @@ defmodule Elia.Skills.Harness do
         run: fn input, ctx ->
           Harness.run_tests(input["args"] || [], ctx[:workspace] || Elia.Workspace.root())
         end
+      },
+      %Elia.Tool{
+        name: "update_ledger",
+        description:
+          "Append exact facts to this chat's compaction ledger (COMPACT-22). The " <>
+            "ledger is sent with every request and is never elided or summarized, so " <>
+            "file paths, decisions, requirement IDs and open questions survive a long " <>
+            "chat. One fact per entry.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "entries" => %{
+              "type" => "array",
+              "items" => %{"type" => "string"},
+              "description" => "the facts to append, verbatim"
+            }
+          },
+          "required" => ["entries"]
+        },
+        run: &update_ledger/2
       }
     ]
+  end
+
+  defp update_ledger(input, ctx) do
+    case ctx[:session_id] do
+      nil ->
+        {:error, "No chat to record this in."}
+
+      id ->
+        {:ok, ledger} = Elia.Agent.add_ledger(id, input["entries"] || [])
+        {:ok, "The ledger now holds #{length(ledger)} entries; it is sent on every request."}
+    end
   end
 
   defp reload_skills do

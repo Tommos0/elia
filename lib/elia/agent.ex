@@ -91,6 +91,15 @@ defmodule Elia.Agent do
     do: GenServer.call(Session.via(id), {:set_pin, index, block, on?})
 
   @doc """
+  Appends `entries` (a list of exact facts) to the chat's compaction ledger
+  (COMPACT-22) and returns it. The ledger is sent with every request and is
+  never elided or summarized.
+  """
+  @spec add_ledger(binary(), [binary()]) :: {:ok, [binary()]}
+  def add_ledger(id, entries) when is_list(entries),
+    do: GenServer.call(Session.via(id), {:add_ledger, entries})
+
+  @doc """
   Merges `changes` into the task metadata of a sub-task chat and saves it
   (SESS-18). `{:error, :not_a_task}` for a chat without task metadata.
   """

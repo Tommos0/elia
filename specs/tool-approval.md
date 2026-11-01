@@ -31,7 +31,7 @@ refused.
   | `read_file` | only outside the workspace |
   | `write_file`, `edit_file` | see FILE-5 |
   | `hot_reload`, `rollback` | always |
-  | `reload_skills`, `run_tests`, `list_checkpoints` | never |
+  | `reload_skills`, `run_tests`, `list_checkpoints`, `update_ledger` | never |
 
 ### Auto-approval
 

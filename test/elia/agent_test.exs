@@ -32,7 +32,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(edit_file hot_reload list_checkpoints read_file reload_skills reset_task rollback run_tests shell spawn_task write_file)
+             ~w(edit_file hot_reload list_checkpoints read_file reload_skills reset_task rollback run_tests shell spawn_task update_ledger write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -776,6 +776,128 @@ defmodule Elia.AgentTest do
     DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
     {:ok, _pid} = Agent.ensure_started(id)
     assert {2, 0} in Agent.snapshot(id).compaction.pins
+  end
+
+  # COMPACT-17, COMPACT-18, COMPACT-19
+  test "a second compaction folds the previous summary, not the whole history" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(6))
+    test_pid = self()
+
+    summarizer = fn input ->
+      send(test_pid, {:summary_input, input})
+      {:ok, "folded summary"}
+    end
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: summarizer]
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "one")
+    assert_receive {:summary_input, first}, 5000
+    assert first =~ "task 1"
+    await_status(id, :idle)
+    assert Agent.snapshot(id).compaction.summary == "folded summary"
+
+    # More turns age out; the next compaction folds them into the summary it
+    # already has, and reads nothing that was already folded.
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "two")
+    assert_receive {:summary_input, _}, 5000
+    await_status(id, :idle)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "three")
+    assert_receive {:summary_input, third}, 5000
+    await_status(id, :idle)
+
+    assert third =~ "The summary so far:"
+    assert third =~ "folded summary"
+    refute third =~ "task 1:"
+  end
+
+  # COMPACT-20
+  test "a summarizer that fails leaves the pruned view and no error" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    # The summarizer call fails; the turn's own call then goes through.
+    FakeLLM.push(fn request, _on_event ->
+      if request[:system] =~ "running summary" do
+        {:error, "the summarizer is down"}
+      else
+        flunk("the summary request should be the first one")
+      end
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("carried on")]))
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}]
+    )
+
+    :ok = Agent.send_message(id, "carry on")
+    assert_receive {:agent, ^id, {:compaction, compaction}}, 5000
+    await_status(id, :idle)
+
+    # Pruned, not summarized, and the turn went on.
+    assert compaction.level == 3
+    assert compaction.summary == nil
+    assert %{messages: messages} = Agent.snapshot(id)
+    assert Message.text_content(List.last(messages)) == "carried on"
+
+    [summary_request, request] = FakeLLM.requests()
+    assert summary_request.system =~ "running summary"
+    refute Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
+    assert Enum.any?(request.messages, &(&1.meta[:compaction] == :marker))
+  end
+
+  # COMPACT-21, COMPACT-22
+  test "the model pins facts by writing to the ledger, which survives compacting" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [
+        llm: %{provider: FakeLLM},
+        summarizer: fn _ -> {:ok, "Four turns, folded."} end
+      ]
+    )
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("l1", "update_ledger", %{
+          "entries" => ["COMPACT-22: the ledger is in lib/elia/llm/compaction.ex"]
+        })
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+    :ok = Agent.send_message(id, "remember this")
+    await_status(id, :idle)
+
+    assert ["COMPACT-22: the ledger is in lib/elia/llm/compaction.ex"] =
+             Agent.snapshot(id).compaction.ledger
+
+    assert ["COMPACT-22: the ledger is in lib/elia/llm/compaction.ex"] =
+             Elia.Store.load_compaction(id).ledger
+
+    # The next request carries it verbatim, alongside the summary (COMPACT-22).
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "and again")
+    await_status(id, :idle)
+
+    request = List.last(FakeLLM.requests())
+    ledger = Enum.find(request.messages, &(&1.meta[:compaction] == :ledger))
+    assert Message.text_content(ledger) =~ "COMPACT-22: the ledger is in"
+    assert Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
   end
 
   # SESS-15

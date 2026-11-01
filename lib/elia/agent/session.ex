@@ -249,6 +249,21 @@ defmodule Elia.Agent.Session do
     end
   end
 
+  # COMPACT-22: exact facts, appended (and trimmed) but never re-summarized, so
+  # the identifiers that matter survive folding. The model writes them with the
+  # `update_ledger` tool, mid-turn as well.
+  def handle_call({:add_ledger, entries}, _from, state) do
+    compaction = Compaction.add_ledger(state.compaction, entries)
+
+    if compaction == state.compaction do
+      {:reply, {:ok, compaction.ledger}, state}
+    else
+      state = save(%{state | compaction: compaction})
+      broadcast(state, {:compaction, compaction})
+      {:reply, {:ok, compaction.ledger}, state}
+    end
+  end
+
   def handle_call({:update_task, _changes}, _from, %{task_meta: nil} = state) do
     {:reply, {:error, :not_a_task}, state}
   end
