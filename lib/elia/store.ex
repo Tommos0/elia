@@ -202,7 +202,18 @@ defmodule Elia.Store do
     end
   end
 
-  def delete(id), do: if(valid_id?(id), do: File.rm(path(id)), else: {:error, :invalid_id})
+  @doc """
+  Deletes a saved chat. A chat's worktree goes with it — removed, and its branch
+  pruned (DEPLOY-10).
+  """
+  def delete(id) do
+    if valid_id?(id) do
+      Elia.Deploy.remove_worktree(id)
+      File.rm(path(id))
+    else
+      {:error, :invalid_id}
+    end
+  end
 
   @doc "Display title for a conversation: its first user message, cut to `max` characters."
   def title(messages, max \\ 60) do

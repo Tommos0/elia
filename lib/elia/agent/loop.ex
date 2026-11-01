@@ -17,7 +17,8 @@ defmodule Elia.Agent.Loop do
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
   function returning one, instead of the project's), `:max_steps` (default 50),
   `:verify` (default `true`), `:llm` (extra request fields), `:project` (the
-  chat's project) and `:workspace` (the workspace root, Elia's own by default).
+  chat's project) and `:workspace` (the chat's workspace root: its own git
+  worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12).
   """
 
   alias Elia.LLM.Message
@@ -109,7 +110,7 @@ defmodule Elia.Agent.Loop do
   defp finish(%{verify: false}, _history, _step), do: :done
 
   defp finish(ctx, history, step) do
-    case Elia.Harness.verify(ctx.tool_ctx.turn_id) do
+    case Elia.Harness.verify(ctx.tool_ctx.turn_id, ctx.workspace) do
       result when result in [:ok, :unchanged] ->
         :done
 

@@ -8,10 +8,16 @@ defmodule Elia.Workspace do
     * `:outside` - not under the workspace
 
   Every path function works against a `root`: Elia's own source tree by default
-  (WS-4), or the folder of the chat's project (PROJ-12). Elia's own data is
-  always under Elia's root (PROJ-13).
+  (WS-4), the live tree, or the folder of the chat's project (PROJ-12). Elia's
+  own data is always under the live tree (PROJ-13, DEPLOY-2).
 
       config :elia, :workspace, "/path/to/root"
+
+  The live tree is where the server runs and where Elia's data lives; a chat in
+  Elia's own project works in its own git worktree instead, and its tools use
+  that worktree as their root (DEPLOY-1):
+
+      config :elia, :runtime_root, "/path/to/live/tree"
   """
 
   @protected ~w(.git _build deps .elia)
@@ -19,11 +25,23 @@ defmodule Elia.Workspace do
   @doc "Elia's own root: `config :elia, :workspace`, or the current directory (WS-4)."
   def root, do: Path.expand(Application.get_env(:elia, :workspace) || File.cwd!())
 
+  @doc """
+  The live tree: where the server runs, where the code reloader reloads, and
+  where Elia's data lives (DEPLOY-2). `config :elia, :runtime_root`, else Elia's
+  root — the working directory when nothing else is configured, which is where
+  the server was started from.
+  """
+  def runtime_root, do: Path.expand(Application.get_env(:elia, :runtime_root) || root())
+
   @doc "The skills folder under `root` (WS-4)."
   def skills_dir(root \\ root()), do: Path.join(root, "skills")
 
-  @doc "Elia's own data dir, always under Elia's root whatever project a chat is in (PROJ-13)."
-  def data_dir, do: Path.join(root(), ".elia")
+  @doc """
+  Elia's own data dir (PROJ-13). It sits directly under the live tree, so chats
+  and checkpoints are the same across a chat's worktrees and across a deploy
+  (DEPLOY-2).
+  """
+  def data_dir(root \\ runtime_root()), do: Path.join(root, ".elia")
 
   @type class :: :extension | :core | :protected | :outside
 

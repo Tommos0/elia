@@ -24,8 +24,9 @@ running dev server. The other deploy mode is a restart (DEPLOY-7).
 
 ## Implementation
 
-`Elia.Harness.hot_reload/1`, `Elia.Skills.Harness`.
+`Elia.Harness.hot_reload/2` (the tests → merge → reload deploy, DEPLOY-6),
+`Elia.Deploy`, `Elia.Skills.Harness`.
 
 ## Tests
 
-None yet.
+`test/elia/deployment_test.exs`.

@@ -36,10 +36,14 @@ defmodule Elia.Projects do
     [harness() | others]
   end
 
-  @doc "Elia's own project: id `harness`, folder `Elia.Workspace.root/0` (PROJ-3)."
+  @doc """
+  Elia's own project: id `harness`, folder `Elia.Workspace.runtime_root/0` — the
+  live tree, where the server runs and where Elia's data lives (PROJ-3,
+  DEPLOY-3). Each of its chats works in its own worktree (DEPLOY-1).
+  """
   @spec harness() :: t()
   def harness do
-    %{id: @harness_id, name: "Elia", folder: Workspace.root(), harness?: true}
+    %{id: @harness_id, name: "Elia", folder: Workspace.runtime_root(), harness?: true}
   end
 
   @doc "The project with `id`, or `nil` (PROJ-5)."
@@ -105,6 +109,21 @@ defmodule Elia.Projects do
     case get(id) do
       nil -> :ok
       %{id: id} -> Settings.put(@default_key, id)
+    end
+  end
+
+  @doc """
+  Whether a tool context belongs to Elia's own project. Its workspaces are the
+  only ones that are checkpointed, verified and tested (PROJ-14); a chat in it
+  works in its own worktree (DEPLOY-1).
+  """
+  @spec harness_ctx?(map()) :: boolean()
+  def harness_ctx?(ctx) do
+    case ctx[:project] do
+      %{harness?: harness?} -> harness?
+      # A context with no project: skills called directly (a test) work in
+      # Elia's own root, as before.
+      _ -> ctx[:workspace] == nil or Path.expand(ctx[:workspace]) == Workspace.root()
     end
   end
 

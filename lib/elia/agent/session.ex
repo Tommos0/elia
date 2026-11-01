@@ -21,6 +21,9 @@ defmodule Elia.Agent.Session do
     :id,
     # The project the chat belongs to (PROJ-9): a `%{id, name, folder, harness?}`.
     :project,
+    # The workspace root of this chat (PROJ-12): for a chat in Elia's own
+    # project its own git worktree (DEPLOY-1), else the project's folder.
+    :workspace,
     :task,
     :turn_start,
     # The chat's own model selection (MODEL-1); nil until chosen or pinned.
@@ -50,11 +53,16 @@ defmodule Elia.Agent.Session do
   @impl true
   def init(opts) do
     persist = Keyword.get(opts, :persist, true)
+    loop_opts = Keyword.get(opts, :loop_opts, [])
+    project = opts[:project] || load_project(opts[:id], persist)
 
     state = %__MODULE__{
       id: opts[:id],
-      project: opts[:project] || load_project(opts[:id], persist),
-      loop_opts: Keyword.get(opts, :loop_opts, []),
+      project: project,
+      workspace:
+        opts[:workspace] || Keyword.get(loop_opts, :workspace) ||
+          Elia.Deploy.workspace(project, opts[:id]),
+      loop_opts: loop_opts,
       persist: persist,
       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
@@ -67,18 +75,24 @@ defmodule Elia.Agent.Session do
   end
 
   @impl true
-  # SESS-15: upgrade state from before `:selection`, `:auto_approve` or
-  # `:task_meta` existed (a session that outlived a hot reload). Fields it
-  # already has are kept.
+  # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
+  # `:project` or `:workspace` existed (a session that outlived a hot reload).
+  # Fields it already has are kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
-             not is_map_key(state, :task_meta) or not is_map_key(state, :project) do
+             not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
+             not is_map_key(state, :workspace) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
       if is_map_key(state, :project),
         do: upgraded,
         else: %{upgraded | project: load_project(upgraded.id, upgraded.persist)}
+
+    upgraded =
+      if is_map_key(state, :workspace),
+        do: upgraded,
+        else: %{upgraded | workspace: Elia.Deploy.workspace(upgraded.project, upgraded.id)}
 
     upgraded =
       if is_map_key(state, :task_meta),
@@ -146,7 +160,7 @@ defmodule Elia.Agent.Session do
         turn_id: turn_id,
         llm: llm,
         project: project(state),
-        workspace: project(state).folder
+        workspace: workspace(state)
       )
 
     task =
@@ -393,6 +407,12 @@ defmodule Elia.Agent.Session do
 
   # The chat's project, for state that predates the field (SESS-15).
   defp project(state), do: Map.get(state, :project) || Elia.Projects.harness()
+
+  # The chat's workspace root (PROJ-12): its own worktree in Elia's own project
+  # (DEPLOY-1), else the project's folder (DEPLOY-3). State from before the
+  # field existed (SESS-15) resolves it here.
+  defp workspace(state),
+    do: Map.get(state, :workspace) || Elia.Deploy.workspace(project(state), state.id)
 
   defp append(state, %Message{content: []}), do: state
 

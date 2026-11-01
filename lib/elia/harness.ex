@@ -52,18 +52,22 @@ defmodule Elia.Harness do
   Checks the changes made since `turn_id`'s checkpoint. If any Elixir file
   outside `skills/` changed, runs the test suite; on failure rolls the
   workspace back to the checkpoint.
+
+  `root` is the turn's workspace: a chat in Elia's own project works in its own
+  worktree, so its checkpoints and tests are taken there (DEPLOY-1).
   """
-  @spec verify(term()) :: :ok | :unchanged | {:rolled_back, binary()} | {:error, binary()}
-  def verify(turn_id) do
+  @spec verify(term(), binary()) ::
+          :ok | :unchanged | {:rolled_back, binary()} | {:error, binary()}
+  def verify(turn_id, root \\ Workspace.root()) do
     with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
-         {:ok, files} <- Checkpoint.changed_files(sha),
-         [_ | _] <- Enum.filter(files, &core_elixir?/1) do
-      case run_tests() do
+         {:ok, files} <- Checkpoint.changed_files(sha, root),
+         [_ | _] <- Enum.filter(files, &core_elixir?(&1, root)) do
+      case run_tests([], root) do
         {:ok, _output} ->
           :ok
 
         {:error, output} ->
-          case Checkpoint.rollback(sha) do
+          case Checkpoint.rollback(sha, root) do
             {:ok, _undo} ->
               Elia.Skills.reload()
               {:rolled_back, output}
@@ -81,22 +85,22 @@ defmodule Elia.Harness do
 
   @doc """
   Whether `turn_id` took a checkpoint and has changed core Elixir files since,
-  the condition under which `verify/1` runs the tests (VERIFY-7). Changes
+  the condition under which `verify/2` runs the tests (VERIFY-7). Changes
   nothing.
   """
-  @spec core_elixir_changed?(term()) :: boolean() | {:error, binary()}
-  def core_elixir_changed?(turn_id) do
+  @spec core_elixir_changed?(term(), binary()) :: boolean() | {:error, binary()}
+  def core_elixir_changed?(turn_id, root \\ Workspace.root()) do
     with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
-         {:ok, files} <- Checkpoint.changed_files(sha) do
-      Enum.any?(files, &core_elixir?/1)
+         {:ok, files} <- Checkpoint.changed_files(sha, root) do
+      Enum.any?(files, &core_elixir?(&1, root))
     else
       nil -> false
       {:error, reason} -> {:error, "Could not check changes: #{reason}"}
     end
   end
 
-  defp core_elixir?(path) do
-    Path.extname(path) in @elixir_exts and Workspace.classify(path) == :core
+  defp core_elixir?(path, root) do
+    Path.extname(path) in @elixir_exts and Workspace.classify(path, root) == :core
   end
 
   @doc "Whether in-VM code reloading is available (dev server with code reloader)."
@@ -105,48 +109,55 @@ defmodule Elia.Harness do
       Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true
   end
 
-  @doc "Runs the tests, then recompiles and loads changed modules into the running app."
-  @spec hot_reload(term()) :: {:ok, binary()} | {:error, binary()}
-  def hot_reload(turn_id) do
+  @doc """
+  The soft deploy mode (DEPLOY-6): runs the full test suite in the chat's
+  workspace — its own worktree (DEPLOY-1) — merges its branch into `live`
+  (DEPLOY-5), then recompiles and loads the live tree into the running app,
+  keeping running state. `workspace` is the chat's workspace root.
+  """
+  @spec hot_reload(term(), binary()) :: {:ok, binary()} | {:error, binary()}
+  def hot_reload(turn_id, workspace \\ Workspace.root()) do
     cond do
       not hot_reload_available?() ->
         {:error, "Hot reload is only available when running the dev server (mix phx.server)."}
 
       true ->
-        case verify_all(turn_id) do
-          :ok ->
-            case Phoenix.CodeReloader.reload(EliaWeb.Endpoint) do
-              :ok ->
-                Elia.Skills.reload()
-                {:ok, "Tests passed; recompiled and reloaded the running app."}
+        case Elia.Deploy.deploy(workspace) do
+          {:ok, merged} ->
+            load(merged)
 
-              {:error, output} ->
-                {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
-            end
+          {:tests_failed, output} ->
+            {:error, tests_failed(turn_id, workspace, output)}
 
-          {:error, output} ->
-            {:error, output}
+          {:error, reason} ->
+            {:error, reason}
         end
     end
   end
 
-  # Unlike verify/1, always runs the suite: reloading must never load untested code.
-  defp verify_all(turn_id) do
-    case run_tests() do
-      {:ok, _} ->
-        :ok
+  # HOT-5: recompile the live tree and load the changed modules.
+  defp load(merged) do
+    case Phoenix.CodeReloader.reload(EliaWeb.Endpoint) do
+      :ok ->
+        Elia.Skills.reload()
+        {:ok, "Tests passed; #{merged} Recompiled and reloaded the running app."}
 
       {:error, output} ->
-        rolled_back =
-          with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
-               {:ok, _} <- Checkpoint.rollback(sha) do
-            Elia.Skills.reload()
-            " The workspace was rolled back to the checkpoint taken at the start of this turn."
-          else
-            _ -> ""
-          end
-
-        {:error, "Tests failed; nothing was reloaded.#{rolled_back}\n\n#{output}"}
+        {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
     end
+  end
+
+  # HOT-4: nothing was merged or loaded; roll the turn's workspace back.
+  defp tests_failed(turn_id, workspace, output) do
+    rolled_back =
+      with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
+           {:ok, _} <- Checkpoint.rollback(sha, workspace) do
+        Elia.Skills.reload()
+        " The workspace was rolled back to the checkpoint taken at the start of this turn."
+      else
+        _ -> ""
+      end
+
+    "Tests failed; nothing was merged or loaded.#{rolled_back}\n\n#{output}"
   end
 end

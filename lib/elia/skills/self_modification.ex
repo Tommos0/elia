@@ -20,19 +20,21 @@ defmodule Elia.Skills.SelfModification do
   def instructions do
     """
     Changing Elixir code (`lib/`, `config/`, `test/`) needs the user's approval. \
-    The workspace is checkpointed before your first change in each turn. When you \
-    finish a turn that changed Elixir files, the harness runs `mix test`; if it \
-    fails, your changes are rolled back and you are told why. Run `run_tests` \
-    yourself before finishing.
+    The workspace you work in is checkpointed before your first change in each \
+    turn. When you finish a turn that changed Elixir files, the harness runs \
+    `mix test`; if it fails, your changes are rolled back and you are told why. \
+    Run `run_tests` yourself before finishing.
 
-    Never edit `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or \
-    `lib/elia/workspace.ex` to weaken the guardrails. The running app never \
-    reloads code on its own: an Elixir change takes effect only after a deploy \
-    (a successful `hot_reload` or a restart), so a multi-file edit can't break \
-    the running app halfway. Make all the edits for a change, run `run_tests`, \
-    then call `hot_reload` and tell the user the change is live. \
-    `list_checkpoints` shows recent checkpoints and `rollback` undoes a change \
-    that went wrong.
+    A chat in this project works in its own git worktree, not in the tree the \
+    server runs from (DEPLOY-1). Running code therefore never changes while you \
+    edit: an Elixir change takes effect only after a deploy — `hot_reload`, \
+    which runs the tests, merges your branch into `live` and reloads the \
+    running app, or the restart button, which also restarts the server \
+    (DEPLOY-6, DEPLOY-7). Make all the edits for a change, run `run_tests`, then \
+    call `hot_reload` and tell the user the change is live. Never edit \
+    `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` \
+    to weaken the guardrails. `list_checkpoints` shows recent checkpoints and \
+    `rollback` undoes a change that went wrong.
 
     This project is spec-driven: each feature has a spec in `specs/` with \
     numbered requirements (workflow and index in `specs/README.md`). Before \
@@ -48,17 +50,18 @@ defmodule Elia.Skills.SelfModification do
       %Elia.Tool{
         name: "hot_reload",
         description:
-          "Run the full test suite, then recompile and load changed Elixir code into the " <>
-            "running app. If tests fail, the turn's changes are rolled back instead.",
+          "Run the full test suite, merge this chat's branch into `live`, then recompile and " <>
+            "load the live tree into the running app. If tests fail, the turn's changes are " <>
+            "rolled back instead and nothing is merged or loaded.",
         input_schema: %{"type" => "object", "properties" => %{}},
         approval: :required,
-        run: fn _input, ctx -> Harness.hot_reload(ctx[:turn_id]) end
+        run: fn _input, ctx -> Harness.hot_reload(ctx[:turn_id], workspace(ctx)) end
       },
       %Elia.Tool{
         name: "list_checkpoints",
         description: "List recent workspace checkpoints, newest first.",
         input_schema: %{"type" => "object", "properties" => %{}},
-        run: fn _ -> list_checkpoints() end
+        run: fn _input, ctx -> list_checkpoints(ctx) end
       },
       %Elia.Tool{
         name: "rollback",
@@ -75,8 +78,12 @@ defmodule Elia.Skills.SelfModification do
     ]
   end
 
-  defp list_checkpoints do
-    case Checkpoint.list() do
+  # The workspace of the turn: the chat's own worktree in Elia's own project
+  # (DEPLOY-1), Elia's own root when unset.
+  defp workspace(ctx), do: ctx[:workspace] || Workspace.root()
+
+  defp list_checkpoints(ctx) do
+    case Checkpoint.list(20, workspace(ctx)) do
       [] ->
         {:ok, "No checkpoints yet."}
 
@@ -90,11 +97,11 @@ defmodule Elia.Skills.SelfModification do
 
     with target when is_binary(target) <-
            target || {:error, "No checkpoint was taken in this turn."},
-         {:ok, undo} <- Checkpoint.rollback(target) do
+         {:ok, undo} <- Checkpoint.rollback(target, workspace(ctx)) do
       Elia.Skills.reload()
 
       {:ok,
-       "Restored #{Workspace.root()} to #{String.slice(target, 0, 12)}. " <>
+       "Restored #{workspace(ctx)} to #{String.slice(target, 0, 12)}. " <>
          "Undo with rollback to #{String.slice(undo, 0, 12)}. Running code is unchanged " <>
          "until hot_reload."}
     end

@@ -21,6 +21,16 @@ config :elia, EliaWeb.Endpoint,
   pubsub_server: Elia.PubSub,
   live_view: [signing_salt: "Sj47a7MI"]
 
+# The live tree (DEPLOY-2): where the server runs, where the code reloader
+# reloads, and where Elia's data lives (`.elia`). A chat in Elia's own project
+# works in its own git worktree (`.elia/worktrees/<chat id>`, branch
+# `chat/<chat id>`) instead, and a deploy merges that branch into `live`; the
+# live tree must be on the branch `live` for that. Defaults to Elia's root
+# (`config :elia, :workspace`, else the working directory = where the server was
+# started from). See `Elia.Workspace.runtime_root/0` and `Elia.Deploy`.
+#
+# config :elia, :runtime_root, "/path/to/live/tree"
+
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.

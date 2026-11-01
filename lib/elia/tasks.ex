@@ -139,16 +139,26 @@ defmodule Elia.Tasks do
   @spec spawn_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
   def spawn_task(input, ctx) do
     parent_id = ctx[:session_id]
+    root = repo_root(ctx)
 
     with :ok <- check_input(input),
          :ok <- check_not_child(parent_id),
          :ok <- check_free(),
          :ok <- check_ignored(),
-         :ok <- check_clean(),
-         {:ok, start_commit} <- head(),
-         :ok <- check_parent_verified(ctx[:turn_id]) do
+         :ok <- check_clean(root),
+         {:ok, start_commit} <- head(root),
+         :ok <- check_parent_verified(ctx[:turn_id], root) do
       run_child(input, ctx, start_commit)
     end
+  end
+
+  # The repository the sub-task machinery works in: the chat's own workspace
+  # when it is in Elia's own project — its git worktree, shared with the child
+  # (DEPLOY-9) — and Elia's own root for any other project, as before.
+  defp repo_root(ctx) do
+    if Elia.Projects.harness_ctx?(ctx),
+      do: ctx[:workspace] || Workspace.root(),
+      else: Workspace.root()
   end
 
   defp check_input(input) do
@@ -190,10 +200,17 @@ defmodule Elia.Tasks do
     end
   end
 
+  # The chats' files live in Elia's data dir, which sits under the live tree, not
+  # in the worktree a chat works in (DEPLOY-2). It must be git-ignored there, or
+  # chat files would make the live tree dirty (SUBTASK-4).
   defp check_ignored do
-    dir = Path.relative_to(Path.join(Workspace.data_dir(), "sessions/x.term"), Workspace.root())
+    data =
+      Path.relative_to(
+        Path.join(Workspace.data_dir(), "sessions/x.term"),
+        Workspace.runtime_root()
+      )
 
-    case git(["check-ignore", "-q", dir]) do
+    case git(["check-ignore", "-q", data], Workspace.runtime_root()) do
       {_, 0} ->
         :ok
 
@@ -204,8 +221,8 @@ defmodule Elia.Tasks do
     end
   end
 
-  defp check_clean do
-    case git(["status", "--porcelain"]) do
+  defp check_clean(root) do
+    case git(["status", "--porcelain"], root) do
       {"", 0} ->
         :ok
 
@@ -220,8 +237,8 @@ defmodule Elia.Tasks do
     end
   end
 
-  defp head do
-    case git(["rev-parse", "HEAD"]) do
+  defp head(root) do
+    case git(["rev-parse", "HEAD"], root) do
       {out, 0} ->
         {:ok, String.trim(out)}
 
@@ -232,13 +249,13 @@ defmodule Elia.Tasks do
 
   # Changes the parent made before the spawn must already pass the tests: the
   # parent's checkpoint is replaced when the child ends (SUBTASK-14).
-  defp check_parent_verified(turn_id) do
-    case Harness.core_elixir_changed?(turn_id) do
+  defp check_parent_verified(turn_id, root) do
+    case Harness.core_elixir_changed?(turn_id, root) do
       false ->
         :ok
 
       true ->
-        case Harness.run_tests() do
+        case Harness.run_tests([], root) do
           {:ok, _output} ->
             :ok
 
@@ -259,6 +276,11 @@ defmodule Elia.Tasks do
     model = input["model"]
     parent_opts = ctx[:loop_opts] || []
     project = ctx[:project]
+    # SUBTASK-23, DEPLOY-9: the child works in the parent's workspace — for a
+    # chat in Elia's own project that is its worktree — and on the same branch,
+    # so its work is part of the parent's.
+    root = repo_root(ctx)
+    workspace = ctx[:workspace] || (project && project.folder)
 
     steps = input["max_steps"] |> Kernel.||(@default_steps) |> min(@max_steps) |> max(1)
 
@@ -281,7 +303,8 @@ defmodule Elia.Tasks do
       |> Keyword.merge(
         skills: fn -> Elia.Skills.Tasks.child_skills(project) end,
         max_steps: steps,
-        llm: llm
+        llm: llm,
+        workspace: workspace
       )
 
     {:ok, child_pid} =
@@ -296,7 +319,8 @@ defmodule Elia.Tasks do
            lock(parent_id, child_id, child_pid, %{
              owner: self(),
              call_id: ctx[:call_id],
-             start_commit: start_commit
+             start_commit: start_commit,
+             root: root
            }) do
       Elia.Agent.subscribe(child_id)
       monitor = Process.monitor(child_pid)
@@ -326,10 +350,10 @@ defmodule Elia.Tasks do
               other
           end
 
-        result = build_result(child_id, start_commit, outcome, take_state(child_id))
+        result = build_result(child_id, start_commit, outcome, take_state(child_id), root)
 
         update_saved(child_id, task, %{status: result["status"], result: result})
-        Checkpoint.rebase(ctx[:turn_id])
+        Checkpoint.rebase(ctx[:turn_id], root)
         {:ok, Jason.encode!(result)}
       after
         Process.demonitor(monitor, [:flush])
@@ -425,8 +449,8 @@ defmodule Elia.Tasks do
   end
 
   # `state` is what the lock holds about the child: `finish` (SUBTASK-3) and
-  # `cancelled` (SUBTASK-16).
-  defp build_result(child_id, start_commit, outcome, state) do
+  # `cancelled` (SUBTASK-16). `root` is the workspace they share (DEPLOY-9).
+  defp build_result(child_id, start_commit, outcome, state, root) do
     finish = state.finish
 
     {status, reason, summary} =
@@ -451,7 +475,7 @@ defmodule Elia.Tasks do
           {"unfinished", nil, last_text(child_id) || "The task ended without a summary."}
       end
 
-    head = git_out(["rev-parse", "HEAD"])
+    head = git_out(["rev-parse", "HEAD"], root)
 
     result = %{
       "task_id" => child_id,
@@ -459,7 +483,7 @@ defmodule Elia.Tasks do
       "reason" => reason,
       "summary" => summary,
       "commit" => if(head != start_commit, do: head),
-      "files" => changed_files(start_commit),
+      "files" => changed_files(start_commit, root),
       "questions" => if(finish, do: finish.questions, else: [])
     }
 
@@ -468,7 +492,7 @@ defmodule Elia.Tasks do
       else:
         Map.merge(result, %{
           "start_commit" => start_commit,
-          "tree_clean" => git_out(["status", "--porcelain"]) == ""
+          "tree_clean" => git_out(["status", "--porcelain"], root) == ""
         })
   end
 
@@ -491,11 +515,11 @@ defmodule Elia.Tasks do
     :exit, _ -> nil
   end
 
-  defp changed_files(start_commit) do
-    diff = git_out(["diff", "--name-only", "-z", start_commit], false)
+  defp changed_files(start_commit, root) do
+    diff = git_out(["diff", "--name-only", "-z", start_commit], root, false)
 
     untracked =
-      git_out(["ls-files", "--others", "--exclude-standard", "--full-name", "-z"], false)
+      git_out(["ls-files", "--others", "--exclude-standard", "--full-name", "-z"], root, false)
 
     (String.split(diff || "", <<0>>, trim: true) ++
        String.split(untracked || "", <<0>>, trim: true))
@@ -526,16 +550,18 @@ defmodule Elia.Tasks do
   """
   @spec reset_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
   def reset_task(input, ctx) do
+    root = repo_root(ctx)
+
     with {:ok, task} <- reset_target(ctx[:session_id], input["task_id"]),
          :ok <- check_none_active(),
-         {:ok, head} <- head(),
-         :ok <- check_ancestor(task.start_commit, head) do
-      commits = git_out(["log", "--oneline", "#{task.start_commit}..HEAD"]) || ""
-      files = changed_files(task.start_commit)
+         {:ok, head} <- head(root),
+         :ok <- check_ancestor(task.start_commit, head, root) do
+      commits = git_out(["log", "--oneline", "#{task.start_commit}..HEAD"], root) || ""
+      files = changed_files(task.start_commit, root)
 
-      with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit]),
-           {_, 0} <- git(["clean", "-fdq"]) do
-        Checkpoint.rebase(ctx[:turn_id])
+      with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit], root),
+           {_, 0} <- git(["clean", "-fdq"], root) do
+        Checkpoint.rebase(ctx[:turn_id], root)
 
         {:ok,
          "Workspace reset to #{String.slice(task.start_commit, 0, 8)}.\n" <>
@@ -572,8 +598,8 @@ defmodule Elia.Tasks do
     end
   end
 
-  defp check_ancestor(start_commit, head) do
-    case git(["merge-base", "--is-ancestor", start_commit, head]) do
+  defp check_ancestor(start_commit, head, root) do
+    case git(["merge-base", "--is-ancestor", start_commit, head], root) do
       {_, 0} ->
         :ok
 
@@ -589,6 +615,7 @@ defmodule Elia.Tasks do
   # SUBTASK-19. Runs in its own process, never in the lock server.
   defp finalize(active) do
     child_id = active.child_id
+    root = active[:root] || Workspace.root()
     stop_session(child_id)
 
     case Store.load_task(child_id) do
@@ -600,7 +627,7 @@ defmodule Elia.Tasks do
 
         state = %{finish: active.finish, cancelled: active.cancelled}
         start_commit = task[:start_commit] || active[:start_commit]
-        result = build_result(child_id, start_commit, outcome, state)
+        result = build_result(child_id, start_commit, outcome, state, root)
         update_saved(child_id, task, %{status: result["status"], result: result})
 
       _ ->
@@ -611,10 +638,10 @@ defmodule Elia.Tasks do
     broadcast(active.parent_id, active[:call_id], child_id, saved_status(child_id))
   end
 
-  defp git(args), do: System.cmd("git", args, cd: Workspace.root(), stderr_to_stdout: true)
+  defp git(args, root), do: System.cmd("git", args, cd: root, stderr_to_stdout: true)
 
-  defp git_out(args, trim? \\ true) do
-    case System.cmd("git", args, cd: Workspace.root(), stderr_to_stdout: true) do
+  defp git_out(args, root, trim? \\ true) do
+    case System.cmd("git", args, cd: root, stderr_to_stdout: true) do
       {out, 0} -> if trim?, do: String.trim(out), else: out
       _ -> nil
     end
@@ -645,6 +672,7 @@ defmodule Elia.Tasks do
       owner: owner,
       call_id: meta[:call_id],
       start_commit: meta[:start_commit],
+      root: meta[:root],
       finish: nil,
       cancelled: false
     }

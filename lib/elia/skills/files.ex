@@ -198,13 +198,15 @@ defmodule Elia.Skills.Files do
     end
   end
 
-  # The workspace root of the turn (PROJ-12), Elia's own when unset.
+  # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
+  # in Elia's own project (DEPLOY-1), Elia's own root when unset.
   defp root(ctx), do: ctx[:workspace] || Workspace.root()
 
-  # PROJ-14: only Elia's own project is checkpointed.
+  # PROJ-14: only Elia's own project is checkpointed — in the workspace the
+  # chat works in, its own worktree (DEPLOY-1).
   defp ensure_checkpoint(ctx) do
-    if root(ctx) == Workspace.root(),
-      do: Elia.Checkpoint.ensure(ctx[:turn_id]),
+    if Elia.Projects.harness_ctx?(ctx),
+      do: Elia.Checkpoint.ensure(ctx[:turn_id], root(ctx)),
       else: :ok
   end
 

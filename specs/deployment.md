@@ -1,6 +1,6 @@
 # Deployment
 
-Status: Draft
+Status: Implemented
 
 Elia develops its own code in isolated git worktrees, one per chat, and the
 running server only changes through a deliberate *deploy* step. The server runs
@@ -79,11 +79,18 @@ live tree), RESTART (the restart button), SUBTASK (shared worktree).
 
 ## Implementation
 
-(planned) `Elia.Workspace` (`:runtime_root`), `Elia.Projects`,
-`Elia.Agent.Loop`, `Elia.Skills.Harness` (`hot_reload`), `EliaWeb.ChatLive`
-(restart button), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
+`Elia.Deploy` (worktrees, merge, deploy, restart, the inert request reloader),
+`Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
+is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
+workspace), `Elia.Agent.Loop` (verification in that workspace),
+`Elia.Checkpoint` and `Elia.Harness` (snapshots, tests and reloading per
+workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}`,
+`Elia.Tasks` (the shared worktree, the repository it runs git in),
+`Elia.Store.delete/1` (removes the worktree), `EliaWeb.ChatLive` (restart
+button), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
 
 ## Tests
 
-(planned) a new `test/elia/deployment_test.exs`; `test/elia/guarded_test.exs`
-removed; `test/elia/serve_script_test.exs` amended.
+`test/elia/deployment_test.exs` (worktrees, deploy, restart, DEPLOY-1 to
+DEPLOY-11), `test/elia_web/live/chat_live_test.exs` (the restart button),
+`test/support/live_tree.ex` (a throwaway live tree).
