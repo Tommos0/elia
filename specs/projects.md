@@ -21,9 +21,10 @@ kept apart from the ones that apply in every project.
   missing, unreadable or corrupt file reads as "no projects" rather than an
   error.
 - **PROJ-3** Elia's own project always exists: id `harness`, name "Elia",
-  `harness?` true, and folder `Elia.Workspace.root/0`. It is always first in a
-  listing, and its folder follows `Elia.Workspace.root/0` even if the file
-  holds another one.
+  `harness?` true, and folder `Elia.Workspace.root/0` (the live tree, DEPLOY-3).
+  It is always first in a listing, and its folder follows
+  `Elia.Workspace.root/0` even if the file holds another one. Each of its chats
+  works in its own worktree (DEPLOY-1).
 - **PROJ-4** `list/0` returns Elia's project first, then the others by name
   (case-insensitive, then by id).
 - **PROJ-5** `get/1` returns the project with that id, or `nil`. `harness/0` is
@@ -54,14 +55,16 @@ kept apart from the ones that apply in every project.
 - **PROJ-12** The folder of a chat's project is the workspace root for that
   chat's tools: `read_file`, `write_file` and `edit_file` resolve and classify
   paths against it (WS-1–WS-3), `shell` runs there, and folder-skill scripts
-  get it in `ELIA_WORKSPACE` (FOLDER-7).
+  get it in `ELIA_WORKSPACE` (FOLDER-7). A chat in Elia's own project is the
+  exception: its workspace root is its own worktree, not the project folder
+  (DEPLOY-1).
 - **PROJ-13** Elia's own data — `.elia/projects.term` and `.elia/sessions/` —
-  lives in Elia's root whatever project a chat belongs to, so a project folder
-  is never written to by the harness itself.
-- **PROJ-14** Checkpoints, `mix test` verification, guarded files and the
-  `hot_reload` tool are bound to Elia's own project: the file and shell tools
-  only checkpoint when their workspace is Elia's root, and only Elia's project
-  has the `self-modification` skill (PROJ-17).
+  lives in Elia's root (the live tree, DEPLOY-2) whatever project a chat
+  belongs to, so a project folder is never written to by the harness itself.
+- **PROJ-14** Checkpoints, `mix test` verification and the `hot_reload` tool
+  are bound to Elia's own project: the file and shell tools only checkpoint when
+  their project is Elia's own (DEPLOY-1), and only Elia's own project has the
+  `self-modification` skill (PROJ-17).
 
 ### Instructions and skills
 
@@ -72,8 +75,8 @@ kept apart from the ones that apply in every project.
   project — prefer a folder skill over changing code, and reload skills — with
   the tools `reload_skills` and `run_tests`.
 - **PROJ-17** A built-in `self-modification` skill carries what only applies to
-  Elia's own code: changing Elixir files, checkpoints, guarded files, the
-  spec-driven workflow and `hot_reload`, with the tools `hot_reload`,
+  Elia's own code: changing Elixir files, checkpoints, the spec-driven
+  workflow and `hot_reload`, with the tools `hot_reload`,
   `list_checkpoints` and `rollback`. A chat has it only when its project is
   Elia's own.
 - **PROJ-18** A chat's skills are the built-in skills (PROJ-17), the folder
@@ -118,9 +121,9 @@ kept apart from the ones that apply in every project.
 
 ## Out of scope
 
-- Checkpoints, rollback, `mix test` verification and guarded files apply to
-  Elia's own project only (PROJ-14); a project folder that is its own git repo
-  is not snapshotted.
+- Checkpoints, rollback and `mix test` verification apply to Elia's own
+  project only (PROJ-14); a project folder that is its own git repo is not
+  snapshotted.
 - Projects have no per-project model, provider or settings.
 
 ## Implementation

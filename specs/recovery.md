@@ -28,10 +28,8 @@ reloader, so it works even when the project doesn't compile.
   400 and nothing runs.
 - **RECOVER-5** After a successful rollback, skills are reloaded and the page
   shows the sha restored, an undo button (a rollback to the snapshot taken
-  just before, CKPT-5), a link back to the app, and the code files whose
-  changes are still unloaded, if any (GUARD-10). The page says that the running
-  app only changes after `hot_reload` (GUARD-8), and when no file is pending
-  that the workspace matches the running code.
+  just before, CKPT-5), and a link back to the app. The page says that the
+  running app only changes after a deploy (DEPLOY-8).
 - **RECOVER-6** If the rollback fails, the page shows the error with a 500
   and the workspace is left as git left it.
 - **RECOVER-7** An HTML response with status 500 gets a banner at the top of
@@ -39,10 +37,9 @@ reloader, so it works even when the project doesn't compile.
   (RECOVER-3), a button that rolls back to it. Other responses (other
   statuses, non-HTML, compressed) are left unchanged, and a failure while
   building the banner never changes the response.
-- **RECOVER-8** The recovery plug uses only modules that are themselves
-  guarded (`Elia.Checkpoint`, `Elia.Guarded`, `Elia.Skills`,
-  `Elia.Workspace`), and is itself guarded (GUARD-1), so its running version
-  stays the boot-time one while the rest of the app is broken.
+- **RECOVER-8** The recovery plug uses only modules loaded before the code
+  reloader (`Elia.Checkpoint`, `Elia.Skills`, `Elia.Workspace`), so its
+  running version stays the boot-time one while the rest of the app is broken.
 - **RECOVER-9** A `POST` is same-origin when its `Origin` header is `http` or
   `https` and matches the request's public address:
   - scheme: the first `X-Forwarded-Proto` value if present, otherwise the

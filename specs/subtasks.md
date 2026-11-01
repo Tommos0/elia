@@ -7,8 +7,8 @@ budget, crash recovery and reset)
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context, wait for it, and get back a short structured result. The
 child is an ordinary saved chat with extra metadata linking it to its parent.
-Only one child runs at a time, because the workspace, checkpoints, git index
-and approvals are global.
+Only one child runs at a time, because the parent's worktree, checkpoints, git
+index and approvals are shared.
 
 ## Requirements
 
@@ -157,6 +157,9 @@ and approvals are global.
   `start_commit`; or the `start_commit` isn't an ancestor of `HEAD`. A task
   that was interrupted by a restart (SUBTASK-20) can be reset. Its output lists
   what was discarded (commits and changed files).
+- **SUBTASK-23** A sub-task shares its parent chat's worktree and branch: it
+  edits, tests and commits in the parent's worktree, so its work is part of the
+  parent's branch (DEPLOY-9).
 
 ## Out of scope (later phases of the plan)
 
@@ -170,10 +173,9 @@ metadata, `selection` option, stop, dangling calls), `Elia.Agent.Loop`
 (`max_steps`, skill functions, tool context), `Elia.Checkpoint.rebase/1`,
 `Elia.Harness.core_elixir_changed?/1`.
 
-Guarded files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
+Core files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
 `lib/elia/skills/tasks.ex`, `lib/elia/checkpoint.ex`, `lib/elia/harness.ex`,
-`config/config.exs`. None of the guardrails is weakened. (Phase 3 touches
-`lib/elia/skills/tasks.ex` only.)
+`config/config.exs`. (Phase 3 touches `lib/elia/skills/tasks.ex` only.)
 
 ## Tests
 

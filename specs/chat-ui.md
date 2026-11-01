@@ -81,10 +81,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
   call awaits approval.
 - **UI-18** A call awaiting approval shows Approve and Deny buttons
   (`#approve-<call_id>`, `#deny-<call_id>`).
-- **UI-19** When a call awaiting approval writes a guarded file, or is a
+- ~~**UI-19** When a call awaiting approval writes a guarded file, or is a
   `hot_reload` while code files have unloaded changes, the card shows a
   warning naming the effect (see GUARD-1, GUARD-6). The `hot_reload` warning
-  lists the pending files.
+  lists the pending files.~~ Retired: no guarded-file list and no pending
+  tracking (DEPLOY-11).
 - **UI-20** Once a result arrives, the card has a collapsible "Output"
   section, styled as an error when the result is an error.
 
@@ -103,8 +104,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (`#auto-approve`) that Escape or a click outside closes.
 - **UI-39** The popover lists each tool that can need approval (APPR-13) with a
   switch (`#auto-approve-<tool name>`) that reflects and toggles APPR-8 for
-  this chat, and a note that auto-approved tools run without review,
-  including on guarded files. Tools from folder skills appear after a skill
+  this chat, and a note that auto-approved tools run without review. Tools
+  from folder skills appear after a skill
   reload. The switch state follows `{:auto_approve, names}` events (SESS-16),
   so every tab on the chat stays in sync.
 - **UI-40** A call awaiting approval has an "Always allow" button

@@ -59,9 +59,8 @@ per-tool switch; it never loosens what a tool's own policy refuses.
   always be turned off, e.g. after its skill was removed.
 
 Auto-approving `shell`, `write_file`/`edit_file`, script tools,
-`hot_reload` or `rollback` lets the model act in that chat without review. That
-includes changing guarded files (GUARD-1). The UI says so next to the switch
-(UI-39).
+`hot_reload` or `rollback` lets the model act in that chat without review. The
+UI says so next to the switch (UI-39).
 
 ## Implementation
 

@@ -2,8 +2,9 @@
 
 Status: Implemented
 
-`hot_reload` loads the agent's code changes into the running dev server, but
-only after the whole test suite passes.
+`hot_reload` is the soft deploy mode (DEPLOY-6): after the whole test suite
+passes, it recompiles the live tree and loads a chat's tested code into the
+running dev server. The other deploy mode is a restart (DEPLOY-7).
 
 ## Requirements
 
@@ -15,10 +16,9 @@ only after the whole test suite passes.
 - **HOT-4** If the tests fail, nothing is reloaded. The workspace is rolled
   back to the turn's checkpoint, if there is one, and skills are reloaded. The
   error says whether a rollback happened and includes the test output.
-- **HOT-5** If the tests pass, the project is recompiled and the changed
-  modules are loaded. This is the only way code changes reach the running app
-  (GUARD-8). The code files' current contents are recorded as loaded
-  (GUARD-10), and skills are reloaded.
+- **HOT-5** If the tests pass, the live tree is recompiled and the changed
+  modules are loaded. This is the only way code changes reach the running app,
+  other than a restart (DEPLOY-6, DEPLOY-8). Skills are reloaded.
 - **HOT-6** A compile error is returned with the compiler output, truncated
   to 20,000 characters.
 

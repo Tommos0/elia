@@ -34,8 +34,9 @@ system prompt from them. It can be reloaded while the app runs.
   with `reload_skills`, and to run the tests before finishing. Folder skills
   are written without approval, but their tools always ask.
 - **SKILL-9** The `self-modification` skill's instructions tell the model that
-  Elixir changes need the user's approval and only take effect after
-  `hot_reload` (GUARD-8); that the workspace is checkpointed before its first
+  Elixir changes need the user's approval and only take effect after a deploy,
+  by hot reload or restart (DEPLOY-8); that the workspace is checkpointed before
+  its first
   change in a turn and that a failing `mix test` rolls the change back; and
   that the project is spec-driven: before changing Elixir code it updates or
   adds the feature's spec in `specs/` (see `specs/README.md`), keeps
