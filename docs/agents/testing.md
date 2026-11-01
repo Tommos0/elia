@@ -1,12 +1,12 @@
 # Testing
 
-Read this before writing or changing tests. Tests live in `test/elia/` (core) and `test/elia_web/` (web, LiveViews in `test/elia_web/live/`). Helpers are in `test/support/` (`conn_case.ex`, `llm_case.ex`, `fake_llm.ex`).
+Read this before writing or changing tests. Tests live in `test/elia/` (core) and `test/elia_web/` (web, LiveViews in `test/elia_web/live/`). Helpers are in `test/support/` (`conn_case.ex`, `llm_case.ex`, `fake_llm.ex`, `live_tree.ex`).
 
 ## Specs
 
 - Every requirement you add or change needs a test. Cite its ID in the test name or a comment, e.g. `# SHELL-3`.
 - If code and spec disagree, one is a bug. Fix the code or update the spec deliberately. See `specs/README.md`.
-- `test/elia/self_modification_test.exs` and `test/elia/guarded_test.exs` are guarded files. See `docs/agents/harness.md`.
+- Worktree and deploy tests use a throwaway live tree (`Elia.LiveTree.create/0`, `test/support/live_tree.ex`), never the server's own tree.
 
 ## Processes
 

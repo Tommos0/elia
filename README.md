@@ -31,7 +31,8 @@ it at boot without a login.
 | `Elia.Tasks` | Lock and spawn/await for sub-task chats (`spawn_task`, `finish_task`) |
 | `Elia.Checkpoint` | Workspace snapshots under `refs/elia/checkpoints/` |
 | `Elia.Harness` | Test runs, end-of-turn verification, rollback, hot reload |
-| `Elia.Projects` | Project folders; every chat belongs to one and works in its folder |
+| `Elia.Deploy` | Chat worktrees, merging a chat's branch into `live`, restarting |
+| `Elia.Projects` | Project folders; every chat belongs to one and works in it (its worktree for Elia's own project) |
 | `Elia.Store` | Saved conversations in `.elia/sessions/` |
 
 ## Folder skills
@@ -56,20 +57,19 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   don't. `.git`, `_build`, `deps` and `.elia` can't be written by the file
   tools, and paths outside the workspace are refused.
 - **Checkpoints**: the first change in each turn snapshots the workspace to a
-  git ref. Only Elia's own project folder is a workspace Elia snapshots; a
-  project folder that is its own git repo is left alone. Snapshots never touch
+  git ref. Only a chat in Elia's own project is snapshotted, in its own worktree;
+  a project folder that is its own git repo is left alone. Snapshots never touch
   HEAD, the branch or the index.
 - **Verification**: when a turn changed Elixir files outside `skills/`, the
   harness runs `mix test` at the end; on failure the turn's changes are rolled
   back and the agent is told why (at most twice per turn).
-- **Hot reload**: `hot_reload` (dev server only) runs the whole suite before
-  loading new code into the running app. The dev server never reloads code on
-  its own, so edits to `lib/`, `config/` and mix files stay pending until
-  `hot_reload` succeeds. A multi-file edit can't break the running app halfway.
-- **Guarded files**: the files that enforce these guardrails (listed in
-  `Elia.Guarded`: harness, checkpoints, workspace policy, the tool loop,
-  built-in skills, endpoint, config, mix files and the guardrail tests) are
-  flagged in approval prompts.
+- **Deploying**: the server runs from the *live tree*; a chat in Elia's own
+  project works in its own git worktree (branch `chat/<chat id>`), so an
+  in-progress edit can't reach the running app. A deploy merges the branch into
+  `live` (fast-forward only) and loads it: `hot_reload` (dev server only) — the
+  test suite first, then a recompile and reload, keeping running state — or the
+  chat UI's restart button, which restarts the server in a clean process. A
+  request never reloads code (`Elia.Deploy`).
 - **Recovery**: in the dev server, `/recover` (also through a proxy; POSTs must be same-origin) lists
   checkpoints and rolls the workspace back to one. It's served before the code
   reloader, so it works even when the app shows a compilation error, and
