@@ -53,6 +53,11 @@ running app at all — the isolation is the filesystem, not a gate.
 - **DEPLOY-8** The running app never recompiles or loads code on its own: a
   request does not reload code, and a merge into `live` stays inert until a
   deploy loads it (GUARD-8). Only a deploy loads code.
+- **DEPLOY-12** In development the browser's live reload watches only the live
+  tree's own static assets (`priv/static`), not the chats' worktrees. Creating
+  a chat checks out a worktree with its own `priv/static` copies (DEPLOY-1);
+  reloading on those would reload the browser in the middle of the navigation
+  to the new chat and land it back on the old one.
 
 ### Sub-tasks and lifecycle
 

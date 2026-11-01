@@ -273,6 +273,20 @@ defmodule Elia.Deploy do
   """
   def reload(_endpoint, _opts \\ []), do: :ok
 
+  @doc """
+  The `live_reload` patterns for the endpoint (DEPLOY-12): the live tree's own
+  static assets only. The pattern is anchored at the live tree, so the copies
+  of those assets that appear when a chat's worktree is created (DEPLOY-1) do
+  not match: reloading on those would reload the browser while it navigates to
+  a new chat, undoing the navigation.
+  """
+  @spec static_reload_patterns() :: [Regex.t()]
+  def static_reload_patterns do
+    root = Workspace.runtime_root()
+
+    [~r{^#{Regex.escape(root)}/priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$}]
+  end
+
   ## Git
 
   defp branch_exists?(branch, root) do

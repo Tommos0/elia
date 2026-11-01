@@ -90,6 +90,27 @@ defmodule Elia.DeploymentTest do
     assert Workspace.runtime_root() == Workspace.root()
   end
 
+  # DEPLOY-12: the live reload watches the live tree's own static assets only,
+  # never a chat's worktree: the checked-out copies there would reload the
+  # browser while it navigates to a new chat, undoing the navigation.
+  test "static reload patterns ignore chat worktrees", %{tree: tree} do
+    [pattern] = Deploy.static_reload_patterns()
+
+    assert Regex.match?(pattern, Path.join(tree, "priv/static/images/logo.svg"))
+    assert Regex.match?(pattern, Path.join(tree, "priv/static/assets/app.js"))
+
+    # A worktree's copies of those assets (DEPLOY-1) are not a live-tree change.
+    refute Regex.match?(
+             pattern,
+             Path.join(tree, ".elia/worktrees/abc/priv/static/images/logo.svg")
+           )
+
+    refute Regex.match?(pattern, Path.join(tree, ".elia/worktrees/abc/priv/static/sw.js"))
+
+    # User uploads never reload the browser, as before.
+    refute Regex.match?(pattern, Path.join(tree, "priv/static/uploads/pic.png"))
+  end
+
   # DEPLOY-3, PROJ-3
   test "Elia's own project's folder is the live tree, and its chats work in worktrees", %{
     tree: tree
