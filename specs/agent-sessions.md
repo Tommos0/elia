@@ -99,12 +99,14 @@ progress so any number of UIs can follow it.
   options, SUBTASK-5) still runs its tools in its own project's folder (PROJ-9,
   PROJ-12).
 
-- **SESS-24** A turn sends the loop the **request view** of the history
-  (COMPACT-2), derived when the turn starts, after compacting first if the
-  estimated request is over the trigger (COMPACT-5, COMPACT-6). The session
-  keeps the full history and the loop appends its own messages to the view, so
-  the `estimated_input_tokens` of a usage report (CTX-10) is the estimate of
-  what that step sent (COMPACT-26).
+- **SESS-24** A turn sends the loop the chat's full history and its compaction
+  state (COMPACT-2, COMPACT-29), after compacting first if the estimated request
+  is over the trigger (COMPACT-5, COMPACT-6). The session keeps the full history
+  — every message the loop appends is saved — and the loop derives the request
+  view it sends from that history at every step (COMPACT-29), so the
+  `estimated_input_tokens` of a usage report (CTX-10) is the estimate of what
+  that step sent (COMPACT-26); the loop reports a mid-turn pass that advanced the
+  state back to the session, which saves it and broadcasts it (COMPACT-29).
 - **SESS-25** `Elia.Agent.compact/1` compacts an idle chat on demand
   (COMPACT-10), ignoring the threshold and the target; it returns
   `{:error, :busy}` while a turn runs. `Elia.Agent.set_compaction/2` sets this

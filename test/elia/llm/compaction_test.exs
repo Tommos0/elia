@@ -550,6 +550,138 @@ defmodule Elia.LLM.CompactionTest do
     assert is_function(Compaction.default_summarizer(), 1)
   end
 
+  ## The mid-turn pass (COMPACT-29)
+
+  # A summarizer that fails the test if a mid-turn pass ever reaches for one
+  # (COMPACT-29: elision only).
+  defp no_mid_turn_summary, do: fn _ -> flunk("a mid-turn pass is elision only") end
+
+  # Four turns whose reasoning and tool results outweigh the elision marker the
+  # view carries (COMPACT-23), so each rung of the ladder shrinks it.
+  defp bulky_history, do: history(1..4, text: String.duplicate("w ", 20))
+
+  # COMPACT-29
+  test "trim changes nothing while the estimate is at or under the trigger" do
+    messages = history(1..4)
+    state = %Compaction{}
+    overhead = 50
+    tokens = Compaction.view(messages, state).tokens
+
+    opts = %{
+      target: 1,
+      overhead: overhead,
+      working_set: 2,
+      summarizer: no_mid_turn_summary()
+    }
+
+    # At the trigger, under it, and without a known trigger: nothing changes.
+    assert Compaction.trim(messages, state, Map.put(opts, :trigger, tokens + overhead)) == state
+
+    assert Compaction.trim(messages, state, Map.put(opts, :trigger, tokens + overhead - 1)) !=
+             state
+
+    assert Compaction.trim(messages, state, Map.put(opts, :trigger, nil)) == state
+    assert Compaction.trim(messages, state, Map.delete(opts, :trigger)) == state
+  end
+
+  # COMPACT-29
+  test "trim elides the cold prefix down the ladder, but never summarizes" do
+    messages = bulky_history()
+    state = %Compaction{}
+    covered = Compaction.working_set_start(messages, %{working_set: 2})
+    assert covered == 8
+
+    trimmed =
+      Compaction.trim(messages, state, %{
+        trigger: 1,
+        target: 1,
+        overhead: 0,
+        working_set: 2,
+        summarizer: no_mid_turn_summary()
+      })
+
+    assert trimmed.covered == 8
+    assert trimmed.level == 3
+    # No model call: the state carries no summary (COMPACT-17, COMPACT-20).
+    assert trimmed.summary == nil
+    assert trimmed.folded == 0
+
+    view = Compaction.view(messages, trimmed)
+    assert view.elided > 0
+    # The spoken record survives the elision (COMPACT-11).
+    assert Enum.any?(view.messages, &(Message.text_content(&1) =~ "task 1"))
+  end
+
+  # COMPACT-29
+  test "trim stops as soon as the estimate reaches the target" do
+    messages = bulky_history()
+    covered = Compaction.working_set_start(messages, %{working_set: 2})
+
+    at = fn level ->
+      Compaction.view(messages, %Compaction{level: level, covered: covered}).tokens
+    end
+
+    # Level 1 (reasoning dropped from the cold prefix) is already enough, so the
+    # ladder stops there rather than eliding results or whole turns too.
+    assert at.(0) > at.(1)
+
+    trimmed =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: at.(1),
+        overhead: 0,
+        working_set: 2
+      })
+
+    assert trimmed.level == 1
+    assert Compaction.view(messages, trimmed).tokens <= at.(1)
+  end
+
+  # COMPACT-29
+  test "trim advances the level no further than the target requires" do
+    messages = bulky_history()
+    covered = Compaction.working_set_start(messages, %{working_set: 2})
+
+    at = fn level ->
+      Compaction.view(messages, %Compaction{level: level, covered: covered}).tokens
+    end
+
+    # A target the level-2 view meets but the level-1 view does not.
+    assert at.(1) > at.(2)
+
+    trimmed =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: at.(2),
+        overhead: 0,
+        working_set: 2
+      })
+
+    assert trimmed.level == 2
+    assert Compaction.view(messages, trimmed).tokens <= at.(2)
+  end
+
+  # COMPACT-4, COMPACT-5, COMPACT-29
+  test "trim never makes the current (last) turn cold" do
+    huge = String.duplicate("huge ", 20_000)
+    # The current turn alone is bigger than the working set budget, so it is all
+    # of the working set (COMPACT-28) and none of it may be elided.
+    messages = turn(1, "word ") ++ turn(2, huge)
+
+    trimmed = Compaction.trim(messages, %Compaction{}, %{trigger: 1, target: 1})
+    view = Compaction.view(messages, trimmed)
+
+    assert trimmed.covered == 4
+    refute Enum.any?(4..7, &(view.statuses[&1].status in [:elided, :summarized]))
+    assert Enum.all?(5..7, &(view.statuses[&1].status == :sent))
+
+    # The turn being run is sent in full: its own tool result is verbatim.
+    assert Enum.any?(view.messages, fn
+             %Message{role: :tool, content: [%{content: content}]} -> content == huge
+             _ -> false
+           end)
+  end
+
   ## Pins and the ledger
 
   # COMPACT-21

@@ -53,9 +53,13 @@ are not.
   or dropped together (LLM-10's pairing), and provider-produced blocks (text,
   reasoning, tool calls with `raw`) are either sent byte-for-byte or dropped
   whole — never rewritten (the provider checks history is append-only).
-- **COMPACT-5** Compaction runs only at the start of a turn, never mid-turn, so
-  the running tool loop's own calls and results stay intact, and approval state
-  keyed by `call_id` is never invalidated.
+- **COMPACT-5** Compaction runs at the start of a turn **and at each step of the
+  running loop** (COMPACT-29), so a turn that grows past the trigger mid-flight
+  is compacted too. Two constraints keep the running tool loop safe: the turn
+  being run is never cold — the cold region always ends at or before its user
+  message — so the loop's own calls and results stay intact and approval state
+  keyed by `call_id` is never invalidated; and a mid-turn pass elides only, never
+  summarizing, so no model call happens inside a step.
 
 ### Trigger
 
@@ -118,6 +122,28 @@ order, stopping as soon as the estimate is at or below the target:
 - **COMPACT-16** Then whole **old turns** (the assistant text and calls of a
   turn) are dropped, oldest first, down to the working set.
 
+### Within a turn
+
+- **COMPACT-29** A running turn is compacted too, not only at its start: at
+  every step of the loop the request view is derived again, from the full history
+  and the chat's compaction state, by the same pure derivation the turn start
+  uses (COMPACT-2, COMPACT-3), so the view can shrink while the history keeps
+  growing. The current turn is never cold: the cold region always ends at or
+  before its user message (COMPACT-28), so every message of the turn being run is
+  sent in full and approval state keyed by `call_id` stays valid (COMPACT-4,
+  COMPACT-5). The pass is **elision only**: it may take the ladder (COMPACT-14,
+  COMPACT-15, COMPACT-16) deeper towards the target (COMPACT-8), starting from
+  the level already reached — the ladder never moves back up (COMPACT-12) — but
+  it never folds a summary (COMPACT-17), so no model call happens inside a step,
+  and a ladder that cannot reach the target leaves the pruned view and no error
+  (COMPACT-20). What it is measured against is the view's tokens plus the
+  request's overhead (CTX-1): at or below the trigger nothing changes and nothing
+  is reported; when the ladder advances, `Elia.Agent.Loop` reports the new state
+  to `Elia.Agent.Session`, which saves it and broadcasts `{:compaction, state}`,
+  so the transcript's annotations and the context estimate stay honest about what
+  the model was sent (COMPACT-24, COMPACT-25, COMPACT-26) and a changed request
+  view resets the CTX-10 provider adjustment (COMPACT-27).
+
 ### Summary (the fallback)
 
 - **COMPACT-17** Only when the ladder (COMPACT-14..16) cannot get to the target
@@ -175,11 +201,13 @@ order, stopping as soon as the estimate is at or below the target:
 
 ## Implementation
 
-`Elia.LLM.Compaction` (the pure request view and its ladder),
-`Elia.Agent.Session` (compaction state, pins, the manual action),
-`Elia.Agent.Loop` (sends the request view), `Elia.Store` (saving the summary,
-ledger and pins), `Elia.LLM.Context` (estimate over the request view),
-`EliaWeb.ChatLive` (annotations, the summary notice, "compact now").
+`Elia.LLM.Compaction` (the pure request view, its ladder, `compact/3` at the
+turn start and the elision-only `trim/3` mid-turn), `Elia.Agent.Session`
+(compaction state, pins, the manual action, the loop's mid-turn report),
+`Elia.Agent.Loop` (derives and sends the request view at every step,
+COMPACT-29), `Elia.Store` (saving the summary, ledger and pins),
+`Elia.LLM.Context` (estimate over the request view), `EliaWeb.ChatLive`
+(annotations, the summary notice, "compact now").
 
 The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is a `level`
 (how far down the ladder the cold region has been taken), the `covered` index
@@ -212,12 +240,16 @@ The summarizer is `loop_opts[:summarizer]`, a `(input -> {:ok, text} |
 {:error, term})` function, injectable exactly as `:llm` is (LOOP-16) so tests
 never call a provider; without one a provider call is made through the turn's
 own request (`:llm`), and any failure leaves the pruned view and no error
-(COMPACT-20).
+(COMPACT-20). It is only ever reached from the turn start: `trim/3` shares
+`walk/5` with `compact/3` but has no path to `fold/4` (COMPACT-29).
 
 ## Tests
 
 `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
-boundary safety, bounded folding, pinning), `test/elia/agent_test.exs` (state,
-persistence, the trigger, the manual action, the ledger),
+boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
+stopping point, COMPACT-29), `test/elia/agent_test.exs` (state, persistence, the
+trigger, the manual action, the ledger, and the mid-turn pass end to end: a later
+request smaller than an earlier one, the current turn sent in full, the
+`{:compaction, state}` broadcast before the turn ends, COMPACT-29),
 `test/elia_web/live/compaction_test.exs` (annotations, the notice, the estimate,
 the pin, "compact now").

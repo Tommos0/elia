@@ -9,10 +9,12 @@ defmodule Elia.LLM.Compaction do
   said or the model concluded under 5%. So the view keeps the spoken record
   verbatim and elides the machinery.
 
-  The single derivation here is used by `Elia.Agent.Session` (which sends it)
-  and by `EliaWeb.ChatLive` (which annotates the transcript with it), so the
-  two can never disagree. Given the history, the chat's state and its options
-  it is deterministic (COMPACT-3).
+  The single derivation here is used by `Elia.Agent.Session` and
+  `Elia.Agent.Loop` (which send it: the session when a turn starts, the loop at
+  every step of the running turn, COMPACT-5 and COMPACT-29) and by
+  `EliaWeb.ChatLive` (which annotates the transcript with it), so they can never
+  disagree. Given the history, the chat's state and its options it is
+  deterministic (COMPACT-3).
 
   ## The state
 
@@ -327,6 +329,42 @@ defmodule Elia.LLM.Compaction do
 
     if not reached? or is_nil(target) do
       fold(messages, state, opts, options)
+    else
+      state
+    end
+  end
+
+  @doc """
+  The mid-turn pass (COMPACT-29): runs the ladder deeper when the request view's
+  estimate exceeds `:trigger`, eliding the cold prefix only.
+
+  Returns the state unchanged when the trigger is unknown or the estimate (the
+  view's tokens plus `:overhead`) is already at or below it. Otherwise it takes
+  the cold region towards `:target` with the same `walk/5` ladder as `compact/3`,
+  so the two paths cannot drift, and returns the state with its advanced
+  `covered` and `level`.
+
+  It never folds a summary: a mid-turn pass is elision only, so no model call
+  happens inside a step, and a ladder that cannot reach the target leaves the
+  pruned view and no error (COMPACT-20). The cold region always ends at or before
+  the current turn's user message (COMPACT-28), so the turn being run is never
+  cold and its calls and results stay intact (COMPACT-5).
+  """
+  @spec trim([Message.t()], t() | map(), map() | keyword()) :: t()
+  def trim(messages, state \\ %__MODULE__{}, opts \\ %{}) do
+    state = from_map(state)
+    opts = Map.new(opts)
+    options = options(Map.merge(state.options, opts))
+    trigger = Map.get(opts, :trigger)
+    overhead = Map.get(opts, :overhead, 0)
+
+    if trigger != nil and view(messages, state, options).tokens + overhead > trigger do
+      # COMPACT-12, COMPACT-28: the cold prefix is everything before the working
+      # set, which never includes the turn being run.
+      state = %{state | covered: max(state.covered, working_set_start(messages, options))}
+      {level, _reached?} = walk(messages, state, options, Map.get(opts, :target), overhead)
+
+      %{state | level: level}
     else
       state
     end

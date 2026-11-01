@@ -5,10 +5,12 @@ defmodule Elia.Agent.Session do
   `Elia.Agent.topic(id)` as `{:agent, id, event}`. History is saved with
   `Elia.Store` after every change and reloaded when the session restarts.
 
-  The session keeps the **full** history (COMPACT-1) and sends the loop the
-  smaller **request view** `Elia.LLM.Compaction` derives from it at the start of
-  a turn (COMPACT-2, COMPACT-5), compacting first when the request exceeds the
-  trigger (COMPACT-6).
+  The session keeps the **full** history (COMPACT-1) and compacts it when a turn
+  starts and the request exceeds the trigger (COMPACT-5, COMPACT-6). The loop is
+  handed that history and derives the smaller **request view** from it at every
+  step with `Elia.LLM.Compaction` (COMPACT-2, COMPACT-29), telling the session
+  when its mid-turn pass advances so the state it owns stays the one the model
+  was sent.
 
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
@@ -39,11 +41,10 @@ defmodule Elia.Agent.Session do
     messages: [],
     status: :idle,
     # The chat's compaction state (COMPACT-24): how far the ladder has gone, the
-    # summary, the ledger, the pins and the chat's own options.
+    # summary, the ledger, the pins and the chat's own options. It is the single
+    # source of truth for the request view; the loop's mid-turn pass reports back
+    # into it (COMPACT-29).
     compaction: %Compaction{},
-    # The request view of the running turn (COMPACT-2): what the loop was given
-    # plus what it appended, so a usage report is estimated over what was sent.
-    view: nil,
     # Tool names the user lets run without asking in this chat (APPR-8).
     auto_approve: MapSet.new(),
     # call_id => :awaiting_approval | :running | :done
@@ -170,14 +171,10 @@ defmodule Elia.Agent.Session do
         else: state
 
     # COMPACT-5: compaction happens at the start of the turn, before the user
-    # message, never mid-turn, so the loop's own calls and results stay intact.
+    # message, and again at every step of the loop below (COMPACT-29).
     state = compact_at_turn_start(state)
 
     state = %{state | turn_start: length(state.messages)} |> append(message)
-    # COMPACT-2: the loop works on the request view; the session keeps the full
-    # history and the loop appends its own messages to this list.
-    view_messages = Compaction.view(state.messages, state.compaction).messages
-    state = %{state | view: view_messages}
     session = self()
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
     # The chat's model selected now is used for the whole turn. An explicit
@@ -190,12 +187,19 @@ defmodule Elia.Agent.Session do
         turn_id: turn_id,
         llm: llm,
         project: project(state),
-        workspace: workspace(state)
+        workspace: workspace(state),
+        # COMPACT-2, COMPACT-29: the loop is given the full history and derives
+        # the request view from it at every step, with the trigger, target and
+        # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
+        compaction: state.compaction,
+        compaction_trigger: auto_trigger(state),
+        compaction_target: target(state),
+        compaction_overhead: overhead(state)
       )
 
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
-        Elia.Agent.Loop.run(session, view_messages, opts)
+        Elia.Agent.Loop.run(session, state.messages, opts)
       end)
 
     {:reply, :ok, set_status(%{state | task: task}, :running)}
@@ -323,7 +327,8 @@ defmodule Elia.Agent.Session do
 
   # Messages a stopped loop sent before it died.
   @impl true
-  def handle_info({tag, _}, %{task: nil} = state) when tag in [:loop_event, :loop_append] do
+  def handle_info({tag, _}, %{task: nil} = state)
+      when tag in [:loop_event, :loop_append, :loop_compaction] do
     {:noreply, state}
   end
 
@@ -345,11 +350,21 @@ defmodule Elia.Agent.Session do
 
   def handle_info({:loop_append, message}, state), do: {:noreply, append(state, message)}
 
+  # COMPACT-29: the loop's mid-turn pass advanced the ladder. The session owns
+  # the state, so it takes the reported one, saves it and broadcasts it, exactly
+  # as an automatic compaction at the turn start does — the transcript's
+  # annotations and the estimate stay honest (COMPACT-24..COMPACT-26) and the
+  # CTX-10 adjustment of the old view is dropped (COMPACT-27).
+  def handle_info({:loop_compaction, compaction}, state) when is_struct(compaction, Compaction) do
+    {:noreply, apply_compaction(state, compaction)}
+  end
+
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
     # CTX-10, COMPACT-26: remember what we estimated for the request view this
-    # step sent, so the context indicator can calibrate against the provider's
-    # figure over the same messages.
-    estimate = context(state, state.view || state.messages).total
+    # step sent — the pure derivation of the history under the chat's compaction
+    # state, which is what the loop sent (COMPACT-2, COMPACT-29) — so the context
+    # indicator can calibrate against the provider's figure over those messages.
+    estimate = context(state, Compaction.view(state.messages, state.compaction).messages).total
 
     usage = Map.put(usage, "estimated_input_tokens", estimate)
 
@@ -488,13 +503,12 @@ defmodule Elia.Agent.Session do
   # the trigger. Without a known window nothing automatic happens (COMPACT-7).
   defp compact_at_turn_start(state) do
     options = Compaction.options(state.compaction.options)
-    window = window(state)
-    trigger = Compaction.trigger(window, options)
+    trigger = trigger(state)
     overhead = overhead(state)
     tokens = Compaction.view(state.messages, state.compaction).tokens + overhead
 
     if options.auto and trigger != nil and tokens > trigger do
-      compact(state, target: Compaction.target(window, options), overhead: overhead)
+      compact(state, target: target(state), overhead: overhead)
     else
       state
     end
@@ -510,17 +524,38 @@ defmodule Elia.Agent.Session do
     summarizer = Keyword.get(state.loop_opts, :summarizer, Compaction.default_summarizer(llm))
 
     opts = opts |> Map.new() |> Map.merge(%{summarizer: summarizer, llm: llm})
-    compaction = Compaction.compact(state.messages, before, opts)
-    state = %{state | compaction: compaction}
+    apply_compaction(state, Compaction.compact(state.messages, before, opts))
+  end
 
-    if compaction == before do
-      state
-    else
-      # COMPACT-27: the adjustment described the old view, so it is cleared.
-      state = state |> drop_estimate() |> save()
-      broadcast(state, {:compaction, compaction})
-      state
-    end
+  # The compaction state this chat's request view follows, taken from either path
+  # that produces one. Nothing is saved or broadcast when it did not change;
+  # otherwise the `{:compaction, state}` broadcast lets a UI redraw its
+  # annotations and its estimate. `Elia.Agent.Loop` reports the mid-turn pass's
+  # state the same way (COMPACT-29), so the session stays the single source of
+  # truth.
+  defp apply_compaction(%{compaction: compaction} = state, compaction), do: state
+
+  defp apply_compaction(state, compaction) do
+    # COMPACT-27: the adjustment described the old view, so it is cleared.
+    state = %{state | compaction: compaction} |> drop_estimate() |> save()
+    broadcast(state, {:compaction, compaction})
+    state
+  end
+
+  # The trigger of this chat's request, or nil without a known window
+  # (COMPACT-6, COMPACT-7).
+  defp trigger(state),
+    do: Compaction.trigger(window(state), Compaction.options(state.compaction.options))
+
+  # The target to reduce to when the trigger is exceeded (COMPACT-8).
+  defp target(state),
+    do: Compaction.target(window(state), Compaction.options(state.compaction.options))
+
+  # COMPACT-5, COMPACT-9, COMPACT-29: the trigger for the loop's mid-turn pass.
+  # Nothing automatic happens there when automatic compaction is off for this
+  # chat, or when the window is unknown.
+  defp auto_trigger(state) do
+    if Compaction.options(state.compaction.options).auto, do: trigger(state), else: nil
   end
 
   # COMPACT-27: a different request view makes the CTX-10 adjustment (which
@@ -581,8 +616,6 @@ defmodule Elia.Agent.Session do
     broadcast(state, {:message, message})
 
     state = %{state | messages: state.messages ++ [message]}
-    # The running turn's request view grows with it (COMPACT-2).
-    state = if is_list(state.view), do: %{state | view: state.view ++ [message]}, else: state
     save(state)
   end
 
@@ -627,7 +660,7 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil, view: nil}, :idle)
+  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil}, :idle)
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})

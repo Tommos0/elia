@@ -715,6 +715,120 @@ defmodule Elia.AgentTest do
     assert Enum.slice(snapshot.messages, 0, length(messages)) == messages
   end
 
+  # A skill with one tool that returns a canned output, so a step's own tool
+  # result is known exactly and no real tool runs (LOOP-16).
+  defp fake_skill(output) do
+    [
+      %Elia.Skill{
+        name: "fake",
+        description: "Says what it was given",
+        instructions: "Use `fake_tool` to get the canned output.",
+        tools: [
+          %Elia.Tool{
+            name: "fake_tool",
+            description: "Returns a canned output",
+            input_schema: %{"type" => "object", "properties" => %{}},
+            run: fn _input -> {:ok, output} end
+          }
+        ]
+      }
+    ]
+  end
+
+  # COMPACT-1, COMPACT-5, COMPACT-29
+  test "a long turn compacts mid-turn, sending a smaller request each step" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # One turn of work in the history, and a current turn that will grow.
+    messages = big_history(1)
+    :ok = Elia.Store.save(id, messages)
+    turn_tokens = Elia.LLM.Compaction.tokens(messages)
+    carry_on = Message.user("carry on")
+    user_tokens = Elia.LLM.Compaction.tokens([carry_on])
+
+    # At the turn start that turn and the new user message both fit the working
+    # set; the step's own tool output then pushes the older turn out of it
+    # (COMPACT-28), so it becomes cold and is elided.
+    output = String.duplicate("out ", 50)
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set_tokens: turn_tokens + user_tokens + 1},
+      loop_opts: [llm: %{provider: FakeLLM}, skills: fake_skill(output)]
+    )
+
+    test_pid = self()
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "fake_tool", %{})]))
+
+    # The step after the tool result blocks, so the turn is provably still
+    # running when the mid-turn compaction is asserted on.
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:second_request, self()})
+
+      receive do
+        :go -> :ok
+      end
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("done")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "carry on")
+
+    # COMPACT-29: the state the loop advanced to is reported, saved and
+    # broadcast, and it arrives before the turn ends.
+    assert_receive {:second_request, loop}, 5000
+    assert_receive {:agent, ^id, {:compaction, %{level: 3, covered: 4}}}, 5000
+    assert Agent.snapshot(id).status == :running
+
+    send(loop, :go)
+    await_status(id, :idle)
+
+    assert %{level: 3, covered: 4} = Elia.Store.load_compaction(id)
+
+    [first, second] = FakeLLM.requests()
+
+    # The request view shrinks as the turn grows: the older turn aged out of the
+    # working set and was elided, while the step's own output was added.
+    assert Elia.LLM.Compaction.tokens(second.messages) <
+             Elia.LLM.Compaction.tokens(first.messages)
+
+    assert Enum.any?(second.messages, &(&1.meta[:compaction] == :marker))
+    refute Enum.any?(second.messages, &(Message.text_content(&1) =~ "done 1"))
+
+    # COMPACT-29: every message of the turn being run is still sent in full.
+    assert Enum.any?(second.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c1"}]} ->
+               content == output
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(second.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c1"))
+
+             _ ->
+               false
+           end)
+
+    # The request the step sent ends with that turn's own tool result.
+    assert %Message{role: :tool, content: [%{tool_call_id: "c1", content: ^output}]} =
+             List.last(second.messages)
+
+    # COMPACT-1: the session's history is untouched and complete.
+    snapshot = Agent.snapshot(id)
+    assert Enum.slice(snapshot.messages, 0, length(messages)) == messages
+    assert length(snapshot.messages) == length(messages) + 4
+  end
+
   # COMPACT-7
   test "no window means no automatic compaction" do
     id = Agent.new_id()

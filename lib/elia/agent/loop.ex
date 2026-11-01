@@ -13,15 +13,25 @@ defmodule Elia.Agent.Loop do
     * `{:loop_tool_status, call_id, status}` - `:running` or `:done`
     * `{:loop_await_approval, task_pid, calls}` - reply with
       `{:approval_decisions, %{call_id => :approve | :deny}}`
+    * `{:loop_compaction, state}` - the compaction state advanced mid-turn,
+      after the ladder elided more of the cold prefix (COMPACT-29)
+
+  The loop is given the chat's **full** history and keeps it growing as the turn
+  runs; the messages it *sends* are the request view of that history under the
+  chat's compaction state, derived again at every step (COMPACT-2, COMPACT-5,
+  COMPACT-29), so the view can shrink while the history does not.
 
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
   function returning one, instead of the project's), `:max_steps` (default 50),
   `:verify` (default `true`), `:llm` (extra request fields), `:project` (the
-  chat's project) and `:workspace` (the chat's workspace root: its own git
-  worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12).
+  chat's project), `:workspace` (the chat's workspace root: its own git
+  worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12)
+  and, for the mid-turn pass, `:compaction` (the chat's
+  `t:Elia.LLM.Compaction.t/0`, `nil` to send the history as it is),
+  `:compaction_trigger`, `:compaction_target` and `:compaction_overhead`.
   """
 
-  alias Elia.LLM.Message
+  alias Elia.LLM.{Compaction, Message}
   alias Elia.Tool
 
   @max_steps 50
@@ -40,6 +50,12 @@ defmodule Elia.Agent.Loop do
       max_steps: Keyword.get(opts, :max_steps, @max_steps),
       verify: Keyword.get(opts, :verify, true),
       verify_failures: 0,
+      # COMPACT-29: the chat's compaction state and the trigger, target and
+      # overhead of the mid-turn pass (COMPACT-6, COMPACT-8, CTX-1).
+      compaction: Keyword.get(opts, :compaction),
+      compaction_trigger: Keyword.get(opts, :compaction_trigger),
+      compaction_target: Keyword.get(opts, :compaction_target),
+      compaction_overhead: Keyword.get(opts, :compaction_overhead, 0),
       workspace: workspace,
       project: project,
       tool_ctx: %{
@@ -65,12 +81,17 @@ defmodule Elia.Agent.Loop do
     skills = Elia.Skills.resolve(ctx.skills, ctx.project)
     tools = Map.new(Elia.Skills.tools(skills), &{&1.name, &1})
 
+    # COMPACT-29: the request view is derived fresh every step, from the full
+    # history and the chat's compaction state (COMPACT-2, COMPACT-3), and the
+    # ladder may run deeper mid-turn.
+    ctx = trim(ctx, history)
+
     request =
       Map.merge(ctx.llm_opts, %{
         system:
           Elia.Skills.system_prompt(skills, Elia.Skills.project_instructions(ctx.workspace)),
         tools: Enum.map(Map.values(tools), &Map.take(&1, [:name, :description, :input_schema])),
-        messages: history
+        messages: request_messages(ctx, history)
       })
 
     case Elia.LLM.stream(request, &send(ctx.session, {:loop_event, &1})) do
@@ -106,6 +127,38 @@ defmodule Elia.Agent.Loop do
         end
     end
   end
+
+  # COMPACT-29: the mid-turn pass. The ladder may run deeper (COMPACT-14..16)
+  # towards the target, eliding the cold prefix only — never the turn being run
+  # and never a summary (COMPACT-5). Nothing happens under the trigger. When the
+  # state advances, the session — the single source of truth — hears about it,
+  # so it can save it and broadcast the new annotations and estimate
+  # (COMPACT-24..COMPACT-27).
+  defp trim(%{compaction: nil} = ctx, _history), do: ctx
+
+  defp trim(ctx, history) do
+    state =
+      Compaction.trim(history, ctx.compaction,
+        trigger: ctx.compaction_trigger,
+        target: ctx.compaction_target,
+        overhead: ctx.compaction_overhead
+      )
+
+    if state == ctx.compaction do
+      ctx
+    else
+      send(ctx.session, {:loop_compaction, state})
+      %{ctx | compaction: state}
+    end
+  end
+
+  # COMPACT-2: the pure derivation of what the model is sent, from the full
+  # history and the chat's compaction state. A loop without a compaction state
+  # sends the history as it is.
+  defp request_messages(%{compaction: nil}, history), do: history
+
+  defp request_messages(ctx, history),
+    do: Compaction.view(history, ctx.compaction).messages
 
   defp finish(%{verify: false}, _history, _step), do: :done
 
