@@ -28,10 +28,11 @@ refused.
   | --- | --- |
   | `shell` | always |
   | folder skill script tools | always |
+  | `spawn_task`, `reset_task` | always (SUBTASK-2, SUBTASK-22) |
   | `read_file` | only outside the workspace |
   | `write_file`, `edit_file` | see FILE-5 |
   | `hot_reload`, `rollback` | always |
-  | `reload_skills`, `run_tests`, `list_checkpoints`, `update_ledger` | never |
+  | `reload_skills`, `run_tests`, `list_checkpoints`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
 
 ### Auto-approval
 

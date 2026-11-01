@@ -41,7 +41,7 @@ reopened.
   chats by it, newest first (replacing the modification-time order of
   STORE-6; `updated_at` is still returned).
 - **STORE-13** Loading a chat replaces invalid UTF-8 in its text and tool
-  results as in LLM-28, so a chat saved with such bytes can still be opened.
+  results as in LLM-32, so a chat saved with such bytes can still be opened.
   Provider raw blocks stay exact (LLM-6).
 
 - **STORE-14** `save/3` takes `auto_approve:` (a list of tool-name strings) and

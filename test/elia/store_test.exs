@@ -129,7 +129,7 @@ defmodule Elia.StoreTest do
     assert %{updated_at: %DateTime{}} = listed(older)
   end
 
-  # STORE-13: a chat saved before LLM-28 still holds raw bytes.
+  # STORE-13: a chat saved before LLM-32 still holds raw bytes.
   test "loading replaces invalid UTF-8 but keeps raw blocks exact" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)

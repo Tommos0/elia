@@ -30,7 +30,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-6** When a turn ends (status becomes idle), the sidebar and page title
   refresh.
 - **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
-  list that starts a fresh chat in the default project (PROJ-26).
+  list that starts a fresh chat in the open chat's project (PROJ-26), which is
+  the default project when there is none (PROJ-8).
 - **UI-33** Each sidebar chat link has a `title` attribute with the chat's
   description (STORE-10), so hovering shows the full text (up to 1000
   characters) rather than the truncated line.
@@ -43,6 +44,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
   the left of "Sessions". It goes where the logo at the top left goes: `/`,
   which opens a fresh chat (UI-1).
+- **UI-36** On small screens the chat list is a drawer: the header toggle
+  button (`#chats-toggle`) opens and closes it, its `aria-expanded` follows,
+  the drawer starts closed, and a backdrop (`#chats-backdrop`) or the Escape
+  key closes it. Neither the toggle nor the backdrop exists from the `lg`
+  breakpoint up, where the list (and the UI-35 drag handle) is always visible.
 - **UI-37** The header never overflows horizontally on narrow screens. Below
   the `sm` breakpoint the header buttons show only their icon (the label stays
   in the DOM for screen readers and as the link's `title`), with tighter
@@ -172,9 +178,10 @@ by hand.
 A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
 so it opens at `/c/<child id>` like any chat.
 
-- ~~**UI-31** A `{:subtask, …}` agent event is accepted and ignored by the chat
-  page.~~ Removed: the ID collided with the "New chat" button requirement above
-  (the phase 1 spec reused it); replaced by UI-43 and UI-44.
+- ~~**UI-55** A `{:subtask, …}` agent event is accepted and ignored by the chat
+  page.~~ Removed: replaced by UI-43 and UI-44. Renumbered from UI-31, which
+  the active "New chat" button requirement also used (the phase 1 spec reused
+  the ID), so `UI-31` now names one thing only.
 - **UI-43** A `spawn_task` call renders as a task card: the tool card's summary
   is the task `title` instead of the raw JSON input (UI-15), and a "Brief"
   section (`#task-brief-<call_id>`) shows the `brief`, expanded while the call

@@ -24,7 +24,8 @@ in a class that decides what the agent's tools may do with it.
 - **WS-4** The workspace root is a project's folder (PROJ-12), or Elia's own
   root — `config :elia, :workspace`, or the current directory if unset — for
   Elia's own project. The skills folder is `<root>/skills` and harness data is
-  always in `<Elia root>/.elia` (PROJ-13).
+  always in `.elia` under Elia's live tree (`Elia.Workspace.runtime_root/0`,
+  which defaults to Elia's root; PROJ-13, DEPLOY-2).
 
 ## Implementation
 

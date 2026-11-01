@@ -39,7 +39,7 @@ defmodule Elia.LLM.Message do
   def text(text), do: %{type: :text, text: text}
 
   def tool_result(tool_call_id, content, is_error \\ false) do
-    # LLM-28: tools can return raw bytes, which can't be JSON-encoded.
+    # LLM-32: tools can return raw bytes, which can't be JSON-encoded.
     %{
       type: :tool_result,
       tool_call_id: tool_call_id,

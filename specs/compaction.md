@@ -38,9 +38,10 @@ are not.
   (STORE) or from the transcript. The conversation the user reads, reloads and
   audits is always complete.
 - **COMPACT-2** What the model is sent is a **request view** derived from the
-  full history. A single pure function derives it, used by both
-  `Elia.Agent.Loop` (which sends it) and `EliaWeb.ChatLive` (which annotates the
-  transcript with it), so the two can never disagree.
+  full history. A single pure function derives it; the session derives it when
+  a turn starts (SESS-24), and both `Elia.Agent.Loop` (which sends it) and
+  `EliaWeb.ChatLive` (which annotates the transcript with it) use the same
+  function, so the two can never disagree.
 - **COMPACT-3** Deriving the request view is deterministic given the history,
   the chat's compaction state (COMPACT-22) and its options. Given the same
   inputs it yields the same view.

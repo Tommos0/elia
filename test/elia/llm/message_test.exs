@@ -3,7 +3,7 @@ defmodule Elia.LLM.MessageTest do
 
   alias Elia.LLM.Message
 
-  # LLM-28
+  # LLM-32
   test "tool results and harness messages can always be JSON-encoded" do
     binary = <<"grep: x.term: binary file matches", 0x83, "é">>
 

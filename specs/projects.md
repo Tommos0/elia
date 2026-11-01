@@ -69,11 +69,12 @@ kept apart from the ones that apply in every project.
 ### Instructions and skills
 
 - **PROJ-15** The system prompt of a chat in project P is the base prompt, then
-  one section per skill, then P's `AGENTS.md` when it has one (SKILL-10–SKILL-13
-  apply to P's folder instead of Elia's root).
+  P's `AGENTS.md` when it has one, then one section per skill (SKILL-5;
+  SKILL-10–SKILL-13 apply to P's folder instead of Elia's root).
 - **PROJ-16** The `harness` skill keeps the instructions that apply in every
-  project — prefer a folder skill over changing code, and reload skills — with
-  the tools `reload_skills` and `run_tests`.
+  project — prefer a folder skill over changing code, reload skills, and run
+  the tests before finishing — with the tools `reload_skills`, `run_tests` and
+  `update_ledger` (SKILL-7, COMPACT-22).
 - **PROJ-17** A built-in `self-modification` skill carries what only applies to
   Elia's own code: changing Elixir files, checkpoints, the spec-driven
   workflow and `hot_reload`, with the tools `hot_reload`,
@@ -110,7 +111,8 @@ kept apart from the ones that apply in every project.
 - **PROJ-24** The chat sidebar groups chats by project: a header per project
   (`#project-header-<id>`) with the project's name and a "New chat" button
   (`#new-chat-<id>`) starting a chat in it (PROJ-26), and that project's chats
-  below, newest first (UI-4, UI-45). Projects with no chats still show their
+  below, newest first at the top level (UI-4), with a task chat nested under
+  its parent, oldest first (UI-45). Projects with no chats still show their
   header.
 - **PROJ-25** The header on every page has a "Projects" link (`#projects-link`)
   next to "Chats".
