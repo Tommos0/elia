@@ -3,9 +3,10 @@ defmodule Elia.Explorer do
   Read-only access to the workspace for the file explorer page
   (`specs/file-explorer.md`).
 
-  Paths are relative to `Elia.Workspace.root/0`. Anything outside the
-  workspace, in a protected path (`.git`, `_build`, `deps`, `.elia`) or
-  reached through a symlink is refused with `{:error, :forbidden}`.
+  Paths are relative to a project's folder: Elia's own root by default, or the
+  folder of the project being browsed (EXPL-15). Anything outside that folder,
+  in a protected path (`.git`, `_build`, `deps`, `.elia`) or reached through a
+  symlink is refused with `{:error, :forbidden}`.
   """
 
   alias Elia.Workspace
@@ -24,24 +25,24 @@ defmodule Elia.Explorer do
 
   def max_bytes, do: @max_bytes
 
-  @doc "Lists the directory at `rel` (\"\" is the workspace root)."
-  @spec list(String.t()) :: {:ok, [entry()]} | {:error, error()}
-  def list(rel) do
-    with {:ok, abs} <- safe_path(rel),
+  @doc "Lists the directory at `rel` (\"\" is the browsed project's folder) under `root` (EXPL-15)."
+  @spec list(String.t(), String.t()) :: {:ok, [entry()]} | {:error, error()}
+  def list(rel, root \\ Workspace.root()) do
+    with {:ok, abs} <- safe_path(rel, root),
          {:ok, :dir} <- type_of(abs, :not_a_directory),
          {:ok, names} <- File.ls(abs) |> posix() do
       entries =
         names
-        |> Enum.map(&entry(abs, &1))
-        |> Enum.reject(&(Workspace.classify(Path.join(abs, &1.name)) == :protected))
+        |> Enum.map(&entry(abs, root, &1))
+        |> Enum.reject(&(Workspace.classify(Path.join(abs, &1.name), root) == :protected))
         |> Enum.sort_by(&{&1.type != :dir, String.downcase(&1.name), &1.name})
 
       {:ok, entries}
     end
   end
 
-  @doc "Reads the text file at `rel`."
-  @spec read(String.t()) ::
+  @doc "Reads the text file at `rel` under `root` (EXPL-15)."
+  @spec read(String.t(), String.t()) ::
           {:ok,
            %{
              path: String.t(),
@@ -50,8 +51,8 @@ defmodule Elia.Explorer do
              truncated?: boolean()
            }}
           | {:error, error() | :binary}
-  def read(rel) do
-    with {:ok, abs} <- safe_path(rel),
+  def read(rel, root \\ Workspace.root()) do
+    with {:ok, abs} <- safe_path(rel, root),
          {:ok, :file} <- type_of(abs, :directory),
          {:ok, size} <- size(abs),
          {:ok, data} <- read_head(abs) do
@@ -61,7 +62,12 @@ defmodule Elia.Explorer do
       case text(data, truncated?) do
         {:ok, content} ->
           {:ok,
-           %{path: Workspace.relative(abs), size: size, content: content, truncated?: truncated?}}
+           %{
+             path: Workspace.relative(abs, root),
+             size: size,
+             content: content,
+             truncated?: truncated?
+           }}
 
         :error ->
           {:error, :binary}
@@ -129,15 +135,15 @@ defmodule Elia.Explorer do
   end
 
   @doc """
-  Expands `rel` against the workspace root and checks it may be browsed.
-  Returns the absolute path.
+  Expands `rel` against `root` (a project's folder) and checks it may be
+  browsed. Returns the absolute path (EXPL-15).
   """
-  @spec safe_path(String.t()) :: {:ok, String.t()} | {:error, :forbidden}
-  def safe_path(rel) when is_binary(rel) do
+  @spec safe_path(String.t(), String.t()) :: {:ok, String.t()} | {:error, :forbidden}
+  def safe_path(rel, root \\ Workspace.root()) when is_binary(rel) do
     # EXPL-1
     with false <- String.contains?(rel, <<0>>),
-         {abs, class} when class in [:core, :extension] <- Workspace.resolve(rel),
-         false <- symlink_on_path?(abs) do
+         {abs, class} when class in [:core, :extension] <- Workspace.resolve(rel, root),
+         false <- symlink_on_path?(abs, root) do
       {:ok, abs}
     else
       _ -> {:error, :forbidden}
@@ -145,9 +151,7 @@ defmodule Elia.Explorer do
   end
 
   # EXPL-2
-  defp symlink_on_path?(abs) do
-    root = Workspace.root()
-
+  defp symlink_on_path?(abs, root) do
     abs
     |> Path.relative_to(root)
     |> Path.split()
@@ -224,7 +228,7 @@ defmodule Elia.Explorer do
     if String.valid?(head), do: {:ok, head}, else: trim_partial(data, n - 1)
   end
 
-  defp entry(dir, name) do
+  defp entry(dir, root, name) do
     abs = Path.join(dir, name)
 
     {type, size} =
@@ -235,7 +239,7 @@ defmodule Elia.Explorer do
         _ -> {:other, nil}
       end
 
-    %{name: name, path: Workspace.relative(abs), type: type, size: size}
+    %{name: name, path: Workspace.relative(abs, root), type: type, size: size}
   end
 
   defp posix(result, fun \\ & &1)

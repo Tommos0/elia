@@ -6,14 +6,33 @@ defmodule EliaWeb.ChatLive do
   alias Elia.LLM.{Context, Message}
 
   @impl true
+  # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
+  def mount(%{"project_id" => project_id}, _session, %{assigns: %{live_action: :new}} = socket) do
+    case Elia.Projects.get(project_id) do
+      nil -> {:ok, push_navigate(socket, to: ~p"/")}
+      project -> start_new_chat(socket, project)
+    end
+  end
+
+  # UI-31, PROJ-26: `/` (and the sidebar's "New chat") starts a chat in the
+  # default project (PROJ-8), which is the open chat's project when there is one.
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket) do
-    {:ok, push_navigate(socket, to: ~p"/c/#{Agent.new_id()}")}
+    start_new_chat(socket, Elia.Projects.default())
   end
 
   def mount(%{"id" => id}, _session, socket) do
     if Elia.Store.valid_id?(id),
       do: mount_chat(id, socket),
       else: {:ok, push_navigate(socket, to: ~p"/")}
+  end
+
+  # PROJ-11: starting a chat in a project makes it the default, and the session
+  # carries the project so the chat belongs to it from its first message.
+  defp start_new_chat(socket, project) do
+    :ok = Elia.Projects.set_default(project.id)
+    id = Agent.new_id()
+    {:ok, _pid} = Agent.ensure_started(id, project: project)
+    {:ok, push_navigate(socket, to: ~p"/c/#{id}")}
   end
 
   defp mount_chat(id, socket) do
@@ -27,11 +46,14 @@ defmodule EliaWeb.ChatLive do
     end
 
     snapshot = Agent.snapshot(id)
+    project = snapshot.project
+    {skills, _errors} = Elia.Skills.for_project(project)
 
     socket =
       socket
       |> assign(
         session_id: id,
+        project: project,
         status: snapshot.status,
         tool_status: snapshot.tool_status,
         last_usage: snapshot.last_usage,
@@ -42,6 +64,7 @@ defmodule EliaWeb.ChatLive do
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
         chats: Elia.Store.list(30),
+        projects: Elia.Projects.list(),
         # UI-47: chats with a tool call awaiting approval, kept live.
         awaiting: Agent.awaiting_approval(),
         # UI-44: spawn_task call id => %{child_id, status}.
@@ -60,10 +83,17 @@ defmodule EliaWeb.ChatLive do
         catalogs: %{},
         auto_approve: snapshot.auto_approve,
         auto_approve_open: false,
-        approvable_tools: approvable_tools(Elia.Skills.current())
+        approvable_tools: approvable_tools(skills)
       )
       |> stream(:models, [])
-      |> put_context(Context.new(snapshot.messages) |> Context.calibrate(snapshot.last_usage))
+      |> put_context(
+        Context.new(
+          snapshot.messages,
+          skills,
+          Elia.Skills.project_instructions(project.folder)
+        )
+        |> Context.calibrate(snapshot.last_usage)
+      )
       |> load_messages(snapshot.messages)
 
     {:ok, socket}
@@ -116,26 +146,46 @@ defmodule EliaWeb.ChatLive do
             <.icon name="hero-plus" class="size-4" /> New chat
           </.link>
           <nav id="chat-list" class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-            <%= for {chat, children} <- chat_tree(@chats) do %>
-              <.chat_row
-                chat={chat}
-                active={chat.id == @session_id}
-                now={@now}
-                awaiting={chat.id in @awaiting}
-              />
+            <%!-- UI-4, PROJ-24: chats grouped by project, newest first --%>
+            <%= for group <- project_groups(@projects, @chats) do %>
               <div
-                :if={children != []}
-                id={"chat-children-#{chat.id}"}
-                class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
+                id={"project-header-#{group.project.id}"}
+                class="flex items-center gap-1 px-3 pt-3 pb-1"
               >
-                <.chat_row
-                  :for={child <- children}
-                  chat={child}
-                  active={child.id == @session_id}
-                  now={@now}
-                  awaiting={child.id in @awaiting}
-                />
+                <.icon name="hero-rectangle-stack" class="size-3.5 shrink-0 text-base-content/40" />
+                <span class="min-w-0 flex-1 truncate text-xs font-medium uppercase tracking-wider text-base-content/50">
+                  {group.project.name}
+                </span>
+                <.link
+                  navigate={~p"/p/#{group.project.id}/new"}
+                  id={"new-chat-#{group.project.id}"}
+                  title={"New chat in #{group.project.name}"}
+                  class="rounded-md p-1 text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
+                >
+                  <.icon name="hero-plus" class="size-3.5" />
+                </.link>
               </div>
+              <%= for {chat, children} <- group.tree do %>
+                <.chat_row
+                  chat={chat}
+                  active={chat.id == @session_id}
+                  now={@now}
+                  awaiting={chat.id in @awaiting}
+                />
+                <div
+                  :if={children != []}
+                  id={"chat-children-#{chat.id}"}
+                  class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
+                >
+                  <.chat_row
+                    :for={child <- children}
+                    chat={child}
+                    active={child.id == @session_id}
+                    now={@now}
+                    awaiting={child.id in @awaiting}
+                  />
+                </div>
+              <% end %>
             <% end %>
             <p :if={@chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
           </nav>
@@ -1330,10 +1380,14 @@ defmodule EliaWeb.ChatLive do
   end
 
   @impl true
+  # PROJ-24: the popover and context follow the chat's project, so a reload
+  # re-resolves that project's skills (the broadcast carries Elia's own).
   def handle_info({:skills_reloaded, skills}, socket) do
+    {skills, instructions} = project_skills(socket.assigns.project, skills)
+
     socket
     |> assign(approvable_tools: approvable_tools(skills))
-    |> put_context(Context.put_skills(socket.assigns.context, skills))
+    |> put_context(Context.put_skills(socket.assigns.context, skills, instructions))
     |> noreply()
   end
 
@@ -1360,6 +1414,16 @@ defmodule EliaWeb.ChatLive do
   def handle_info(:tick_now, socket) do
     Process.send_after(self(), :tick_now, 60_000)
     {:noreply, assign(socket, now: DateTime.utc_now())}
+  end
+
+  # PROJ-24: a skills reload carries Elia's own skills; a chat in another project
+  # re-resolves that project's skills instead.
+  defp project_skills(%{harness?: true} = project, broadcast_skills),
+    do: {broadcast_skills, Elia.Skills.project_instructions(project.folder)}
+
+  defp project_skills(project, _broadcast_skills) do
+    {skills, _errors} = Elia.Skills.for_project(project)
+    {skills, Elia.Skills.project_instructions(project.folder)}
   end
 
   # The estimate is folded in per change, never rebuilt on render (CTX-8).
@@ -1501,6 +1565,17 @@ defmodule EliaWeb.ChatLive do
     {nested, top} = Enum.split_with(chats, &(Map.get(&1, :parent_id) in ids))
     by_parent = nested |> Enum.reverse() |> Enum.group_by(& &1.parent_id)
     Enum.map(top, &{&1, Map.get(by_parent, &1.id, [])})
+  end
+
+  # PROJ-24: the listed chats grouped by project, each project with its nested
+  # tree of chats. A chat without a project id belongs to Elia's own project
+  # (PROJ-9); projects without chats still get an entry (an empty tree).
+  defp project_groups(projects, chats) do
+    by_project = Enum.group_by(chats, &(&1.project_id || "harness"))
+
+    Enum.map(projects, fn project ->
+      %{project: project, tree: chat_tree(Map.get(by_project, project.id, []))}
+    end)
   end
 
   ## Transcript items

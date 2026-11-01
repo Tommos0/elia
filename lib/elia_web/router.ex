@@ -20,6 +20,8 @@ defmodule EliaWeb.Router do
     live_session :default, on_mount: EliaWeb.ClientTracker do
       live "/", ChatLive, :new
       live "/c/:id", ChatLive, :show
+      live "/p/:project_id/new", ChatLive, :new
+      live "/projects", ProjectsLive
       live "/sessions", SessionsLive
       live "/system", SystemLive
       live "/files", FilesLive

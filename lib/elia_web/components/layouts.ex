@@ -45,6 +45,12 @@ defmodule EliaWeb.Layouts do
         </.link>
         <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
           <.nav_link to={~p"/"} id="chats-link" icon="hero-chat-bubble-left-right" label="Chats" />
+          <.nav_link
+            to={~p"/projects"}
+            id="projects-link"
+            icon="hero-rectangle-stack"
+            label="Projects"
+          />
           <.nav_link to={~p"/files"} id="files-link" icon="hero-folder" label="Files" />
           <.nav_link to={~p"/sessions"} id="sessions-link" icon="hero-signal" label="Sessions" />
           <.nav_link to={~p"/system"} id="system-link" icon="hero-chart-bar" label="System" />

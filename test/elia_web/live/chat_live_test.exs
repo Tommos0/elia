@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, FakeLLM}
+  alias Elia.{Agent, FakeLLM, Projects, Workspace}
   alias Elia.LLM.Message
 
   setup do
@@ -460,5 +460,99 @@ defmodule EliaWeb.ChatLiveTest do
 
     send(view.pid, {:skills_reloaded, []})
     refute has_element?(view, "#context-breakdown li", "Skill:")
+  end
+
+  # PROJ-25: the header carries a Projects link next to Chats.
+  test "the header has a Projects link next to Chats", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "header #projects-link[href='/projects'][title='Projects']")
+    assert has_element?(view, "header #projects-link span.sr-only.sm\\:not-sr-only")
+
+    assert before?(html, "id=\"chats-link\"", "id=\"projects-link\"")
+  end
+
+  # PROJ-24: the sidebar groups chats under a header per project, with a
+  # per-project new chat button; a project without chats still has a header.
+  test "sidebar groups chats by project", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-group")
+    File.mkdir_p!(root)
+    {:ok, project} = Projects.create("Grouped", root)
+    {:ok, empty} = Projects.create("No chats", root)
+
+    project_chat = Agent.new_id()
+    harness_chat = Agent.new_id()
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Elia.Store.delete(project_chat)
+      Elia.Store.delete(harness_chat)
+      Projects.delete(project.id)
+      Projects.delete(empty.id)
+    end)
+
+    :ok = Elia.Store.save(project_chat, [Message.user("in project")], project: project.id)
+    :ok = Elia.Store.save(harness_chat, [Message.user("in harness")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#project-header-harness", "Elia")
+    assert has_element?(view, "#project-header-#{empty.id}", "No chats")
+    assert has_element?(view, "#project-header-#{project.id}", "Grouped")
+    assert has_element?(view, "#new-chat-#{project.id}[href='/p/#{project.id}/new']")
+    assert has_element?(view, "#new-chat-harness[href='/p/harness/new']")
+
+    html = render(view)
+    # Each chat sits under its own project's header.
+    assert before?(html, "project-header-harness", "chat-link-#{harness_chat}")
+    assert before?(html, "chat-link-#{harness_chat}", "project-header-#{project.id}")
+    assert before?(html, "project-header-#{project.id}", "chat-link-#{project_chat}")
+  end
+
+  # PROJ-26: /p/<id>/new starts a chat in that project and makes it the default.
+  test "starting a chat in a project", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-new")
+    File.mkdir_p!(root)
+    {:ok, project} = Projects.create("New one", root)
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Projects.delete(project.id)
+      Elia.Settings.delete(:default_project)
+    end)
+
+    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/p/#{project.id}/new")
+
+    assert Agent.snapshot(id).project.id == project.id
+    assert Projects.default().id == project.id
+  end
+
+  # PROJ-26: an unknown project id redirects home.
+  test "starting a chat with an unknown project id redirects home", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/p/nope/new")
+  end
+
+  # PROJ-26, UI-31: "/" starts a chat in the default project.
+  test "a new chat starts in the default project", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-default")
+    File.mkdir_p!(root)
+    {:ok, project} = Projects.create("Default one", root)
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Projects.delete(project.id)
+      Elia.Settings.delete(:default_project)
+    end)
+
+    Elia.Projects.set_default(project.id)
+
+    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+    assert Agent.snapshot(id).project.id == project.id
+  end
+
+  # True when `first` appears before `second` in `html`.
+  defp before?(html, first, second) do
+    [left | _rest] = String.split(html, second)
+    left =~ first
   end
 end

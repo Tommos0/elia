@@ -14,20 +14,22 @@ defmodule EliaWeb.FilesLive do
     {:ok, assign(socket, page_title: "Files")}
   end
 
-  # EXPL-6, EXPL-9
+  # EXPL-6, EXPL-9, EXPL-15
   @impl true
   def handle_params(params, _uri, socket) do
-    path = normalize(params["path"])
+    project = project(params["project"])
+    root = project.folder
+    path = normalize(root, params["path"])
 
     {dir, file, error} =
-      case Explorer.list(path) do
+      case Explorer.list(path, root) do
         {:ok, _} -> {path, nil, nil}
         {:error, :not_a_directory} -> {parent(path), path, nil}
         {:error, reason} -> {"", nil, reason}
       end
 
     {viewer, error} =
-      case file && Explorer.read(file) do
+      case file && Explorer.read(file, root) do
         nil -> {nil, error}
         {:ok, data} -> {data, nil}
         {:error, :binary} -> {{:binary, file}, nil}
@@ -35,15 +37,17 @@ defmodule EliaWeb.FilesLive do
       end
 
     # The listing is read again after the viewer so that a vanished directory
-    # falls back to the root instead of crashing.
+    # falls back to the project root instead of crashing.
     {dir, entries} =
-      case Explorer.list(dir) do
+      case Explorer.list(dir, root) do
         {:ok, entries} -> {dir, entries}
-        {:error, _} -> {"", elem(Explorer.list(""), 1)}
+        {:error, _} -> {"", elem(Explorer.list("", root), 1)}
       end
 
     {:noreply,
      assign(socket,
+       project: project,
+       projects: Elia.Projects.list(),
        dir: dir,
        entries: entries,
        selected: file,
@@ -53,19 +57,44 @@ defmodule EliaWeb.FilesLive do
      )}
   end
 
-  defp normalize(nil), do: ""
+  # EXPL-15: a missing or unknown project id browses Elia's own project.
+  defp project(nil), do: Elia.Projects.harness()
+  defp project(id), do: Elia.Projects.get(id) || Elia.Projects.harness()
 
-  defp normalize(path) when is_binary(path) do
-    case Explorer.safe_path(path) do
-      {:ok, abs} -> relative(abs)
+  # EXPL-16: switch the browsed project, keeping the current path when it
+  # exists in the new project (it falls back to that project's root otherwise).
+  @impl true
+  def handle_event("pick_project", %{"project" => id}, socket) do
+    project = Elia.Projects.get(id) || Elia.Projects.harness()
+    path = socket.assigns.selected || socket.assigns.dir
+    path = if exists?(project, path), do: path, else: ""
+    {:noreply, push_patch(socket, to: files_path(project, path))}
+  end
+
+  # EXPL-16: only keep the current path when the new project has it; otherwise
+  # fall back to that project's root.
+  defp exists?(project, path) do
+    with true <- path != "",
+         {:ok, abs} <- Explorer.safe_path(path, project.folder) do
+      File.exists?(abs)
+    else
+      _ -> false
+    end
+  end
+
+  defp normalize(_root, nil), do: ""
+
+  defp normalize(root, path) when is_binary(path) do
+    case Explorer.safe_path(path, root) do
+      {:ok, abs} -> relative(abs, root)
       {:error, _} -> path
     end
   end
 
-  defp normalize(_), do: ""
+  defp normalize(_root, _path), do: ""
 
-  defp relative(abs) do
-    case Workspace.relative(abs) do
+  defp relative(abs, root) do
+    case Workspace.relative(abs, root) do
       "." -> ""
       rel -> rel
     end
@@ -88,8 +117,13 @@ defmodule EliaWeb.FilesLive do
     |> Enum.map(fn {path, name} -> {name, path} end)
   end
 
-  defp files_path(""), do: ~p"/files"
-  defp files_path(path), do: ~p"/files?#{[path: path]}"
+  # EXPL-15: the default project's links stay param-free, so the URLs are stable.
+  defp files_path(project, path) do
+    params = if project.harness?, do: %{}, else: %{project: project.id}
+    params = if path == "", do: params, else: Map.put(params, :path, path)
+
+    if params == %{}, do: ~p"/files", else: ~p"/files?#{params}"
+  end
 
   defp lines(content) do
     parts = String.split(content, "\n")
@@ -134,15 +168,38 @@ defmodule EliaWeb.FilesLive do
           id="file-list"
           class="flex max-h-72 min-h-0 shrink-0 flex-col border-b border-base-300 lg:max-h-none lg:w-80 lg:border-r lg:border-b-0"
         >
+          <div class="flex items-center gap-2 border-b border-base-300 px-4 py-2">
+            <span
+              id="project-name"
+              class="min-w-0 flex-1 truncate text-sm font-medium"
+              title={@project.folder}
+            >
+              {@project.name}
+            </span>
+            <form id="project-switch" phx-change="pick_project">
+              <select
+                id="project-picker"
+                name="project"
+                aria-label="Project"
+                class="max-w-40 rounded-lg border border-base-300 bg-base-200/50 px-2 py-1 text-xs outline-none transition focus:border-primary focus:bg-base-100"
+              >
+                <option :for={p <- @projects} value={p.id} selected={p.id == @project.id}>
+                  {p.name}
+                </option>
+              </select>
+            </form>
+          </div>
           <nav
             id="breadcrumbs"
             aria-label="Breadcrumb"
             class="flex flex-wrap items-center gap-x-1 border-b border-base-300 px-4 py-2.5 text-sm"
           >
-            <.link patch={files_path("")} class="font-medium hover:underline">workspace</.link>
+            <.link patch={files_path(@project, "")} class="font-medium hover:underline">
+              workspace
+            </.link>
             <span :for={{name, path} <- @crumbs} class="flex items-center gap-1">
               <span class="text-base-content/40">/</span>
-              <.link patch={files_path(path)} class="hover:underline">{name}</.link>
+              <.link patch={files_path(@project, path)} class="hover:underline">{name}</.link>
             </span>
           </nav>
 
@@ -150,7 +207,7 @@ defmodule EliaWeb.FilesLive do
             <li :if={@dir != ""}>
               <.link
                 id="parent-dir"
-                patch={files_path(parent(@dir))}
+                patch={files_path(@project, parent(@dir))}
                 class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200"
               >
                 <.icon name="hero-arrow-uturn-left" class="size-4 text-base-content/50" /> ..
@@ -163,7 +220,7 @@ defmodule EliaWeb.FilesLive do
               <.link
                 :if={entry.type in [:dir, :file]}
                 data-entry={entry.path}
-                patch={files_path(entry.path)}
+                patch={files_path(@project, entry.path)}
                 aria-current={@selected == entry.path && "true"}
                 class={[
                   "flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200",

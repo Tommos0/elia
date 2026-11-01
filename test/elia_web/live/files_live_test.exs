@@ -3,9 +3,10 @@ defmodule EliaWeb.FilesLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.Workspace
+  alias Elia.{Projects, Workspace}
 
   @dir "files_live_fixture"
+  @project "files_live_swap"
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
 
@@ -132,5 +133,70 @@ defmodule EliaWeb.FilesLiveTest do
     {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/huge.ex"}")
     assert has_element?(view, "#file-truncated")
     refute has_element?(view, "#file-content[data-language]")
+  end
+
+  # EXPL-15, EXPL-16
+  test "browses one project and switches with the picker", %{conn: conn} do
+    # Both roots share the relative path "sub", so switching can keep it; the
+    # project also has a path Elia's own root doesn't, to check the fallback.
+    File.rm_rf!(in_root(@project))
+    File.mkdir_p!(in_root("#{@project}/sub"))
+    File.mkdir_p!(in_root("#{@project}/onlyproj"))
+    File.write!(in_root("#{@project}/sub/keep.txt"), "kept\n")
+    File.write!(in_root("#{@project}/onlyproj/x.txt"), "x\n")
+    File.write!(in_root("#{@project}/note.txt"), "hello project\n")
+    File.mkdir_p!(in_root("sub"))
+    File.write!(in_root("sub/keep.txt"), "kept\n")
+    {:ok, project} = Projects.create("Swap", in_root(@project))
+
+    on_exit(fn ->
+      File.rm_rf!(in_root(@project))
+      File.rm_rf!(in_root("sub"))
+      Projects.delete(project.id)
+    end)
+
+    # EXPL-15: name the project and list its folder relative to it.
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    assert has_element?(view, "#project-name", "Swap")
+    assert has_element?(view, "#project-picker")
+    assert has_element?(view, "[data-entry='sub']")
+    assert has_element?(view, "[data-entry='note.txt']")
+    refute has_element?(view, "[data-entry='#{@dir}']")
+
+    # The viewer reads a file from the project.
+    view |> element("[data-entry='note.txt']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "note.txt"}}")
+    assert has_element?(view, "#file-path", "note.txt")
+    assert has_element?(view, "#file-content", "hello project")
+
+    # EXPL-16: switching keeps the current path when it exists in the new one.
+    view |> element("[data-entry='sub']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "sub"}}")
+
+    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    assert_patch(view, "/files?path=sub")
+    assert has_element?(view, "#project-name", "Elia")
+    assert has_element?(view, "[data-entry='sub/keep.txt']")
+
+    # Back in the project, a path that only exists there falls back to the root.
+    view |> element("form#project-switch") |> render_change(%{"project" => project.id})
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "sub"}}")
+
+    view |> element("#parent-dir") |> render_click()
+    view |> element("[data-entry='onlyproj']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "onlyproj"}}")
+
+    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    assert_patch(view, "/files")
+    assert has_element?(view, "[data-entry='#{@dir}']")
+  end
+
+  # EXPL-15
+  test "an unknown or missing project browses Elia's own", %{conn: conn} do
+    for url <- [~p"/files", ~p"/files?#{%{project: "nope"}}"] do
+      {:ok, view, _} = live(conn, url)
+      assert has_element?(view, "#project-name", "Elia")
+      assert has_element?(view, "[data-entry='#{@dir}']")
+    end
   end
 end

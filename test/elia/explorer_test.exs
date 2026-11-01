@@ -113,4 +113,32 @@ defmodule Elia.ExplorerTest do
     assert Explorer.language("LICENSE") == nil
     assert Explorer.language(".gitignore") == nil
   end
+
+  # EXPL-15: every function takes the folder it works against, and paths outside
+  # it are refused.
+  test "browses a project folder and refuses paths outside it" do
+    root = in_root("#{@dir}/project")
+    File.mkdir_p!(Path.join(root, "inner"))
+    File.write!(Path.join(root, "note.txt"), "hi\n")
+    File.write!(Path.join(root, "inner/deep.txt"), "deep")
+
+    assert {:ok, entries} = Explorer.list("", root)
+    assert Enum.map(entries, & &1.name) == ["inner", "note.txt"]
+
+    assert %{path: "note.txt", type: :file, size: 3} =
+             Enum.find(entries, &(&1.name == "note.txt"))
+
+    assert {:ok, %{content: "hi\n", path: "note.txt", size: 3}} = Explorer.read("note.txt", root)
+    assert {:ok, [%{path: "inner/deep.txt"}]} = Explorer.list("inner", root)
+
+    # Anything outside the project folder is forbidden, even Elia's own files.
+    for path <- ["..", "../b.txt", "../../b.txt", "/etc/passwd"] do
+      assert {:error, :forbidden} = Explorer.list(path, root), path
+      assert {:error, :forbidden} = Explorer.read(path, root), path
+    end
+
+    # The default root is still Elia's own.
+    assert {:ok, entries} = Explorer.list(@dir)
+    assert Enum.any?(entries, &(&1.name == "project"))
+  end
 end
