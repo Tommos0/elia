@@ -367,7 +367,7 @@ defmodule Elia.AgentTest do
     assert %{task: nil} = Agent.snapshot(id)
   end
 
-  # SESS-21, SUBTASK-20
+  # SESS-21, LLM-33, SUBTASK-20
   test "a session closes tool calls left unanswered by an app restart" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)

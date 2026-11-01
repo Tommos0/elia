@@ -274,7 +274,7 @@ defmodule Elia.LLM.CompactionTest do
 
   ## Boundary safety
 
-  # COMPACT-4
+  # COMPACT-4, LLM-33
   test "a tool call and its result are kept or dropped together" do
     messages = history(1..4)
 

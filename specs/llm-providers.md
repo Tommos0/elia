@@ -27,6 +27,18 @@ access to many other models.
 - **LLM-6** Provider blocks carry `raw: {provider, map}`. A provider sends its
   own raw blocks back unchanged and drops reasoning and opaque blocks from
   other providers.
+- **LLM-33** A `tool_call` and its `tool_result` always go together, never
+  split: in every history the harness stores, sends, or derives a view from,
+  each `tool_call` is answered by exactly one `tool_result` carrying its `id`,
+  in the message immediately after the assistant message that made the call,
+  and no `tool_result` appears without the call it answers. Both APIs reject a
+  history that breaks this (Anthropic on an unanswered `tool_use`, the
+  OpenAI-compatible APIs on a `tool_calls` id without its `tool` message), so
+  the harness never builds one: every unanswered call gets a result when a turn
+  is stopped, crashes or the app restarts (SESS-8, SESS-12, SESS-21),
+  compaction keeps a call and its result together — whole turns at a time
+  (COMPACT-4) and the paired message when a pin touches one of them
+  (COMPACT-21) — and the encoders keep them adjacent (LLM-9, LLM-19).
 
 ### Anthropic
 
@@ -175,4 +187,7 @@ Tests use `Elia.FakeLLM`.
 ## Tests
 
 `test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`,
-`test/elia/llm/message_test.exs`.
+`test/elia/llm/message_test.exs`. The pairing rule (LLM-33) is covered where it
+is kept: `test/elia/llm/compaction_test.exs` (a call and its result are kept or
+dropped together) and `test/elia/agent_test.exs` (a stopped turn, a crash and an
+app restart each close every unanswered call, SESS-8, SESS-12, SESS-21).

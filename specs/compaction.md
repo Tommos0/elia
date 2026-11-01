@@ -50,7 +50,7 @@ are not.
 
 - **COMPACT-4** The request view begins at a user message and is cut only at
   turn boundaries: a `tool_call` and its matching `tool_result` are always kept
-  or dropped together (LLM-10's pairing), and provider-produced blocks (text,
+  or dropped together (LLM-33), and provider-produced blocks (text,
   reasoning, tool calls with `raw`) are either sent byte-for-byte or dropped
   whole — never rewritten (the provider checks history is append-only).
 - **COMPACT-5** Compaction runs at the start of a turn **and at each step of the
