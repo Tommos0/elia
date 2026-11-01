@@ -4,8 +4,11 @@
 # If you run "mix test --cover", coverage assets end up here.
 /cover/
 
-# The directory Mix downloads your dependencies sources to.
-/deps/
+# The directory Mix downloads your dependencies sources to. Without the
+# trailing slash this also matches the `deps` symlink a chat's worktree gets so
+# `mix test` can share the live tree's deps (DEPLOY-5), which would otherwise
+# count as an untracked change (SUBTASK-4).
+/deps
 
 # Where 3rd-party dependencies like ExDoc output generated docs.
 /doc/
