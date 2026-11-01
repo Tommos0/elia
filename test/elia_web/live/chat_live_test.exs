@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, FakeLLM, Projects, Workspace}
+  alias Elia.{Agent, FakeLLM, LiveTree, Projects, Workspace}
   alias Elia.LLM.Message
 
   setup do
@@ -555,6 +555,55 @@ defmodule EliaWeb.ChatLiveTest do
              live(conn, ~p"/p/#{project.id}/new")
 
     assert Agent.snapshot(id).project.id == project.id
+  end
+
+  # DEPLOY-7, RESTART-11: the restart button deploys this chat's code and
+  # restarts the server, so it comes up on the deployed code in a clean process.
+  test "the restart button merges and restarts the server", %{conn: conn} do
+    tree = LiveTree.create()
+    endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
+    runtime_root = Application.get_env(:elia, :runtime_root)
+    test_pid = self()
+
+    Application.put_env(:elia, :runtime_root, tree)
+    Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(endpoint, :code_reloader, true))
+    Application.put_env(:elia, Elia.Deploy, stop: &send(test_pid, {:stop, &1}))
+
+    on_exit(fn ->
+      LiveTree.remove(tree)
+      Application.put_env(:elia, EliaWeb.Endpoint, endpoint)
+      Application.put_env(:elia, Elia.Deploy, [])
+      if runtime_root, do: Application.put_env(:elia, :runtime_root, runtime_root)
+      unless runtime_root, do: Application.delete_env(:elia, :runtime_root)
+    end)
+
+    id = Agent.new_id()
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#restart-button")
+    view |> element("#restart-button") |> render_click()
+
+    # The server stops with a status `bin/serve` restarts it on (RESTART-1).
+    assert_receive {:stop, status}, 60_000
+    assert status != 0
+    assert render(view) =~ "Restarting the server"
+
+    # Before the temp tree goes, so nothing is left pointing into it.
+    for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id),
+        do: DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+
+    LiveTree.remove(tree)
+  end
+
+  # DEPLOY-7: the button reports why, instead of stopping a server nothing would
+  # bring back, when the dev server isn't running.
+  test "the restart button reports when it can't restart the server", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
+
+    assert has_element?(view, "#restart-button")
+    view |> element("#restart-button") |> render_click()
+
+    assert render(view) =~ "bin/serve"
   end
 
   # True when `first` appears before `second` in `html`.
