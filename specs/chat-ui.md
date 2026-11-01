@@ -230,6 +230,17 @@ so it opens at `/c/<child id>` like any chat.
 - **UI-50** The status `cancelled` (SUBTASK-16) has its own icon, wherever a
   task status is shown (UI-44, UI-46, UI-48), with `data-status="cancelled"`.
 
+- **UI-57** A chat whose turn is paused at a limit (SESS-27) shows a banner
+  (`#pause-banner`) above the transcript with the pause message
+  (`#pause-message`) and two buttons: Continue (`#resume-button`, SESS-27) and
+  Fail (`#fail-button`, SESS-27). It follows `{:paused, message}` and the
+  status, and is shown on first render from the snapshot's `pause`.
+
+- **UI-58** The parent's task card says the child is paused
+  (`#task-paused-<call_id>`) while it waits for the user, and the sidebar shows
+  a paused chat with a badge (`#chat-paused-<id>`, title "Paused"), both
+  following `{:chat_status, id, :paused}` (SESS-19) and right on first render.
+
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`.

@@ -80,9 +80,9 @@ index and approvals are shared.
   sorted). `questions` is a list, empty when none.
 - **SUBTASK-10** If the turn ends without a `finish_task` call, the status is
   `"unfinished"` and the summary is the child's last assistant text. If the
-  turn ended with an error (including the step limit, SUBTASK-12), the status
-  is `"failed"` and the summary is the error text, whatever `finish_task`
-  said, since the work did not end the way the child claimed.
+  turn ended with an error (including a limit the user failed, SUBTASK-24), the
+  status is `"failed"` and the summary is the error text, whatever
+  `finish_task` said, since the work did not end the way the child claimed.
 - **SUBTASK-11** The lock `Elia.Tasks` (a `GenServer`, started on first use)
   holds the one active child and its parent for the whole app. It is taken at
   spawn, released when the child ends, and also released when either session
@@ -91,7 +91,7 @@ index and approvals are shared.
   defaulting to the loop's own default (LOOP-3). It isn't in `spawn_task`'s
   schema, so the model doesn't choose it; a caller may still pass `max_steps`
   (default 100, at most 100) to override it, which tests use to reach the limit
-  quickly.
+  quickly. Reaching it pauses the child's turn (SUBTASK-24).
 - **SUBTASK-13** When the child ends, its saved metadata gets the final
   `status` and the `result` (STORE-16, SESS-18), the lock is released, and the
   final `{:subtask, …}` event is broadcast.
@@ -130,9 +130,8 @@ index and approvals are shared.
   `max_minutes`, a positive number of minutes of wall-clock time (default 30,
   at most 120; the application setting `:task_minutes` changes the default). The
   time a child spends with its status `:awaiting_approval` doesn't count. When
-  the time is up, the child's turn is stopped and the result is status
-  `"failed"` with reason `"budget"` and a summary naming the limit. A child that
-  hits its step limit (SUBTASK-10) also has reason `"budget"`.
+  the time is up, the child's turn pauses (SUBTASK-24). A child that hits its
+  step limit (SUBTASK-12) pauses the same way.
 - **SUBTASK-19** If the process running `spawn_task` dies while it holds the
   lock (it was killed by SUBTASK-17, or crashed), `Elia.Tasks` finishes the job
   itself without blocking the lock: the child's turn is stopped if it is still
@@ -165,6 +164,15 @@ index and approvals are shared.
 - **SUBTASK-23** A sub-task shares its parent chat's worktree and branch: it
   edits, tests and commits in the parent's worktree, so its work is part of the
   parent's branch (DEPLOY-9).
+- **SUBTASK-24** A child runs with the loop's `:pause_on_limit` and a
+  `:budget_ms` from `max_minutes` (LOOP-19, LOOP-20), so a limit pauses its turn
+  instead of ending it: the child's session status becomes `:paused` (SESS-27)
+  and `spawn_task` keeps waiting, with no deadline of its own. The user decides
+  in the child's chat: Continue (`Elia.Agent.resume/1`) starts the step count
+  and the budget over and the child goes on; Fail (`Elia.Agent.fail_task/1`)
+  ends the turn with the limit's error, so the result is `"failed"` with reason
+  `"budget"` (SUBTASK-9, SUBTASK-21) and a summary naming the limit. Stopping
+  the paused turn (SESS-8) instead cancels the child (SUBTASK-16).
 
 ## Out of scope (later phases of the plan)
 

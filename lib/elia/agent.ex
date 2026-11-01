@@ -18,9 +18,18 @@ defmodule Elia.Agent do
   the registry without calling the sessions.
   """
   @spec awaiting_approval() :: [binary()]
-  def awaiting_approval do
+  def awaiting_approval, do: with_status(:awaiting_approval)
+
+  @doc """
+  Ids of the sessions whose turn is paused at a limit (SESS-19, SESS-27), read
+  from the registry without calling the sessions.
+  """
+  @spec paused() :: [binary()]
+  def paused, do: with_status(:paused)
+
+  defp with_status(status) do
     Registry.select(Elia.Agent.Registry, [
-      {{:"$1", :_, :"$2"}, [{:==, :"$2", :awaiting_approval}], [:"$1"]}
+      {{:"$1", :_, :"$2"}, [{:==, :"$2", status}], [:"$1"]}
     ])
   end
 
@@ -66,6 +75,21 @@ defmodule Elia.Agent do
   end
 
   def stop(id), do: GenServer.call(Session.via(id), :stop)
+
+  @doc """
+  Resumes a turn paused at a limit (SESS-27): the step count and the wall-clock
+  budget start over (LOOP-19). `{:error, :not_paused}` when the chat isn't
+  paused.
+  """
+  @spec resume(binary()) :: :ok | {:error, :not_paused}
+  def resume(id), do: GenServer.call(Session.via(id), :resume)
+
+  @doc """
+  Fails a turn paused at a limit (SESS-27), ending the sub-task with the limit's
+  error (SUBTASK-24). `{:error, :not_paused}` when the chat isn't paused.
+  """
+  @spec fail_task(binary()) :: :ok | {:error, :not_paused}
+  def fail_task(id), do: GenServer.call(Session.via(id), :fail_task)
 
   @doc """
   Compacts the chat now, on demand (COMPACT-10): it ignores the threshold and

@@ -305,27 +305,76 @@ defmodule Elia.TasksTest do
     assert [%{task_status: "unfinished"}] = children_of(parent)
   end
 
-  # SUBTASK-10, 12
-  test "a child that hits its step limit has failed, whatever finish_task said", %{parent: parent} do
+  # SUBTASK-12, SUBTASK-24, SESS-27
+  test "a child that hits its step limit pauses, and a resume starts the count over", %{
+    parent: parent
+  } do
+    Agent.subscribe_activity()
+
     FakeLLM.push(
       FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_steps" => 1})])
     )
 
+    # The child's step 1 records a result; step 2 is over the limit, so it
+    # pauses instead of ending.
     FakeLLM.push(FakeLLM.assistant([finish_call("done", "All good")]))
+    # After the resume the count starts over, so one more step ends the turn.
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carrying on.")]))
     FakeLLM.push(FakeLLM.assistant([Message.text("Hm.")]))
 
-    run_spawn(parent)
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
+    assert_receive {:chat_status, ^child, :paused}, 20_000
+
+    assert Agent.snapshot(child).pause == "Step limit reached (1 steps)."
+
+    # The lock is still held and spawn_task keeps waiting, with no deadline.
+    assert Tasks.active().child_id == child
+    assert Agent.snapshot(parent).status == :running
+
+    :ok = Agent.resume(child)
+    await_status(parent, :idle)
 
     {content, false} = last_tool_result()
 
     assert %{
-             "status" => "failed",
-             "reason" => "budget",
-             "summary" => "Stopped after 1 steps" <> _
-           } =
-             Jason.decode!(content)
+             "status" => "done",
+             "summary" => "All good",
+             "reason" => nil,
+             "task_id" => ^child
+           } = Jason.decode!(content)
 
-    assert [%{task_status: "failed"}] = children_of(parent)
+    assert Tasks.active() == nil
+    assert [%{task_status: "done"}] = children_of(parent)
+  end
+
+  # SUBTASK-24, SUBTASK-16
+  test "stopping a paused child cancels it", %{parent: parent} do
+    Agent.subscribe_activity()
+
+    FakeLLM.push(
+      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_steps" => 1})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([finish_call("done", "Fine")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
+    assert_receive {:chat_status, ^child, :paused}, 20_000
+
+    :ok = Agent.stop(child)
+    await_status(parent, :idle)
+
+    {content, false} = last_tool_result()
+    assert %{"status" => "cancelled", "reason" => "cancelled"} = Jason.decode!(content)
+    assert Tasks.active() == nil
   end
 
   # SUBTASK-8, 13
@@ -600,16 +649,45 @@ defmodule Elia.TasksTest do
     assert %{status: "failed", result: %{"reason" => "crashed"}} = Store.load_task(child)
   end
 
-  # SUBTASK-18
-  test "a child that runs out of time has failed with reason budget", %{parent: parent} do
-    child = spawn_blocked_child(parent, %{"max_minutes" => 0.01})
+  # SUBTASK-18, SUBTASK-24, SESS-27
+  test "a child that runs out of time pauses, and failing it reports the limit", %{
+    parent: parent
+  } do
+    Agent.subscribe_activity()
+
+    FakeLLM.push(
+      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_minutes" => 0.01})])
+    )
+
+    # The child's step 1 takes longer than the whole budget (600 ms), so step 2
+    # pauses instead of ending.
+    FakeLLM.push(fn _request, _on_event ->
+      Process.sleep(700)
+      reply([finish_call("done", "fine")])
+    end)
+
     FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
+    assert_receive {:chat_status, ^child, :paused}, 20_000
+    assert Tasks.active().child_id == child
+
+    # Fail: the turn ends with the limit's error, so the result is failed/budget.
+    :ok = Agent.fail_task(child)
     await_status(parent, :idle)
 
     {content, false} = last_tool_result()
 
-    assert %{"status" => "failed", "reason" => "budget", "summary" => "Budget exceeded" <> _} =
-             Jason.decode!(content)
+    assert %{
+             "status" => "failed",
+             "reason" => "budget",
+             "summary" => "Stopped after " <> _,
+             "task_id" => ^child
+           } = Jason.decode!(content)
 
     assert Tasks.active() == nil
     assert Agent.snapshot(child).status == :idle

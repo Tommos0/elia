@@ -18,7 +18,8 @@ the end, the turn's changes are verified.
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
 - **LOOP-3** A turn stops with an error after the step limit: 100 steps unless
-  the `:max_steps` option says otherwise (LOOP-16).
+  the `:max_steps` option says otherwise (LOOP-16). With the `:pause_on_limit`
+  option it pauses instead (LOOP-19).
 - **LOOP-4** If the model refuses (`stop_reason: :refusal`), the loop returns
   `:refused` and runs none of that response's tool calls.
 - **LOOP-5** If a response hits the output limit without calling a tool, the
@@ -59,6 +60,17 @@ the end, the turn's changes are verified.
   a tool can start a session like this one, SUBTASK-5), `workspace` (the
   workspace root the turn runs in: the chat's project folder, PROJ-12, or Elia's
   own root when unset) and `project` (the chat's project map, PROJ-9).
+
+- **LOOP-19** With the `:pause_on_limit` option (default false), a limit pauses
+  the turn instead of ending it: the loop sends the session
+  `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}` or `{:time, ms}`) and
+  blocks. `{:pause_decision, :continue}` resumes it with the step count and the
+  wall-clock budget started over; `{:pause_decision, :fail}` ends the turn with
+  the limit's error text (LOOP-3, LOOP-20).
+- **LOOP-20** The `:budget_ms` option (default nil) is a wall-clock budget for
+  the turn. The loop checks it at the start of each step: when the time spent
+  exceeds it, it is a limit like LOOP-3. Time spent waiting for the user's
+  approval decisions (LOOP-9) and time spent paused (LOOP-19) don't count.
 
 ## Implementation
 

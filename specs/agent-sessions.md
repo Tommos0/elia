@@ -15,8 +15,8 @@ progress so any number of UIs can follow it.
 - **SESS-3** Sending a message appends it as a user message and starts a turn
   with a new turn id. Sending while a turn is in progress returns
   `{:error, :busy}` and changes nothing.
-- **SESS-4** Session status is one of `:idle`, `:running` or
-  `:awaiting_approval`. Every change is broadcast.
+- **SESS-4** Session status is one of `:idle`, `:running`,
+  `:awaiting_approval` or `:paused` (SESS-27). Every change is broadcast.
 - **SESS-5** Every message the loop produces is appended to the history,
   saved (STORE-1) and broadcast. Messages with empty content are dropped.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
@@ -26,14 +26,16 @@ progress so any number of UIs can follow it.
   `{:compaction, state}` (the chat's compaction state changed, COMPACT-24),
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
+  `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
   auto-approved tool names (sorted list), its task metadata (`task`, `nil`
-  for an ordinary chat), the project it belongs to (`project`, PROJ-9) and its
-  compaction state (`compaction`, COMPACT-24), so a UI that connects mid-turn
+  for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
+  compaction state (`compaction`, COMPACT-24) and its pause message (`pause`,
+  `nil` unless the turn is paused, SESS-27), so a UI that connects mid-turn
   can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
@@ -77,9 +79,10 @@ progress so any number of UIs can follow it.
 - **SESS-19** Every status change (SESS-4) is also broadcast on
   `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
   follow every chat without subscribing to each. A session also keeps its
-  status as its value in `Elia.Agent.Registry`, and
+  status as its value in `Elia.Agent.Registry`,
   `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
-  is `:awaiting_approval`, without calling them.
+  is `:awaiting_approval`, and `Elia.Agent.paused/0` those whose status is
+  `:paused`, without calling them.
 - **SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
   merged metadata on the chat's topic.
 
@@ -120,6 +123,15 @@ progress so any number of UIs can follow it.
   given options for a new one with `ensure_started/2`'s `compaction` option
   (`COMPACT-9`). An options or pin change is written to disk right away, while a
   chat with no messages isn't (as in SESS-14).
+
+- **SESS-27** When the loop pauses at a limit (LOOP-19), the session's status
+  becomes `:paused`, it broadcasts `{:paused, message}` (a message naming the
+  limit) and keeps the turn's task; `snapshot/1`'s `pause` holds that message.
+  `Elia.Agent.resume/1` sends the loop `{:pause_decision, :continue}` and
+  returns to `:running`; `Elia.Agent.fail_task/1` sends `{:pause_decision, :fail}`
+  and returns to `:running`, so the loop ends the turn with the limit's error
+  (SESS-11). Both return `{:error, :not_paused}` when the chat isn't paused.
+  Ending the turn (SESS-8, SESS-11, SESS-12) clears the pause.
 
 ## Out of scope
 

@@ -110,6 +110,70 @@ defmodule Elia.AgentTest do
     await_status(id, :idle)
   end
 
+  # LOOP-19, SESS-27
+  test "pause_on_limit pauses at the step limit, and a resume starts the count over", %{} do
+    id = start_fake_skill_session(max_steps: 2, pause_on_limit: true)
+    push_repeating_tool_call(2)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+    assert_receive {:agent, ^id, {:paused, "Step limit reached (2 steps)."}}, 10_000
+    assert Agent.snapshot(id).pause == "Step limit reached (2 steps)."
+    assert id in Agent.paused()
+
+    # A chat that isn't paused refuses both decisions.
+    other = start_fake_skill_session([])
+    assert {:error, :not_paused} = Agent.resume(other)
+    assert {:error, :not_paused} = Agent.fail_task(other)
+
+    # Continue: the step count starts over, so the next step runs (it would
+    # pause again straight away if the count had not been reset).
+    FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
+    :ok = Agent.resume(id)
+
+    await_status(id, :idle)
+    refute id in Agent.paused()
+    assert Agent.snapshot(id).pause == nil
+  end
+
+  # LOOP-19, SESS-27
+  test "failing a paused turn ends it with the limit's error", %{} do
+    id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
+    push_repeating_tool_call(1)
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+
+    :ok = Agent.fail_task(id)
+
+    assert_receive {:agent, ^id, {:error, "Stopped after 1 steps without finishing"}}, 10_000
+    await_status(id, :idle)
+  end
+
+  # LOOP-20, SESS-27
+  test "the budget_ms option pauses the turn when its time runs out", %{} do
+    id = start_fake_skill_session(max_steps: 100, pause_on_limit: true, budget_ms: 150)
+
+    # Each step takes longer than the whole budget, so the second one pauses.
+    FakeLLM.push(fn _request, _on_event ->
+      Process.sleep(250)
+      message = FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})])
+      {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
+    end)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+    assert_receive {:agent, ^id, {:paused, "Time limit reached" <> _}}, 10_000
+
+    # Continue: the budget starts over, so a fast step finishes the turn.
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    :ok = Agent.resume(id)
+
+    await_status(id, :idle)
+  end
+
   # Starts a session whose only skill is `fake_skill/1`, plus the given loop
   # options, subscribed like the setup's (LOOP-3, LOOP-16).
   defp start_fake_skill_session(loop_opts) do

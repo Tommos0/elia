@@ -278,14 +278,102 @@ defmodule EliaWeb.TaskUITest do
     refute has_element?(view, "#task-header")
   end
 
-  # UI-49
-  test "the sidebar refreshes when a task starts", %{conn: conn, parent: parent, child: child} do
+  # UI-57, UI-58: a child paused at a limit, right on first render.
+  test "a turn already paused at a limit is shown when the page opens", %{
+    conn: conn,
+    parent: parent,
+    child: child
+  } do
     save_parent(parent)
-    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    refute has_element?(view, "#chat-link-#{child}")
-
     save_child(child, parent, %{status: "running", result: nil})
+
+    push_repeating_tool_call(1)
+
+    {:ok, pid} =
+      Agent.ensure_started(child,
+        loop_opts: [llm: %{provider: FakeLLM}, max_steps: 1, pause_on_limit: true]
+      )
+
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    Agent.subscribe(child)
+    :ok = Agent.send_message(child, "go")
+    assert_receive {:agent, ^child, {:status, :paused}}, 5000
+
+    # UI-58: the sidebar and the parent's card are flagged on first render.
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+    assert has_element?(view, "#chat-paused-#{child}[title='Paused']")
+    assert has_element?(view, "#task-card-s1 #task-paused-s1")
+
+    # UI-57: the banner is there on first render too, with both decisions.
+    {:ok, child_view, _html} = live(conn, ~p"/c/#{child}")
+    assert has_element?(child_view, "#pause-banner")
+    assert has_element?(child_view, "#pause-message", "Step limit reached (1 steps).")
+    assert has_element?(child_view, "#resume-button")
+    assert has_element?(child_view, "#fail-button")
+
+    :ok = Agent.stop(child)
+  end
+
+  # UI-57, SESS-27
+  test "the pause banner follows the chat's status", %{
+    conn: conn,
+    parent: parent,
+    child: child
+  } do
+    save_parent(parent)
+    save_child(child, parent, %{status: "running", result: nil})
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{child}")
+    refute has_element?(view, "#pause-banner")
+
+    topic_send(child, {:status, :paused})
+    topic_send(child, {:paused, "Step limit reached (2 steps)."})
+
+    assert has_element?(view, "#pause-banner")
+    assert has_element?(view, "#pause-message", "Step limit reached (2 steps).")
+
+    # The buttons ask the session to continue or fail (SESS-27); a chat that
+    # isn't paused refuses both, harmlessly.
+    render_click(view, "resume", %{})
+    render_click(view, "fail_task", %{})
+
+    topic_send(child, {:status, :running})
+    refute has_element?(view, "#pause-banner")
+  end
+
+  # UI-58, SESS-19
+  test "a paused child is flagged in the sidebar and on the parent's card", %{
+    conn: conn,
+    parent: parent,
+    child: child
+  } do
+    save_parent(parent)
+    save_child(child, parent, %{status: "running", result: nil})
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+    refute has_element?(view, "#task-paused-s1")
+    refute has_element?(view, "#chat-paused-#{child}")
+
     topic_send(parent, {:subtask, "s1", child, "running"})
-    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}")
+    activity_send(child, :paused)
+
+    assert has_element?(view, "#task-card-s1 #task-paused-s1")
+    assert has_element?(view, "#chat-paused-#{child}[title='Paused']")
+
+    activity_send(child, :running)
+    refute has_element?(view, "#task-paused-s1")
+    refute has_element?(view, "#chat-paused-#{child}")
+  end
+
+  # Scripts the model to call a tool that needs no approval `times` times, so
+  # only the step limit ends (or pauses) the turn.
+  defp push_repeating_tool_call(times) do
+    fun = fn _request, _on_event ->
+      message = FakeLLM.assistant([FakeLLM.tool_call("c", "read_file", %{"path" => "mix.exs"})])
+      {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
+    end
+
+    for _ <- 1..times, do: FakeLLM.push(fun)
   end
 end

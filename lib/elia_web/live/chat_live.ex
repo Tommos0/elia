@@ -73,6 +73,10 @@ defmodule EliaWeb.ChatLive do
         projects: Elia.Projects.list(),
         # UI-47: chats with a tool call awaiting approval, kept live.
         awaiting: Agent.awaiting_approval(),
+        # UI-58: chats whose turn is paused at a limit, kept live.
+        paused: Agent.paused(),
+        # UI-57: the message of this chat's pause, when its turn is paused.
+        pause: snapshot.pause,
         # UI-44: spawn_task call id => %{child_id, status}.
         tasks: task_children(id),
         # UI-48: this chat's own task metadata, when it is a task chat.
@@ -172,6 +176,7 @@ defmodule EliaWeb.ChatLive do
                   active={chat.id == @session_id}
                   now={@now}
                   awaiting={chat.id in @awaiting}
+                  paused={chat.id in @paused}
                 />
                 <div
                   :if={children != []}
@@ -184,6 +189,7 @@ defmodule EliaWeb.ChatLive do
                     active={child.id == @session_id}
                     now={@now}
                     awaiting={child.id in @awaiting}
+                    paused={child.id in @paused}
                   />
                 </div>
               <% end %>
@@ -218,6 +224,35 @@ defmodule EliaWeb.ChatLive do
             provider_tokens={Context.provider_input_tokens(@last_usage)}
             elided={@context_elided}
           />
+          <%!-- UI-57: the turn paused at a limit; the user decides. --%>
+          <div
+            :if={@pause}
+            id="pause-banner"
+            class="border-b border-warning/40 bg-warning/10"
+          >
+            <div class="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 py-2 text-sm sm:px-6">
+              <.icon name="hero-pause-circle" class="size-4 shrink-0 text-warning" />
+              <span id="pause-message" class="min-w-0 flex-1">{@pause}</span>
+              <button
+                type="button"
+                id="fail-button"
+                phx-click="fail_task"
+                title="End the sub-task now"
+                class="rounded-lg px-3 py-1 text-xs font-medium text-base-content/70 transition hover:bg-base-300"
+              >
+                Fail
+              </button>
+              <button
+                type="button"
+                id="resume-button"
+                phx-click="resume"
+                title="Continue with a fresh budget"
+                class="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
           <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
               <div id="transcript" phx-update="stream" class="space-y-5">
@@ -445,8 +480,9 @@ defmodule EliaWeb.ChatLive do
   attr :active, :boolean, required: true
   attr :now, :any, required: true
   attr :awaiting, :boolean, default: false
+  attr :paused, :boolean, default: false
 
-  # UI-4, UI-34, UI-46, UI-47
+  # UI-4, UI-34, UI-46, UI-47, UI-58
   defp chat_row(assigns) do
     ~H"""
     <.link
@@ -466,6 +502,15 @@ defmodule EliaWeb.ChatLive do
           status={@chat.task_status}
         />
         <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
+        <span
+          :if={@paused}
+          id={"chat-paused-#{@chat.id}"}
+          title="Paused"
+          class="inline-flex shrink-0 items-center rounded-full bg-warning/20 p-0.5 text-warning"
+        >
+          <.icon name="hero-pause-circle" class="size-3" />
+          <span class="sr-only">Paused</span>
+        </span>
         <span
           :if={@awaiting}
           id={"chat-approval-#{@chat.id}"}
@@ -1107,6 +1152,13 @@ defmodule EliaWeb.ChatLive do
         >
           <.icon name="hero-hand-raised" class="size-3" /> Waiting for approval in the task chat
         </span>
+        <span
+          :if={@item.task.paused}
+          id={"task-paused-#{@item.call_id}"}
+          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
+        >
+          <.icon name="hero-pause-circle" class="size-3" /> Paused at a limit in the task chat
+        </span>
         <.link
           navigate={~p"/c/#{@item.task.child_id}"}
           id={"task-link-#{@item.call_id}"}
@@ -1404,6 +1456,17 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # UI-57, SESS-27: the user's decision on a turn paused at a limit.
+  def handle_event("resume", _params, socket) do
+    Agent.resume(socket.assigns.session_id)
+    {:noreply, socket}
+  end
+
+  def handle_event("fail_task", _params, socket) do
+    Agent.fail_task(socket.assigns.session_id)
+    {:noreply, socket}
+  end
+
   # DEPLOY-7, RESTART-11: the hard deploy mode — run the tests, merge this chat's
   # branch into live, then restart the server on the deployed code.
   def handle_event("restart", _params, socket) do
@@ -1583,18 +1646,18 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
-  # UI-47: follows every chat's status, to flag those awaiting approval.
+  # UI-47, UI-58: follows every chat's status, to flag those awaiting approval
+  # and those paused at a limit.
   def handle_info({:chat_status, id, status}, socket) do
-    awaiting = socket.assigns.awaiting
-    now_awaiting? = status == :awaiting_approval
+    awaiting = put_member(socket.assigns.awaiting, id, status == :awaiting_approval)
+    paused = put_member(socket.assigns.paused, id, status == :paused)
 
-    if now_awaiting? == id in awaiting do
+    if awaiting == socket.assigns.awaiting and paused == socket.assigns.paused do
       {:noreply, socket}
     else
-      awaiting = if now_awaiting?, do: [id | awaiting], else: List.delete(awaiting, id)
-      socket = assign(socket, awaiting: awaiting)
+      socket = assign(socket, awaiting: awaiting, paused: paused)
 
-      # UI-44: the card of the task chat that is waiting.
+      # UI-44, UI-58: the card of the task chat that is waiting.
       call_ids = for {call_id, %{child_id: ^id}} <- socket.assigns.tasks, do: call_id
       {:noreply, Enum.reduce(call_ids, socket, &refresh_task_card(&2, &1))}
     end
@@ -1711,6 +1774,8 @@ defmodule EliaWeb.ChatLive do
 
   defp apply_event({:status, status}, socket) do
     socket = assign(socket, status: status)
+    # UI-57: the banner follows the status; the message arrives with {:paused, …}.
+    socket = if status == :paused, do: socket, else: assign(socket, pause: nil)
 
     socket =
       if status == :idle,
@@ -1723,6 +1788,9 @@ defmodule EliaWeb.ChatLive do
 
     if status == :idle, do: assign(socket, draft: "", draft_reasoning: ""), else: socket
   end
+
+  # UI-57, SESS-27: the turn paused at a limit.
+  defp apply_event({:paused, message}, socket), do: assign(socket, pause: message)
 
   defp apply_event({:tool_status, call_id, status}, socket) do
     socket = assign(socket, tool_status: Map.put(socket.assigns.tool_status, call_id, status))
@@ -1769,12 +1837,21 @@ defmodule EliaWeb.ChatLive do
   defp task_card(socket, call_id) do
     case socket.assigns.tasks do
       %{^call_id => %{child_id: child_id, status: status}} ->
-        %{child_id: child_id, status: status, awaiting: child_id in socket.assigns.awaiting}
+        %{
+          child_id: child_id,
+          status: status,
+          awaiting: child_id in socket.assigns.awaiting,
+          # UI-58: the child is paused at a limit (SESS-27).
+          paused: child_id in socket.assigns.paused
+        }
 
       _ ->
         nil
     end
   end
+
+  defp put_member(list, id, true), do: if(id in list, do: list, else: [id | list])
+  defp put_member(list, id, false), do: List.delete(list, id)
 
   defp refresh_task_card(socket, call_id) do
     case socket.assigns.calls do

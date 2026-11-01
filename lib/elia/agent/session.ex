@@ -16,7 +16,7 @@ defmodule Elia.Agent.Session do
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:task, metadata}`.
+  `{:paused, message}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -52,6 +52,8 @@ defmodule Elia.Agent.Session do
     # Provider-reported usage of the last completed model request (CTX-6).
     last_usage: nil,
     approval: nil,
+    # The message of a turn paused at a limit (SESS-27), nil when not paused.
+    pause: nil,
     loop_opts: [],
     persist: true
   ]
@@ -90,12 +92,13 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace` or `:compaction` existed (a session that outlived a
-  # hot reload). Fields it already has are kept.
+  # `:project`, `:workspace`, `:compaction` or `:pause` existed (a session that
+  # outlived a hot reload). Fields it already has are kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
-             not is_map_key(state, :workspace) or not is_map_key(state, :compaction) do
+             not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
+             not is_map_key(state, :pause) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -147,7 +150,8 @@ defmodule Elia.Agent.Session do
         :last_usage,
         :selection,
         :project,
-        :compaction
+        :compaction,
+        :pause
       ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
@@ -325,6 +329,23 @@ defmodule Elia.Agent.Session do
     {:reply, :ok, state}
   end
 
+  # SESS-27: the user's decision on a turn paused at a limit (LOOP-19).
+  def handle_call(:resume, _from, %{pause: nil} = state),
+    do: {:reply, {:error, :not_paused}, state}
+
+  def handle_call(:resume, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
+    send(pid, {:pause_decision, :continue})
+    {:reply, :ok, set_status(%{state | pause: nil}, :running)}
+  end
+
+  def handle_call(:fail_task, _from, %{pause: nil} = state),
+    do: {:reply, {:error, :not_paused}, state}
+
+  def handle_call(:fail_task, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
+    send(pid, {:pause_decision, :fail})
+    {:reply, :ok, set_status(%{state | pause: nil}, :running)}
+  end
+
   # Messages a stopped loop sent before it died.
   @impl true
   def handle_info({tag, _}, %{task: nil} = state)
@@ -390,6 +411,14 @@ defmodule Elia.Agent.Session do
       end)
 
     {:noreply, settle(state, pid, decisions)}
+  end
+
+  # SESS-27: the loop paused at a limit (LOOP-19) and waits for the user.
+  def handle_info({:loop_pause, pid, limit}, %{task: %Task{pid: pid}} = state) do
+    message = pause_message(limit)
+    state = set_status(%{state | pause: message}, :paused)
+    broadcast(state, {:paused, message})
+    {:noreply, state}
   end
 
   def handle_info({ref, result}, %{task: %Task{ref: ref}} = state) do
@@ -660,7 +689,13 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil}, :idle)
+  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil, pause: nil}, :idle)
+
+  # SESS-27: the message shown while a turn is paused at a limit (LOOP-19).
+  defp pause_message({:steps, max}), do: "Step limit reached (#{max} steps)."
+
+  defp pause_message({:time, ms}),
+    do: "Time limit reached (#{Elia.Agent.Loop.minutes(ms)})."
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})

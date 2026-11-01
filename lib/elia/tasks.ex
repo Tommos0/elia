@@ -306,6 +306,10 @@ defmodule Elia.Tasks do
       |> Keyword.merge(
         skills: fn -> Elia.Skills.Tasks.child_skills(project) end,
         max_steps: steps,
+        # SUBTASK-24: a limit pauses the child's turn (LOOP-19, LOOP-20) instead
+        # of ending it, so the user can continue it or fail it.
+        pause_on_limit: true,
+        budget_ms: budget_ms(input),
         llm: llm,
         workspace: workspace
       )
@@ -337,21 +341,9 @@ defmodule Elia.Tasks do
             @preamble <> "\n# Task: #{task.title}\n\n" <> task.brief
           )
 
-        budget = budget_ms(input)
-        now = System.monotonic_time(:millisecond)
-        outcome = await(child_id, monitor, %{deadline: now + budget, paused: nil, error: nil})
-
-        outcome =
-          case outcome do
-            :budget ->
-              stop_session(child_id)
-
-              {:budget,
-               "Budget exceeded: the sub-task ran for more than #{minutes(budget)} and was stopped."}
-
-            other ->
-              other
-          end
+        # SUBTASK-24: the child enforces its own limits and pauses at them, so
+        # this wait has no deadline of its own.
+        outcome = await(child_id, monitor, nil)
 
         result = build_result(child_id, start_commit, outcome, take_state(child_id), root)
 
@@ -370,15 +362,6 @@ defmodule Elia.Tasks do
         DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, child_pid)
         {:error, "Not started: another sub-task is active."}
     end
-  end
-
-  defp minutes(ms) do
-    minutes = ms / 60_000
-
-    text =
-      if minutes == trunc(minutes), do: "#{trunc(minutes)}", else: "#{Float.round(minutes, 2)}"
-
-    "#{text} #{if minutes == 1, do: "minute", else: "minutes"}"
   end
 
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
@@ -415,39 +398,22 @@ defmodule Elia.Tasks do
     )
   end
 
-  # Waits for the child's turn to end: its session goes idle (SUBTASK-8). Gives
-  # up with `:budget` when the wall-clock deadline passes; time spent waiting
-  # for the user's approval doesn't count (SUBTASK-18).
-  defp await(child_id, monitor, wait) do
-    timeout =
-      if wait.paused,
-        do: :infinity,
-        else: max(wait.deadline - System.monotonic_time(:millisecond), 0)
-
+  # Waits for the child's turn to end: its session goes idle (SUBTASK-8). A
+  # child paused at a limit (SUBTASK-24) keeps this waiting, with no deadline of
+  # its own; the child's own loop enforces the budget (LOOP-20).
+  defp await(child_id, monitor, error) do
     receive do
       {:agent, ^child_id, {:status, :idle}} ->
-        {:ended, wait.error}
-
-      {:agent, ^child_id, {:status, :awaiting_approval}} ->
-        await(child_id, monitor, %{
-          wait
-          | paused: wait.paused || System.monotonic_time(:millisecond)
-        })
-
-      {:agent, ^child_id, {:status, :running}} when wait.paused != nil ->
-        paused_for = System.monotonic_time(:millisecond) - wait.paused
-        await(child_id, monitor, %{wait | paused: nil, deadline: wait.deadline + paused_for})
+        {:ended, error}
 
       {:agent, ^child_id, {:error, text}} ->
-        await(child_id, monitor, %{wait | error: text})
+        await(child_id, monitor, text)
 
       {:agent, ^child_id, _event} ->
-        await(child_id, monitor, wait)
+        await(child_id, monitor, error)
 
       {:DOWN, ^monitor, :process, _pid, reason} ->
         {:crashed, "The sub-task session stopped: #{Exception.format_exit(reason)}"}
-    after
-      timeout -> :budget
     end
   end
 
@@ -460,9 +426,6 @@ defmodule Elia.Tasks do
       case outcome do
         {:crashed, text} ->
           {"failed", "crashed", text}
-
-        {:budget, text} ->
-          {"failed", "budget", text}
 
         {:ended, _error} when state.cancelled ->
           {"cancelled", "cancelled", "The sub-task was stopped by the user."}

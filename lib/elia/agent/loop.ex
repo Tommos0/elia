@@ -23,8 +23,10 @@ defmodule Elia.Agent.Loop do
 
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
   function returning one, instead of the project's), `:max_steps` (default 100),
-  `:verify` (default `true`), `:llm` (extra request fields), `:project` (the
-  chat's project), `:workspace` (the chat's workspace root: its own git
+  `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
+  LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:verify` (default
+  `true`), `:llm` (extra request fields), `:project` (the chat's project),
+  `:workspace` (the chat's workspace root: its own git
   worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12)
   and, for the mid-turn pass, `:compaction` (the chat's
   `t:Elia.LLM.Compaction.t/0`, `nil` to send the history as it is),
@@ -48,6 +50,12 @@ defmodule Elia.Agent.Loop do
       session: session,
       skills: Keyword.get(opts, :skills),
       max_steps: Keyword.get(opts, :max_steps, @max_steps),
+      # LOOP-19, LOOP-20: whether a limit pauses the turn, and the wall-clock
+      # budget it is measured against.
+      pause_on_limit: Keyword.get(opts, :pause_on_limit, false),
+      budget_ms: Keyword.get(opts, :budget_ms),
+      started_ms: now_ms(),
+      approved_ms: 0,
       verify: Keyword.get(opts, :verify, true),
       verify_failures: 0,
       # COMPACT-29: the chat's compaction state and the trigger, target and
@@ -71,11 +79,54 @@ defmodule Elia.Agent.Loop do
     step(ctx, history, 1)
   end
 
-  defp step(%{max_steps: max}, _history, step) when step > max do
-    {:error, "Stopped after #{max} steps without finishing"}
+  # LOOP-3, LOOP-19, LOOP-20: the limits are checked at the start of every step.
+  defp step(ctx, history, step) do
+    cond do
+      step > ctx.max_steps -> limit(ctx, history, {:steps, ctx.max_steps})
+      over_budget?(ctx) -> limit(ctx, history, {:time, ctx.budget_ms})
+      true -> run_step(ctx, history, step)
+    end
   end
 
-  defp step(ctx, history, step) do
+  # LOOP-19: a limit pauses the turn when the option says so, else ends it.
+  defp limit(%{pause_on_limit: true} = ctx, history, limit), do: pause(ctx, history, limit)
+  defp limit(_ctx, _history, limit), do: {:error, limit_message(limit)}
+
+  # LOOP-19: ask the session to pause the turn and wait for the user's decision.
+  # A resume starts the step count and the wall-clock budget over (LOOP-20).
+  defp pause(ctx, history, limit) do
+    send(ctx.session, {:loop_pause, self(), limit})
+
+    receive do
+      {:pause_decision, :continue} ->
+        step(%{ctx | started_ms: now_ms(), approved_ms: 0}, history, 1)
+
+      {:pause_decision, :fail} ->
+        {:error, limit_message(limit)}
+    end
+  end
+
+  defp limit_message({:steps, max}), do: "Stopped after #{max} steps without finishing"
+  defp limit_message({:time, ms}), do: "Stopped after #{minutes(ms)}: the time budget ran out"
+
+  # LOOP-20: the wall-clock budget, less the time spent waiting for approvals.
+  defp over_budget?(%{budget_ms: nil}), do: false
+  defp over_budget?(ctx), do: now_ms() - ctx.started_ms - ctx.approved_ms > ctx.budget_ms
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
+
+  @doc "A duration in milliseconds as \"30 minutes\" (LOOP-20)."
+  @spec minutes(number()) :: binary()
+  def minutes(ms) do
+    minutes = ms / 60_000
+
+    text =
+      if minutes == trunc(minutes), do: "#{trunc(minutes)}", else: "#{Float.round(minutes, 2)}"
+
+    "#{text} #{if minutes == 1, do: "minute", else: "minutes"}"
+  end
+
+  defp run_step(ctx, history, step) do
     # Re-read every step so skills reloaded mid-turn are usable right away, and
     # so the chat's project's skills and AGENTS.md apply (LOOP-1, PROJ-15).
     skills = Elia.Skills.resolve(ctx.skills, ctx.project)
@@ -117,13 +168,17 @@ defmodule Elia.Agent.Loop do
             finish(ctx, history, step)
 
           calls ->
-            tool_message = %Message{
-              role: :tool,
-              content: run_tools(ctx, tools, calls, stop_reason)
-            }
+            {results, waited} = run_tools(ctx, tools, calls, stop_reason)
+            tool_message = %Message{role: :tool, content: results}
 
             append(ctx, tool_message)
-            step(ctx, history ++ [tool_message], step + 1)
+            # LOOP-20: time spent waiting for the user's decisions doesn't count
+            # against the wall-clock budget.
+            step(
+              %{ctx | approved_ms: ctx.approved_ms + waited},
+              history ++ [tool_message],
+              step + 1
+            )
         end
     end
   end
@@ -191,29 +246,35 @@ defmodule Elia.Agent.Loop do
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
 
+  # LOOP-10, LOOP-20: returns the step's tool results and how long the loop
+  # waited for the user's approval decisions (which doesn't count against the
+  # wall-clock budget).
   defp run_tools(ctx, tools, calls, stop_reason) do
     checked = Enum.map(calls, &{&1, check(ctx, tools, &1, stop_reason)})
 
     needs_approval = for {call, {:ok, _tool, :required}} <- checked, do: call
-    decisions = await_approval(ctx, needs_approval)
+    {decisions, waited} = await_approval(ctx, needs_approval)
 
-    checked
-    |> Task.async_stream(
-      fn
-        {call, {:ok, tool, _approval}} ->
-          if Map.get(decisions, call.id, :approve) == :approve do
-            execute(ctx, call, tool)
-          else
-            Message.tool_result(call.id, "The user denied this tool call.", true)
-          end
+    results =
+      checked
+      |> Task.async_stream(
+        fn
+          {call, {:ok, tool, _approval}} ->
+            if Map.get(decisions, call.id, :approve) == :approve do
+              execute(ctx, call, tool)
+            else
+              Message.tool_result(call.id, "The user denied this tool call.", true)
+            end
 
-        {call, {:error, reason}} ->
-          Message.tool_result(call.id, reason, true)
-      end,
-      timeout: :infinity,
-      ordered: true
-    )
-    |> Enum.map(fn {:ok, result} -> result end)
+          {call, {:error, reason}} ->
+            Message.tool_result(call.id, reason, true)
+        end,
+        timeout: :infinity,
+        ordered: true
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    {results, waited}
   end
 
   defp check(_ctx, _tools, _call, :max_tokens) do
@@ -237,13 +298,14 @@ defmodule Elia.Agent.Loop do
   defp or_error(:error, message), do: {:error, message}
   defp or_error(ok, _message), do: ok
 
-  defp await_approval(_ctx, []), do: %{}
+  defp await_approval(_ctx, []), do: {%{}, 0}
 
   defp await_approval(ctx, calls) do
     send(ctx.session, {:loop_await_approval, self(), calls})
+    started = now_ms()
 
     receive do
-      {:approval_decisions, decisions} -> decisions
+      {:approval_decisions, decisions} -> {decisions, now_ms() - started}
     end
   end
 
