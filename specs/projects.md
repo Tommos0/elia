@@ -105,10 +105,10 @@ kept apart from the ones that apply in every project.
   project except Elia's. Creating with a folder that isn't a directory shows
   the error and adds nothing; deleting asks for confirmation.
 - **PROJ-24** The chat sidebar groups chats by project: a header per project
-  (`#project-header-<id>`) with the project's name, a link to its chats and a
-  "New chat" button (`#new-chat-<id>`) starting a chat in it (PROJ-26), and
-  that project's chats below, newest first (UI-4, UI-45). Projects with no
-  chats still show their header.
+  (`#project-header-<id>`) with the project's name and a "New chat" button
+  (`#new-chat-<id>`) starting a chat in it (PROJ-26), and that project's chats
+  below, newest first (UI-4, UI-45). Projects with no chats still show their
+  header.
 - **PROJ-25** The header on every page has a "Projects" link (`#projects-link`)
   next to "Chats".
 - **PROJ-26** `/p/<project id>/new` starts a chat in that project (PROJ-11) and

@@ -15,13 +15,14 @@ defmodule EliaWeb.ChatLiveTest do
     assert {:error, {:live_redirect, %{to: "/c/" <> _id}}} = live(conn, ~p"/")
   end
 
-  # UI-31: the "New chat" button sits above the chat list in the sidebar.
+  # UI-31, PROJ-26: the "New chat" button sits above the chat list in the
+  # sidebar and starts a chat in the open chat's project.
   test "sidebar shows a New chat button above the chat list", %{conn: conn} do
     id = Agent.new_id()
 
     {:ok, view, html} = live(conn, ~p"/c/#{id}")
 
-    assert has_element?(view, "#new-chat[href='/']", "New chat")
+    assert has_element?(view, "#new-chat[href='/p/harness/new']", "New chat")
     # The button lives in the sidebar, before the chat list.
     aside = Regex.run(~r/<aside.*?<\/aside>/s, html) |> hd()
     assert aside =~ "id=\"new-chat\""
@@ -547,6 +548,39 @@ defmodule EliaWeb.ChatLiveTest do
     Elia.Projects.set_default(project.id)
 
     assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+    assert Agent.snapshot(id).project.id == project.id
+  end
+
+  # PROJ-26: the sidebar's "New chat" button (UI-31) starts a chat in the open
+  # chat's project, not in the default project, and that destination still
+  # starts a project chat (PROJ-11).
+  test "the New chat button starts a chat in the open chat's project", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-open-project")
+    File.mkdir_p!(root)
+    {:ok, project} = Projects.create("Open one", root)
+    open = Agent.new_id()
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Elia.Store.delete(open)
+      Projects.delete(project.id)
+      Elia.Settings.delete(:default_project)
+    end)
+
+    :ok = Elia.Store.save(open, [Message.user("in project")], project: project.id)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+
+    # The button follows the open chat's project, not "/".
+    assert has_element?(view, "#new-chat[href='/p/#{project.id}/new']")
+
+    view |> element("#new-chat") |> render_click()
+    assert_redirect(view, "/p/#{project.id}/new")
+
+    # Following that destination starts a chat in that project.
+    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} =
+             live(conn, ~p"/p/#{project.id}/new")
+
     assert Agent.snapshot(id).project.id == project.id
   end
 

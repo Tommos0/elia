@@ -31,6 +31,7 @@ it at boot without a login.
 | `Elia.Tasks` | Lock and spawn/await for sub-task chats (`spawn_task`, `finish_task`) |
 | `Elia.Checkpoint` | Workspace snapshots under `refs/elia/checkpoints/` |
 | `Elia.Harness` | Test runs, end-of-turn verification, rollback, hot reload |
+| `Elia.Projects` | Project folders; every chat belongs to one and works in its folder |
 | `Elia.Store` | Saved conversations in `.elia/sessions/` |
 
 ## Folder skills
@@ -55,7 +56,9 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   don't. `.git`, `_build`, `deps` and `.elia` can't be written by the file
   tools, and paths outside the workspace are refused.
 - **Checkpoints**: the first change in each turn snapshots the workspace to a
-  git ref. Snapshots never touch HEAD, the branch or the index.
+  git ref. Only Elia's own project folder is a workspace Elia snapshots; a
+  project folder that is its own git repo is left alone. Snapshots never touch
+  HEAD, the branch or the index.
 - **Verification**: when a turn changed Elixir files outside `skills/`, the
   harness runs `mix test` at the end; on failure the turn's changes are rolled
   back and the agent is told why (at most twice per turn).
