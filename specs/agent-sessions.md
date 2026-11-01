@@ -30,8 +30,9 @@ progress so any number of UIs can follow it.
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
-  auto-approved tool names (sorted list) and its task metadata (`task`, `nil`
-  for an ordinary chat), so a UI that connects mid-turn can render the current state.
+  auto-approved tool names (sorted list), its task metadata (`task`, `nil`
+  for an ordinary chat) and the project it belongs to (`project`, PROJ-9), so a
+  UI that connects mid-turn can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
   returns to idle and broadcasts the notice "Stopped.". Stopping an idle
@@ -53,9 +54,9 @@ progress so any number of UIs can follow it.
   `{:model, selection}`. It is allowed mid-turn (MODEL-3).
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
-  their defaults and the saved model selection (SESS-14) and auto-approved
-  tools (SESS-16) are loaded, so snapshots and turns don't crash. Fields the
-  state already has are kept.
+  their defaults and the saved model selection (SESS-14), auto-approved
+  tools (SESS-16) and project (PROJ-9) are loaded, so snapshots and turns don't
+  crash. Fields the state already has are kept.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
   `set_auto_approve/3` (chat id, tool name, boolean) turns auto-approval for a
   tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
@@ -88,6 +89,12 @@ progress so any number of UIs can follow it.
   (SUBTASK-16, SUBTASK-17): if this chat is the active sub-task it is marked
   cancelled, and if it is the parent of the active sub-task that child's turn
   is stopped too.
+
+- **SESS-23** A turn runs in the chat's project: `send_message` puts the chat's
+  `project` and its folder as the `workspace` into the loop options, overriding
+  any the caller passed, so a sub-task session (which inherits its parent's loop
+  options, SUBTASK-5) still runs its tools in its own project's folder (PROJ-9,
+  PROJ-12).
 
 ## Out of scope
 

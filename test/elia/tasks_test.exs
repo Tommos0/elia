@@ -243,6 +243,41 @@ defmodule Elia.TasksTest do
     assert Agent.snapshot(child).auto_approve == []
   end
 
+  # PROJ-10
+  test "a sub-task chat carries its parent's project", %{parent: _parent} do
+    dir = Path.join(System.tmp_dir!(), "elia-task-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    project = %{id: Agent.new_id(), name: "Other", folder: dir, harness?: false}
+
+    parent = Agent.new_id()
+
+    {:ok, _pid} =
+      Agent.ensure_started(parent, loop_opts: [llm: %{provider: FakeLLM}], project: project)
+
+    Agent.subscribe(parent)
+    on_exit(fn -> stop_session(parent) end)
+
+    test_pid = self()
+
+    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:child, Tasks.active().child_id})
+      reply([finish_call("done", "ok")])
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    run_spawn(parent)
+
+    assert_receive {:child, child}
+    assert Agent.snapshot(child).project == project
+    assert Store.load_project(child) == project.id
+    stop_session(child)
+  end
+
   # SUBTASK-10
   test "a child that ends without finish_task is unfinished", %{parent: parent} do
     FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))

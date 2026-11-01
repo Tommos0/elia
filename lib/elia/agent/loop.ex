@@ -15,8 +15,9 @@ defmodule Elia.Agent.Loop do
       `{:approval_decisions, %{call_id => :approve | :deny}}`
 
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
-  function returning one, instead of the registry), `:max_steps` (default 50),
-  `:verify` (default `true`), `:llm` (extra request fields).
+  function returning one, instead of the project's), `:max_steps` (default 50),
+  `:verify` (default `true`), `:llm` (extra request fields), `:project` (the
+  chat's project) and `:workspace` (the workspace root, Elia's own by default).
   """
 
   alias Elia.LLM.Message
@@ -29,13 +30,24 @@ defmodule Elia.Agent.Loop do
 
   @spec run(pid(), [Message.t()], keyword()) :: result()
   def run(session, history, opts \\ []) do
+    workspace = Keyword.get(opts, :workspace, Elia.Workspace.root())
+    project = Keyword.get(opts, :project)
+
     ctx = %{
       session: session,
       skills: Keyword.get(opts, :skills),
       max_steps: Keyword.get(opts, :max_steps, @max_steps),
       verify: Keyword.get(opts, :verify, true),
       verify_failures: 0,
-      tool_ctx: %{session_id: opts[:session_id], turn_id: opts[:turn_id], loop_opts: opts},
+      workspace: workspace,
+      project: project,
+      tool_ctx: %{
+        session_id: opts[:session_id],
+        turn_id: opts[:turn_id],
+        workspace: workspace,
+        project: project,
+        loop_opts: opts
+      },
       llm_opts: Keyword.get(opts, :llm, %{})
     }
 
@@ -47,13 +59,15 @@ defmodule Elia.Agent.Loop do
   end
 
   defp step(ctx, history, step) do
-    # Re-read every step so skills reloaded mid-turn are usable right away.
-    skills = Elia.Skills.resolve(ctx.skills)
+    # Re-read every step so skills reloaded mid-turn are usable right away, and
+    # so the chat's project's skills and AGENTS.md apply (LOOP-1, PROJ-15).
+    skills = Elia.Skills.resolve(ctx.skills, ctx.project)
     tools = Map.new(Elia.Skills.tools(skills), &{&1.name, &1})
 
     request =
       Map.merge(ctx.llm_opts, %{
-        system: Elia.Skills.system_prompt(skills),
+        system:
+          Elia.Skills.system_prompt(skills, Elia.Skills.project_instructions(ctx.workspace)),
         tools: Enum.map(Map.values(tools), &Map.take(&1, [:name, :description, :input_schema])),
         messages: history
       })

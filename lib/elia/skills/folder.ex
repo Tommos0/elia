@@ -39,8 +39,8 @@ defmodule Elia.Skills.Folder do
   @name_format ~r/^[a-z0-9][a-z0-9_-]{0,63}$/
   @tool_name_format ~r/^[a-zA-Z0-9_-]{1,64}$/
 
-  @spec load(binary()) :: {:ok, Elia.Skill.t()} | {:error, binary()}
-  def load(dir) do
+  @spec load(binary(), Path.t()) :: {:ok, Elia.Skill.t()} | {:error, binary()}
+  def load(dir, root \\ Elia.Workspace.root()) do
     with {:ok, text} <- read(Path.join(dir, "SKILL.md")),
          {:ok, meta, body} <- frontmatter(text),
          {:ok, name} <- fetch(meta, "name", @name_format),
@@ -50,7 +50,8 @@ defmodule Elia.Skills.Folder do
        %Elia.Skill{
          name: name,
          description: description,
-         instructions: String.trim(body) <> "\n\nSkill folder: #{Elia.Workspace.relative(dir)}",
+         instructions:
+           String.trim(body) <> "\n\nSkill folder: #{Elia.Workspace.relative(dir, root)}",
          tools: tools,
          source: {:folder, dir}
        }}
@@ -147,7 +148,7 @@ defmodule Elia.Skills.Folder do
   defp build_tool(_spec, _dir), do: {:error, "must be an object"}
 
   defp run_script(command, dir, input, timeout, ctx) do
-    with :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]) do
+    with :ok <- ensure_checkpoint(ctx) do
       args =
         for {key, value} <- input, is_binary(value) or is_number(value) or is_boolean(value) do
           {"ELIA_ARG_" <> String.upcase(String.replace(key, ~r/[^A-Za-z0-9]/, "_")),
@@ -156,7 +157,7 @@ defmodule Elia.Skills.Folder do
 
       env = [
         {"ELIA_INPUT", Jason.encode!(input)},
-        {"ELIA_WORKSPACE", Elia.Workspace.root()} | args
+        {"ELIA_WORKSPACE", workspace(ctx)} | args
       ]
 
       Elia.Skills.Shell.result(
@@ -164,5 +165,15 @@ defmodule Elia.Skills.Folder do
         timeout
       )
     end
+  end
+
+  # The workspace root of the turn (PROJ-12), Elia's own when unset.
+  defp workspace(ctx), do: ctx[:workspace] || Elia.Workspace.root()
+
+  # PROJ-14: only Elia's own project is checkpointed.
+  defp ensure_checkpoint(ctx) do
+    if workspace(ctx) == Elia.Workspace.root(),
+      do: Elia.Checkpoint.ensure(ctx[:turn_id]),
+      else: :ok
   end
 end

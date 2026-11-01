@@ -11,7 +11,8 @@ the end, the turn's changes are verified.
 - **LOOP-1** Each step sends the model the system prompt and tools of the
   currently loaded skills plus the full history. Skills and the project
   instructions (SKILL-10) are read again every step, so a skill reloaded or an
-  `AGENTS.md` edited mid-turn applies from the next step.
+  `AGENTS.md` edited mid-turn applies from the next step. They are the chat's
+  project's skills and `AGENTS.md` (PROJ-15).
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
 - **LOOP-3** A turn stops with an error after the step limit: 50 steps unless
@@ -46,13 +47,16 @@ the end, the turn's changes are verified.
 
 - **LOOP-16** The `max_steps` option sets the step limit of LOOP-3 for the
   turn. Sessions pass it from their loop options (used by sub-tasks, SUBTASK-12).
-- **LOOP-17** The `skills` option is a list of skills or a function of no
-  arguments returning one (`Elia.Skills.resolve/1`). A function is called every
-  step (LOOP-1); the session also uses it for the context breakdown and for
-  which tools can be auto-approved.
+- **LOOP-17** The `skills` option is resolved against the chat's project
+  (`Elia.Skills.resolve/2`, PROJ-21): a list of skills, a function of no
+  arguments returning one, or `nil` meaning the project's own skills. A function
+  is called every step (LOOP-1); the session also uses it for the context
+  breakdown and for which tools can be auto-approved.
 - **LOOP-18** Besides `session_id` and `turn_id`, the tool context holds
-  `call_id` (the id of the call being run) and `loop_opts` (the loop's
-  options, so a tool can start a session like this one, SUBTASK-5).
+  `call_id` (the id of the call being run), `loop_opts` (the loop's options, so
+  a tool can start a session like this one, SUBTASK-5), `workspace` (the
+  workspace root the turn runs in: the chat's project folder, PROJ-12, or Elia's
+  own root when unset) and `project` (the chat's project map, PROJ-9).
 
 ## Implementation
 

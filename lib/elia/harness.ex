@@ -11,18 +11,18 @@ defmodule Elia.Harness do
   @test_options ~w(--seed --max-failures --only --exclude)
 
   @doc """
-  Runs `mix test` in the workspace. `args` may be test paths under `test/`
-  (optionally `path:line`) and a few safe flags; anything else is rejected so
-  the tool cannot run arbitrary code.
+  Runs `mix test` in `root` (Elia's own root by default). `args` may be test
+  paths under `test/` (optionally `path:line`) and a few safe flags; anything
+  else is rejected so the tool cannot run arbitrary code.
   """
-  @spec run_tests([binary()]) :: {:ok, binary()} | {:error, binary()}
-  def run_tests(args \\ []) do
+  @spec run_tests([binary()], Path.t()) :: {:ok, binary()} | {:error, binary()}
+  def run_tests(args \\ [], root \\ Workspace.root()) do
     with :ok <- check_test_args(args) do
       command = Enum.map_join(["mix", "test" | args], " ", &shell_quote/1)
       timeout = :timer.minutes(10)
 
       Elia.Skills.Shell.result(
-        Elia.Shell.run(command, env: [{"MIX_ENV", "test"}], timeout: timeout),
+        Elia.Shell.run(command, cd: root, env: [{"MIX_ENV", "test"}], timeout: timeout),
         timeout
       )
     end

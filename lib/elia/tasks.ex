@@ -258,6 +258,7 @@ defmodule Elia.Tasks do
     child_id = Elia.Agent.new_id()
     model = input["model"]
     parent_opts = ctx[:loop_opts] || []
+    project = ctx[:project]
 
     steps = input["max_steps"] |> Kernel.||(@default_steps) |> min(@max_steps) |> max(1)
 
@@ -278,7 +279,7 @@ defmodule Elia.Tasks do
       parent_opts
       |> Keyword.drop([:skills, :max_steps, :session_id, :turn_id])
       |> Keyword.merge(
-        skills: &Elia.Skills.Tasks.child_skills/0,
+        skills: fn -> Elia.Skills.Tasks.child_skills(project) end,
         max_steps: steps,
         llm: llm
       )
@@ -287,7 +288,8 @@ defmodule Elia.Tasks do
       Elia.Agent.ensure_started(child_id,
         loop_opts: loop_opts,
         task: task,
-        selection: child_selection(parent_id, model)
+        selection: child_selection(parent_id, model),
+        project: project
       )
 
     with :ok <-
@@ -510,7 +512,8 @@ defmodule Elia.Tasks do
       Store.save(child_id, Store.load(child_id),
         model: Store.load_model(child_id),
         auto_approve: Store.load_auto_approve(child_id),
-        task: Map.merge(task, changes)
+        task: Map.merge(task, changes),
+        project: Store.load_project(child_id)
       )
   end
 

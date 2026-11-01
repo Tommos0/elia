@@ -414,4 +414,173 @@ defmodule Elia.AgentTest do
     assert_receive {:chat_status, ^id, :idle}, 5000
     refute id in Agent.awaiting_approval()
   end
+
+  ## Projects (phase 3)
+
+  defp tmp_dir(name) do
+    dir = Path.join(System.tmp_dir!(), "elia-#{name}-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    dir
+  end
+
+  defp other_project(folder),
+    do: %{id: Agent.new_id(), name: "Other", folder: folder, harness?: false}
+
+  defp start_project_session(project, opts \\ []) do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, [project: project] ++ opts)
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    id
+  end
+
+  # PROJ-9, SESS-7
+  test "a chat belongs to its project" do
+    project = other_project(tmp_dir("belongs"))
+    id = start_project_session(project)
+
+    assert %{project: %{id: project_id}} = Agent.snapshot(id)
+    assert project_id == project.id
+  end
+
+  # PROJ-12, FILE-1, FILE-4
+  test "a chat's project folder is its workspace for the file tools" do
+    dir = tmp_dir("files")
+    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("w1", "write_file", %{"path" => "notes.txt", "content" => "hello"}),
+        FakeLLM.tool_call("w2", "write_file", %{"path" => "../escape.txt", "content" => "no"})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "write it")
+    await_status(id, :awaiting_approval)
+    :ok = Agent.approve(id, "w1")
+    await_status(id, :idle)
+
+    # The relative path resolved against the project folder.
+    assert File.read!(Path.join(dir, "notes.txt")) == "hello"
+    refute File.exists?(Path.join(Path.dirname(dir), "escape.txt"))
+
+    # A path outside the project folder is refused (WS-1, PROJ-12).
+    [_, second] = FakeLLM.requests()
+
+    assert %Message{role: :tool, content: [%{is_error: false}, escape]} =
+             List.last(second.messages)
+
+    assert %{is_error: true, content: content} = escape
+    assert content =~ "outside the workspace"
+  end
+
+  # PROJ-12, SHELL-2
+  test "the shell runs in the chat's project folder" do
+    dir = tmp_dir("shell")
+    File.write!(Path.join(dir, "marker.txt"), "here")
+    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("s1", "shell", %{"command" => "cat marker.txt"})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "where")
+    await_status(id, :awaiting_approval)
+    :ok = Agent.approve(id, "s1")
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    assert %Message{content: [%{content: content, is_error: false}]} = List.last(second.messages)
+    assert content == "here\n[exit: 0]"
+  end
+
+  # PROJ-15, PROJ-17, PROJ-18
+  test "the system prompt is the chat's project's AGENTS.md and skills, without self-modification" do
+    dir = tmp_dir("prompt")
+    File.write!(Path.join(dir, "AGENTS.md"), "Project rule: be terse.")
+
+    skill_dir = Path.join([dir, "skills", "proj-skill"])
+    File.mkdir_p!(skill_dir)
+
+    File.write!(
+      Path.join(skill_dir, "SKILL.md"),
+      "---\nname: proj-skill\ndescription: Only in this project\n---\nUse it.\n"
+    )
+
+    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+    FakeLLM.push(FakeLLM.assistant([Message.text("Ok.")]))
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    [request] = FakeLLM.requests()
+    assert request.system =~ "Project rule: be terse."
+    assert request.system =~ "Skill: proj-skill"
+    assert request.system =~ "Skill: harness"
+    refute request.system =~ "self-modification"
+    refute "hot_reload" in Enum.map(request.tools, & &1.name)
+    refute "list_checkpoints" in Enum.map(request.tools, & &1.name)
+  end
+
+  # PROJ-9, STORE-19
+  test "a chat's project survives a session restart through Elia.Store" do
+    {:ok, project} = Elia.Projects.create("Restart", tmp_dir("restart"))
+    on_exit(fn -> Elia.Projects.delete(project.id) end)
+
+    id = start_project_session(project, loop_opts: [llm: %{provider: FakeLLM}])
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Ok.")]))
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    assert Elia.Store.load_project(id) == project.id
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert %{project: %{id: project_id}} = Agent.snapshot(id)
+    assert project_id == project.id
+  end
+
+  # SESS-15, PROJ-9
+  test "a session with state from before :project existed is upgraded", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :project))
+
+    assert %{project: %{id: "harness"}} = Agent.snapshot(id)
+  end
+
+  # PROJ-14
+  test "a write in another project's folder doesn't checkpoint Elia's workspace" do
+    dir = tmp_dir("ckpt")
+    turn = "proj-#{System.unique_integer([:positive])}"
+
+    assert {:ok, _} =
+             Elia.Skills.Files.write_file(
+               %{"path" => "a.txt", "content" => "x"},
+               %{turn_id: turn, workspace: dir}
+             )
+
+    assert File.read!(Path.join(dir, "a.txt")) == "x"
+    # No checkpoint, so verification (and `mix test`) never runs for the turn.
+    assert Elia.Checkpoint.for_turn(turn) == nil
+
+    # In Elia's own root, the same call checkpoints (PROJ-14, CKPT-2).
+    own = "own-#{System.unique_integer([:positive])}"
+    path = "skills/tmp-proj14/a.txt"
+
+    assert {:ok, _} =
+             Elia.Skills.Files.write_file(%{"path" => path, "content" => "y"}, %{turn_id: own})
+
+    assert Elia.Checkpoint.for_turn(own) != nil
+  after
+    File.rm_rf!(Path.join(Elia.Workspace.skills_dir(), "tmp-proj14"))
+  end
 end

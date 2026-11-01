@@ -49,17 +49,18 @@ defmodule Elia.LLM.Context do
 
   @type breakdown :: %{total: non_neg_integer(), buckets: [bucket()]}
 
-  @doc "A context of `messages` under `skills` (default: current skills)."
-  @spec new([Message.t()], [Elia.Skill.t()]) :: t()
-  def new(messages \\ [], skills \\ Skills.current()) do
+  @doc "A context of `messages` under `skills` (default: current skills) and project instructions."
+  @spec new([Message.t()], [Elia.Skill.t()], binary() | nil) :: t()
+  def new(messages \\ [], skills \\ Skills.current(), project \\ Skills.project_instructions()) do
     %__MODULE__{}
-    |> put_skills(skills)
+    |> put_skills(skills, project)
     |> add_messages(messages)
   end
 
-  @doc "Token breakdown for `messages` under `skills` (default: current skills)."
-  @spec build([Message.t()], [Elia.Skill.t()]) :: breakdown()
-  def build(messages, skills \\ Skills.current()), do: messages |> new(skills) |> breakdown()
+  @doc "Token breakdown for `messages` under `skills` (default: current skills) and project instructions."
+  @spec build([Message.t()], [Elia.Skill.t()], binary() | nil) :: breakdown()
+  def build(messages, skills \\ Skills.current(), project \\ Skills.project_instructions()),
+    do: messages |> new(skills, project) |> breakdown()
 
   @doc """
   Replaces the system-prompt and tool-definition buckets for `skills` and the

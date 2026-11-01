@@ -213,7 +213,7 @@ defmodule Elia.Skills do
 
     {skills, errors} =
       Enum.reduce(folders, {skills, []}, fn folder, {skills, errors} ->
-        with {:ok, skill} <- Folder.load(folder),
+        with {:ok, skill} <- Folder.load(folder, root),
              :ok <- check_conflicts(skill, skills) do
           {skills ++ [skill], errors}
         else

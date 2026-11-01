@@ -5,7 +5,8 @@ defmodule Elia.Skills.Files do
   Approval follows `Elia.Workspace` classes: changes under `skills/` run
   without asking, other workspace files need approval, protected paths and
   paths outside the workspace are refused (reading outside needs approval).
-  Every change checkpoints the workspace first.
+  Paths are resolved against the chat's project folder (PROJ-12) and every
+  change to Elia's own project checkpoints the workspace first (PROJ-14).
   """
 
   @behaviour Elia.Skill
@@ -25,7 +26,8 @@ defmodule Elia.Skills.Files do
     """
     Always use these tools, never shell commands (`cat`, `sed`, `echo >`, \
     scripts), to read, create and edit files: they apply the workspace policy. \
-    Paths are relative to the workspace root (#{Workspace.root()}). Read a file \
+    Paths are relative to the workspace root, which is the chat's project folder \
+    (PROJ-12). Read a file \
     before editing it. `edit_file` replaces an exact string, which must occur \
     once unless `replace_all` is set; include enough surrounding lines to make \
     it unique. Changes under `skills/` apply without asking; other files need \
@@ -56,7 +58,7 @@ defmodule Elia.Skills.Files do
           "required" => ["path"]
         },
         approval: &read_policy/2,
-        run: &read_file/1
+        run: &read_file/2
       },
       %Elia.Tool{
         name: "write_file",
@@ -90,15 +92,15 @@ defmodule Elia.Skills.Files do
 
   ## Policies
 
-  def read_policy(%{"path" => path}, _ctx) do
-    case Workspace.resolve(path) do
+  def read_policy(%{"path" => path}, ctx) do
+    case Workspace.resolve(path, root(ctx)) do
       {_, :outside} -> :required
       _ -> :never
     end
   end
 
-  def write_policy(%{"path" => path}, _ctx) do
-    case Workspace.resolve(path) do
+  def write_policy(%{"path" => path}, ctx) do
+    case Workspace.resolve(path, root(ctx)) do
       {_, :extension} ->
         :never
 
@@ -106,7 +108,8 @@ defmodule Elia.Skills.Files do
         :required
 
       {abs, :protected} ->
-        {:deny, "#{Workspace.relative(abs)} is protected and cannot be changed by tools."}
+        {:deny,
+         "#{Workspace.relative(abs, root(ctx))} is protected and cannot be changed by tools."}
 
       {abs, :outside} ->
         {:deny, "#{abs} is outside the workspace."}
@@ -115,8 +118,8 @@ defmodule Elia.Skills.Files do
 
   ## Tools
 
-  def read_file(%{"path" => path} = input) do
-    {abs, _} = Workspace.resolve(path)
+  def read_file(%{"path" => path} = input, ctx \\ %{}) do
+    {abs, _} = Workspace.resolve(path, root(ctx))
 
     case File.read(abs) do
       {:ok, text} ->
@@ -139,13 +142,13 @@ defmodule Elia.Skills.Files do
   end
 
   def write_file(%{"path" => path, "content" => content}, ctx) do
-    {abs, _} = Workspace.resolve(path)
+    {abs, _} = Workspace.resolve(path, root(ctx))
 
     with_file_lock(abs, fn ->
-      with :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
+      with :ok <- ensure_checkpoint(ctx),
            :ok <- File.mkdir_p(Path.dirname(abs)),
            :ok <- File.write(abs, content) do
-        {:ok, "Wrote #{Workspace.relative(abs)} (#{byte_size(content)} bytes)"}
+        {:ok, "Wrote #{Workspace.relative(abs, root(ctx))} (#{byte_size(content)} bytes)"}
       else
         {:error, reason} when is_atom(reason) ->
           {:error, "Cannot write #{path}: #{:file.format_error(reason)}"}
@@ -157,16 +160,17 @@ defmodule Elia.Skills.Files do
   end
 
   def edit_file(%{"path" => path, "old_string" => old, "new_string" => new} = input, ctx) do
-    {abs, _} = Workspace.resolve(path)
+    {abs, _} = Workspace.resolve(path, root(ctx))
 
     # The whole read-modify-write runs under the file's lock (FILE-11), so
     # concurrent edits of one file each see the previous edit's result.
     with_file_lock(abs, fn ->
       with {:ok, text} <- File.read(abs) |> file_error(path),
            {:ok, updated, count} <- replace(text, old, new, input["replace_all"] == true),
-           :ok <- Elia.Checkpoint.ensure(ctx[:turn_id]),
+           :ok <- ensure_checkpoint(ctx),
            :ok <- File.write(abs, updated) |> file_error(path) do
-        {:ok, "Edited #{Workspace.relative(abs)} (#{count} replacement#{if count != 1, do: "s"})"}
+        {:ok,
+         "Edited #{Workspace.relative(abs, root(ctx))} (#{count} replacement#{if count != 1, do: "s"})"}
       end
     end)
   end
@@ -192,6 +196,16 @@ defmodule Elia.Skills.Files do
       n ->
         {:error, "old_string occurs #{n} times; add context to make it unique or set replace_all"}
     end
+  end
+
+  # The workspace root of the turn (PROJ-12), Elia's own when unset.
+  defp root(ctx), do: ctx[:workspace] || Workspace.root()
+
+  # PROJ-14: only Elia's own project is checkpointed.
+  defp ensure_checkpoint(ctx) do
+    if root(ctx) == Workspace.root(),
+      do: Elia.Checkpoint.ensure(ctx[:turn_id]),
+      else: :ok
   end
 
   defp file_error({:error, reason}, path) when is_atom(reason),

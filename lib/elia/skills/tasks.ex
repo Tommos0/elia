@@ -100,12 +100,14 @@ defmodule Elia.Skills.Tasks do
   end
 
   @doc """
-  The skills of a sub-task session: the registry's skills without `tasks`, plus
-  the `task` skill (SUBTASK-1).
+  The skills of a sub-task session in `project` (PROJ-10): the project's skills
+  without `tasks`, plus the `task` skill (SUBTASK-1). `nil` means Elia's own
+  project.
   """
-  @spec child_skills() :: [Elia.Skill.t()]
-  def child_skills do
-    Enum.reject(Elia.Skills.current(), &(&1.name == name())) ++ [child_skill()]
+  @spec child_skills(Elia.Projects.t() | nil) :: [Elia.Skill.t()]
+  def child_skills(project \\ nil) do
+    {skills, _errors} = Elia.Skills.for_project(project)
+    Enum.reject(skills, &(&1.name == name())) ++ [child_skill()]
   end
 
   @doc "The skill with `finish_task`, only for sub-task sessions."

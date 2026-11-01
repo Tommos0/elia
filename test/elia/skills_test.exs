@@ -132,6 +132,10 @@ defmodule Elia.SkillsTest do
     assert "shell" in names(skills)
     assert "harness" in names(skills)
     refute Enum.any?(errors, fn {folder, _} -> folder =~ "project-skill" end)
+
+    # FOLDER-3: the skill's folder is relative to the project it was loaded from.
+    project_skill = Enum.find(skills, &(&1.name == "project-skill"))
+    assert project_skill.instructions =~ "Skill folder: skills/project-skill"
   end
 
   # PROJ-18

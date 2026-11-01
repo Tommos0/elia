@@ -19,6 +19,8 @@ defmodule Elia.Agent.Session do
 
   defstruct [
     :id,
+    # The project the chat belongs to (PROJ-9): a `%{id, name, folder, harness?}`.
+    :project,
     :task,
     :turn_start,
     # The chat's own model selection (MODEL-1); nil until chosen or pinned.
@@ -51,6 +53,7 @@ defmodule Elia.Agent.Session do
 
     state = %__MODULE__{
       id: opts[:id],
+      project: opts[:project] || load_project(opts[:id], persist),
       loop_opts: Keyword.get(opts, :loop_opts, []),
       persist: persist,
       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
@@ -69,8 +72,13 @@ defmodule Elia.Agent.Session do
   # already has are kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
-             not is_map_key(state, :task_meta) do
+             not is_map_key(state, :task_meta) or not is_map_key(state, :project) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
+
+    upgraded =
+      if is_map_key(state, :project),
+        do: upgraded,
+        else: %{upgraded | project: load_project(upgraded.id, upgraded.persist)}
 
     upgraded =
       if is_map_key(state, :task_meta),
@@ -98,7 +106,7 @@ defmodule Elia.Agent.Session do
 
   def handle_call(:snapshot, _from, state) do
     snapshot =
-      Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection])
+      Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection, :project])
       |> Map.put(:task, Map.get(state, :task_meta))
 
     {:reply, Map.put(snapshot, :auto_approve, names(state.auto_approve)), state}
@@ -132,7 +140,14 @@ defmodule Elia.Agent.Session do
         llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
       end
 
-    opts = Keyword.merge(state.loop_opts, session_id: state.id, turn_id: turn_id, llm: llm)
+    opts =
+      Keyword.merge(state.loop_opts,
+        session_id: state.id,
+        turn_id: turn_id,
+        llm: llm,
+        project: project(state),
+        workspace: project(state).folder
+      )
 
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
@@ -235,8 +250,15 @@ defmodule Elia.Agent.Session do
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
     # CTX-10: remember what we estimated for the history this request sent, so
     # the context indicator can calibrate against the provider's figure.
-    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills))
-    estimate = Elia.LLM.Context.build(state.messages, skills).total
+    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
+
+    estimate =
+      Elia.LLM.Context.build(
+        state.messages,
+        skills,
+        Elia.Skills.project_instructions(project(state).folder)
+      ).total
+
     usage = Map.put(usage, "estimated_input_tokens", estimate)
 
     broadcast(state, {:usage, usage})
@@ -343,7 +365,7 @@ defmodule Elia.Agent.Session do
 
   # APPR-13: only tools that can need approval.
   defp approvable?(state, name) do
-    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills))
+    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
     Enum.any?(Elia.Skills.tools(skills), &(&1.name == name and &1.approval != :never))
   end
 
@@ -355,6 +377,22 @@ defmodule Elia.Agent.Session do
 
   defp initial_auto_approve(id, true), do: MapSet.new(Elia.Store.load_auto_approve(id))
   defp initial_auto_approve(_id, false), do: MapSet.new()
+
+  # The chat's project (PROJ-9): the saved one, else Elia's own. Read through
+  # `Elia.Projects.get/1` so a project deleted since still resolves to harness.
+  defp load_project(_id, false), do: Elia.Projects.harness()
+
+  defp load_project(id, true) do
+    with project_id when is_binary(project_id) <- Elia.Store.load_project(id),
+         project when not is_nil(project) <- Elia.Projects.get(project_id) do
+      project
+    else
+      _ -> Elia.Projects.harness()
+    end
+  end
+
+  # The chat's project, for state that predates the field (SESS-15).
+  defp project(state), do: Map.get(state, :project) || Elia.Projects.harness()
 
   defp append(state, %Message{content: []}), do: state
 
@@ -372,7 +410,8 @@ defmodule Elia.Agent.Session do
            Elia.Store.save(state.id, state.messages,
              model: state.selection,
              auto_approve: auto,
-             task: Map.get(state, :task_meta)
+             task: Map.get(state, :task_meta),
+             project: project(state).id
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end

@@ -101,6 +101,20 @@ defmodule Elia.LLM.ContextTest do
     assert project.tokens == Tokens.estimate(text)
   end
 
+  # PROJ-15, CTX-4: new/3 and build/3 take the project instructions.
+  test "build/3 takes the project instructions" do
+    with_rule = Context.build([], skills(), "Always run the tests.")
+    without = Context.build([], skills(), nil)
+
+    assert with_rule.total > without.total
+
+    system = fn breakdown -> Enum.find(breakdown.buckets, &(&1.id == :system)) end
+    assert Enum.any?(system.(with_rule).children, &(&1.id == :project))
+    refute Enum.any?(system.(without).children, &(&1.id == :project))
+
+    assert Context.new([], skills(), "Always run the tests.") |> Context.breakdown() == with_rule
+  end
+
   # CTX-4: tool definitions are sized once per name, as the loop sends them.
   test "duplicate tool names are counted once" do
     run = fn _ -> {:ok, ""} end
