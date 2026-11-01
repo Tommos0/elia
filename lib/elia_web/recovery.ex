@@ -8,9 +8,9 @@ defmodule EliaWeb.Recovery do
   request it registers a `before_send` hook that adds a banner linking here
   to HTML 500 pages (Phoenix's compilation error page and the debugger page).
 
-  This module is guarded (see `Elia.Guarded`) and only calls other guarded
-  modules, so its running version stays the boot-time one while the rest of
-  the app is broken.
+  It sits before the code reloader and only calls modules loaded at boot, so
+  its running version stays the boot-time one while the rest of the app is
+  broken.
 
   Option `:checkpoints` (default `Elia.Checkpoint`) is the module providing
   `list/1` and `rollback/1`; tests use it to simulate failures.
@@ -121,22 +121,9 @@ defmodule EliaWeb.Recovery do
   end
 
   defp rolled_back(sha, undo) do
-    pending =
-      case Elia.Guarded.changed() do
-        [] ->
-          "<p>The workspace matches the running code.</p>"
-
-        files ->
-          """
-          <p>These files differ from the running code. The app only picks up
-          changes after <code>hot_reload</code> from the agent.</p>
-          <ul>#{Enum.map_join(files, &"<li><code>#{esc(&1)}</code></li>")}</ul>
-          """
-      end
-
     """
     <p>Restored the workspace to <code>#{short(sha)}</code>.</p>
-    #{pending}
+    <p>The running app only changes after a deploy.</p>
     <p>#{button(undo, "Undo this rollback")}</p>
     <p><a href="/">Back to the app</a></p>
     """

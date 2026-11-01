@@ -177,33 +177,6 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#approve-c1")
   end
 
-  test "approvals for guarded files are flagged", %{conn: conn} do
-    id = Agent.new_id()
-    edit = %{"old_string" => "a", "new_string" => "b"}
-
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("g1", "edit_file", Map.put(edit, "path", "lib/elia/harness.ex")),
-        FakeLLM.tool_call("g2", "edit_file", Map.put(edit, "path", "lib/elia/agent.ex"))
-      ])
-    )
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Okay.")]))
-
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
-    Agent.subscribe(id)
-
-    view |> form("#chat-form", chat: %{text: "edit things"}) |> render_submit()
-    assert_receive {:agent, ^id, {:status, :awaiting_approval}}, 5000
-    assert has_element?(view, "#guarded-g1")
-    refute has_element?(view, "#guarded-g2")
-
-    view |> element("#deny-g1") |> render_click()
-    view |> element("#deny-g2") |> render_click()
-    assert_receive {:agent, ^id, {:status, :idle}}, 5000
-    refute has_element?(view, "#guarded-g1")
-  end
-
   # CTX-1, CTX-2: the indicator shows the estimate, the window and the percent.
   test "context indicator shows the estimate and the window on an empty chat", %{conn: conn} do
     id = Agent.new_id()

@@ -117,7 +117,6 @@ defmodule Elia.Harness do
           :ok ->
             case Phoenix.CodeReloader.reload(EliaWeb.Endpoint) do
               :ok ->
-                Elia.Guarded.mark_loaded()
                 Elia.Skills.reload()
                 {:ok, "Tests passed; recompiled and reloaded the running app."}
 

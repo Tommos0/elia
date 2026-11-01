@@ -7,9 +7,6 @@ defmodule Elia.Application do
 
   @impl true
   def start(_type, _args) do
-    # The code loaded now matches the guarded files on disk.
-    Elia.Guarded.mark_loaded()
-
     children = [
       EliaWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:elia, :dns_cluster_query) || :ignore},

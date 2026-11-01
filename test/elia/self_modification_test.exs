@@ -169,7 +169,6 @@ defmodule Elia.SelfModificationTest do
       assert instructions =~ "checkpoint"
       assert instructions =~ "rolled back"
       assert instructions =~ "hot_reload"
-      assert instructions =~ "lib/elia/guarded.ex"
       assert instructions =~ "specs/README.md"
       assert instructions =~ "requirement IDs"
       assert instructions =~ "Never renumber"

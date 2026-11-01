@@ -30,11 +30,11 @@ if config_env() == :dev do
   config :elia, EliaWeb.Endpoint,
     live_reload: [
       web_console_logger: true,
-      # Never reloads on notification; only hot_reload loads code.
-      reloader: {Elia.Guarded, :reload, [[]]},
+      # Never reloads on notification; only a deploy loads code (DEPLOY-8).
+      reloader: {Elia.Deploy, :reload, [[]]},
       patterns: [
-        # Static assets, except user uploads. lib/ files are not watched: saving
-        # them doesn't change the running app until hot_reload (GUARD-13).
+        # Static assets, except user uploads. lib/ files are not watched: the
+        # live tree is only changed by a deploy, not by editing.
         ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"
       ]
     ]

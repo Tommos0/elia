@@ -2,8 +2,8 @@ defmodule Elia.Skills.Harness do
   @moduledoc """
   Extending Elia with folder skills, in every project (PROJ-16, SKILL-8).
 
-  What only applies to Elia's own code — approval, checkpoints, guarded files
-  and `hot_reload` — is `Elia.Skills.SelfModification` (PROJ-17).
+  What only applies to Elia's own code — approval, checkpoints and
+  `hot_reload` — is `Elia.Skills.SelfModification` (PROJ-17).
   """
 
   @behaviour Elia.Skill

@@ -4,7 +4,7 @@ defmodule EliaWeb.RecoveryTest do
   import Plug.Conn
   import Plug.Test
 
-  alias Elia.{Checkpoint, Guarded, Workspace}
+  alias Elia.{Checkpoint, Workspace}
   alias EliaWeb.{FakeCheckpoints, Recovery}
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
@@ -42,29 +42,22 @@ defmodule EliaWeb.RecoveryTest do
       File.rm(in_root("recover.txt"))
       File.rm_rf!(in_root("skills/recover-skill"))
       File.rm_rf!(in_root("lib"))
-      Guarded.mark_loaded()
       Elia.Skills.reload()
     end)
 
     %{sha: sha}
   end
 
-  test "RECOVER-8: the plug and every Elia module it uses are guarded" do
-    assert Guarded.guarded?("lib/elia_web/recovery.ex")
-
+  test "RECOVER-8: the plug only uses boot-time modules" do
     modules =
       "lib/elia_web/recovery.ex"
       |> File.read!()
       |> then(&Regex.scan(~r/\bElia(?:\.[A-Z]\w*)+/, &1))
       |> List.flatten()
       |> Enum.uniq()
+      |> Enum.sort()
 
-    assert "Elia.Checkpoint" in modules
-
-    for module <- modules do
-      path = "lib/" <> Macro.underscore(module) <> ".ex"
-      assert Guarded.guarded?(path), "#{module} (#{path}) is not guarded"
-    end
+    assert modules == ["Elia.Checkpoint", "Elia.Skills"]
   end
 
   test "RECOVER-1: the endpoint serves recovery before the reloaders" do
@@ -360,28 +353,6 @@ defmodule EliaWeb.RecoveryTest do
       assert rollback_request(undo).status == 200
       assert File.read!(in_root("recover.txt")) == "changed"
       assert Enum.any?(Elia.Skills.current(), &(&1.name == "recover-skill"))
-    end
-
-    test "RECOVER-5: lists code files whose changes are still unloaded" do
-      File.mkdir_p!(in_root("lib/elia"))
-      File.write!(in_root("lib/elia/harness.ex"), "v0")
-      Guarded.mark_loaded()
-      File.write!(in_root("lib/elia/harness.ex"), "v1")
-      {:ok, sha} = Checkpoint.create("guarded change")
-      File.write!(in_root("lib/elia/harness.ex"), "v2")
-
-      conn = rollback_request(sha)
-      assert conn.status == 200
-      assert conn.resp_body =~ "lib/elia/harness.ex"
-      assert conn.resp_body =~ "only picks up"
-
-      File.write!(in_root("lib/elia/harness.ex"), "v0")
-      {:ok, clean} = Checkpoint.create("loaded state")
-      File.write!(in_root("lib/elia/harness.ex"), "v2")
-
-      conn = rollback_request(clean)
-      assert conn.resp_body =~ "matches the running code"
-      refute conn.resp_body =~ "only picks up"
     end
   end
 

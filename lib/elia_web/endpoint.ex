@@ -11,8 +11,8 @@ defmodule EliaWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  # Sockets never reload code on connect: reloads go through the guarded
-  # reloader on HTTP requests below (see Elia.Guarded).
+  # Sockets never reload code on connect: a deploy loads code, never a request
+  # (see Elia.Deploy).
   # peer_data and user_agent feed the sessions page (EliaWeb.ClientTracker);
   # x_headers exposes X-Forwarded-For from reverse proxies like Cloudflare.
   @connect_info [:peer_data, :x_headers, :user_agent, session: @session_options]
@@ -43,8 +43,8 @@ defmodule EliaWeb.Endpoint do
     # before both reloaders (see EliaWeb.Recovery).
     plug EliaWeb.Recovery
     plug Phoenix.LiveReloader
-    # Never reloads on a request; only hot_reload loads code (see Elia.Guarded).
-    plug Phoenix.CodeReloader, reloader: &Elia.Guarded.reload/2
+    # Never reloads on a request; only a deploy loads code (DEPLOY-8).
+    plug Phoenix.CodeReloader, reloader: &Elia.Deploy.reload/2
   end
 
   plug Plug.RequestId

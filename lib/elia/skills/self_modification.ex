@@ -25,15 +25,14 @@ defmodule Elia.Skills.SelfModification do
     fails, your changes are rolled back and you are told why. Run `run_tests` \
     yourself before finishing.
 
-    Some files are guarded because they enforce these guardrails (the list is in \
-    `lib/elia/guarded.ex`); tell the user when a change touches one. Never edit \
-    `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` \
-    to weaken them. The dev server never reloads code on its own: no Elixir \
-    change (guarded or not) takes effect until a successful `hot_reload` (dev \
-    server only), so a multi-file edit can't break the running app halfway. Make \
-    all the edits for a change, run `run_tests`, then call `hot_reload` and tell \
-    the user the change is live. `list_checkpoints` shows recent checkpoints and \
-    `rollback` undoes a change that went wrong.
+    Never edit `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or \
+    `lib/elia/workspace.ex` to weaken the guardrails. The running app never \
+    reloads code on its own: an Elixir change takes effect only after a deploy \
+    (a successful `hot_reload` or a restart), so a multi-file edit can't break \
+    the running app halfway. Make all the edits for a change, run `run_tests`, \
+    then call `hot_reload` and tell the user the change is live. \
+    `list_checkpoints` shows recent checkpoints and `rollback` undoes a change \
+    that went wrong.
 
     This project is spec-driven: each feature has a spec in `specs/` with \
     numbered requirements (workflow and index in `specs/README.md`). Before \

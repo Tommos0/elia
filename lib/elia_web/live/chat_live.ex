@@ -688,7 +688,7 @@ defmodule EliaWeb.ChatLive do
         class="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
       >
         <p class="border-b border-base-300 px-3 py-2 text-xs text-base-content/60">
-          Auto-approved tools run in this chat without asking, including changes to guarded files.
+          Auto-approved tools run in this chat without asking.
         </p>
         <ul class="max-h-72 overflow-y-auto py-1">
           <li :for={tool <- @tools} class="px-1">
@@ -1053,14 +1053,6 @@ defmodule EliaWeb.ChatLive do
         </div>
       </details>
       <div
-        :if={@item.status == :awaiting_approval && guard_note(@item)}
-        id={"guarded-#{@item.call_id}"}
-        class="flex items-start gap-2 border-t border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
-      >
-        <.icon name="hero-shield-exclamation" class="mt-px size-4 shrink-0" />
-        <span>{guard_note(@item)}</span>
-      </div>
-      <div
         :if={@item.status == :awaiting_approval}
         class="flex items-center justify-end gap-2 border-t border-base-300 px-3 py-2"
       >
@@ -1164,24 +1156,6 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp tool_detail(_item), do: nil
-
-  # Flags approvals that touch the harness's own guardrails (see Elia.Guarded).
-  defp guard_note(%{name: name, input: %{"path" => path}})
-       when name in ["write_file", "edit_file"] and is_binary(path) do
-    if Elia.Guarded.guarded?(path),
-      do:
-        "Guarded file: this changes the harness's guardrails. " <>
-          "It only takes effect after hot_reload."
-  end
-
-  defp guard_note(%{name: "hot_reload"}) do
-    case Elia.Guarded.changed() do
-      [] -> nil
-      files -> "This loads changes to: " <> Enum.join(files, ", ")
-    end
-  end
-
-  defp guard_note(_item), do: nil
 
   ## Events
 
