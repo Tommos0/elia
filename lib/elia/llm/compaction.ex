@@ -144,7 +144,7 @@ defmodule Elia.LLM.Compaction do
   @spec empty?(t()) :: boolean()
   def empty?(%__MODULE__{} = state) do
     state.level == 0 and state.covered == 0 and state.folded == 0 and is_nil(state.summary) and
-      state.ledger == [] and state.pins == []
+      state.ledger == [] and state.pins == [] and state.options == %{}
   end
 
   ## Options (COMPACT-9)

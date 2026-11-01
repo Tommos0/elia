@@ -9,10 +9,12 @@ the end, the turn's changes are verified.
 ## Requirements
 
 - **LOOP-1** Each step sends the model the system prompt and tools of the
-  currently loaded skills plus the full history. Skills and the project
-  instructions (SKILL-10) are read again every step, so a skill reloaded or an
-  `AGENTS.md` edited mid-turn applies from the next step. They are the chat's
-  project's skills and `AGENTS.md` (PROJ-15).
+  currently loaded skills plus the history it was given: the **request view**
+  (COMPACT-2), which the session derived from the full history when the turn
+  started, plus the messages the loop has appended since. Skills and the
+  project instructions (SKILL-10) are read again every step, so a skill
+  reloaded or an `AGENTS.md` edited mid-turn applies from the next step. They
+  are the chat's project's skills and `AGENTS.md` (PROJ-15).
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
 - **LOOP-3** A turn stops with an error after the step limit: 50 steps unless

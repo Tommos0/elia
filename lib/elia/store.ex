@@ -17,9 +17,10 @@ defmodule Elia.Store do
   @doc """
   Saves a chat. `opts[:model]` is the chat's model selection (MODEL-1) and
   `opts[:auto_approve]` its auto-approved tool names (STORE-14), `opts[:task]`
-  the sub-task metadata of a chat started by `spawn_task` (STORE-16) and
-  `opts[:project]` the id of the project it belongs to (STORE-19); each is kept
-  alongside the messages when given.
+  the sub-task metadata of a chat started by `spawn_task` (STORE-16),
+  `opts[:project]` the id of the project it belongs to (STORE-19) and
+  `opts[:compaction]` its compaction state (COMPACT-24); each is kept alongside
+  the messages when given.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -33,6 +34,12 @@ defmodule Elia.Store do
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
     chat = if task = opts[:task], do: Map.put(chat, :task, task), else: chat
     chat = if project = opts[:project], do: Map.put(chat, :project_id, project), else: chat
+
+    chat =
+      case opts[:compaction] do
+        %{} = compaction -> Map.put(chat, :compaction, compaction)
+        _ -> chat
+      end
 
     chat =
       case opts[:auto_approve] do
@@ -105,6 +112,21 @@ defmodule Elia.Store do
          %{project_id: project_id} <- decode(data),
          true <- is_binary(project_id) do
       project_id
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The chat's saved compaction state, or `nil` (COMPACT-24): the summary, the
+  ledger, the pin set, how far the ladder has gone and the chat's own options.
+  """
+  @spec load_compaction(binary()) :: map() | nil
+  def load_compaction(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{compaction: %{} = compaction} <- decode(data) do
+      compaction
     else
       _ -> nil
     end

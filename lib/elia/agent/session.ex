@@ -5,17 +5,23 @@ defmodule Elia.Agent.Session do
   `Elia.Agent.topic(id)` as `{:agent, id, event}`. History is saved with
   `Elia.Store` after every change and reloaded when the session restarts.
 
+  The session keeps the **full** history (COMPACT-1) and sends the loop the
+  smaller **request view** `Elia.LLM.Compaction` derives from it at the start of
+  a turn (COMPACT-2, COMPACT-5), compacting first when the request exceeds the
+  trigger (COMPACT-6).
+
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
-  `{:usage, usage}`, `{:error, text}`, `{:reset, messages}`,
-  `{:model, selection}`, `{:auto_approve, names}`, `{:task, metadata}`.
+  `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
+  `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
+  `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
 
   require Logger
 
-  alias Elia.LLM.Message
+  alias Elia.LLM.{Compaction, Context, Message}
 
   defstruct [
     :id,
@@ -32,6 +38,12 @@ defmodule Elia.Agent.Session do
     :task_meta,
     messages: [],
     status: :idle,
+    # The chat's compaction state (COMPACT-24): how far the ladder has gone, the
+    # summary, the ledger, the pins and the chat's own options.
+    compaction: %Compaction{},
+    # The request view of the running turn (COMPACT-2): what the loop was given
+    # plus what it appended, so a usage report is estimated over what was sent.
+    view: nil,
     # Tool names the user lets run without asking in this chat (APPR-8).
     auto_approve: MapSet.new(),
     # call_id => :awaiting_approval | :running | :done
@@ -67,6 +79,7 @@ defmodule Elia.Agent.Session do
       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
+      compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       auto_approve: initial_auto_approve(opts[:id], persist)
     }
 
@@ -76,12 +89,12 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project` or `:workspace` existed (a session that outlived a hot reload).
-  # Fields it already has are kept.
+  # `:project`, `:workspace` or `:compaction` existed (a session that outlived a
+  # hot reload). Fields it already has are kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
-             not is_map_key(state, :workspace) do
+             not is_map_key(state, :workspace) or not is_map_key(state, :compaction) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -115,12 +128,26 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | auto_approve: initial_auto_approve(upgraded.id, upgraded.persist)}
 
+    upgraded =
+      if is_map_key(state, :compaction),
+        do: upgraded,
+        else: %{upgraded | compaction: initial_compaction(upgraded.id, upgraded.persist, nil)}
+
     handle_call(msg, from, upgraded)
   end
 
   def handle_call(:snapshot, _from, state) do
     snapshot =
-      Map.take(state, [:id, :messages, :status, :tool_status, :last_usage, :selection, :project])
+      Map.take(state, [
+        :id,
+        :messages,
+        :status,
+        :tool_status,
+        :last_usage,
+        :selection,
+        :project,
+        :compaction
+      ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
     {:reply, Map.put(snapshot, :auto_approve, names(state.auto_approve)), state}
@@ -142,17 +169,20 @@ defmodule Elia.Agent.Session do
         do: %{state | selection: Elia.LLM.pinnable_selection()},
         else: state
 
+    # COMPACT-5: compaction happens at the start of the turn, before the user
+    # message, never mid-turn, so the loop's own calls and results stay intact.
+    state = compact_at_turn_start(state)
+
     state = %{state | turn_start: length(state.messages)} |> append(message)
+    # COMPACT-2: the loop works on the request view; the session keeps the full
+    # history and the loop appends its own messages to this list.
+    view_messages = Compaction.view(state.messages, state.compaction).messages
+    state = %{state | view: view_messages}
     session = self()
-    history = state.messages
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
     # The chat's model selected now is used for the whole turn. An explicit
     # provider replaces the selection; other explicit options are merged over it.
-    llm =
-      case explicit do
-        %{provider: _} = llm -> llm
-        llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
-      end
+    llm = llm_request(state)
 
     opts =
       Keyword.merge(state.loop_opts,
@@ -165,7 +195,7 @@ defmodule Elia.Agent.Session do
 
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
-        Elia.Agent.Loop.run(session, history, opts)
+        Elia.Agent.Loop.run(session, view_messages, opts)
       end)
 
     {:reply, :ok, set_status(%{state | task: task}, :running)}
@@ -178,6 +208,45 @@ defmodule Elia.Agent.Session do
     state = if state.messages == [], do: state, else: save(state)
     broadcast(state, {:model, selection})
     {:reply, :ok, state}
+  end
+
+  # COMPACT-10: compact an idle chat on demand, ignoring the threshold and the
+  # target (and without needing a window, which only gates COMPACT-7).
+  def handle_call(:compact, _from, %{status: status} = state) when status != :idle do
+    {:reply, {:error, :busy}, state}
+  end
+
+  def handle_call(:compact, _from, state) do
+    {:reply, :ok, compact(state, target: nil, overhead: overhead(state))}
+  end
+
+  # COMPACT-9: this chat's own budget, fraction, target, working set, user cap
+  # and whether automatic compaction is on.
+  def handle_call({:set_compaction, options}, _from, state) do
+    compaction = %{
+      state.compaction
+      | options: Map.merge(state.compaction.options, Map.new(options))
+    }
+
+    state = save(%{state | compaction: compaction})
+    broadcast(state, {:compaction, compaction})
+    {:reply, :ok, state}
+  end
+
+  # COMPACT-21: pin a message or one of its blocks, so no rule may elide it.
+  def handle_call({:set_pin, index, block, on?}, _from, state) when is_integer(index) do
+    if index < 0 or index >= length(state.messages) do
+      {:reply, {:error, :no_such_message}, state}
+    else
+      compaction =
+        if on?,
+          do: Compaction.pin(state.compaction, index, block),
+          else: Compaction.unpin(state.compaction, index, block)
+
+      state = save(%{state | compaction: compaction})
+      broadcast(state, {:compaction, compaction})
+      {:reply, :ok, state}
+    end
   end
 
   def handle_call({:update_task, _changes}, _from, %{task_meta: nil} = state) do
@@ -262,16 +331,10 @@ defmodule Elia.Agent.Session do
   def handle_info({:loop_append, message}, state), do: {:noreply, append(state, message)}
 
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
-    # CTX-10: remember what we estimated for the history this request sent, so
-    # the context indicator can calibrate against the provider's figure.
-    skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
-
-    estimate =
-      Elia.LLM.Context.build(
-        state.messages,
-        skills,
-        Elia.Skills.project_instructions(project(state).folder)
-      ).total
+    # CTX-10, COMPACT-26: remember what we estimated for the request view this
+    # step sent, so the context indicator can calibrate against the provider's
+    # figure over the same messages.
+    estimate = context(state, state.view || state.messages).total
 
     usage = Map.put(usage, "estimated_input_tokens", estimate)
 
@@ -392,6 +455,86 @@ defmodule Elia.Agent.Session do
   defp initial_auto_approve(id, true), do: MapSet.new(Elia.Store.load_auto_approve(id))
   defp initial_auto_approve(_id, false), do: MapSet.new()
 
+  # COMPACT-9, COMPACT-24: the chat's saved compaction state, with any options
+  # its session was started with.
+  defp initial_compaction(id, true, overrides) do
+    id |> Elia.Store.load_compaction() |> Compaction.from_map() |> put_options(overrides)
+  end
+
+  defp initial_compaction(_id, false, overrides),
+    do: %Compaction{} |> put_options(overrides)
+
+  defp put_options(state, nil), do: state
+  defp put_options(state, overrides), do: %{state | options: Map.merge(state.options, Map.new(overrides))}
+
+  # COMPACT-6: a turn compacts first when the request view's estimate exceeds
+  # the trigger. Without a known window nothing automatic happens (COMPACT-7).
+  defp compact_at_turn_start(state) do
+    options = Compaction.options(state.compaction.options)
+    window = window(state)
+    trigger = Compaction.trigger(window, options)
+    overhead = overhead(state)
+    tokens = Compaction.view(state.messages, state.compaction).tokens + overhead
+
+    if options.auto and trigger != nil and tokens > trigger do
+      compact(state, target: Compaction.target(window, options), overhead: overhead)
+    else
+      state
+    end
+  end
+
+  # COMPACT-6, COMPACT-8, COMPACT-17: run the ladder and, if it cannot reach the
+  # target, fold the summary. Saving, and the `{:compaction, state}` broadcast
+  # that lets a UI redraw its annotations and its estimate, happen only when the
+  # state actually changed.
+  defp compact(state, opts) do
+    before = state.compaction
+    llm = llm_request(state)
+    summarizer = Keyword.get(state.loop_opts, :summarizer, Compaction.default_summarizer(llm))
+
+    opts = opts |> Map.new() |> Map.merge(%{summarizer: summarizer, llm: llm})
+    compaction = Compaction.compact(state.messages, before, opts)
+    state = %{state | compaction: compaction}
+
+    if compaction == before do
+      state
+    else
+      # COMPACT-27: the adjustment described the old view, so it is cleared.
+      state = state |> drop_estimate() |> save()
+      broadcast(state, {:compaction, compaction})
+      state
+    end
+  end
+
+  # COMPACT-27: a different request view makes the CTX-10 adjustment (which
+  # described the old one) meaningless, so it is cleared, as on a reset.
+  defp drop_estimate(%{last_usage: nil} = state), do: state
+
+  defp drop_estimate(state),
+    do: %{state | last_usage: Map.delete(state.last_usage, "estimated_input_tokens")}
+
+  # The selected model's context window, or nil when it is unknown (CTX-7).
+  defp window(state), do: Elia.LLM.context_window(state.selection).context_length
+
+  # The system prompt and tool definitions of the request, which are not part of
+  # the view's messages but are part of the estimated request (CTX-1).
+  defp overhead(state), do: Context.build([], skills(state), instructions(state)).total
+
+  defp context(state, messages),
+    do: Context.build(messages, skills(state), instructions(state))
+
+  defp skills(state), do: Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
+
+  defp instructions(state), do: Elia.Skills.project_instructions(project(state).folder)
+
+  # The provider request of the turn (MODEL-1): an explicit `:llm` wins.
+  defp llm_request(state) do
+    case Keyword.get(state.loop_opts, :llm, %{}) do
+      %{provider: _} = llm -> llm
+      llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
+    end
+  end
+
   # The chat's project (PROJ-9): the saved one, else Elia's own. Read through
   # `Elia.Projects.get/1` so a project deleted since still resolves to harness.
   defp load_project(_id, false), do: Elia.Projects.harness()
@@ -418,7 +561,11 @@ defmodule Elia.Agent.Session do
 
   defp append(state, message) do
     broadcast(state, {:message, message})
-    save(%{state | messages: state.messages ++ [message]})
+
+    state = %{state | messages: state.messages ++ [message]}
+    # The running turn's request view grows with it (COMPACT-2).
+    state = if is_list(state.view), do: %{state | view: state.view ++ [message]}, else: state
+    save(state)
   end
 
   defp save(%{persist: false} = state), do: state
@@ -431,13 +578,21 @@ defmodule Elia.Agent.Session do
              model: state.selection,
              auto_approve: auto,
              task: Map.get(state, :task_meta),
-             project: project(state).id
+             project: project(state).id,
+             compaction: saved_compaction(Map.get(state, :compaction))
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end
 
     state
   end
+
+  # COMPACT-24: nothing is written for a chat that has never compacted or
+  # pinned anything.
+  defp saved_compaction(nil), do: nil
+
+  defp saved_compaction(%Compaction{} = compaction),
+    do: if(Compaction.empty?(compaction), do: nil, else: Compaction.to_map(compaction))
 
   # Every tool call needs a result before the next model call.
   defp close_dangling_tool_calls(state, reason) do
@@ -454,7 +609,7 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil}, :idle)
+  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil, view: nil}, :idle)
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})

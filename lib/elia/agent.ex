@@ -68,6 +68,29 @@ defmodule Elia.Agent do
   def stop(id), do: GenServer.call(Session.via(id), :stop)
 
   @doc """
+  Compacts the chat now, on demand (COMPACT-10): it ignores the threshold and
+  the target, and needs no known window. `{:error, :busy}` while a turn runs.
+  """
+  @spec compact(binary()) :: :ok | {:error, :busy}
+  def compact(id), do: GenServer.call(Session.via(id), :compact)
+
+  @doc """
+  Sets this chat's compaction options (COMPACT-9): any of `:budget`,
+  `:fraction`, `:target_fraction`, `:working_set`, `:user_cap` and `:auto`.
+  """
+  @spec set_compaction(binary(), map() | keyword()) :: :ok
+  def set_compaction(id, options), do: GenServer.call(Session.via(id), {:set_compaction, options})
+
+  @doc """
+  Pins or unpins a message (`block` nil) or one of its blocks (COMPACT-21), so
+  no compaction rule may elide it.
+  """
+  @spec set_pin(binary(), non_neg_integer(), non_neg_integer() | nil, boolean()) ::
+          :ok | {:error, :no_such_message}
+  def set_pin(id, index, block \\ nil, on? \\ true),
+    do: GenServer.call(Session.via(id), {:set_pin, index, block, on?})
+
+  @doc """
   Merges `changes` into the task metadata of a sub-task chat and saves it
   (SESS-18). `{:error, :not_a_task}` for a chat without task metadata.
   """

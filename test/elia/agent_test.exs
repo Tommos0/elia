@@ -583,4 +583,206 @@ defmodule Elia.AgentTest do
   after
     File.rm_rf!(Path.join(Elia.Workspace.skills_dir(), "tmp-proj14"))
   end
+
+  ## Compaction (COMPACT)
+
+  # Six turns of bulky work: enough for the trigger to fire and for turns to age
+  # out of a working set of two.
+  defp big_history(turns) do
+    Enum.flat_map(1..turns, fn n ->
+      [
+        Message.user("task #{n}: #{String.duplicate("ask ", 60)}"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{type: :reasoning, text: String.duplicate("think #{n} ", 60)},
+            %{
+              type: :tool_call,
+              id: "c#{n}",
+              name: "read_file",
+              input: %{"path" => "lib/file#{n}.ex"}
+            }
+          ]
+        },
+        %Message{
+          role: :tool,
+          content: [Message.tool_result("c#{n}", String.duplicate("output #{n} ", 60))]
+        },
+        %Message{role: :assistant, content: [Message.text("done #{n}")]}
+      ]
+    end)
+  end
+
+  defp start_compaction_session(id, opts) do
+    {:ok, pid} = Agent.ensure_started(id, opts)
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    pid
+  end
+
+  # COMPACT-2, COMPACT-5, COMPACT-6, COMPACT-24, COMPACT-26
+  test "a turn over the trigger sends the model the request view, keeping the history" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    messages = big_history(6)
+    :ok = Elia.Store.save(id, messages)
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [
+        llm: %{provider: FakeLLM},
+        summarizer: fn _ -> {:ok, "Six turns of reading files."} end
+      ]
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "carry on")
+
+    assert_receive {:agent, ^id, {:compaction, compaction}}, 5000
+    assert_receive {:agent, ^id, {:usage, usage}}, 5000
+    await_status(id, :idle)
+
+    assert compaction.level == 3
+    assert compaction.summary == "Six turns of reading files."
+
+    # COMPACT-2: the model got the smaller view, the session kept everything.
+    [request] = FakeLLM.requests()
+    assert length(request.messages) < length(messages) + 1
+    snapshot = Agent.snapshot(id)
+    assert length(snapshot.messages) == length(messages) + 2
+
+    # COMPACT-19, COMPACT-23: the summary and the marker lead the request.
+    assert [%Message{meta: %{compaction: :summary}} = head | _] = request.messages
+    assert Message.text_content(head) =~ "Six turns of reading files."
+    assert Enum.any?(request.messages, &(&1.meta[:compaction] == :marker))
+
+    # COMPACT-26: the estimate is of the request view, not of the history.
+    assert usage["estimated_input_tokens"] == Elia.LLM.Context.build(request.messages).total
+    assert usage["estimated_input_tokens"] < Elia.LLM.Context.build(messages).total
+
+    # COMPACT-24: saved with the conversation.
+    assert %{level: 3, summary: "Six turns of reading files."} = Elia.Store.load_compaction(id)
+
+    # A restart reloads it: neither re-summarized nor lost.
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    {:ok, _pid} = Agent.ensure_started(id)
+    assert %{level: 3, summary: "Six turns of reading files."} = Agent.snapshot(id).compaction
+  end
+
+  # COMPACT-7
+  test "no window means no automatic compaction" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    messages = big_history(4)
+    :ok = Elia.Store.save(id, messages)
+
+    start_compaction_session(id,
+      selection: %{provider: "openrouter", model: "vendor/no-window", name: "No window"},
+      compaction: %{budget: 1},
+      loop_opts: [llm: %{provider: FakeLLM}]
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "carry on")
+    await_status(id, :idle)
+
+    assert Agent.snapshot(id).compaction.level == 0
+    [request] = FakeLLM.requests()
+    assert length(request.messages) == length(messages) + 1
+  end
+
+  # COMPACT-9
+  test "a chat's compaction options are configurable and saved" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(2))
+    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
+
+    assert :ok = Agent.set_compaction(id, %{budget: 5, working_set: 2, auto: false})
+    assert_receive {:agent, ^id, {:compaction, %{options: %{budget: 5}}}}
+
+    assert %{budget: 5, working_set: 2, auto: false} = Agent.snapshot(id).compaction.options
+    assert %{options: %{budget: 5, auto: false}} = Elia.Store.load_compaction(id)
+  end
+
+  # COMPACT-10
+  test "compact now compacts an idle chat, ignoring the threshold and the target" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{working_set: 2},
+      loop_opts: [
+        llm: %{provider: FakeLLM},
+        summarizer: fn _ -> {:ok, "The first turns, folded."} end
+      ]
+    )
+
+    # The default budget is far away: the turn itself doesn't compact.
+    FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
+    :ok = Agent.send_message(id, "carry on")
+    await_status(id, :idle)
+    assert Agent.snapshot(id).compaction.level == 0
+    [request] = FakeLLM.requests()
+    assert length(request.messages) == length(big_history(4)) + 1
+
+    :ok = Agent.compact(id)
+    assert_receive {:agent, ^id, {:compaction, compaction}}, 5000
+    assert compaction.level == 3
+    assert compaction.summary == "The first turns, folded."
+    assert %{level: 3} = Elia.Store.load_compaction(id)
+  end
+
+  # COMPACT-10
+  test "compact now refuses while a turn is running" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
+    :ok = Agent.send_message(id, "run it")
+    await_status(id, :awaiting_approval)
+
+    assert {:error, :busy} = Agent.compact(id)
+    :ok = Agent.approve(id, "c1")
+    await_status(id, :idle)
+  end
+
+  # COMPACT-21, COMPACT-24
+  test "pins are set, saved with the chat and reloaded on restart" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(2))
+    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
+
+    assert :ok = Agent.set_pin(id, 1)
+    assert_receive {:agent, ^id, {:compaction, %{pins: [{1, nil}]}}}
+
+    assert :ok = Agent.set_pin(id, 2, 0)
+    assert %{pins: pins} = Agent.snapshot(id).compaction
+    assert {1, nil} in pins and {2, 0} in pins
+
+    assert :ok = Agent.set_pin(id, 1, nil, false)
+    refute {1, nil} in Agent.snapshot(id).compaction.pins
+    assert %{pins: pins} = Elia.Store.load_compaction(id)
+    assert {2, 0} in pins
+
+    # A message that isn't there can't be pinned.
+    assert {:error, :no_such_message} = Agent.set_pin(id, 99)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    {:ok, _pid} = Agent.ensure_started(id)
+    assert {2, 0} in Agent.snapshot(id).compaction.pins
+  end
+
+  # SESS-15
+  test "a session with state from before :compaction existed is upgraded", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :compaction))
+
+    assert %{compaction: %Elia.LLM.Compaction{level: 0}} = Agent.snapshot(id)
+  end
 end

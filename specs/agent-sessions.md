@@ -23,6 +23,7 @@ progress so any number of UIs can follow it.
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
   `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`,
+  `{:compaction, state}` (the chat's compaction state changed, COMPACT-24),
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
@@ -31,8 +32,9 @@ progress so any number of UIs can follow it.
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
   auto-approved tool names (sorted list), its task metadata (`task`, `nil`
-  for an ordinary chat) and the project it belongs to (`project`, PROJ-9), so a
-  UI that connects mid-turn can render the current state.
+  for an ordinary chat), the project it belongs to (`project`, PROJ-9) and its
+  compaction state (`compaction`, COMPACT-24), so a UI that connects mid-turn
+  can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
   returns to idle and broadcasts the notice "Stopped.". Stopping an idle
@@ -55,8 +57,9 @@ progress so any number of UIs can follow it.
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
   their defaults and the saved model selection (SESS-14), auto-approved
-  tools (SESS-16) and project (PROJ-9) are loaded, so snapshots and turns don't
-  crash. Fields the state already has are kept.
+  tools (SESS-16), project (PROJ-9) and compaction state (COMPACT-24) are
+  loaded, so snapshots and turns don't crash. Fields the state already has are
+  kept.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
   `set_auto_approve/3` (chat id, tool name, boolean) turns auto-approval for a
   tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
@@ -95,6 +98,26 @@ progress so any number of UIs can follow it.
   any the caller passed, so a sub-task session (which inherits its parent's loop
   options, SUBTASK-5) still runs its tools in its own project's folder (PROJ-9,
   PROJ-12).
+
+- **SESS-24** A turn sends the loop the **request view** of the history
+  (COMPACT-2), derived when the turn starts, after compacting first if the
+  estimated request is over the trigger (COMPACT-5, COMPACT-6). The session
+  keeps the full history and the loop appends its own messages to the view, so
+  the `estimated_input_tokens` of a usage report (CTX-10) is the estimate of
+  what that step sent (COMPACT-26).
+- **SESS-25** `Elia.Agent.compact/1` compacts an idle chat on demand
+  (COMPACT-10), ignoring the threshold and the target; it returns
+  `{:error, :busy}` while a turn runs. `Elia.Agent.set_compaction/2` sets this
+  chat's compaction options (COMPACT-9) and `Elia.Agent.set_pin/4` pins or
+  unpins a message or one of its blocks (COMPACT-21), returning
+  `{:error, :no_such_message}` for an index the chat doesn't have. Both save
+  the state with the chat and broadcast `{:compaction, state}` (COMPACT-24);
+  when the request view changes the CTX-10 adjustment is cleared (COMPACT-27),
+  so the next usage report calibrates it afresh.
+- **SESS-26** A session loads the chat's compaction state on start and can be
+  given options for a new one with `ensure_started/2`'s `compaction` option
+  (`COMPACT-9`). An options or pin change is written to disk right away, while a
+  chat with no messages isn't (as in SESS-14).
 
 ## Out of scope
 

@@ -71,6 +71,11 @@ reopened.
   `project_id`; `load_project/1` returns it, or `nil` when the chat is missing,
   unreadable, corrupt or has none (PROJ-9).
 - **STORE-20** Each listed chat carries `project_id`, or `nil` when it has none.
+- **STORE-21** `save/3` takes `compaction:` (the chat's compaction state, a map,
+  COMPACT-24) and stores it as `compaction`, so the summary, the ledger, the pin
+  set, how far the ladder has gone and the chat's own compaction options
+  outlive a restart. `load_compaction/1` returns it, or `nil` when the chat is
+  missing, unreadable, corrupt or has none.
 
 ## Implementation
 
