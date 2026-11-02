@@ -254,6 +254,35 @@ so it opens at `/c/<child id>` like any chat.
   `data-status="paused"`, a pause icon and the `title` "Paused"), both
   following `{:chat_status, id, :paused}` (SESS-19) and right on first render.
 
+### Compact view
+
+The default transcript is honest about everything the agent did (tool calls,
+reasoning, request-view notes). A reader who only wants the conversation can
+switch to a compact view that keeps just the messages, and that fills the gap
+the hidden tool calls leave with a one-line summary of the current step.
+
+- **UI-60** The composer toolbar has a "Focus" view toggle (`#view-toggle`, a
+  button carrying `aria-pressed` and a `title`) that switches the transcript
+  between the full view and the compact view. The choice is kept in the
+  browser's `localStorage` (`elia:compact-view`), so a chat opened later in the
+  same browser starts in the chosen view.
+- **UI-61** In the compact view the transcript shows only the direct messages:
+  user messages, assistant text (saved and streaming) and notices (including
+  the folded summary, UI-53). Tool calls, reasoning (saved and streaming, UI-8,
+  UI-29) and the per-item pin and request-view notes (UI-51, UI-52) are not
+  rendered. A task chat's header (UI-48) and the pause banner (UI-57) stay
+  visible.
+- **UI-62** While the compact view is on and the turn is working (`:running` or
+  `:awaiting_approval`, SESS-4), a one-sentence "working on" summary
+  (`#work-summary`) names the current step: the tool that is running or awaiting
+  approval ("Running `mix test`.", "Waiting for your approval to run
+  `git commit`."), writing a reply, or thinking, and "Working." before the step
+  is known. It is set when the turn's status changes and refreshed at most once
+  a minute (on the minute timer, UI-34), so it lags no more than a minute behind
+  the step, and it is cleared when the turn ends. While it waits for approval it
+  offers a "Review" button (`#work-summary-review`) that switches to the full
+  view.
+
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`.
@@ -261,6 +290,6 @@ so it opens at `/c/<child id>` like any chat.
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
-`test/elia_web/live/compaction_test.exs`,
+`test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

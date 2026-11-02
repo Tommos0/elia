@@ -96,11 +96,18 @@ defmodule EliaWeb.ChatLive do
         auto_approve: snapshot.auto_approve,
         auto_approve_open: false,
         approvable_tools: approvable_tools(skills),
-        skills: skills
+        skills: skills,
+        # UI-60: the compact transcript, chosen in the browser (localStorage).
+        compact_view: false,
+        # UI-62: the current step of the turn, and the one-line summary of it
+        # that the compact view shows, refreshed once a minute.
+        activity: nil,
+        work_summary: nil
       )
       |> stream(:models, [])
       |> derive_view(snapshot.messages, snapshot.compaction, snapshot.last_usage)
       |> load_messages(snapshot.messages)
+      |> refresh_work_summary()
 
     {:ok, socket}
   end
@@ -279,18 +286,38 @@ defmodule EliaWeb.ChatLive do
                   >
                     <.item item={item} />
                   </div>
-                  <.item_meta :if={Map.get(item, :request_status)} item={item} />
+                  <.item_meta :if={!@compact_view and Map.get(item, :request_status)} item={item} />
                 </div>
               </div>
 
-              <div :if={@draft_reasoning != ""} id="draft-reasoning">
+              <div :if={@draft_reasoning != "" and !@compact_view} id="draft-reasoning">
                 <.item item={%{kind: :reasoning, text: @draft_reasoning, streaming: true}} />
               </div>
               <div :if={@draft != ""} id="draft">
                 <.item item={%{kind: :assistant, text: @draft}} />
               </div>
+              <%!-- UI-62: the compact view's one-line summary of the current step. --%>
               <div
-                :if={@status == :running and @draft == ""}
+                :if={@compact_view and @work_summary}
+                id="work-summary"
+                class="flex flex-wrap items-center gap-2 text-sm text-base-content/60"
+              >
+                <.icon name="hero-arrow-path" class="size-3.5 shrink-0 motion-safe:animate-spin" />
+                <span>{@work_summary}</span>
+                <button
+                  :if={@status == :awaiting_approval}
+                  type="button"
+                  id="work-summary-review"
+                  phx-click="set_compact_view"
+                  phx-value-on="false"
+                  title="Show the tool call so you can approve it"
+                  class="rounded-lg border border-warning/50 px-2 py-0.5 text-xs font-medium text-warning transition hover:bg-warning/10 active:scale-95"
+                >
+                  Review
+                </button>
+              </div>
+              <div
+                :if={!@compact_view and @status == :running and @draft == ""}
                 id="thinking-indicator"
                 class="flex items-center gap-2 text-sm text-base-content/50"
               >
@@ -317,6 +344,28 @@ defmodule EliaWeb.ChatLive do
                 tools={@approvable_tools}
                 enabled={@auto_approve}
               />
+              <%!-- UI-60: switch the transcript between full and compact. --%>
+              <button
+                type="button"
+                id="view-toggle"
+                phx-click="toggle_view"
+                phx-hook=".ViewToggle"
+                aria-pressed={to_string(@compact_view)}
+                title={
+                  if @compact_view,
+                    do: "Show tool calls and reasoning",
+                    else: "Hide tool calls and reasoning, keeping only the messages"
+                }
+                class={[
+                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+                  @compact_view && "border-primary/50 bg-primary/5 text-primary",
+                  !@compact_view &&
+                    "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+                ]}
+              >
+                <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
+                <span class="font-medium">Focus</span>
+              </button>
               <%!-- COMPACT-10: compact this chat now, on demand --%>
               <button
                 type="button"
@@ -473,6 +522,22 @@ defmodule EliaWeb.ChatLive do
               if (this.stick) this.el.scrollTop = this.el.scrollHeight
             }).observe(this.el, {childList: true, subtree: true, characterData: true})
             this.el.scrollTop = this.el.scrollHeight
+          }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewToggle">
+        // UI-60: the compact view is remembered per browser, so every chat
+        // opens the way the reader last left it.
+        const KEY = "elia:compact-view"
+
+        export default {
+          mounted() {
+            let stored = null
+            try { stored = localStorage.getItem(KEY) } catch (_e) {}
+            if (stored === "1") this.pushEvent("set_compact_view", {on: true})
+            this.handleEvent("view:remember", ({on}) => {
+              try { localStorage.setItem(KEY, on ? "1" : "0") } catch (_e) {}
+            })
           }
         }
       </script>
@@ -1410,6 +1475,22 @@ defmodule EliaWeb.ChatLive do
     {:noreply, assign(socket, show_context: !socket.assigns.show_context)}
   end
 
+  # UI-60: switch the transcript between the full and the compact view, and ask
+  # the browser to remember the choice.
+  def handle_event("toggle_view", _params, socket) do
+    on = not socket.assigns.compact_view
+
+    {:noreply,
+     socket
+     |> set_compact_view(on)
+     |> push_event("view:remember", %{on: on})}
+  end
+
+  # UI-60: the stored choice, and the "Review" button (UI-62), arrive as values.
+  def handle_event("set_compact_view", params, socket) do
+    {:noreply, set_compact_view(socket, params["on"] in [true, "true"])}
+  end
+
   # COMPACT-10
   def handle_event("compact", _params, socket) do
     case Agent.compact(socket.assigns.session_id) do
@@ -1674,10 +1755,18 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # Keeps the sidebar's relative times current (UI-34).
+  # Keeps the sidebar's relative times current (UI-34), and refreshes the
+  # compact view's "working on" summary (UI-62) at most once a minute.
   def handle_info(:tick_now, socket) do
     Process.send_after(self(), :tick_now, 60_000)
-    {:noreply, assign(socket, now: DateTime.utc_now())}
+    socket = assign(socket, now: DateTime.utc_now())
+
+    socket =
+      if socket.assigns.status in [:running, :awaiting_approval],
+        do: assign(socket, work_summary: work_summary(current_activity(socket))),
+        else: socket
+
+    {:noreply, socket}
   end
 
   # PROJ-24: a skills reload carries Elia's own skills; a chat in another project
@@ -1715,6 +1804,20 @@ defmodule EliaWeb.ChatLive do
       context_elided: view.elided
     )
     |> put_context(context)
+  end
+
+  # UI-60, UI-61: rebuilding the stream is what changes which items render, since
+  # a stream only diffs inserts (docs/agents/phoenix-liveview.md). So switching
+  # views reloads the transcript, which then omits (or restores) the tool calls
+  # and reasoning.
+  defp set_compact_view(socket, on) do
+    if on == socket.assigns.compact_view do
+      socket
+    else
+      socket
+      |> assign(compact_view: on)
+      |> load_messages(socket.assigns.messages)
+    end
   end
 
   defp apply_event({:message, %Message{} = message}, socket) do
@@ -1776,14 +1879,15 @@ defmodule EliaWeb.ChatLive do
 
   defp apply_event({:delta, :text, text}, socket) do
     # Progress notes before a text block are superseded by the answer.
-    assign(socket, draft: socket.assigns.draft <> text)
+    assign(socket, draft: socket.assigns.draft <> text, activity: :writing)
   end
 
   defp apply_event({:delta, :reasoning, text}, socket) do
-    assign(socket, draft_reasoning: socket.assigns.draft_reasoning <> text)
+    assign(socket, draft_reasoning: socket.assigns.draft_reasoning <> text, activity: :thinking)
   end
 
   defp apply_event({:status, status}, socket) do
+    previous = socket.assigns.status
     socket = assign(socket, status: status)
     # UI-57: the banner follows the status; the message arrives with {:paused, …}.
     socket = if status == :paused, do: socket, else: assign(socket, pause: nil)
@@ -1797,14 +1901,26 @@ defmodule EliaWeb.ChatLive do
           ),
         else: socket
 
-    if status == :idle, do: assign(socket, draft: "", draft_reasoning: ""), else: socket
+    socket = if status == :idle, do: assign(socket, draft: "", draft_reasoning: ""), else: socket
+
+    # UI-62: a fresh turn starts from no step; every other status change keeps
+    # the step and recomputes the compact view's summary from it.
+    socket =
+      if status == :running and previous in [:idle, :paused],
+        do: assign(socket, activity: nil),
+        else: socket
+
+    assign(socket, work_summary: work_summary_for(status, socket))
   end
 
   # UI-57, SESS-27: the turn paused at a limit.
   defp apply_event({:paused, message}, socket), do: assign(socket, pause: message)
 
   defp apply_event({:tool_status, call_id, status}, socket) do
-    socket = assign(socket, tool_status: Map.put(socket.assigns.tool_status, call_id, status))
+    socket =
+      socket
+      |> assign(tool_status: Map.put(socket.assigns.tool_status, call_id, status))
+      |> track_activity(call_id, status)
 
     case socket.assigns.calls do
       %{^call_id => call} -> put_call(socket, %{call | status: status})
@@ -1904,6 +2020,79 @@ defmodule EliaWeb.ChatLive do
   end
 
   ## Transcript items
+
+  # UI-62: the current step of the turn — the tool that is running, a reply being
+  # written, or the model thinking — kept as the turn's events arrive, so the
+  # compact view's summary can name it.
+  defp track_activity(socket, call_id, status) when status in [:running, :awaiting_approval] do
+    case socket.assigns.calls do
+      %{^call_id => call} ->
+        kind = if status == :awaiting_approval, do: :awaiting, else: :tool
+        assign(socket, activity: {kind, call})
+
+      _ ->
+        socket
+    end
+  end
+
+  defp track_activity(socket, _call_id, _status), do: socket
+
+  defp current_activity(socket), do: socket.assigns.activity || running_call(socket)
+
+  # A fallback for a page that connects mid-turn (SESS-7): the call that is
+  # running or already waiting for approval names the step.
+  defp running_call(socket) do
+    Enum.find_value(socket.assigns.calls, fn
+      {_id, %{status: :awaiting_approval} = call} -> {:awaiting, call}
+      {_id, %{status: :running} = call} -> {:tool, call}
+      _ -> nil
+    end)
+  end
+
+  defp refresh_work_summary(socket),
+    do: assign(socket, work_summary: work_summary_for(socket.assigns.status, socket))
+
+  defp work_summary_for(status, socket) when status in [:running, :awaiting_approval],
+    do: work_summary(current_activity(socket))
+
+  defp work_summary_for(_status, _socket), do: nil
+
+  # UI-62: one sentence naming the current step.
+  defp work_summary(nil), do: "Working."
+  defp work_summary(:thinking), do: "Thinking."
+  defp work_summary(:writing), do: "Writing a reply."
+
+  defp work_summary({:tool, call}) do
+    {ing, _verb, object} = step(call)
+    "#{ing} #{object}."
+  end
+
+  defp work_summary({:awaiting, call}) do
+    {_ing, verb, object} = step(call)
+    "Waiting for your approval to #{verb} #{object}."
+  end
+
+  defp step(%{name: "shell", input: %{"command" => command}}),
+    do: {"Running", "run", "`#{short(command)}`"}
+
+  defp step(%{name: "read_file", input: %{"path" => path}}),
+    do: {"Reading", "read", short(path)}
+
+  defp step(%{name: "write_file", input: %{"path" => path}}),
+    do: {"Writing", "write", short(path)}
+
+  defp step(%{name: "edit_file", input: %{"path" => path}}),
+    do: {"Editing", "edit", short(path)}
+
+  defp step(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
+    do: {"Starting", "start", "the sub-task “#{short(title)}”"}
+
+  defp step(%{name: name}), do: {"Using", "use", name}
+
+  defp short(text, max \\ 60) do
+    text = text |> to_string() |> String.replace(~r/\s+/, " ") |> String.trim()
+    if String.length(text) > max, do: String.slice(text, 0, max - 1) <> "…", else: text
+  end
 
   @sent %{status: :sent, blocks: %{}, elided: 0, pinned: false}
 
@@ -2044,8 +2233,18 @@ defmodule EliaWeb.ChatLive do
     end)
   end
 
-  defp stream_item(socket, item, status, block \\ nil),
-    do: stream_insert(socket, :items, annotate(item, status, block))
+  defp stream_item(socket, item, status, block \\ nil) do
+    if visible?(socket.assigns.compact_view, item.kind) do
+      stream_insert(socket, :items, annotate(item, status, block))
+    else
+      socket
+    end
+  end
+
+  # UI-61: the compact view keeps the direct messages and hides tool calls and
+  # reasoning, both when the transcript loads and as items arrive.
+  defp visible?(_compact, kind) when kind not in [:tool, :reasoning], do: true
+  defp visible?(compact, _kind), do: not compact
 
   # COMPACT-25: every item carries its request-view status, so the UI never
   # implies the model saw something it did not.
@@ -2061,8 +2260,11 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp put_call(socket, call) do
-    socket
-    |> assign(calls: Map.put(socket.assigns.calls, call.call_id, call))
-    |> stream_insert(:items, call)
+    socket = assign(socket, calls: Map.put(socket.assigns.calls, call.call_id, call))
+    # UI-61: the card is still tracked in `calls`, but a compact view doesn't
+    # render it.
+    if visible?(socket.assigns.compact_view, call.kind),
+      do: stream_insert(socket, :items, call),
+      else: socket
   end
 end
