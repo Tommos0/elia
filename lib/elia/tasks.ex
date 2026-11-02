@@ -1,20 +1,23 @@
 defmodule Elia.Tasks do
   @moduledoc """
-  Sub-tasks: a parent chat hands a brief to a child chat and waits for its
-  result (spec: `specs/subtasks.md`).
+  Sub-tasks: a parent chat hands a brief to a child chat and collects its result
+  (spec: `specs/subtasks.md`).
 
-  `spawn_task/2` runs in the parent's tool call and blocks until the child's
-  turn ends. This module is also the lock: a `GenServer` holding the one active
-  child (and its parent) for the whole app, since the checkpoints, git index and
-  approvals are shared. In Elia's own project the child works in its own
-  worktree (SUBTASK-23). It is started on first use under
+  `spawn_task/2` runs in the parent's tool call and returns as soon as the child
+  has started (SUBTASK-2): the wait for the child belongs to a watcher process
+  per child (SUBTASK-28), so the parent goes on working and the parent collects
+  results with `list_tasks/2` and `await_task/2` (SUBTASK-26, SUBTASK-27). This
+  module is also the registry of the running children (SUBTASK-11): a
+  `GenServer` holding every active child with its parent and its workspace root,
+  since a tree has at most one writer. Each child works in its own worktree in
+  Elia's own project (SUBTASK-23). It is started on first use under
   `Elia.Agent.Supervisor`, so a dev server that hot-reloaded this code works
   without a restart.
   """
 
   use GenServer
 
-  alias Elia.{Checkpoint, Deploy, Harness, Store, Workspace}
+  alias Elia.{Checkpoint, Deploy, Store, Workspace}
   alias Elia.LLM.Message
 
   @default_steps 100
@@ -31,23 +34,46 @@ defmodule Elia.Tasks do
   user or ask them questions; list anything unresolved in `questions` instead.
   """
 
-  ## Lock
+  ## The registry of running children (SUBTASK-11)
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
-  @doc "The active child as `%{child_id, parent_id}`, or `nil` (SUBTASK-11)."
-  @spec active() :: %{child_id: binary(), parent_id: binary()} | nil
+  @doc """
+  The running children, as `%{child_id, parent_id}` maps — empty when there are
+  none (SUBTASK-11).
+  """
+  @spec active() :: [%{child_id: binary(), parent_id: binary()}]
   def active do
-    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, :active)
+    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, :active), else: []
   end
 
-  @doc "Whether `child_id` is the active child."
+  @doc "Whether `child_id` is a running child (SUBTASK-11)."
   @spec running?(binary()) :: boolean()
-  def running?(child_id), do: match?(%{child_id: ^child_id}, active())
+  def running?(child_id) do
+    is_binary(child_id) and Process.whereis(__MODULE__) != nil and
+      GenServer.call(__MODULE__, {:running?, child_id})
+  end
 
   @doc """
-  Records what the active child (`child_id`) reports with `finish_task`
-  (SUBTASK-3). `status` must be `done`, `blocked` or `failed`.
+  The id of the child already writing in the workspace `root`, or `nil`
+  (SUBTASK-11). A spawn into a tree another child is writing in is refused
+  (SUBTASK-4).
+  """
+  @spec writing_in(binary()) :: binary() | nil
+  def writing_in(root) do
+    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, {:writing_in, root})
+  end
+
+  @doc """
+  The topic a child's end is announced on (SUBTASK-28), so `await_task` can wait
+  for a child that is still running (SUBTASK-27).
+  """
+  @spec task_topic(binary()) :: binary()
+  def task_topic(child_id), do: "elia:task:" <> child_id
+
+  @doc """
+  Records what a child reports with `finish_task` (SUBTASK-3). `status` must be
+  `done`, `blocked` or `failed`.
   """
   @spec finish(binary(), map()) :: :ok | {:error, binary()}
   def finish(child_id, input) do
@@ -73,48 +99,50 @@ defmodule Elia.Tasks do
             :ok
 
           :not_active ->
-            {:error, "This chat is not an active sub-task, so there is no one to report to."}
+            {:error, "This chat is not a running sub-task, so there is no one to report to."}
         end
     end
   end
 
   @doc """
-  Takes the lock for a child (SUBTASK-11): `:ok`, or `:busy` when a child is
-  already active. Both sessions are monitored; the lock is released when
-  either dies. `meta` may hold `:owner` (the process running `spawn_task`,
-  also monitored, SUBTASK-19), `:call_id` and `:start_commit`, which the lock
-  needs to finish the job itself when that process dies.
+  Takes a child's entry in the registry (SUBTASK-11): `:ok`, or
+  `{:error, message}` when another running child already writes in `root`, so a
+  tree has one writer at a time. The caller owns the entry (SUBTASK-28) and is
+  monitored; the entry is released when it dies.
   """
-  @spec acquire(binary(), pid() | nil, binary(), pid() | nil, map()) :: :ok | :busy
-  def acquire(parent_id, parent_pid, child_id, child_pid, meta \\ %{}),
-    do: call({:acquire, parent_id, parent_pid, child_id, child_pid, meta})
+  @spec acquire(binary(), binary(), binary(), map()) :: :ok | {:error, binary()}
+  def acquire(parent_id, child_id, root, meta \\ %{}),
+    do: call({:acquire, parent_id, child_id, root, self(), meta})
 
-  @doc "Releases the lock if `child_id` holds it."
+  @doc """
+  Releases a child's entry, if it holds one.
+  """
   @spec release(binary()) :: :ok
   def release(child_id), do: call({:release, child_id})
 
   @doc """
-  Called by a session when its running turn is stopped (SESS-22). If it is the
-  active child, the child is marked cancelled (SUBTASK-16). If it is the
-  parent of the active child, the child is marked cancelled and its turn is
-  stopped too (SUBTASK-17). Does nothing when no sub-task is active.
+  What the entry holds about a child: its `finish` record (SUBTASK-3) and
+  whether it was `cancelled` (SUBTASK-16), or `nil` when it doesn't hold an
+  entry.
+  """
+  @spec take_state(binary()) :: %{finish: map() | nil, cancelled: boolean()} | nil
+  def take_state(child_id), do: call({:take_state, child_id})
+
+  @doc """
+  Called by a session when its running turn is stopped (SESS-22). If it is a
+  running child, that child is marked cancelled, so it ends as `"cancelled"`
+  (SUBTASK-16). If it is the parent of running children, they are all marked
+  cancelled and their turns are stopped too (SUBTASK-17). Does nothing when the
+  chat isn't involved in a sub-task.
   """
   @spec note_stop(binary()) :: :ok
   def note_stop(session_id) do
-    if Process.whereis(__MODULE__) do
-      case GenServer.call(__MODULE__, {:note_stop, session_id}) do
-        {:stop_child, child_id} -> stop_session(child_id)
-        _ -> :ok
-      end
+    case call({:note_stop, session_id}) do
+      {:stop_children, child_ids} -> Enum.each(child_ids, &stop_session/1)
+      _ -> :ok
     end
 
     :ok
-  end
-
-  defp stop_session(id) do
-    Elia.Agent.stop(id)
-  catch
-    :exit, _ -> :ok
   end
 
   defp call(msg) do
@@ -134,8 +162,10 @@ defmodule Elia.Tasks do
   ## Spawning
 
   @doc """
-  The `spawn_task` tool (SUBTASK-2): checks the preconditions, runs the child
-  and returns its result as JSON. `ctx` is the tool context (LOOP-18).
+  The `spawn_task` tool (SUBTASK-2): checks the preconditions, starts the child
+  and returns as soon as it has started, as JSON. The wait for the child belongs
+  to the child's watcher (SUBTASK-28), so this doesn't block the parent's turn.
+  `ctx` is the tool context (LOOP-18).
   """
   @spec spawn_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
   def spawn_task(input, ctx) do
@@ -144,11 +174,7 @@ defmodule Elia.Tasks do
 
     with :ok <- check_input(input),
          :ok <- check_not_child(parent_id),
-         :ok <- check_free(),
-         :ok <- check_ignored(),
-         :ok <- check_clean(root),
-         {:ok, start_commit} <- head(root),
-         :ok <- check_parent_verified(ctx[:turn_id], root) do
+         {:ok, start_commit} <- head(root) do
       run_child(input, ctx, start_commit)
     end
   end
@@ -194,47 +220,25 @@ defmodule Elia.Tasks do
       else: :ok
   end
 
-  defp check_free do
-    case active() do
-      nil -> :ok
-      %{child_id: id} -> {:error, "Not started: sub-task #{id} is still active."}
-    end
+  # SUBTASK-23: the root this child would work in — its own worktree when the
+  # parent has one (Elia's own project, DEPLOY-1), the parent's workspace
+  # otherwise.
+  defp child_root(child_id, parent_id, parent_root) do
+    if Deploy.worktree_chat(parent_root) == parent_id,
+      do: Deploy.worktree_path(child_id),
+      else: parent_root
   end
 
-  # The chats' files live in Elia's data dir, which sits under the live tree, not
-  # in the worktree a chat works in (DEPLOY-2). It must be git-ignored there, or
-  # chat files would make the live tree dirty (SUBTASK-4).
-  defp check_ignored do
-    data =
-      Path.relative_to(
-        Path.join(Workspace.data_dir(), "sessions/x.term"),
-        Workspace.runtime_root()
-      )
-
-    case git(["check-ignore", "-q", data], Workspace.runtime_root()) do
-      {_, 0} ->
-        :ok
-
-      _ ->
-        {:error,
-         "Not started: `.elia/` is not git-ignored, so chat files would count as changes. " <>
-           "Add it to .gitignore and commit."}
-    end
-  end
-
-  defp check_clean(root) do
-    case git(["status", "--porcelain"], root) do
-      {"", 0} ->
-        :ok
-
-      {out, 0} ->
-        {:error,
-         "Not started: the git working tree isn't clean. Commit or discard these changes " <>
-           "first so the sub-task starts from a known point:\n" <>
-           Elia.Shell.truncate(out, 4_000)}
-
-      {out, _} ->
-        {:error, "Not started: could not check the git working tree: #{String.trim(out)}"}
+  # SUBTASK-23: the child's own worktree when the parent has one (Elia's own
+  # project, DEPLOY-1), the parent's workspace otherwise. A worktree that can't
+  # be made falls back to the parent's workspace, so the child always has
+  # somewhere to work.
+  defp child_workspace(child_id, parent_id, parent_root) do
+    with true <- Deploy.worktree_chat(parent_root) == parent_id,
+         {:ok, path} <- Deploy.ensure_child_worktree(child_id, parent_id) do
+      path
+    else
+      _ -> parent_root
     end
   end
 
@@ -248,41 +252,25 @@ defmodule Elia.Tasks do
     end
   end
 
-  # Changes the parent made before the spawn must already pass the tests: the
-  # parent's checkpoint is replaced when the child ends (SUBTASK-14).
-  defp check_parent_verified(turn_id, root) do
-    case Harness.core_elixir_changed?(turn_id, root) do
-      false ->
-        :ok
-
-      true ->
-        case Harness.run_tests([], root) do
-          {:ok, _output} ->
-            :ok
-
-          {:error, output} ->
-            {:error,
-             "Not started: your changes to Elixir files in this turn fail the tests. Fix " <>
-               "them first.\n\n" <> Elia.Shell.truncate(output, 20_000)}
-        end
-
-      {:error, reason} ->
-        {:error, "Not started: " <> reason}
-    end
-  end
-
   defp run_child(input, ctx, start_commit) do
     parent_id = ctx[:session_id]
     child_id = Elia.Agent.new_id()
+    parent_root = repo_root(ctx)
+
+    # SUBTASK-4, SUBTASK-11: one writer per workspace. A child of a chat in
+    # Elia's own project has a worktree of its own, so only children sharing a
+    # tree (another project, or no worktree) are serialized.
+    case writing_in(child_root(child_id, parent_id, parent_root)) do
+      nil -> start_child(input, ctx, child_id, start_commit, parent_root)
+      id -> {:error, "Not started: sub-task #{id} is already writing in that workspace."}
+    end
+  end
+
+  defp start_child(input, ctx, child_id, start_commit, parent_root) do
+    parent_id = ctx[:session_id]
     model = input["model"]
     parent_opts = ctx[:loop_opts] || []
     project = ctx[:project]
-    parent_root = repo_root(ctx)
-
-    # SUBTASK-23, DEPLOY-9: when the parent works in its own worktree — a chat
-    # in Elia's own project — the child gets its own, forked from the parent's
-    # branch, so its in-progress work never touches the parent's tree. Anywhere
-    # else it shares the parent's workspace, as before.
     child_root = child_workspace(child_id, parent_id, parent_root)
 
     # SUBTASK-12: the child's step limit defaults to the loop's own default. It
@@ -330,59 +318,37 @@ defmodule Elia.Tasks do
         project: project
       )
 
-    with :ok <-
-           lock(parent_id, child_id, child_pid, %{
-             owner: self(),
-             call_id: ctx[:call_id],
-             start_commit: start_commit,
-             root: child_root,
-             parent_root: parent_root
-           }) do
-      Elia.Agent.subscribe(child_id)
-      monitor = Process.monitor(child_pid)
+    meta = %{
+      child_id: child_id,
+      parent_id: parent_id,
+      child_pid: child_pid,
+      call_id: ctx[:call_id],
+      start_commit: start_commit,
+      root: child_root
+    }
 
-      try do
+    case start_watcher(meta, task) do
+      {:ok, watcher} ->
+        # SUBTASK-7: the parent is told the child started.
         broadcast(parent_id, ctx[:call_id], child_id, "running")
 
+        # SUBTASK-5: the brief is the child's first user message.
         :ok =
           Elia.Agent.send_message(
             child_id,
             @preamble <> "\n# Task: #{task.title}\n\n" <> task.brief
           )
 
-        # SUBTASK-24: the child enforces its own limits and pauses at them, so
-        # this wait has no deadline of its own.
-        outcome = await(child_id, monitor, nil)
+        send(watcher, {:subtask_started, child_id})
 
-        result = build_result(child_id, start_commit, outcome, take_state(child_id), child_root)
+        # SUBTASK-2: the start, not the result: the parent goes on working and
+        # asks for the result with `await_task` when it wants it.
+        {:ok,
+         Jason.encode!(%{"task_id" => child_id, "title" => task.title, "status" => "running"})}
 
-        update_saved(child_id, task, %{status: result["status"], result: result})
-        Checkpoint.rebase(ctx[:turn_id], parent_root)
-        {:ok, Jason.encode!(result)}
-      after
-        Process.demonitor(monitor, [:flush])
-        Elia.Agent.unsubscribe(child_id)
-        release(child_id)
-        # The result's status is read back from the saved task (SUBTASK-7).
-        broadcast(parent_id, ctx[:call_id], child_id, saved_status(child_id))
-      end
-    else
-      :busy ->
-        DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, child_pid)
-        {:error, "Not started: another sub-task is active."}
-    end
-  end
-
-  # SUBTASK-23: the child's own worktree when the parent has one (Elia's own
-  # project, DEPLOY-1), the parent's workspace otherwise. A worktree that can't
-  # be made falls back to the parent's workspace, so the child always has
-  # somewhere to work.
-  defp child_workspace(child_id, parent_id, parent_root) do
-    with true <- Deploy.worktree_chat(parent_root) == parent_id,
-         {:ok, path} <- Deploy.ensure_child_worktree(child_id, parent_id) do
-      path
-    else
-      _ -> parent_root
+      {:error, message} ->
+        terminate_child(child_pid)
+        {:error, message}
     end
   end
 
@@ -393,29 +359,110 @@ defmodule Elia.Tasks do
       else: parent.selection
   end
 
-  defp lock(parent_id, child_id, child_pid, meta) do
-    parent_pid =
-      case Registry.lookup(Elia.Agent.Registry, parent_id) do
-        [{pid, _}] -> pid
-        [] -> nil
-      end
+  ## The watcher (SUBTASK-28)
 
-    acquire(parent_id, parent_pid, child_id, child_pid, meta)
-  end
+  # Starts the child's watcher and waits for it to take the child's entry, so a
+  # spawn into a workspace another child writes in is refused (SUBTASK-4,
+  # SUBTASK-11) and the entry is held before the child does anything.
+  defp start_watcher(meta, task) do
+    meta = Map.put(meta, :spawner, self())
 
-  defp saved_status(child_id) do
-    case Store.load_task(child_id) do
-      %{status: status} -> status
-      _ -> "failed"
+    {:ok, watcher} =
+      Task.Supervisor.start_child(Elia.Agent.TaskSupervisor, fn -> watch(meta, task) end)
+
+    ref = Process.monitor(watcher)
+
+    receive do
+      {:subtask_acquired, ^watcher, :ok} ->
+        Process.demonitor(ref, [:flush])
+        {:ok, watcher}
+
+      {:subtask_acquired, ^watcher, {:error, message}} ->
+        Process.demonitor(ref, [:flush])
+        {:error, message}
+
+      {:DOWN, ^ref, :process, ^watcher, reason} ->
+        {:error, "Not started: the sub-task's watcher stopped: #{Exception.format_exit(reason)}"}
     end
   end
 
-  defp broadcast(parent_id, call_id, child_id, status) do
-    Phoenix.PubSub.broadcast(
-      Elia.PubSub,
-      Elia.Agent.topic(parent_id),
-      {:agent, parent_id, {:subtask, call_id, child_id, status}}
-    )
+  # SUBTASK-28: the watcher owns the wait for the child's turn to end (SUBTASK-8)
+  # and is the child's entry owner (SUBTASK-11), so `Elia.Tasks` can finish the
+  # job if it dies (SUBTASK-19). It subscribes before the brief is sent, so the
+  # child's end can't be missed.
+  defp watch(meta, task) do
+    child_id = meta.child_id
+    Elia.Agent.subscribe(child_id)
+    monitor = Process.monitor(meta.child_pid)
+
+    result =
+      case acquire(meta.parent_id, child_id, meta.root, %{
+             call_id: meta.call_id,
+             start_commit: meta.start_commit
+           }) do
+        :ok ->
+          send(meta.spawner, {:subtask_acquired, self(), :ok})
+
+          if brief_sent?(meta.spawner) do
+            finish(child_id, meta, task, monitor)
+          else
+            abandoned(child_id, meta)
+            nil
+          end
+
+        {:error, message} ->
+          send(meta.spawner, {:subtask_acquired, self(), {:error, message}})
+          nil
+      end
+
+    Process.demonitor(monitor, [:flush])
+    Elia.Agent.unsubscribe(child_id)
+
+    # SUBTASK-27: the child's end is always announced per task, so a wait for it
+    # never misses it.
+    if is_map(result) do
+      Phoenix.PubSub.broadcast(
+        Elia.PubSub,
+        task_topic(child_id),
+        {:subtask_done, child_id, result}
+      )
+    end
+  end
+
+  # SUBTASK-17: a stopped turn kills the process running `spawn_task`, which may
+  # not have sent the brief yet. The child then never ran: nothing is recorded,
+  # and its entry is released.
+  defp brief_sent?(spawner) do
+    ref = Process.monitor(spawner)
+
+    receive do
+      {:subtask_started, _child_id} ->
+        Process.demonitor(ref, [:flush])
+        true
+
+      {:DOWN, ^ref, :process, _pid, _reason} ->
+        false
+    end
+  end
+
+  defp abandoned(child_id, meta) do
+    terminate_session(child_id)
+    release(child_id)
+    broadcast(meta.parent_id, meta.call_id, child_id, "cancelled")
+  end
+
+  # SUBTASK-8, SUBTASK-13: the child's turn is over when its session goes idle
+  # (or it dies). The result is built and saved, the entry released and the
+  # parent told.
+  defp finish(child_id, meta, task, monitor) do
+    outcome = await(child_id, monitor, nil)
+    state = take_state(child_id) || %{finish: nil, cancelled: false}
+    result = build_result(child_id, meta.start_commit, outcome, state, meta.root)
+
+    update_saved(child_id, task, %{status: result["status"], result: result})
+    release(child_id)
+    broadcast(meta.parent_id, meta.call_id, child_id, saved_status(child_id))
+    result
   end
 
   # Waits for the child's turn to end: its session goes idle (SUBTASK-8). A
@@ -437,7 +484,7 @@ defmodule Elia.Tasks do
     end
   end
 
-  # `state` is what the lock holds about the child: `finish` (SUBTASK-3) and
+  # `state` is what the registry holds about the child: `finish` (SUBTASK-3) and
   # `cancelled` (SUBTASK-16). `root` is the child's own workspace: its worktree
   # in Elia's own project (SUBTASK-23), the parent's workspace otherwise.
   defp build_result(child_id, start_commit, outcome, state, root) do
@@ -483,8 +530,6 @@ defmodule Elia.Tasks do
         })
   end
 
-  defp take_state(child_id), do: call({:take_state, child_id}) || %{finish: nil, cancelled: false}
-
   defp last_text(child_id) do
     Elia.Agent.snapshot(child_id).messages
     |> Enum.reverse()
@@ -528,6 +573,135 @@ defmodule Elia.Tasks do
       )
   end
 
+  defp saved_status(child_id) do
+    case Store.load_task(child_id) do
+      %{status: status} -> status
+      _ -> "failed"
+    end
+  end
+
+  defp broadcast(parent_id, call_id, child_id, status) do
+    Phoenix.PubSub.broadcast(
+      Elia.PubSub,
+      Elia.Agent.topic(parent_id),
+      {:agent, parent_id, {:subtask, call_id, child_id, status}}
+    )
+  end
+
+  ## Listing and awaiting (SUBTASK-26, SUBTASK-27)
+
+  @doc """
+  The `list_tasks` tool (SUBTASK-26): the sub-tasks this chat started, newest
+  first, as JSON. With `task_id` it reports just that one, as an object, and
+  adds its `result` once it has finished.
+  """
+  @spec list_tasks(map(), map()) :: {:ok, binary()} | {:error, binary()}
+  def list_tasks(input, ctx) do
+    parent_id = ctx[:session_id]
+
+    case input["task_id"] do
+      nil ->
+        tasks = parent_id |> Store.children() |> Enum.reverse() |> Enum.map(&task_json(&1.id))
+        {:ok, Jason.encode!(tasks)}
+
+      task_id ->
+        with {:ok, _task} <- task_of(parent_id, task_id) do
+          {:ok, Jason.encode!(task_json(task_id, true))}
+        end
+    end
+  end
+
+  @doc """
+  The `await_task` tool (SUBTASK-27): waits until a sub-task of this chat is no
+  longer running (SUBTASK-8) and returns its `result` (SUBTASK-9) as JSON. A
+  task that has already finished returns at once, from its saved metadata.
+  """
+  @spec await_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
+  def await_task(input, ctx) do
+    task_id = input["task_id"]
+
+    if blank?(task_id) do
+      {:error, "task_id must be the id of a sub-task of this chat (see `list_tasks`)."}
+    else
+      with {:ok, _task} <- task_of(ctx[:session_id], task_id) do
+        if reported_status(task_id) == "running",
+          do: wait_for(task_id),
+          else: saved_result(task_id)
+      end
+    end
+  end
+
+  # The task's status as the parent sees it: "running" while its entry is held
+  # (SUBTASK-11), else its saved status — which reads as "interrupted" when a
+  # restart left it running (SUBTASK-20, STORE-17).
+  defp reported_status(child_id) do
+    cond do
+      running?(child_id) -> "running"
+      saved_status(child_id) == "running" -> "interrupted"
+      true -> saved_status(child_id)
+    end
+  end
+
+  # SUBTASK-26: `result` is added only in the single-task form, and only once the
+  # task has finished.
+  defp task_json(child_id, with_result? \\ false) do
+    task = Store.load_task(child_id) || %{}
+
+    json = %{
+      "task_id" => child_id,
+      "title" => task[:title],
+      "status" => reported_status(child_id),
+      "reason" => reason(task),
+      "started_at" => iso8601(task[:started_at])
+    }
+
+    case if(with_result?, do: Map.get(task, :result)) do
+      %{} = result -> Map.put(json, "result", result)
+      _ -> json
+    end
+  end
+
+  defp reason(%{result: %{} = result}), do: result["reason"]
+  defp reason(_task), do: nil
+
+  defp iso8601(%DateTime{} = at), do: DateTime.to_iso8601(at)
+  defp iso8601(_at), do: nil
+
+  # SUBTASK-27: the wait wakes on the child's end, which its watcher always
+  # announces per task (SUBTASK-28). The status is read again after subscribing,
+  # so a child that ended in between can't be missed.
+  defp wait_for(task_id) do
+    Phoenix.PubSub.subscribe(Elia.PubSub, task_topic(task_id))
+
+    if reported_status(task_id) == "running" do
+      receive do
+        {:subtask_done, ^task_id, result} -> {:ok, Jason.encode!(result)}
+      end
+    else
+      saved_result(task_id)
+    end
+  end
+
+  defp saved_result(task_id) do
+    case Map.get(Store.load_task(task_id) || %{}, :result) do
+      %{} = result ->
+        {:ok, Jason.encode!(result)}
+
+      _ ->
+        {:error,
+         "That sub-task has no result: it was interrupted by a restart (SUBTASK-20). " <>
+           "`list_tasks` shows its status; `reset_task` discards its work."}
+    end
+  end
+
+  defp task_of(parent_id, task_id) do
+    task = if is_binary(task_id), do: Store.load_task(task_id)
+
+    if is_map(task) and task.parent_id == parent_id,
+      do: {:ok, task},
+      else: {:error, "#{inspect(task_id)} is not a sub-task started from this chat."}
+  end
+
   ## Reset
 
   @doc """
@@ -540,10 +714,11 @@ defmodule Elia.Tasks do
   @spec reset_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
   def reset_task(input, ctx) do
     parent_root = repo_root(ctx)
-    root = reset_root(input["task_id"], parent_root)
+    task_id = input["task_id"]
+    root = reset_root(task_id, parent_root)
 
-    with {:ok, task} <- reset_target(ctx[:session_id], input["task_id"]),
-         :ok <- check_none_active(),
+    with {:ok, task} <- reset_target(ctx[:session_id], task_id),
+         :ok <- check_not_running(task_id),
          {:ok, head} <- head(root),
          :ok <- check_ancestor(task.start_commit, head, root) do
       commits = git_out(["log", "--oneline", "#{task.start_commit}..HEAD"], root) || ""
@@ -551,7 +726,10 @@ defmodule Elia.Tasks do
 
       with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit], root),
            {_, 0} <- git(["clean", "-fdq"], root) do
-        Checkpoint.rebase(ctx[:turn_id], parent_root)
+        # SUBTASK-22: only a reset in the caller's own workspace needs the
+        # caller's turn checkpoint replaced (CKPT-10). A sub-task's worktree is
+        # a different root: the caller's checkpoint never held its work.
+        if root == parent_root, do: Checkpoint.rebase(ctx[:turn_id], parent_root)
 
         {:ok,
          "Workspace reset to #{String.slice(task.start_commit, 0, 8)}.\n" <>
@@ -591,11 +769,12 @@ defmodule Elia.Tasks do
     end
   end
 
-  defp check_none_active do
-    case active() do
-      nil -> :ok
-      %{child_id: id} -> {:error, "Not reset: sub-task #{id} is still active."}
-    end
+  # SUBTASK-22: only the task being reset matters, not the caller's other
+  # children, which are in workspaces of their own.
+  defp check_not_running(task_id) do
+    if running?(task_id),
+      do: {:error, "Not reset: sub-task #{task_id} is still running."},
+      else: :ok
   end
 
   defp check_ancestor(start_commit, head, root) do
@@ -610,32 +789,70 @@ defmodule Elia.Tasks do
     end
   end
 
-  ## Cleanup when the process running spawn_task dies
+  ## Cleanup when a watcher dies (SUBTASK-19)
 
-  # SUBTASK-19. Runs in its own process, never in the lock server.
-  defp finalize(active) do
-    child_id = active.child_id
-    root = active[:root] || Workspace.root()
+  # Runs in its own process, never in the server, which therefore never calls a
+  # session and can't deadlock with one.
+  defp finalize(entry) do
+    child_id = entry.child_id
+    root = entry[:root] || Workspace.root()
     stop_session(child_id)
 
-    case Store.load_task(child_id) do
-      %{status: "running"} = task ->
-        outcome =
-          if active.cancelled,
-            do: {:ended, nil},
-            else: {:crashed, "The process waiting for this sub-task stopped."}
+    result =
+      case Store.load_task(child_id) do
+        %{status: "running"} = task ->
+          outcome =
+            if entry.cancelled,
+              do: {:ended, nil},
+              else: {:crashed, "The process waiting for this sub-task stopped."}
 
-        state = %{finish: active.finish, cancelled: active.cancelled}
-        start_commit = task[:start_commit] || active[:start_commit]
-        result = build_result(child_id, start_commit, outcome, state, root)
-        update_saved(child_id, task, %{status: result["status"], result: result})
+          result =
+            build_result(
+              child_id,
+              task[:start_commit] || entry[:start_commit],
+              outcome,
+              Map.take(entry, [:finish, :cancelled]),
+              root
+            )
 
-      _ ->
-        :ok
-    end
+          update_saved(child_id, task, %{status: result["status"], result: result})
+          result
+
+        %{result: %{} = result} ->
+          result
+
+        _ ->
+          nil
+      end
 
     release(child_id)
-    broadcast(active.parent_id, active[:call_id], child_id, saved_status(child_id))
+
+    if result != nil do
+      broadcast(entry.parent_id, entry[:call_id], child_id, saved_status(child_id))
+
+      Phoenix.PubSub.broadcast(
+        Elia.PubSub,
+        task_topic(child_id),
+        {:subtask_done, child_id, result}
+      )
+    end
+  end
+
+  defp stop_session(id) do
+    Elia.Agent.stop(id)
+  catch
+    :exit, _ -> :ok
+  end
+
+  defp terminate_session(id) do
+    for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id), do: terminate_child(pid)
+    :ok
+  end
+
+  defp terminate_child(pid) do
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+  catch
+    :exit, _ -> :ok
   end
 
   defp git(args, root), do: System.cmd("git", args, cd: root, stderr_to_stdout: true)
@@ -650,89 +867,127 @@ defmodule Elia.Tasks do
   ## Server
 
   @impl true
-  def init(nil), do: {:ok, %{active: nil}}
+  def init(nil), do: {:ok, %{active: %{}}}
 
   @impl true
-  def handle_call(:active, _from, %{active: nil} = state), do: {:reply, nil, state}
+  def handle_call(:active, _from, state) do
+    children =
+      for {child_id, entry} <- state.active,
+          do: %{child_id: child_id, parent_id: entry.parent_id}
 
-  def handle_call(:active, _from, %{active: active} = state),
-    do: {:reply, Map.take(active, [:child_id, :parent_id]), state}
-
-  def handle_call({:acquire, parent_id, parent_pid, child_id, child_pid, meta}, _from, %{
-        active: nil
-      }) do
-    refs = for pid <- [parent_pid, child_pid], is_pid(pid), do: Process.monitor(pid)
-    owner = meta[:owner]
-
-    active = %{
-      child_id: child_id,
-      parent_id: parent_id,
-      refs: refs,
-      owner_ref: if(is_pid(owner), do: Process.monitor(owner)),
-      owner: owner,
-      call_id: meta[:call_id],
-      start_commit: meta[:start_commit],
-      root: meta[:root],
-      finish: nil,
-      cancelled: false
-    }
-
-    {:reply, :ok, %{active: active}}
+    {:reply, children, state}
   end
 
-  def handle_call({:acquire, _, _, _, _, _}, _from, state), do: {:reply, :busy, state}
+  def handle_call({:running?, child_id}, _from, state),
+    do: {:reply, Map.has_key?(state.active, child_id), state}
 
-  def handle_call({:release, child_id}, _from, %{active: %{child_id: child_id}} = state),
-    do: {:reply, :ok, clear(state)}
+  def handle_call({:writing_in, root}, _from, state), do: {:reply, writing_in(state, root), state}
 
-  def handle_call({:release, _child_id}, _from, state), do: {:reply, :ok, state}
+  def handle_call({:acquire, parent_id, child_id, root, owner, meta}, _from, state) do
+    case writing_in(state, root) do
+      nil ->
+        entry = %{
+          child_id: child_id,
+          parent_id: parent_id,
+          root: root,
+          owner: owner,
+          owner_ref: monitor(owner),
+          call_id: meta[:call_id],
+          start_commit: meta[:start_commit],
+          finish: nil,
+          cancelled: false
+        }
 
-  def handle_call({:finish, child_id, record}, _from, %{active: %{child_id: child_id} = active}) do
-    {:reply, :ok, %{active: %{active | finish: record}}}
+        {:reply, :ok, put_entry(state, entry)}
+
+      id ->
+        {:reply, {:error, "Not started: sub-task #{id} is already writing in that workspace."},
+         state}
+    end
   end
 
-  def handle_call({:finish, _child_id, _record}, _from, state), do: {:reply, :not_active, state}
+  def handle_call({:release, child_id}, _from, state),
+    do: {:reply, :ok, drop_entry(state, child_id)}
 
-  def handle_call({:note_stop, id}, _from, %{active: %{child_id: id} = active}),
-    do: {:reply, :ok, %{active: %{active | cancelled: true}}}
+  def handle_call({:finish, child_id, record}, _from, state) do
+    case state.active do
+      %{^child_id => entry} -> {:reply, :ok, put_entry(state, %{entry | finish: record})}
+      _ -> {:reply, :not_active, state}
+    end
+  end
 
-  def handle_call({:note_stop, id}, _from, %{active: %{parent_id: id} = active}),
-    do: {:reply, {:stop_child, active.child_id}, %{active: %{active | cancelled: true}}}
+  def handle_call({:note_stop, id}, _from, state) do
+    case state.active do
+      %{^id => entry} ->
+        # SUBTASK-16: this chat's own turn is being stopped, so it is cancelled.
+        {:reply, :ok, put_entry(state, %{entry | cancelled: true})}
 
-  def handle_call({:note_stop, _id}, _from, state), do: {:reply, :ok, state}
+      _ ->
+        # SUBTASK-17: stop every child of this chat, so each is cancelled too.
+        children = for {child_id, entry} <- state.active, entry.parent_id == id, do: child_id
+        active = Map.new(state.active, &cancel(&1, children))
+        {:reply, {:stop_children, children}, %{state | active: active}}
+    end
+  end
 
-  def handle_call(
-        {:take_state, child_id},
-        _from,
-        %{active: %{child_id: child_id} = active} = state
-      ),
-      do: {:reply, Map.take(active, [:finish, :cancelled]), state}
-
-  def handle_call({:take_state, _child_id}, _from, state), do: {:reply, nil, state}
+  def handle_call({:take_state, child_id}, _from, state) do
+    case state.active do
+      %{^child_id => entry} -> {:reply, Map.take(entry, [:finish, :cancelled]), state}
+      _ -> {:reply, nil, state}
+    end
+  end
 
   @impl true
-  # SUBTASK-19: the process running spawn_task died with the lock held. Finish
-  # the job in another process, keeping the lock until it is done.
-  def handle_info(
-        {:DOWN, ref, :process, _pid, _reason},
-        %{active: %{owner_ref: ref} = active} = state
-      ) do
-    active = %{active | owner_ref: nil}
-    Task.Supervisor.start_child(Elia.Agent.TaskSupervisor, fn -> finalize(active) end)
-    {:noreply, %{state | active: active}}
-  end
+  # SUBTASK-19: the process watching a child died. Finish the job in another
+  # process, keeping the entry, so the server never blocks and never calls a
+  # session itself. A child whose session dies is finished by its watcher,
+  # which releases the entry right after (SUBTASK-8, SUBTASK-11).
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    case find_by_ref(state, ref) do
+      nil ->
+        {:noreply, state}
 
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{active: %{refs: refs}} = state) do
-    if ref in refs, do: {:noreply, clear(state)}, else: {:noreply, state}
+      entry ->
+        Task.Supervisor.start_child(Elia.Agent.TaskSupervisor, fn -> finalize(entry) end)
+        {:noreply, put_entry(state, %{entry | owner_ref: nil})}
+    end
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
 
-  defp clear(%{active: %{refs: refs} = active}) do
-    Enum.each(refs, &Process.demonitor(&1, [:flush]))
-    if active[:owner_ref], do: Process.demonitor(active.owner_ref, [:flush])
-    %{active: nil}
+  defp writing_in(state, root) do
+    Enum.find_value(state.active, fn {child_id, entry} ->
+      if entry.root == root, do: child_id
+    end)
   end
 
-  defp clear(state), do: state
+  defp cancel({child_id, entry}, children) do
+    if child_id in children, do: {child_id, %{entry | cancelled: true}}, else: {child_id, entry}
+  end
+
+  defp find_by_ref(state, ref) do
+    Enum.find_value(state.active, fn {_child_id, entry} ->
+      if entry[:owner_ref] == ref, do: entry
+    end)
+  end
+
+  defp put_entry(state, %{child_id: child_id} = entry),
+    do: %{state | active: Map.put(state.active, child_id, entry)}
+
+  defp drop_entry(state, child_id) do
+    case Map.pop(state.active, child_id) do
+      {nil, _active} ->
+        state
+
+      {entry, active} ->
+        demonitor(entry[:owner_ref])
+        %{state | active: active}
+    end
+  end
+
+  defp monitor(pid) when is_pid(pid), do: Process.monitor(pid)
+  defp monitor(_pid), do: nil
+
+  defp demonitor(nil), do: :ok
+  defp demonitor(ref), do: Process.demonitor(ref, [:flush])
 end

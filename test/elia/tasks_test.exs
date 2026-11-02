@@ -20,7 +20,7 @@ defmodule Elia.TasksTest do
         Store.delete(entry.id)
       end
 
-      for file <- ~w(.gitignore child.txt dirty.txt rebase.txt skills/note.txt lib/broken.ex) do
+      for file <- ~w(.gitignore child.txt dirty.txt note.txt skills/note.txt lib/broken.ex) do
         File.rm(Path.join(root, file))
       end
 
@@ -88,99 +88,248 @@ defmodule Elia.TasksTest do
 
   defp tool_names(request), do: Enum.map(request.tools, & &1.name)
 
-  defp parent_requests, do: Enum.filter(FakeLLM.requests(), &("spawn_task" in tool_names(&1)))
+  defp parent?(request), do: "spawn_task" in tool_names(request)
 
-  # The result of the parent's last tool call: {content, is_error}.
-  defp last_tool_result do
-    request = List.last(parent_requests())
+  defp after_tools?(request), do: match?(%Message{role: :tool}, List.last(request.messages))
 
+  # The tool results a history holds, oldest first, as {tool name, content, is_error}.
+  defp results(%{messages: messages}) do
+    names =
+      for %Message{role: :assistant} = message <- messages,
+          call <- Message.tool_calls(message),
+          into: %{},
+          do: {call.id, call.name}
+
+    for %Message{role: :tool} = message <- messages,
+        result <- message.content,
+        do: {names[result.tool_call_id], result.content, result.is_error}
+  end
+
+  defp results(request, name), do: for({^name, content, false} <- results(request), do: content)
+
+  defp counts(request, name),
+    do: Enum.count(results(request), fn {tool, _content, _error} -> tool == name end)
+
+  defp spawned(request),
+    do: for(json <- results(request, "spawn_task"), do: Jason.decode!(json)["task_id"])
+
+  # The tool results in a chat's own history, oldest first.
+  defp session_results(id), do: results(%{messages: Agent.snapshot(id).messages})
+
+  # The `index`-th result of `name` in the chat's history, decoded.
+  defp session_json(id, name, index) do
+    session_results(id)
+    |> Enum.filter(fn {tool, _content, _error} -> tool == name end)
+    |> Enum.at(index)
+    |> case do
+      nil -> nil
+      {_tool, content, _error} -> Jason.decode!(content)
+    end
+  end
+
+  # The chat's most recent tool result: {content, is_error}.
+  defp session_result(id) do
     %Message{role: :tool, content: [%{content: content, is_error: error?}]} =
-      List.last(request.messages)
+      Agent.snapshot(id).messages |> Enum.reverse() |> Enum.find(&(&1.role == :tool))
 
     {content, error?}
   end
 
-  # Runs the parent through one spawn_task call, approving it.
-  defp run_spawn(parent, text \\ "go") do
-    :ok = Agent.send_message(parent, text)
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-    await_status(parent, :idle)
-  end
-
-  # Pushes a spawn call and a closing text for the parent, then runs it.
-  defp refused_spawn(parent, input \\ %{"title" => "T", "brief" => "B"}) do
-    FakeLLM.push(FakeLLM.assistant([spawn_call(input)]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
-    run_spawn(parent)
-    last_tool_result()
+  defp active_child do
+    [%{child_id: child}] = Tasks.active()
+    child
   end
 
   defp children_of(parent),
     do: Enum.filter(Store.list(1000), &(Map.get(&1, :parent_id) == parent))
 
-  ## Tests
+  # Queues the same turn `times` times. A parent and its children run at the
+  # same time and share FakeLLM's single queue, so every turn decides from the
+  # request which chat it is answering.
+  defp push_turns(turn, times \\ 12), do: for(_ <- 1..times, do: FakeLLM.push(turn))
+
+  defp router(parent_turn, child_turn) do
+    fn request, _on_event ->
+      if parent?(request), do: parent_turn.(request), else: child_turn.(request)
+    end
+  end
+
+  # The parent's turns for a test that starts one sub-task and waits for it.
+  defp spawn_and_await(request, input) do
+    cond do
+      counts(request, "spawn_task") == 0 ->
+        reply([spawn_call(input)])
+
+      spawned(request) != [] and results(request, "await_task") == [] ->
+        reply([
+          FakeLLM.tool_call("a1", "await_task", %{"task_id" => List.first(spawned(request))})
+        ])
+
+      true ->
+        reply([Message.text("Done.")])
+    end
+  end
+
+  # A child that reports `done` at once.
+  defp reporting_child(request) do
+    if after_tools?(request),
+      do: reply([Message.text("Done.")]),
+      else: reply([finish_call("done", "Did it")])
+  end
+
+  # A child that blocks in its first model call until the test kills or stops it.
+  defp blocked_child(test_pid) do
+    fn _request ->
+      send(test_pid, {:child_blocked, active_child(), self()})
+      receive do: (:never -> reply([Message.text("Never.")]))
+    end
+  end
+
+  # Runs the parent into a spawn whose child blocks in its first model call, so
+  # the parent is waiting for it. Returns the child's id.
+  defp spawn_blocked_child(parent, test_pid, input \\ %{}) do
+    input = Map.merge(%{"title" => "T", "brief" => "B"}, input)
+    push_turns(router(&spawn_and_await(&1, input), blocked_child(test_pid)))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    assert_receive {:child_blocked, child, _loop}, 20_000
+
+    # The parent is now inside its `await_task` call (SUBTASK-27), which can only
+    # end when the child does.
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "running"}}, 20_000
+    assert_receive {:agent, ^parent, {:tool_status, "a1", :running}}, 20_000
+    child
+  end
+
+  # Runs the parent through one turn, approving each call id in turn.
+  defp run_parent(parent, call_ids, text \\ "go") do
+    :ok = Agent.send_message(parent, text)
+
+    for call_id <- call_ids do
+      await_status(parent, :awaiting_approval)
+      :ok = Agent.approve(parent, call_id)
+    end
+
+    await_status(parent, :idle)
+  end
+
+  defp refused_spawn(parent, input) do
+    FakeLLM.push(FakeLLM.assistant([spawn_call(input)]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+    run_parent(parent, ["s1"])
+    session_result(parent)
+  end
+
+  # The `task_id` of the first `spawn_task` call in a request's history.
+  defp task_id(request) do
+    request |> results("spawn_task") |> List.first() |> Jason.decode!() |> Map.fetch!("task_id")
+  end
+
+  # The checkpoints this chat's turns took.
+  defp checkpoints_of(parent) do
+    for checkpoint <- Checkpoint.list(100),
+        String.contains?(checkpoint.label, parent),
+        do: checkpoint
+  end
+
+  ## Tools
 
   # SUBTASK-1
-  test "a parent has spawn_task and a child has finish_task, never both" do
+  test "a parent has the sub-task tools and a child has finish_task, never both" do
     parent = Enum.flat_map(Elia.Skills.current(), & &1.tools) |> Enum.map(& &1.name)
     child = Elia.Skills.Tasks.child_skills() |> Enum.flat_map(& &1.tools) |> Enum.map(& &1.name)
 
     assert "spawn_task" in parent
+    assert "list_tasks" in parent
+    assert "await_task" in parent
+    assert "reset_task" in parent
     refute "finish_task" in parent
+
     assert "finish_task" in child
     refute "spawn_task" in child
+    refute "list_tasks" in child
+    refute "await_task" in child
     assert "shell" in child
   end
 
-  # SUBTASK-2, SUBTASK-22
-  test "spawn_task and reset_task need approval" do
+  # SUBTASK-2, 22, 26, 27
+  test "spawn and reset need approval; listing and awaiting never do" do
     assert [
              %Elia.Tool{name: "spawn_task", approval: :required},
+             %Elia.Tool{name: "list_tasks", approval: :never},
+             %Elia.Tool{name: "await_task", approval: :never},
              %Elia.Tool{name: "reset_task", approval: :required}
            ] = Elia.Skills.Tasks.tools()
   end
 
-  # SUBTASK-2, 5, 6, 7, 8, 9, 11, 13, SUBTASK-4 (depth)
-  test "a parent hands work to a child and gets a structured result", %{parent: parent} do
+  # SUBTASK-2, 4, 5, 6, 7, 8, 9, 11, 13, 15, 26, 27
+  test "a parent starts a sub-task, goes on, and collects its result", %{parent: parent} do
     test_pid = self()
     default_model = Elia.Settings.get(:model)
-
-    FakeLLM.push(
-      FakeLLM.assistant([
-        spawn_call(%{
-          "title" => "Add file",
-          "brief" => "Create child.txt and commit it.",
-          "model" => "other-model"
-        })
-      ])
-    )
-
-    FakeLLM.push(fn request, _on_event ->
-      active = Tasks.active()
-      send(test_pid, {:child_started, active, request})
-      commit_file("child.txt")
-
-      send(
-        test_pid,
-        {:nested,
-         Tasks.spawn_task(%{"title" => "t", "brief" => "b"}, %{session_id: active.child_id})}
-      )
-
-      reply([finish_call("done", "Made child.txt", ["Rename it?"])])
-    end)
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("The task is done.")]))
 
     # SUBTASK-6: the parent's auto-approved tools are auto-approved in the child too.
     Agent.set_auto_approve(parent, "shell", true)
 
-    run_spawn(parent, "do it")
+    parent_turn = fn request ->
+      cond do
+        counts(request, "spawn_task") == 0 ->
+          reply([
+            spawn_call(%{
+              "title" => "Add file",
+              "brief" => "Create child.txt and commit it.",
+              "model" => "other-model"
+            })
+          ])
 
-    # SUBTASK-11: the lock was held by the child while it ran, and is free now.
-    assert_receive {:child_started, %{child_id: child, parent_id: ^parent}, request}
-    assert Tasks.active() == nil
+        results(request, "list_tasks") == [] ->
+          reply([FakeLLM.tool_call("l1", "list_tasks", %{})])
+
+        results(request, "await_task") == [] ->
+          reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => task_id(request)})])
+
+        length(results(request, "await_task")) == 1 ->
+          # SUBTASK-27: the task has finished, so this returns at once.
+          reply([FakeLLM.tool_call("a2", "await_task", %{"task_id" => task_id(request)})])
+
+        length(results(request, "list_tasks")) == 1 ->
+          reply([FakeLLM.tool_call("l2", "list_tasks", %{"task_id" => task_id(request)})])
+
+        true ->
+          reply([Message.text("Done.")])
+      end
+    end
+
+    child_turn = fn request ->
+      if after_tools?(request) do
+        reply([Message.text("Done.")])
+      else
+        child = active_child()
+        send(test_pid, {:child_started, child, request, self()})
+        commit_file("child.txt")
+
+        # SUBTASK-4: a child can't start a child.
+        send(
+          test_pid,
+          {:nested, Tasks.spawn_task(%{"title" => "t", "brief" => "b"}, %{session_id: child})}
+        )
+
+        receive do
+          :finish -> reply([finish_call("done", "Made child.txt", ["Rename it?"])])
+        end
+      end
+    end
+
+    push_turns(router(parent_turn, child_turn))
+
+    :ok = Agent.send_message(parent, "do it")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    # SUBTASK-2: the spawn returns while the child is still working, so the
+    # parent goes on and asks how the child is doing.
+    assert_receive {:child_started, child, request, loop}, 20_000
 
     # SUBTASK-5: the child's first message is the preamble and the brief.
     assert [%Message{role: :user} = brief | _] = request.messages
@@ -198,10 +347,25 @@ defmodule Elia.TasksTest do
     # SUBTASK-4: a child can't start a child.
     assert_receive {:nested, {:error, "Not started: a sub-task can't start" <> _}}
 
-    # SUBTASK-9: the harness fills in the commit and the changed files.
-    {content, false} = last_tool_result()
+    send(loop, :finish)
+    await_status(parent, :idle)
+
+    # SUBTASK-26: while the child ran, the parent's list showed it running.
+    assert [
+             %{
+               "task_id" => ^child,
+               "title" => "Add file",
+               "status" => "running",
+               "reason" => nil,
+               "started_at" => started_at
+             }
+           ] = session_json(parent, "list_tasks", 0)
+
+    assert is_binary(started_at)
+
     {head, 0} = git(["rev-parse", "HEAD"])
 
+    # SUBTASK-9: the harness fills in the commit and the changed files.
     assert %{
              "status" => "done",
              "summary" => "Made child.txt",
@@ -210,13 +374,25 @@ defmodule Elia.TasksTest do
              "commit" => commit,
              "task_id" => ^child,
              "reason" => nil
-           } = decoded = Jason.decode!(content)
+           } = result = session_json(parent, "await_task", 0)
 
     # SUBTASK-21: a done task has no start commit or tree state.
-    refute Map.has_key?(decoded, "tree_clean")
-    refute Map.has_key?(decoded, "start_commit")
+    refute Map.has_key?(result, "tree_clean")
+    refute Map.has_key?(result, "start_commit")
 
     assert commit == String.trim(head)
+
+    # SUBTASK-27: a task that already finished returns at once, from its metadata.
+    assert session_json(parent, "await_task", 1) == result
+
+    # SUBTASK-26: the single-task form adds the result once it has finished.
+    assert %{
+             "task_id" => ^child,
+             "title" => "Add file",
+             "status" => "done",
+             "reason" => nil,
+             "result" => %{"status" => "done"}
+           } = session_json(parent, "list_tasks", 1)
 
     # SUBTASK-7
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "running"}}
@@ -249,10 +425,48 @@ defmodule Elia.TasksTest do
     :ok = Agent.set_auto_approve(parent, "shell", false)
     assert Agent.snapshot(parent).auto_approve == []
     assert Agent.snapshot(child).auto_approve == ["shell"]
+
+    # SUBTASK-11: nothing is left running.
+    assert Tasks.active() == []
+  end
+
+  # SUBTASK-2, 7, 28
+  test "spawn_task returns while the child is still running", %{parent: parent} do
+    push_turns(
+      router(
+        fn request ->
+          if counts(request, "spawn_task") == 0,
+            do: reply([spawn_call(%{"title" => "T", "brief" => "B"})]),
+            else: reply([Message.text("I'll check on it later.")])
+        end,
+        blocked_child(self())
+      )
+    )
+
+    run_parent(parent, ["s1"])
+    assert_receive {:child_blocked, child, _loop}, 20_000
+
+    # SUBTASK-2: the parent's turn ended with the child still running, and its
+    # spawn call returned the start, not a result.
+    {content, false} = session_result(parent)
+
+    assert %{"task_id" => ^child, "title" => "T", "status" => "running"} =
+             Jason.decode!(content)
+
+    assert Tasks.running?(child)
+    assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
+
+    # SUBTASK-7: the start was announced, the end has not happened.
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "running"}}
+    refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
+
+    :ok = Agent.stop(child)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}, 20_000
+    assert Tasks.active() == []
   end
 
   # PROJ-10
-  test "a sub-task chat carries its parent's project", %{parent: _parent} do
+  test "a sub-task chat carries its parent's project" do
     dir = Path.join(System.tmp_dir!(), "elia-task-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf!(dir) end)
@@ -266,21 +480,14 @@ defmodule Elia.TasksTest do
     Agent.subscribe(parent)
     on_exit(fn -> stop_session(parent) end)
 
-    test_pid = self()
+    push_turns(
+      router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
+    )
 
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
+    run_parent(parent, ["s1"])
 
-    FakeLLM.push(fn _request, _on_event ->
-      send(test_pid, {:child, Tasks.active().child_id})
-      reply([finish_call("done", "ok")])
-    end)
+    child = session_json(parent, "spawn_task", 0)["task_id"]
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
-
-    run_spawn(parent)
-
-    assert_receive {:child, child}
     assert Agent.snapshot(child).project == project
     assert Store.load_project(child) == project.id
     stop_session(child)
@@ -288,13 +495,14 @@ defmodule Elia.TasksTest do
 
   # SUBTASK-10
   test "a child that ends without finish_task is unfinished", %{parent: parent} do
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("I looked around but never reported.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Hm.")]))
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
+        fn _request -> reply([Message.text("I looked around but never reported.")]) end
+      )
+    )
 
-    run_spawn(parent)
-
-    {content, false} = last_tool_result()
+    run_parent(parent, ["s1"])
 
     assert %{
              "status" => "unfinished",
@@ -305,7 +513,7 @@ defmodule Elia.TasksTest do
              "reason" => nil,
              "tree_clean" => true,
              "start_commit" => start
-           } = Jason.decode!(content)
+           } = session_json(parent, "await_task", 0)
 
     # SUBTASK-21
     assert byte_size(start) == 40
@@ -319,16 +527,17 @@ defmodule Elia.TasksTest do
   } do
     Agent.subscribe_activity()
 
-    FakeLLM.push(
-      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_steps" => 1})])
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
+        fn request ->
+          # Step 1 records a result; step 2 is over the limit, so it pauses.
+          if after_tools?(request),
+            do: reply([Message.text("Carrying on.")]),
+            else: reply([finish_call("done", "All good")])
+        end
+      )
     )
-
-    # The child's step 1 records a result; step 2 is over the limit, so it
-    # pauses instead of ending.
-    FakeLLM.push(FakeLLM.assistant([finish_call("done", "All good")]))
-    # After the resume the count starts over, so one more step ends the turn.
-    FakeLLM.push(FakeLLM.assistant([Message.text("Carrying on.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Hm.")]))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -339,23 +548,22 @@ defmodule Elia.TasksTest do
 
     assert Agent.snapshot(child).pause == "Step limit reached (1 steps)."
 
-    # The lock is still held and spawn_task keeps waiting, with no deadline.
-    assert Tasks.active().child_id == child
+    # SUBTASK-24: the entry is still held and the parent is still waiting, with
+    # no deadline of its own.
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
     assert Agent.snapshot(parent).status == :running
 
     :ok = Agent.resume(child)
     await_status(parent, :idle)
-
-    {content, false} = last_tool_result()
 
     assert %{
              "status" => "done",
              "summary" => "All good",
              "reason" => nil,
              "task_id" => ^child
-           } = Jason.decode!(content)
+           } = session_json(parent, "await_task", 0)
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert [%{task_status: "done"}] = children_of(parent)
   end
 
@@ -363,12 +571,12 @@ defmodule Elia.TasksTest do
   test "stopping a paused child cancels it", %{parent: parent} do
     Agent.subscribe_activity()
 
-    FakeLLM.push(
-      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_steps" => 1})])
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
+        fn _request -> reply([finish_call("done", "Fine")]) end
+      )
     )
-
-    FakeLLM.push(FakeLLM.assistant([finish_call("done", "Fine")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -380,23 +588,29 @@ defmodule Elia.TasksTest do
     :ok = Agent.stop(child)
     await_status(parent, :idle)
 
-    {content, false} = last_tool_result()
-    assert %{"status" => "cancelled", "reason" => "cancelled"} = Jason.decode!(content)
-    assert Tasks.active() == nil
+    assert %{"status" => "cancelled", "reason" => "cancelled"} =
+             session_json(parent, "await_task", 0)
+
+    assert Tasks.active() == []
   end
 
   # SUBTASK-8, 13
   test "a child whose session dies has failed", %{parent: parent} do
     test_pid = self()
 
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
-
-    FakeLLM.push(fn _request, _on_event ->
-      send(test_pid, {:child_blocked, self(), Tasks.active().child_id})
-      receive do: (:never -> :ok)
-    end)
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Hm.")]))
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
+        fn request ->
+          if after_tools?(request) do
+            reply([Message.text("Hm.")])
+          else
+            send(test_pid, {:child_blocked, self(), active_child()})
+            receive do: (:never -> :ok)
+          end
+        end
+      )
+    )
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -405,79 +619,60 @@ defmodule Elia.TasksTest do
     assert_receive {:child_blocked, loop, child}, 20_000
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, child)
     :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
-    await_status(parent, :idle)
     Process.exit(loop, :kill)
-
-    {content, false} = last_tool_result()
+    await_status(parent, :idle)
 
     assert %{
              "status" => "failed",
              "reason" => "crashed",
              "summary" => "The sub-task session stopped" <> _
-           } = Jason.decode!(content)
+           } = session_json(parent, "await_task", 0)
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert %{status: "failed"} = Store.load_task(child)
   end
 
-  # SUBTASK-4
-  test "a second child can't start while one is active", %{parent: parent} do
-    test_pid = self()
+  # SUBTASK-4, 11
+  test "a second child in the same workspace is refused", %{parent: parent} do
     other = new_session()
+    child = spawn_blocked_child(parent, self())
 
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
-
-    FakeLLM.push(fn _request, _on_event ->
-      send(test_pid, {:child_blocked, self(), Tasks.active()})
-      receive do: (:go -> reply([finish_call("done", "Fine")]))
-    end)
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-    assert_receive {:child_blocked, loop, %{child_id: child, parent_id: ^parent}}, 20_000
-
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T2", "brief" => "B2"})]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+    # The child shares the parent's workspace (Elia's own project without a
+    # worktree), so another chat spawning into it would put two writers in one
+    # tree.
     :ok = Agent.send_message(other, "me too")
     await_status(other, :awaiting_approval)
     :ok = Agent.approve(other, "s1")
     await_status(other, :idle)
 
-    request = List.last(parent_requests())
+    {content, true} = session_result(other)
+    assert content =~ "is already writing in that workspace"
+    assert content =~ child
 
-    assert %Message{content: [%{is_error: true, content: "Not started: sub-task " <> rest}]} =
-             List.last(request.messages)
-
-    assert rest =~ child
-    assert Tasks.active().child_id == child
+    # Nothing was created for it (SUBTASK-4) and the running child is untouched.
     assert children_of(other) == []
+    assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
-    send(loop, :go)
+    :ok = Agent.stop(child)
     await_status(parent, :idle)
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
   end
 
   # SUBTASK-4
-  test "spawn_task is refused when the git tree is dirty", %{parent: parent} do
-    File.write!(Path.join(Elia.Workspace.root(), "dirty.txt"), "x")
+  test "spawn_task is not refused when the tree is dirty or unverified", %{parent: parent} do
+    root = Elia.Workspace.root()
+    File.write!(Path.join(root, "dirty.txt"), "x")
+    File.mkdir_p!(Path.join(root, "lib"))
+    File.write!(Path.join(root, "lib/broken.ex"), "oops")
 
-    assert {content, true} = refused_spawn(parent)
-    assert content =~ "isn't clean"
-    assert content =~ "dirty.txt"
-    assert children_of(parent) == []
-    assert Tasks.active() == nil
-  end
+    push_turns(
+      router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
+    )
 
-  # SUBTASK-4
-  test "spawn_task is refused when .elia/ is not git-ignored", %{parent: parent} do
-    File.rm!(Path.join(Elia.Workspace.root(), ".gitignore"))
+    run_parent(parent, ["s1"])
 
-    assert {content, true} = refused_spawn(parent)
-    assert content =~ "not git-ignored"
-    assert children_of(parent) == []
+    assert %{"status" => "done"} = session_json(parent, "await_task", 0)
+    assert [%{task_status: "done"}] = children_of(parent)
   end
 
   # SUBTASK-2, 4
@@ -487,87 +682,52 @@ defmodule Elia.TasksTest do
 
     assert {"brief must not be blank", true} =
              refused_spawn(parent, %{"title" => "T", "brief" => ""})
-  end
 
-  # SUBTASK-4
-  test "spawn_task is refused when the parent's own Elixir changes fail the tests", %{
-    parent: parent
-  } do
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => "lib/broken.ex", "content" => "oops"})
-      ])
-    )
-
-    FakeLLM.push(fn _request, _on_event ->
-      commit_all("parent work")
-      reply([spawn_call(%{"title" => "T", "brief" => "B"})])
-    end)
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Can't spawn.")]))
-    # After the end-of-turn verification rolls the turn back (VERIFY-4).
-    FakeLLM.push(FakeLLM.assistant([Message.text("Rolled back.")]))
-
-    :ok = Agent.send_message(parent, "add a module and delegate")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "w1")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-    await_status(parent, :idle)
-
-    [_, _, third, _] = parent_requests()
-    assert %Message{content: [%{is_error: true, content: content}]} = List.last(third.messages)
-    assert content =~ "fail the tests"
     assert children_of(parent) == []
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
   end
 
-  # SUBTASK-14
-  test "the parent's turn checkpoint moves past the child's work", %{parent: parent} do
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => "skills/note.txt", "content" => "hi"})
-      ])
-    )
+  # SUBTASK-2, SUBTASK-14 (retired)
+  test "a spawn leaves the parent's turn checkpoint alone", %{parent: parent} do
+    parent_turn = fn request ->
+      if results(request, "write_file") == [] do
+        reply([
+          FakeLLM.tool_call("w1", "write_file", %{"path" => "skills/note.txt", "content" => "hi"})
+        ])
+      else
+        spawn_and_await(request, %{"title" => "T", "brief" => "B"})
+      end
+    end
 
-    FakeLLM.push(fn _request, _on_event ->
-      commit_all("parent work")
-      reply([spawn_call(%{"title" => "T", "brief" => "B"})])
-    end)
-
-    FakeLLM.push(fn _request, _on_event ->
-      commit_file("child.txt")
-      reply([finish_call("done", "Made it")])
-    end)
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    push_turns(router(parent_turn, &reporting_child/1))
 
     :ok = Agent.send_message(parent, "write a note and delegate")
     await_status(parent, :awaiting_approval)
+    before = checkpoints_of(parent)
+    assert before != []
+
     :ok = Agent.approve(parent, "s1")
     await_status(parent, :idle)
 
-    assert Enum.any?(
-             Checkpoint.list(100),
-             &(String.contains?(&1.label, parent) and
-                 String.ends_with?(&1.label, "(after sub-task)"))
-           )
+    # SUBTASK-14 is retired: the child leaves the parent's workspace alone
+    # (SUBTASK-23), so the parent's checkpoint is simply left where it is.
+    assert checkpoints_of(parent) == before
+    refute Enum.any?(before, &String.contains?(&1.label, "(after sub-task)"))
   end
 
   # CKPT-10
   test "rebase replaces a turn's checkpoint and leaves other turns alone" do
     :ok = Checkpoint.ensure("rebase-turn")
     before = Checkpoint.for_turn("rebase-turn")
-    File.write!(Path.join(Elia.Workspace.root(), "rebase.txt"), "x")
+    File.write!(Path.join(Elia.Workspace.root(), "note.txt"), "x")
     assert {:ok, files} = Checkpoint.changed_files(before)
-    assert Enum.any?(files, &String.ends_with?(&1, "rebase.txt"))
+    assert Enum.any?(files, &String.ends_with?(&1, "note.txt"))
 
     assert :ok = Checkpoint.rebase("rebase-turn")
     rebased = Checkpoint.for_turn("rebase-turn")
     assert rebased != before
     assert {:ok, files} = Checkpoint.changed_files(rebased)
-    refute Enum.any?(files, &String.ends_with?(&1, "rebase.txt"))
+    refute Enum.any?(files, &String.ends_with?(&1, "note.txt"))
 
     assert :ok = Checkpoint.rebase("turn-without-checkpoint")
     assert Checkpoint.for_turn("turn-without-checkpoint") == nil
@@ -591,52 +751,31 @@ defmodule Elia.TasksTest do
     assert Elia.Harness.core_elixir_changed?("verify-turn") == true
   end
 
-  # Runs the parent into a spawn_task call whose child blocks in its first model
-  # call. Returns the child's id once it is running.
-  defp spawn_blocked_child(parent, input \\ %{}) do
-    test_pid = self()
-    input = Map.merge(%{"title" => "T", "brief" => "B"}, input)
-
-    FakeLLM.push(FakeLLM.assistant([spawn_call(input)]))
-
-    FakeLLM.push(fn _request, _on_event ->
-      send(test_pid, {:child_blocked, Tasks.active()})
-      receive do: (:never -> :ok)
-    end)
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-    assert_receive {:child_blocked, %{child_id: child}}, 20_000
-    child
-  end
-
   # SUBTASK-16
   test "stopping the child cancels it and the parent gets that as a result", %{parent: parent} do
-    child = spawn_blocked_child(parent)
-    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
+    child = spawn_blocked_child(parent, self())
 
     :ok = Agent.stop(child)
     await_status(parent, :idle)
 
-    {content, false} = last_tool_result()
+    {content, false} = session_result(parent)
 
     assert %{"status" => "cancelled", "reason" => "cancelled", "task_id" => ^child} =
              Jason.decode!(content)
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert %{status: "cancelled"} = Store.load_task(child)
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}
   end
 
   # SUBTASK-17, SESS-22
   test "stopping the parent stops and cancels its child", %{parent: parent} do
-    child = spawn_blocked_child(parent)
+    child = spawn_blocked_child(parent, self())
 
     :ok = Agent.stop(parent)
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}, 20_000
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert %{status: "cancelled", result: %{"reason" => "cancelled"}} = Store.load_task(child)
     assert Agent.snapshot(child).status == :idle
 
@@ -644,15 +783,17 @@ defmodule Elia.TasksTest do
              List.last(Agent.snapshot(parent).messages)
   end
 
-  # SUBTASK-19
-  test "when the process running spawn_task dies, the lock finishes the job", %{parent: parent} do
-    child = spawn_blocked_child(parent)
+  # SUBTASK-19, SUBTASK-28
+  test "when a child's watcher dies, the registry finishes the job", %{parent: parent} do
+    child = spawn_blocked_child(parent, self())
 
-    Process.exit(:sys.get_state(Tasks).active.owner, :kill)
+    watcher = :sys.get_state(Tasks).active[child].owner
+    Process.exit(watcher, :kill)
+
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "failed"}}, 20_000
     await_status(parent, :idle)
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert Agent.snapshot(child).status == :idle
     assert %{status: "failed", result: %{"reason" => "crashed"}} = Store.load_task(child)
   end
@@ -663,18 +804,16 @@ defmodule Elia.TasksTest do
   } do
     Agent.subscribe_activity()
 
-    FakeLLM.push(
-      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_minutes" => 0.01})])
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_minutes" => 0.01}),
+        fn _request ->
+          # Longer than the whole budget (600 ms), so the next step pauses.
+          Process.sleep(700)
+          reply([finish_call("done", "fine")])
+        end
+      )
     )
-
-    # The child's step 1 takes longer than the whole budget (600 ms), so step 2
-    # pauses instead of ending.
-    FakeLLM.push(fn _request, _on_event ->
-      Process.sleep(700)
-      reply([finish_call("done", "fine")])
-    end)
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Noted.")]))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -682,22 +821,20 @@ defmodule Elia.TasksTest do
 
     assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
     assert_receive {:chat_status, ^child, :paused}, 20_000
-    assert Tasks.active().child_id == child
+    assert Tasks.running?(child)
 
     # Fail: the turn ends with the limit's error, so the result is failed/budget.
     :ok = Agent.fail_task(child)
     await_status(parent, :idle)
-
-    {content, false} = last_tool_result()
 
     assert %{
              "status" => "failed",
              "reason" => "budget",
              "summary" => "Stopped after " <> _,
              "task_id" => ^child
-           } = Jason.decode!(content)
+           } = session_json(parent, "await_task", 0)
 
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
     assert Agent.snapshot(child).status == :idle
     assert %{status: "failed"} = Store.load_task(child)
   end
@@ -706,15 +843,20 @@ defmodule Elia.TasksTest do
   test "time spent waiting for approval doesn't count against the budget", %{parent: parent} do
     Agent.subscribe_activity()
 
-    FakeLLM.push(
-      FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B", "max_minutes" => 0.02})])
+    child_turn = fn request ->
+      case results(request) do
+        [] -> reply([FakeLLM.tool_call("c1", "shell", %{"command" => "true"})])
+        [{"shell", _, _}] -> reply([finish_call("done", "Fine")])
+        _ -> reply([Message.text("Done.")])
+      end
+    end
+
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_minutes" => 0.02}),
+        child_turn
+      )
     )
-
-    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "true"})]))
-
-    FakeLLM.push(FakeLLM.assistant([finish_call("done", "Fine")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -722,44 +864,50 @@ defmodule Elia.TasksTest do
     assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
     assert_receive {:chat_status, ^child, :awaiting_approval}, 20_000
 
-    # Longer than the whole budget (1.2 s).
-    refute_receive {:agent, ^parent, {:subtask, "s1", ^child, _}}, 1_800
+    # Longer than the whole budget (1.2 s): the child is waiting for the user, so
+    # its clock is stopped and nothing happens.
+    refute_receive {:agent, ^parent, {:subtask, "s1", ^child, _status}}, 1_800
 
     :ok = Agent.approve(child, "c1")
     await_status(parent, :idle)
 
-    {content, false} = last_tool_result()
-    assert %{"status" => "done", "reason" => nil} = Jason.decode!(content)
+    assert %{"status" => "done", "reason" => nil} = session_json(parent, "await_task", 0)
   end
 
   # SUBTASK-21, SUBTASK-22
   test "a blocked child reports the tree state and the parent can reset the workspace", %{
     parent: parent
   } do
-    test_pid = self()
     {start, 0} = git(["rev-parse", "HEAD"])
     start = String.trim(start)
 
-    FakeLLM.push(FakeLLM.assistant([spawn_call(%{"title" => "T", "brief" => "B"})]))
+    parent_turn = fn request ->
+      cond do
+        counts(request, "spawn_task") == 0 ->
+          reply([spawn_call(%{"title" => "T", "brief" => "B"})])
 
-    FakeLLM.push(fn _request, _on_event ->
-      commit_file("child.txt")
-      File.write!(Path.join(Elia.Workspace.root(), "dirty.txt"), "wip")
-      reply([finish_call("blocked", "Stuck", ["Which one?"])])
-    end)
+        results(request, "await_task") == [] ->
+          reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => task_id(request)})])
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+        results(request, "reset_task") == [] ->
+          reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => task_id(request)})])
 
-    FakeLLM.push(fn request, _on_event ->
-      %Message{role: :tool, content: [%{content: content}]} = List.last(request.messages)
-      send(test_pid, {:result, Jason.decode!(content)})
+        true ->
+          reply([Message.text("Reset.")])
+      end
+    end
 
-      reply([
-        FakeLLM.tool_call("r1", "reset_task", %{"task_id" => Jason.decode!(content)["task_id"]})
-      ])
-    end)
+    child_turn = fn request ->
+      if after_tools?(request) do
+        reply([Message.text("Done.")])
+      else
+        commit_file("child.txt")
+        File.write!(Path.join(Elia.Workspace.root(), "dirty.txt"), "wip")
+        reply([finish_call("blocked", "Stuck", ["Which one?"])])
+      end
+    end
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Reset.")]))
+    push_turns(router(parent_turn, child_turn))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -769,14 +917,13 @@ defmodule Elia.TasksTest do
     # Not automatic: the reset waits for approval, and nothing changed yet.
     assert File.exists?(Path.join(Elia.Workspace.root(), "dirty.txt"))
 
-    assert_receive {:result,
-                    %{
-                      "status" => "blocked",
-                      "reason" => nil,
-                      "tree_clean" => false,
-                      "start_commit" => ^start,
-                      "files" => files
-                    }}
+    assert %{
+             "status" => "blocked",
+             "reason" => nil,
+             "tree_clean" => false,
+             "start_commit" => ^start,
+             "files" => files
+           } = session_json(parent, "await_task", 0)
 
     assert files == ["child.txt", "dirty.txt"]
 
@@ -790,7 +937,7 @@ defmodule Elia.TasksTest do
     assert String.trim(head) == start
     assert {"", 0} = git(["status", "--porcelain"])
 
-    {content, false} = last_tool_result()
+    {content, false} = session_result(parent)
     assert content =~ "Workspace reset to #{String.slice(start, 0, 8)}"
     assert content =~ "child work"
   end
@@ -835,18 +982,27 @@ defmodule Elia.TasksTest do
     assert {:error, "Not reset: that sub-task has no start commit." <> _} =
              Tasks.reset_task(%{"task_id" => no_start}, ctx)
 
-    # A child is active.
     failed = save.(%{})
-    assert :ok = Tasks.acquire("p1", nil, "c1", nil)
+
+    # SUBTASK-22: another child running in another workspace doesn't stop a reset
+    # of this task.
+    assert :ok = Tasks.acquire(parent, "another-child", "/other-workspace")
+    dirty.()
+    assert {:ok, "Workspace reset" <> _} = Tasks.reset_task(%{"task_id" => failed}, ctx)
+    refute File.exists?(Path.join(root, "dirty.txt"))
+    assert :ok = Tasks.release("another-child")
+
+    # SUBTASK-22: the task being reset running does stop it.
+    assert :ok = Tasks.acquire(parent, failed, "/other-workspace")
     dirty.()
 
-    assert {:error, "Not reset: sub-task c1 is still active." <> _} =
+    assert {:error, "Not reset: sub-task " <> _} =
              Tasks.reset_task(%{"task_id" => failed}, ctx)
 
     assert File.exists?(Path.join(root, "dirty.txt"))
-    assert :ok = Tasks.release("c1")
+    assert :ok = Tasks.release(failed)
 
-    # Saved as running with no live session: interrupted, so it can be reset.
+    # Saved as running with no entry: interrupted, so it can be reset (SUBTASK-20).
     interrupted = save.(%{status: "running"})
     assert {:ok, "Workspace reset" <> _} = Tasks.reset_task(%{"task_id" => interrupted}, ctx)
     refute File.exists?(Path.join(root, "dirty.txt"))
@@ -861,21 +1017,57 @@ defmodule Elia.TasksTest do
     assert File.exists?(Path.join(root, "dirty.txt"))
   end
 
-  # SUBTASK-3, 11
-  test "the lock holds one child and is released when either session dies" do
-    parent = spawn(fn -> receive do: (:stop -> :ok) end)
-    child = spawn(fn -> receive do: (:stop -> :ok) end)
+  # SUBTASK-11
+  test "the registry holds every running child, one writer per workspace" do
+    assert Tasks.active() == []
 
-    # SUBTASK-3: nobody is waiting for a result yet.
-    assert {:error, "This chat is not an active sub-task" <> _} =
+    assert :ok = Tasks.acquire("p1", "c1", "/one")
+    assert :ok = Tasks.acquire("p2", "c2", "/two")
+
+    assert Enum.sort_by(Tasks.active(), & &1.child_id) == [
+             %{child_id: "c1", parent_id: "p1"},
+             %{child_id: "c2", parent_id: "p2"}
+           ]
+
+    assert Tasks.running?("c1")
+    refute Tasks.running?("c3")
+    assert Tasks.writing_in("/one") == "c1"
+    assert Tasks.writing_in("/free") == nil
+
+    # SUBTASK-4, SUBTASK-11: one writer per workspace.
+    assert {:error, "Not started: sub-task c1 is already writing in that workspace."} =
+             Tasks.acquire("p3", "c3", "/one")
+
+    # Releasing one leaves the others alone.
+    assert :ok = Tasks.release("c1")
+    refute Tasks.running?("c1")
+    assert Tasks.active() == [%{child_id: "c2", parent_id: "p2"}]
+
+    # SUBTASK-16: stopping a child marks only that child.
+    assert :ok = Tasks.note_stop("c1")
+    assert :ok = Tasks.note_stop("c2")
+    assert Tasks.take_state("c2") == %{finish: nil, cancelled: true}
+    assert Tasks.take_state("c1") == nil
+
+    # SUBTASK-17: stopping a parent marks each child it has running, which the
+    # caller then stops.
+    assert :ok = Tasks.acquire("p2", "c3", "/three")
+    assert :ok = Tasks.note_stop("p2")
+    assert Tasks.take_state("c2").cancelled
+    assert Tasks.take_state("c3").cancelled
+
+    assert :ok = Tasks.release("c2")
+    assert :ok = Tasks.release("c3")
+    assert Tasks.active() == []
+  end
+
+  # SUBTASK-3
+  test "finish_task records a result only for a running child" do
+    assert {:error, "This chat is not a running sub-task" <> _} =
              Tasks.finish("c1", %{"status" => "done", "summary" => "x"})
 
-    assert :ok = Tasks.acquire("p1", parent, "c1", child)
-    assert %{child_id: "c1", parent_id: "p1"} = Tasks.active()
-    assert Tasks.running?("c1")
-    assert :busy = Tasks.acquire("p2", nil, "c2", nil)
+    assert :ok = Tasks.acquire("p1", "c1", "/one")
 
-    # SUBTASK-3: validation, then recording (and replacing) a result.
     assert {:error, "status must be" <> _} =
              Tasks.finish("c1", %{"status" => "great", "summary" => "x"})
 
@@ -885,24 +1077,53 @@ defmodule Elia.TasksTest do
     assert {:error, "questions must be" <> _} =
              Tasks.finish("c1", %{"status" => "done", "summary" => "x", "questions" => [1]})
 
+    # Calling it again replaces the earlier record.
     assert :ok = Tasks.finish("c1", %{"status" => "failed", "summary" => "x"})
     assert :ok = Tasks.finish("c1", %{"status" => "done", "summary" => "y"})
+    assert %{finish: %{status: "done", summary: "y"}} = Tasks.take_state("c1")
+
     assert :ok = Tasks.release("c1")
-    assert Tasks.active() == nil
+    assert Tasks.active() == []
+  end
 
-    for dying <- [:parent, :child] do
-      parent = spawn(fn -> receive do: (:stop -> :ok) end)
-      child = spawn(fn -> receive do: (:stop -> :ok) end)
-      assert :ok = Tasks.acquire("p1", parent, "c1", child)
+  # SUBTASK-26, SUBTASK-27
+  test "list_tasks and await_task only see this chat's own sub-tasks", %{parent: parent} do
+    other = new_session()
+    task = Agent.new_id()
 
-      pid = if dying == :parent, do: parent, else: child
-      ref = Process.monitor(pid)
-      send(pid, :stop)
-      assert_receive {:DOWN, ^ref, :process, ^pid, _}
-      _ = :sys.get_state(Tasks)
-      assert Tasks.active() == nil
+    :ok =
+      Store.save(task, [Message.user("x")],
+        task: %{
+          parent_id: parent,
+          title: "T",
+          brief: "B",
+          started_at: DateTime.utc_now(),
+          status: "done",
+          start_commit: "abc",
+          result: %{"status" => "done", "summary" => "S"}
+        }
+      )
 
-      send(if(dying == :parent, do: child, else: parent), :stop)
-    end
+    on_exit(fn -> stop_session(task) end)
+
+    ctx = %{session_id: other, turn_id: nil}
+
+    assert {:error, message} = Tasks.list_tasks(%{"task_id" => task}, ctx)
+    assert message =~ "is not a sub-task"
+
+    assert {:error, message} = Tasks.await_task(%{"task_id" => task}, ctx)
+    assert message =~ "is not a sub-task"
+
+    # SUBTASK-27: a finished task's result comes from its saved metadata.
+    assert {:ok, json} =
+             Tasks.await_task(%{"task_id" => task}, %{session_id: parent, turn_id: nil})
+
+    assert %{"status" => "done", "summary" => "S"} = Jason.decode!(json)
+
+    # SUBTASK-26: and the single-task form reports it with the result.
+    assert {:ok, json} = Tasks.list_tasks(%{"task_id" => task}, %{session_id: parent})
+
+    assert %{"task_id" => ^task, "status" => "done", "result" => %{"summary" => "S"}} =
+             Jason.decode!(json)
   end
 end

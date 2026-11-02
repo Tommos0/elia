@@ -71,6 +71,53 @@ defmodule Elia.DeploymentTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 30_000)
 
+  # Scripted turns for a parent and its children: they run at the same time and
+  # share FakeLLM's single queue, so each turn decides from the request which
+  # chat it answers (SUBTASK-28).
+  defp router(parent_turn, child_turn) do
+    fn request, _on_event ->
+      if "spawn_task" in Enum.map(request.tools, & &1.name),
+        do: parent_turn.(request),
+        else: child_turn.(request)
+    end
+  end
+
+  defp queue(turn, times \\ 12), do: for(_ <- 1..times, do: FakeLLM.push(turn))
+
+  defp reply(blocks) do
+    message = FakeLLM.assistant(blocks)
+    stop = if Elia.LLM.Message.tool_calls(message) == [], do: :end_turn, else: :tool_use
+
+    {:ok, %{message: message, stop_reason: stop, model: "fake", usage: %{}}}
+  end
+
+  defp after_tools?(request), do: match?(%Message{role: :tool}, List.last(request.messages))
+
+  defp results(%{messages: messages}) do
+    names =
+      for %Message{role: :assistant} = message <- messages,
+          call <- Elia.LLM.Message.tool_calls(message),
+          into: %{},
+          do: {call.id, call.name}
+
+    for %Message{role: :tool} = message <- messages,
+        result <- message.content,
+        do: {names[result.tool_call_id], result.content, result.is_error}
+  end
+
+  defp counts(request, name),
+    do: Enum.count(results(request), fn {tool, _content, _error} -> tool == name end)
+
+  # The `task_id` of the first `spawn_task` call in the turn's history.
+  defp spawned(request) do
+    request
+    |> results()
+    |> Enum.find_value(fn
+      {"spawn_task", content, false} -> Jason.decode!(content)["task_id"]
+      _result -> nil
+    end)
+  end
+
   defp dev_server do
     previous = Application.get_env(:elia, EliaWeb.Endpoint)
     Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(previous, :code_reloader, true))
@@ -321,34 +368,39 @@ defmodule Elia.DeploymentTest do
     path = Deploy.worktree_path(parent)
     test_pid = self()
 
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("s1", "spawn_task", %{"title" => "T", "brief" => "Write a note."})
-      ])
-    )
+    parent_turn = fn request ->
+      cond do
+        counts(request, "spawn_task") == 0 ->
+          reply([
+            FakeLLM.tool_call("s1", "spawn_task", %{"title" => "T", "brief" => "Write a note."})
+          ])
+
+        counts(request, "await_task") == 0 ->
+          reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => spawned(request)})])
+
+        true ->
+          reply([Message.text("Done.")])
+      end
+    end
 
     # The child writes its note and commits it in its own worktree.
-    FakeLLM.push(fn _request, _on_event ->
-      child = Elia.Tasks.active().child_id
-      send(test_pid, {:child, child})
-      child_path = Deploy.worktree_path(child)
-      File.write!(Path.join(child_path, "child-note.txt"), "child")
-      LiveTree.commit(child_path, "child note")
+    child_turn = fn request ->
+      if after_tools?(request) do
+        reply([Message.text("Done.")])
+      else
+        [%{child_id: child}] = Elia.Tasks.active()
+        send(test_pid, {:child, child})
+        child_path = Deploy.worktree_path(child)
+        File.write!(Path.join(child_path, "child-note.txt"), "child")
+        LiveTree.commit(child_path, "child note")
 
-      {:ok,
-       %{
-         message:
-           FakeLLM.assistant([
-             FakeLLM.tool_call("f1", "finish_task", %{"status" => "done", "summary" => "wrote it"})
-           ]),
-         stop_reason: :tool_use,
-         model: "fake",
-         usage: %{}
-       }}
-    end)
+        reply([
+          FakeLLM.tool_call("f1", "finish_task", %{"status" => "done", "summary" => "wrote it"})
+        ])
+      end
+    end
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
-    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    queue(router(parent_turn, child_turn))
 
     before = head(path)
     :ok = Agent.send_message(parent, "go")
@@ -380,10 +432,9 @@ defmodule Elia.DeploymentTest do
 
     # And its result is reported relative to its own workspace.
     result =
-      FakeLLM.requests()
-      |> Enum.flat_map(& &1.messages)
+      Agent.snapshot(parent).messages
       |> Enum.find_value(fn
-        %Message{role: :tool, content: [%{tool_call_id: "s1"} = result]} -> result
+        %Message{role: :tool, content: [%{tool_call_id: "a1"} = result]} -> result
         _message -> nil
       end)
 
@@ -399,45 +450,42 @@ defmodule Elia.DeploymentTest do
     path = Deploy.worktree_path(parent)
     test_pid = self()
 
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("s1", "spawn_task", %{"title" => "T", "brief" => "Write a note."})
-      ])
-    )
+    parent_turn = fn request ->
+      cond do
+        counts(request, "spawn_task") == 0 ->
+          reply([
+            FakeLLM.tool_call("s1", "spawn_task", %{"title" => "T", "brief" => "Write a note."})
+          ])
 
-    FakeLLM.push(fn _request, _on_event ->
-      child = Elia.Tasks.active().child_id
-      send(test_pid, {:child, child})
-      child_path = Deploy.worktree_path(child)
-      File.write!(Path.join(child_path, "child-note.txt"), "child")
-      File.write!(Path.join(child_path, "wip.txt"), "wip")
-      LiveTree.commit(child_path, "child note")
+        counts(request, "await_task") == 0 ->
+          reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => spawned(request)})])
 
-      {:ok,
-       %{
-         message:
-           FakeLLM.assistant([
-             FakeLLM.tool_call("f1", "finish_task", %{
-               "status" => "blocked",
-               "summary" => "stuck"
-             })
-           ]),
-         stop_reason: :tool_use,
-         model: "fake",
-         usage: %{}
-       }}
-    end)
+        counts(request, "reset_task") == 0 ->
+          reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => spawned(request)})])
 
-    # The parent is told the result, then asks to discard it (SUBTASK-22).
-    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+        true ->
+          reply([Message.text("Reset.")])
+      end
+    end
 
-    FakeLLM.push(fn request, _on_event ->
-      %Message{role: :tool, content: [%{content: content}]} = List.last(request.messages)
-      %{"task_id" => task_id} = Jason.decode!(content)
-      reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => task_id})])
-    end)
+    child_turn = fn request ->
+      if after_tools?(request) do
+        reply([Message.text("Done.")])
+      else
+        [%{child_id: child}] = Elia.Tasks.active()
+        send(test_pid, {:child, child})
+        child_path = Deploy.worktree_path(child)
+        File.write!(Path.join(child_path, "child-note.txt"), "child")
+        File.write!(Path.join(child_path, "wip.txt"), "wip")
+        LiveTree.commit(child_path, "child note")
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Reset.")]))
+        reply([
+          FakeLLM.tool_call("f1", "finish_task", %{"status" => "blocked", "summary" => "stuck"})
+        ])
+      end
+    end
+
+    queue(router(parent_turn, child_turn))
 
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
@@ -464,14 +512,6 @@ defmodule Elia.DeploymentTest do
     refute File.exists?(Path.join(path, "child-note.txt"))
 
     stop_session(child)
-  end
-
-  defp reply(blocks) do
-    message = FakeLLM.assistant(blocks)
-
-    stop = if Elia.LLM.Message.tool_calls(message) == [], do: :end_turn, else: :tool_use
-
-    {:ok, %{message: message, stop_reason: stop, model: "fake", usage: %{}}}
   end
 
   # DEPLOY-4, PROJ-22

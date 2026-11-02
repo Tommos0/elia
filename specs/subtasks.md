@@ -172,7 +172,9 @@ its own workspace; children that would share one workspace are serialized
   (CKPT-10) so a later rollback can't restore the discarded work. For a
   sub-task in Elia's own project it resets the sub-task's own worktree
   (SUBTASK-23), not the parent's workspace, which the sub-task never touched
-  (SUBTASK-25). It is never
+  (SUBTASK-25), and then the caller's checkpoint is left alone: the reset
+  changed a different root, so the caller's own workspace is unchanged. It is
+  never
   run automatically. It is refused, as a tool error and without changing
   anything, when: the chat isn't a task of the caller; its status is `"done"`;
   that task itself is still running (SUBTASK-11); the task has no
@@ -231,9 +233,12 @@ its own workspace; children that would share one workspace are serialized
   the wait for that child's turn to end (SUBTASK-8). It is the child's entry
   owner (SUBTASK-11), so `Elia.Tasks` can finish the job if it dies
   (SUBTASK-19), and it records the result, the saved metadata and the final
-  event (SUBTASK-13) when the child ends. Because it is separate from the
-  parent's turn, `spawn_task` returns at once (SUBTASK-2) and several watchers
-  can run at once.
+  event (SUBTASK-13) when the child ends. It also announces that end on the
+  child's own task topic (`Elia.Tasks.task_topic/1`), so a wait for the child
+  (SUBTASK-27) can never miss it — including when `Elia.Tasks` had to finish
+  the job itself (SUBTASK-19). Because it is separate from the parent's turn,
+  `spawn_task` returns at once (SUBTASK-2) and several watchers can run at
+  once.
 
 ## Out of scope (later phases of the plan)
 
@@ -257,5 +262,7 @@ retiring SUBTASK-14 removed the `Checkpoint.rebase/1` and
 
 ## Tests
 
-`test/elia/tasks_test.exs`, `test/elia/store_test.exs`,
-`test/elia/agent_test.exs`, `test/elia_web/live/task_ui_test.exs`.
+`test/elia/tasks_test.exs`, `test/elia/tasks_concurrency_test.exs` (two
+children at once, each in its own worktree), `test/elia/store_test.exs`,
+`test/elia/agent_test.exs`, `test/elia/deployment_test.exs`,
+`test/elia_web/live/task_ui_test.exs`.

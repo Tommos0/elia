@@ -247,10 +247,8 @@ Read first: `specs/subtasks.md`, `specs/agent-sessions.md`,
 
 ### 4. Concurrent sub-tasks
 
-- [ ] Spec, implementation, tests, commit (see `specs/subtasks.md`, SUBTASK-1,
+- [x] Spec, implementation, tests, commit (see `specs/subtasks.md`, SUBTASK-1,
   SUBTASK-2, SUBTASK-4, SUBTASK-8, SUBTASK-11, SUBTASK-26 to SUBTASK-28)
-
-Depends on 1 to 3 (and the per-sub-task worktree, SUBTASK-23).
 
 - `spawn_task` stops waiting: it starts a watcher process and returns
   `{task_id, title, status: "running"}`; the watcher records the result
@@ -263,6 +261,29 @@ Depends on 1 to 3 (and the per-sub-task worktree, SUBTASK-23).
   run: the child forks from the parent's committed branch and leaves the
   parent's tree alone (SUBTASK-4). SUBTASK-14 is retired.
 - Stopping the parent stops every child it has running (SUBTASK-17).
+
+Depends on 1 to 3 (and the per-sub-task worktree, SUBTASK-23).
+
+Decisions made in phase 4:
+
+- The watcher takes the child's entry itself (`Elia.Tasks.acquire/4`) and is its
+  owner, so the entry can't be taken before the workspace is reserved, and the
+  spawn path waits for that one message (with a monitor on the watcher) before
+  sending the brief. It also waits for the brief to go out before it starts
+  waiting, so a parent whose turn is stopped in that window leaves nothing
+  behind.
+- A child whose session dies is finished by its watcher, not by the entry's
+  monitor: the entry is released a moment later, so an `await_task` that starts
+  in between still gets the result instead of finding an interrupted task.
+- `spawn_task` still checks the workspace before creating anything (SUBTASK-4:
+  "without creating a chat"); `acquire/4` checks it again, so two spawns can't
+  race into one tree.
+- The end of a child is announced on `Elia.Tasks.task_topic/1` as well, so a
+  wait never misses it; `Elia.Tasks` announces it too when it has to finish a
+  crashed watcher's job (SUBTASK-19).
+- `reset_task` replaces the caller's turn checkpoint only when the reset
+  happened in the caller's own workspace; a sub-task's worktree is a different
+  root, which the caller's checkpoint never held (SUBTASK-22).
 
 Read first: `specs/subtasks.md`, `docs/agents/testing.md`,
 `docs/agents/elixir.md`.

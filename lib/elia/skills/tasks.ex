@@ -1,8 +1,9 @@
 defmodule Elia.Skills.Tasks do
   @moduledoc """
   Sub-tasks (spec: `specs/subtasks.md`). The built-in skill `tasks` gives a
-  chat `spawn_task`; sessions started by it get `child_skills/0` instead, which
-  swaps `tasks` for the skill `task` with `finish_task` (SUBTASK-1).
+  chat `spawn_task`, `list_tasks`, `await_task` and `reset_task`; sessions
+  started by it get `child_skills/0` instead, which swaps `tasks` for the skill
+  `task` with `finish_task` (SUBTASK-1).
   """
 
   @behaviour Elia.Skill
@@ -16,16 +17,25 @@ defmodule Elia.Skills.Tasks do
   @impl true
   def instructions do
     """
-    `spawn_task` starts a separate chat (a sub-task) with a fresh context, waits \
-    until it finishes and returns its result. Use it for a self-contained step of \
-    a long job (for example: implement one spec, then test it) so this chat's \
-    context isn't filled with the details. The sub-task does not see this chat, \
-    so the `brief` is its whole input: give the goal, the files and specs to \
-    read first, the constraints, and what "done" means (including that it \
-    should commit). One sub-task runs at a time, and it can't start sub-tasks of \
-    its own. The git working tree must be clean (commit your own changes first). \
-    The user approves each spawn, and approves the sub-task's own tool calls in \
-    its chat.
+    `spawn_task` starts a separate chat (a sub-task) with a fresh context and \
+    returns as soon as it has started, as `{"task_id", "title", "status": \
+    "running"}`. Use it for a self-contained step of a long job (for example: \
+    implement one spec, then test it) so this chat's context isn't filled with \
+    the details. The sub-task does not see this chat, so the `brief` is its \
+    whole input: give the goal, the files and specs to read first, the \
+    constraints, and what "done" means (including that it should commit). \
+    Commit your own work before spawning: in Elia's own project the sub-task \
+    forks from your branch's last commit, so it never sees uncommitted changes. \
+    A sub-task can't start sub-tasks of its own. The user approves each spawn, \
+    and approves the sub-task's own tool calls in its chat.
+
+    The sub-task runs on its own, so carry on with your own work: `list_tasks` \
+    shows the sub-tasks this chat started and how each is doing, and \
+    `await_task` with a `task_id` waits for one to finish and returns its \
+    result (and returns it at once for one that has already finished). Waiting \
+    for two sub-tasks in the order that suits means one `await_task` per spawn. \
+    Sub-tasks that share a workspace (outside Elia's own project, where they \
+    have no worktree) run one at a time.
 
     The result is JSON: `status` (`done`, `blocked`, `failed`, `unfinished` or \
     `cancelled`), `reason` (`budget`, `cancelled`, `crashed`, `error` or null), \
@@ -56,10 +66,11 @@ defmodule Elia.Skills.Tasks do
       %Elia.Tool{
         name: "spawn_task",
         description:
-          "Run a sub-task in a new chat and wait for its result (JSON with status, summary, " <>
-            "commit, files, questions). The brief must be self-contained. In Elia's own " <>
-            "project the sub-task's work is left on branch `chat/<task_id>` for you to merge " <>
-            "yourself; it is not merged for you.",
+          "Start a sub-task in a new chat and return as soon as it has started " <>
+            "(`{\"task_id\", \"title\", \"status\": \"running\"}`). The brief must be " <>
+            "self-contained. Collect the result later with `await_task` (or check on it " <>
+            "with `list_tasks`). In Elia's own project the sub-task's work is left on " <>
+            "branch `chat/<task_id>` for you to merge yourself; it is not merged for you.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -83,6 +94,43 @@ defmodule Elia.Skills.Tasks do
         },
         approval: :required,
         run: fn input, ctx -> Elia.Tasks.spawn_task(input, ctx) end
+      },
+      %Elia.Tool{
+        name: "list_tasks",
+        description:
+          "List the sub-tasks this chat started, newest first, with the status each one has " <>
+            "now (`running`, or its final status) and, for a finished one, its reason. With " <>
+            "`task_id`, list just that one and include its result.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "task_id" => %{
+              "type" => "string",
+              "description" => "Optional: one sub-task's id, to see just that one"
+            }
+          },
+          "required" => []
+        },
+        approval: :never,
+        run: fn input, ctx -> Elia.Tasks.list_tasks(input, ctx) end
+      },
+      %Elia.Tool{
+        name: "await_task",
+        description:
+          "Wait until a sub-task this chat started is no longer running and return its " <>
+            "result as JSON. A sub-task that has already finished returns at once.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "task_id" => %{
+              "type" => "string",
+              "description" => "The `task_id` from the sub-task's start"
+            }
+          },
+          "required" => ["task_id"]
+        },
+        approval: :never,
+        run: fn input, ctx -> Elia.Tasks.await_task(input, ctx) end
       },
       %Elia.Tool{
         name: "reset_task",
