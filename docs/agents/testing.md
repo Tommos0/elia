@@ -7,6 +7,7 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
 - Every requirement you add or change needs a test. Cite its ID in the test name or a comment, e.g. `# SHELL-3`.
 - If code and spec disagree, one is a bug. Fix the code or update the spec deliberately. See `specs/README.md`.
 - Worktree and deploy tests use a throwaway live tree (`Elia.LiveTree.create/0`, `test/support/live_tree.ex`), never the server's own tree.
+- A test that deploys by hot reload replaces the loader — `config :elia, Elia.Deploy, load: fun` — instead of calling `Phoenix.CodeReloader.reload/1`: a real recompile inside a test run rebuilds Elia's own endpoint and leaves `_build/test` broken for every later test.
 
 ## Processes
 
