@@ -450,6 +450,7 @@ defmodule Elia.AgentTest do
       Agent.ensure_started(id,
         task: task,
         selection: selection,
+        auto_approve: ["shell"],
         loop_opts: [llm: %{provider: FakeLLM}]
       )
 
@@ -462,6 +463,9 @@ defmodule Elia.AgentTest do
     assert Elia.Store.load_model(id) == selection
     # SESS-17: the selection isn't stored as the default model.
     assert Elia.Settings.get(:model) == default
+    # SESS-17: the option sets the chat's auto-approved tools, then it saves them.
+    assert %{auto_approve: ["shell"]} = Agent.snapshot(id)
+    assert Elia.Store.load_auto_approve(id) == ["shell"]
 
     :ok = Agent.update_task(id, %{status: "done"})
     assert %{status: "done", title: "T"} = Elia.Store.load_task(id)

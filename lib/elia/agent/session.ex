@@ -83,7 +83,7 @@ defmodule Elia.Agent.Session do
       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
-      auto_approve: initial_auto_approve(opts[:id], persist)
+      auto_approve: initial_auto_approve(opts[:id], persist, opts[:auto_approve])
     }
 
     # SESS-21: tool calls the app stopped in the middle of never got a result.
@@ -510,6 +510,11 @@ defmodule Elia.Agent.Session do
     do: MapSet.member?(Map.get(state, :auto_approve, MapSet.new()), name)
 
   defp names(set), do: set |> MapSet.to_list() |> Enum.sort()
+
+  # SESS-17: a caller may set the new session's auto-approved tools (APPR-8,
+  # SUBTASK-6) instead of loading the chat's saved ones.
+  defp initial_auto_approve(id, persist, nil), do: initial_auto_approve(id, persist)
+  defp initial_auto_approve(_id, _persist, names) when is_list(names), do: MapSet.new(names)
 
   defp initial_auto_approve(id, true), do: MapSet.new(Elia.Store.load_auto_approve(id))
   defp initial_auto_approve(_id, false), do: MapSet.new()

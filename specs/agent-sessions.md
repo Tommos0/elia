@@ -68,11 +68,12 @@ progress so any number of UIs can follow it.
   messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the
   sorted list. It is allowed mid-turn (APPR-11).
 
-- **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16)
-  and `selection` (a model selection, MODEL-1) set the new session's values
-  instead of the saved ones. Neither stores the selection as the default model
-  (MODEL-15). The session saves its task metadata with the history (STORE-16),
-  and a session whose state predates the `task` field is upgraded as in SESS-15.
+- **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16),
+  `selection` (a model selection, MODEL-1) and `auto_approve` (a list of
+  tool-name strings, APPR-8) set the new session's values instead of the saved
+  ones. None stores the selection as the default model (MODEL-15). The session
+  saves its task metadata with the history (STORE-16), and a session whose state
+  predates the `task` field is upgraded as in SESS-15.
 - **SESS-18** `Elia.Agent.update_task/2` (chat id, map of changes) merges the
   changes into the chat's task metadata and saves it. It returns
   `{:error, :not_a_task}` for a chat that has none.

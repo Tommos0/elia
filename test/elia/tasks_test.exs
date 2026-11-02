@@ -173,6 +173,9 @@ defmodule Elia.TasksTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
     FakeLLM.push(FakeLLM.assistant([Message.text("The task is done.")]))
 
+    # SUBTASK-6: the parent's auto-approved tools are auto-approved in the child too.
+    Agent.set_auto_approve(parent, "shell", true)
+
     run_spawn(parent, "do it")
 
     # SUBTASK-11: the lock was held by the child while it ran, and is free now.
@@ -239,8 +242,13 @@ defmodule Elia.TasksTest do
     assert %{title: "Add file", parent_id: ^parent, task_status: "done"} =
              Enum.find(Store.list(1000), &(&1.id == child))
 
-    # SUBTASK-6: nothing is auto-approved in the child.
-    assert Agent.snapshot(child).auto_approve == []
+    # SUBTASK-6: the child inherited the parent's auto-approved tools.
+    assert Agent.snapshot(child).auto_approve == ["shell"]
+
+    # APPR-12: the copy is the child's own; changing the parent doesn't touch it.
+    :ok = Agent.set_auto_approve(parent, "shell", false)
+    assert Agent.snapshot(parent).auto_approve == []
+    assert Agent.snapshot(child).auto_approve == ["shell"]
   end
 
   # PROJ-10

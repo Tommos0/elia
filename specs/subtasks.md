@@ -54,11 +54,13 @@ index and approvals are shared.
   is a sub-task agent, works only from this brief, commits its work, ends by
   calling `finish_task`, does not wait for the user, and lists unresolved
   questions in the result.
-- **SUBTASK-6** The child chat starts with no auto-approved tools; the
-  parent's auto-approval isn't inherited (APPR-8). With `model`, the child's
-  selection is that model on the parent's provider; without it, the child
-  starts with the parent's selection. Neither changes the stored default model
-  (MODEL-15).
+- **SUBTASK-6** The child chat starts with a copy of the parent's auto-approved
+  tools (APPR-8), so a user who has trusted a tool in the parent doesn't have to
+  approve it again in every sub-task. The copy is the child's own set from then
+  on (APPR-12): changing either chat's auto-approval afterwards never affects
+  the other. With `model`, the child's selection is that model on the parent's
+  provider; without it, the child starts with the parent's selection. Neither
+  changes the stored default model (MODEL-15).
 - **SUBTASK-7** `{:subtask, call_id, child_id, status}` is broadcast on the
   parent's topic (SESS-6) when the child starts (`"running"`) and again when it
   ends with its final status, where `call_id` is the `spawn_task` call.

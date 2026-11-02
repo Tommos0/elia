@@ -314,11 +314,16 @@ defmodule Elia.Tasks do
         workspace: workspace
       )
 
+    parent_snapshot = Elia.Agent.snapshot(parent_id)
+
     {:ok, child_pid} =
       Elia.Agent.ensure_started(child_id,
         loop_opts: loop_opts,
         task: task,
-        selection: child_selection(parent_id, model),
+        selection: child_selection(parent_snapshot, model),
+        # SUBTASK-6: the child inherits a copy of the parent's auto-approved
+        # tools so the user doesn't approve them all over again.
+        auto_approve: parent_snapshot.auto_approve,
         project: project
       )
 
@@ -365,12 +370,10 @@ defmodule Elia.Tasks do
   end
 
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
-  defp child_selection(parent_id, model) do
-    parent = Elia.Agent.snapshot(parent_id).selection
-
+  defp child_selection(parent, model) do
     if is_binary(model),
-      do: %{provider: Elia.LLM.selection(parent).provider, model: model, name: model},
-      else: parent
+      do: %{provider: Elia.LLM.selection(parent.selection).provider, model: model, name: model},
+      else: parent.selection
   end
 
   defp lock(parent_id, child_id, child_pid, meta) do
