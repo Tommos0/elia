@@ -27,8 +27,16 @@ stream in, approves or denies tool calls, and switches between saved chats.
   start time and whose `title` is the exact date and time. The relative text
   refreshes every minute.
 - **UI-5** With no saved chats, the sidebar shows "No chats yet".
-- **UI-6** When a turn ends (status becomes idle), the sidebar and page title
-  refresh.
+- **UI-6** When a turn starts (status becomes running) and when it ends (status
+  becomes idle), the sidebar and page title refresh, so a chat that was just
+  started shows its first message as its title without waiting for the turn to
+  end.
+- **UI-63** A chat started from `/` or from a "New chat" button (UI-1, UI-31,
+  PROJ-26) is in the sidebar list as soon as it opens: under its project
+  (PROJ-24), newest first (STORE-12), highlighted as the open chat (UI-4), with
+  the title "New chat" (STORE-7) and the start time "just now" (UI-34), before
+  the user has sent anything. It stays listed when the user never writes to it
+  (STORE-22).
 - **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
   list that starts a fresh chat in the open chat's project (PROJ-26), which is
   the default project when there is none (PROJ-8).

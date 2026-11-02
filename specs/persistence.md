@@ -77,6 +77,13 @@ reopened.
   outlive a restart. `load_compaction/1` returns it, or `nil` when the chat is
   missing, unreadable, corrupt or has none.
 
+- **STORE-22** Starting a chat from the UI (`/` or `/p/<id>/new`, UI-1,
+  PROJ-26) saves it at once, with no messages and its project (STORE-19), so it
+  is listed while it is still empty: its title is "New chat" (STORE-7) and its
+  `created_at` is the moment it was started (STORE-11), which its later saves
+  keep. Starting a session for an id that is only opened (`/c/<id>`, UI-2)
+  writes nothing until it has a message (SESS-14).
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.
@@ -85,4 +92,6 @@ reopened.
 
 `test/elia/agent_test.exs` (history survives a restart),
 `test/elia/store_test.exs`,
-`test/elia_web/live/page_title_test.exs`.
+`test/elia_web/live/page_title_test.exs`,
+`test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
+STORE-22).

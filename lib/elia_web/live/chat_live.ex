@@ -32,6 +32,10 @@ defmodule EliaWeb.ChatLive do
   defp start_new_chat(socket, project) do
     :ok = Elia.Projects.set_default(project.id)
     id = Agent.new_id()
+    # STORE-22, UI-63: the chat is saved as it is started, so the sidebar lists
+    # it (as "New chat") before its first message. A save that fails is not
+    # fatal (SESS-13): the chat opens either way.
+    _ = Elia.Store.save(id, [], project: project.id)
     {:ok, _pid} = Agent.ensure_started(id, project: project)
     {:ok, push_navigate(socket, to: ~p"/c/#{id}")}
   end
@@ -1791,6 +1795,15 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
+  # UI-6, UI-63: the sidebar's list and this chat's page title, re-read from the
+  # store.
+  defp refresh_listed(socket) do
+    assign(socket,
+      chats: Elia.Store.list(30),
+      page_title: Elia.Store.title(Elia.Store.load(socket.assigns.session_id))
+    )
+  end
+
   defp apply_event({:message, %Message{} = message}, socket) do
     socket =
       if message.role == :assistant,
@@ -1863,14 +1876,10 @@ defmodule EliaWeb.ChatLive do
     # UI-57: the banner follows the status; the message arrives with {:paused, …}.
     socket = if status == :paused, do: socket, else: assign(socket, pause: nil)
 
-    socket =
-      if status == :idle,
-        do:
-          assign(socket,
-            chats: Elia.Store.list(30),
-            page_title: Elia.Store.title(Elia.Store.load(socket.assigns.session_id))
-          ),
-        else: socket
+    # UI-6, UI-63: a turn's start and end both refresh the sidebar and the page
+    # title, so a chat that was just started shows its first message as its
+    # title without waiting for the turn to end.
+    socket = if status in [:running, :idle], do: refresh_listed(socket), else: socket
 
     socket = if status == :idle, do: assign(socket, draft: "", draft_reasoning: ""), else: socket
 

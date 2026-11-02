@@ -15,6 +15,64 @@ defmodule EliaWeb.ChatLiveTest do
     assert {:error, {:live_redirect, %{to: "/c/" <> _id}}} = live(conn, ~p"/")
   end
 
+  # STORE-22, UI-63: a chat started from the UI is saved as it opens, so the
+  # sidebar lists it, as the open chat, before the user has sent anything.
+  test "a started chat is saved and in the sidebar at once", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # STORE-22: on disk with no messages, its project and its start time.
+    assert %{id: ^id, title: "New chat", description: "New chat", project_id: "harness"} =
+             Enum.find(Elia.Store.list(30), &(&1.id == id))
+
+    assert Elia.Store.load(id) == []
+
+    # UI-63: and the sidebar of the chat it opened shows it right away.
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#chat-link-#{id}", "New chat")
+    assert has_element?(view, "#chat-link-#{id}.bg-base-300")
+    assert has_element?(view, "#chat-time-#{id}", "just now")
+  end
+
+  # UI-6: a turn's start refreshes the sidebar and the page title, so the chat
+  # shows its first message without waiting for the turn to end.
+  test "the sidebar and page title follow a turn's start", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, [], project: "harness")
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    assert has_element?(view, "#chat-link-#{id}", "New chat")
+
+    Agent.subscribe(id)
+
+    # A turn that is still running while we look at the sidebar.
+    FakeLLM.push(fn _request, on_event ->
+      Process.sleep(500)
+      on_event.({:text_delta, "Sure."})
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("Sure.")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "first message")
+
+    assert_receive {:agent, ^id, {:status, :running}}, 2_000
+    assert has_element?(view, "#chat-link-#{id}", "first message")
+    # The page title follows at once too (the layout's "Elia - " prefix is
+    # applied in the browser, so a title updated mid-session reads bare here).
+    assert page_title(view) == "first message"
+
+    assert_receive {:agent, ^id, {:status, :idle}}, 5_000
+    assert has_element?(view, "#chat-link-#{id}", "first message")
+  end
+
   # UI-31, PROJ-26: the "New chat" button sits above the chat list in the
   # sidebar and starts a chat in the open chat's project.
   test "sidebar shows a New chat button above the chat list", %{conn: conn} do
