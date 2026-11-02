@@ -313,8 +313,10 @@ defmodule Elia.DeploymentTest do
     assert {:ok, _} = Deploy.ensure_worktree(id)
   end
 
-  # DEPLOY-9, SUBTASK-23
-  test "a sub-task works in its parent's worktree and branch", %{tree: tree} do
+  # DEPLOY-9, SUBTASK-23, SUBTASK-25
+  test "a sub-task works in its own worktree, and its done work reaches the parent", %{
+    tree: tree
+  } do
     parent = chat()
     path = Deploy.worktree_path(parent)
     test_pid = self()
@@ -325,18 +327,18 @@ defmodule Elia.DeploymentTest do
       ])
     )
 
-    # The child writes its note where its own tools put it — its workspace.
+    # The child writes its note and commits it in its own worktree.
     FakeLLM.push(fn _request, _on_event ->
-      send(test_pid, {:child, Elia.Tasks.active().child_id})
+      child = Elia.Tasks.active().child_id
+      send(test_pid, {:child, child})
+      child_path = Deploy.worktree_path(child)
+      File.write!(Path.join(child_path, "child-note.txt"), "child")
+      LiveTree.commit(child_path, "child note")
 
       {:ok,
        %{
          message:
            FakeLLM.assistant([
-             FakeLLM.tool_call("w1", "write_file", %{
-               "path" => "skills/child-note.txt",
-               "content" => "child"
-             }),
              FakeLLM.tool_call("f1", "finish_task", %{"status" => "done", "summary" => "wrote it"})
            ]),
          stop_reason: :tool_use,
@@ -348,6 +350,7 @@ defmodule Elia.DeploymentTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
 
+    before = head(path)
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
     :ok = Agent.approve(parent, "s1")
@@ -355,12 +358,21 @@ defmodule Elia.DeploymentTest do
 
     assert_receive {:child, child}
 
-    # The child's work is in the parent's worktree, on the parent's branch.
-    assert File.read!(Path.join(path, "skills/child-note.txt")) == "child"
-    refute File.exists?(Path.join(tree, "skills/child-note.txt"))
-    assert branch(path) == "chat/#{parent}"
+    # SUBTASK-23: the child has its own worktree and branch, cut from the
+    # parent's, so its work never touches the parent's tree while it runs.
+    child_path = Deploy.worktree_path(child)
+    assert child_path != path
+    assert branch(child_path) == "chat/#{child}"
 
-    # And its result is reported relative to that workspace.
+    # SUBTASK-25: finished as `done`, its committed work is merged into the
+    # parent's branch, so it is in the parent's worktree now.
+    assert head(child_path) != before
+    assert File.read!(Path.join(path, "child-note.txt")) == "child"
+    assert branch(path) == "chat/#{parent}"
+    assert head(path) == head(child_path)
+    refute File.exists?(Path.join(tree, "child-note.txt"))
+
+    # And its result is reported relative to its own workspace.
     result =
       FakeLLM.requests()
       |> Enum.flat_map(& &1.messages)
@@ -371,8 +383,89 @@ defmodule Elia.DeploymentTest do
 
     assert %{content: content, is_error: false} = result
     assert %{"status" => "done", "files" => files} = Jason.decode!(content)
-    assert "skills/child-note.txt" in files
+    assert "child-note.txt" in files
     stop_session(child)
+  end
+
+  # DEPLOY-9, SUBTASK-25, SUBTASK-22
+  test "a sub-task that doesn't finish as done keeps its work on its own branch" do
+    parent = chat()
+    path = Deploy.worktree_path(parent)
+    test_pid = self()
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("s1", "spawn_task", %{"title" => "T", "brief" => "Write a note."})
+      ])
+    )
+
+    FakeLLM.push(fn _request, _on_event ->
+      child = Elia.Tasks.active().child_id
+      send(test_pid, {:child, child})
+      child_path = Deploy.worktree_path(child)
+      File.write!(Path.join(child_path, "child-note.txt"), "child")
+      File.write!(Path.join(child_path, "wip.txt"), "wip")
+      LiveTree.commit(child_path, "child note")
+
+      {:ok,
+       %{
+         message:
+           FakeLLM.assistant([
+             FakeLLM.tool_call("f1", "finish_task", %{
+               "status" => "blocked",
+               "summary" => "stuck"
+             })
+           ]),
+         stop_reason: :tool_use,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    # The parent is told the result, then asks to discard it (SUBTASK-22).
+    FakeLLM.push(FakeLLM.assistant([Message.text("Closing.")]))
+
+    FakeLLM.push(fn request, _on_event ->
+      %Message{role: :tool, content: [%{content: content}]} = List.last(request.messages)
+      %{"task_id" => task_id} = Jason.decode!(content)
+      reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => task_id})])
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Reset.")]))
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    await_status(parent, :awaiting_approval)
+
+    assert_receive {:child, child}
+    child_path = Deploy.worktree_path(child)
+
+    # SUBTASK-25: a blocked sub-task is not merged, so the parent's worktree is
+    # untouched and the work stays on the child's branch.
+    assert File.read!(Path.join(child_path, "child-note.txt")) == "child"
+    refute File.exists?(Path.join(path, "child-note.txt"))
+    assert head(path) != head(child_path)
+
+    :ok = Agent.approve(parent, "r1")
+    await_status(parent, :idle)
+
+    # SUBTASK-22: the reset discards the work in the sub-task's own worktree,
+    # and leaves the parent's worktree alone.
+    refute File.exists?(Path.join(child_path, "child-note.txt"))
+    refute File.exists?(Path.join(child_path, "wip.txt"))
+    assert branch(child_path) == "chat/#{child}"
+    refute File.exists?(Path.join(path, "child-note.txt"))
+
+    stop_session(child)
+  end
+
+  defp reply(blocks) do
+    message = FakeLLM.assistant(blocks)
+
+    stop = if Elia.LLM.Message.tool_calls(message) == [], do: :end_turn, else: :tool_use
+
+    {:ok, %{message: message, stop_reason: stop, model: "fake", usage: %{}}}
   end
 
   # DEPLOY-4, PROJ-22

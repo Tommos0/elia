@@ -262,6 +262,9 @@ Read first: `specs/subtasks.md`, `specs/workspace-policy.md`,
 - A user-facing "Run as task" action that starts a child from a brief without a
   parent chat.
 - Per-task git worktrees, which would allow concurrent writing children and
-  removes the clean-tree precondition.
+  removes the clean-tree precondition. (Implemented: a sub-task in Elia's own
+  project works in its own worktree and its done work is merged into the
+  parent's branch, SUBTASK-23, SUBTASK-25, DEPLOY-9. Children still run one at
+  a time, and the clean-tree precondition stays.)
 - Children that return a patch for the parent to review instead of committing.
 - Different default model per role.

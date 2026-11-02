@@ -7,8 +7,9 @@ budget, crash recovery and reset)
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context, wait for it, and get back a short structured result. The
 child is an ordinary saved chat with extra metadata linking it to its parent.
-Only one child runs at a time, because the parent's worktree, checkpoints, git
-index and approvals are shared.
+In Elia's own project the child gets its own worktree, so its in-progress work
+never touches the parent's (SUBTASK-23). Only one child runs at a time, because
+the checkpoints, git index and approvals are still shared.
 
 ## Requirements
 
@@ -156,16 +157,31 @@ index and approvals are shared.
   approval `:required`) takes `task_id` (from a result) and resets the workspace
   to the task's `start_commit` with `git reset --hard` and `git clean -fd`
   (ignored files are kept), then replaces the caller's turn checkpoint
-  (CKPT-10) so a later rollback can't restore the discarded work. It is never
+  (CKPT-10) so a later rollback can't restore the discarded work. For a
+  sub-task in Elia's own project it resets the sub-task's own worktree
+  (SUBTASK-23), not the parent's workspace: a non-`done` sub-task is never
+  merged, so the parent's workspace has nothing to undo (SUBTASK-25). It is never
   run automatically. It is refused, as a tool error and without changing
   anything, when: the chat isn't a task of the caller; its status is `"done"`;
   a child is active (SUBTASK-11), which includes this one; the task has no
   `start_commit`; or the `start_commit` isn't an ancestor of `HEAD`. A task
   that was interrupted by a restart (SUBTASK-20) can be reset. Its output lists
   what was discarded (commits and changed files).
-- **SUBTASK-23** A sub-task shares its parent chat's worktree and branch: it
-  edits, tests and commits in the parent's worktree, so its work is part of the
-  parent's branch (DEPLOY-9).
+- **SUBTASK-23** A sub-task in Elia's own project works in its own git
+  worktree, on branch `chat/<sub-task id>` forked from its parent's branch
+  `chat/<parent id>` when it starts (DEPLOY-9). That worktree is its workspace:
+  the file and shell tools, checkpoints and verification run there (DEPLOY-1),
+  so its in-progress and uncommitted work never touches the parent's worktree.
+  In another project, or when the parent has no worktree, the sub-task shares
+  the parent's workspace, as before (DEPLOY-3).
+- **SUBTASK-25** When a sub-task ends as `done`, its branch is merged into the
+  parent's branch, fast-forward only, in the parent's worktree, so its
+  committed work is part of the parent's branch (SUBTASK-14 rebases the parent's
+  checkpoint so a later rollback can't wipe it). The parent is suspended while
+  the sub-task runs, so its branch has not moved and the merge is a
+  fast-forward. A sub-task that ends otherwise (`blocked`, `failed`,
+  `cancelled` or `unfinished`) is not merged: its work stays on its own branch,
+  and `reset_task` (SUBTASK-22) discards it there.
 - **SUBTASK-24** A child runs with the loop's `:pause_on_limit` and a
   `:budget_ms` from `max_minutes` (LOOP-19, LOOP-20), so a limit pauses its turn
   instead of ending it: the child's session status becomes `:paused` (SESS-27)
@@ -182,15 +198,17 @@ Read-only children (phase 4).
 
 ## Implementation
 
-`Elia.Tasks` (lock, spawn, await, cancel, reset), `Elia.Skills.Tasks` (the
-skills and tools), `Elia.Store` (metadata), `Elia.Agent.Session` (task
+`Elia.Tasks` (lock, spawn, await, merge, cancel, reset), `Elia.Skills.Tasks`
+(the skills and tools), `Elia.Store` (metadata), `Elia.Agent.Session` (task
 metadata, `selection` option, stop, dangling calls), `Elia.Agent.Loop`
 (`max_steps`, skill functions, tool context), `Elia.Checkpoint.rebase/1`,
-`Elia.Harness.core_elixir_changed?/1`.
+`Elia.Harness.core_elixir_changed?/1`, `Elia.Deploy` (the child's own worktree,
+the merge back into the parent's branch).
 
 Core files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
 `lib/elia/skills/tasks.ex`, `lib/elia/checkpoint.ex`, `lib/elia/harness.ex`,
-`config/config.exs`. (Phase 3 touches `lib/elia/skills/tasks.ex` only.)
+`lib/elia/deploy.ex`, `config/config.exs`. (The per-sub-task worktree
+(SUBTASK-23, SUBTASK-25) adds `lib/elia/deploy.ex` and `lib/elia/tasks.ex`.)
 
 ## Tests
 

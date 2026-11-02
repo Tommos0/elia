@@ -61,8 +61,11 @@ running app at all — the isolation is the filesystem, not a gate.
 
 ### Sub-tasks and lifecycle
 
-- **DEPLOY-9** A sub-task shares its parent chat's worktree and branch
-  (SUBTASK-23).
+- **DEPLOY-9** A sub-task in Elia's own project works in its own worktree,
+  branch `chat/<sub-task id>` forked from its parent's branch
+  `chat/<parent id>` (SUBTASK-23). When it finishes as `done`, its branch is
+  merged into the parent's branch, fast-forward only (SUBTASK-25); a sub-task
+  that ends otherwise keeps its work on its own branch.
 - **DEPLOY-10** A chat's worktree is created when the chat starts and removed
   when the chat is deleted; its `chat/<id>` branch is pruned. A branch is kept
   while its chat exists, since chats are resumable; there is no time-based
@@ -80,17 +83,19 @@ running app at all — the isolation is the filesystem, not a gate.
 
 HOT (hot reload becomes a deploy mode), GUARD (retired; 8 kept as DEPLOY-8),
 PROJ-3/PROJ-12/PROJ-13/PROJ-14 (per-chat worktrees for Elia's own project; the
-live tree), RESTART (the restart button), SUBTASK (shared worktree).
+live tree), RESTART (the restart button), SUBTASK (the sub-task's own
+worktree).
 
 ## Implementation
 
-`Elia.Deploy` (worktrees, merge, deploy, restart, the inert request reloader),
+`Elia.Deploy` (worktrees, the sub-task's own worktree and the merge back into
+its parent, merge, deploy, restart, the inert request reloader),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop` (verification in that workspace),
 `Elia.Checkpoint` and `Elia.Harness` (snapshots, tests and reloading per
 workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}`,
-`Elia.Tasks` (the shared worktree, the repository it runs git in),
+`Elia.Tasks` (the sub-task's worktree, the repository it runs git in),
 `Elia.Store.delete/1` (removes the worktree), `EliaWeb.ChatLive` (restart
 button), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
 

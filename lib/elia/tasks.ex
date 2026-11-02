@@ -5,15 +5,18 @@ defmodule Elia.Tasks do
 
   `spawn_task/2` runs in the parent's tool call and blocks until the child's
   turn ends. This module is also the lock: a `GenServer` holding the one active
-  child (and its parent) for the whole app, since the workspace, checkpoints
-  and git index are shared. It is started on first use under
+  child (and its parent) for the whole app, since the checkpoints, git index and
+  approvals are shared. In Elia's own project the child works in its own
+  worktree (SUBTASK-23). It is started on first use under
   `Elia.Agent.Supervisor`, so a dev server that hot-reloaded this code works
   without a restart.
   """
 
   use GenServer
 
-  alias Elia.{Checkpoint, Harness, Store, Workspace}
+  require Logger
+
+  alias Elia.{Checkpoint, Deploy, Harness, Store, Workspace}
   alias Elia.LLM.Message
 
   @default_steps 100
@@ -152,9 +155,9 @@ defmodule Elia.Tasks do
     end
   end
 
-  # The repository the sub-task machinery works in: the chat's own workspace
-  # when it is in Elia's own project — its git worktree, shared with the child
-  # (DEPLOY-9) — and Elia's own root for any other project, as before.
+  # The repository the sub-task machinery works in: the chat's own workspace,
+  # which for a chat in Elia's own project is its git worktree (DEPLOY-1), and
+  # Elia's own root for any other project, as before.
   defp repo_root(ctx) do
     if Elia.Projects.harness_ctx?(ctx),
       do: ctx[:workspace] || Workspace.root(),
@@ -276,11 +279,13 @@ defmodule Elia.Tasks do
     model = input["model"]
     parent_opts = ctx[:loop_opts] || []
     project = ctx[:project]
-    # SUBTASK-23, DEPLOY-9: the child works in the parent's workspace — for a
-    # chat in Elia's own project that is its worktree — and on the same branch,
-    # so its work is part of the parent's.
-    root = repo_root(ctx)
-    workspace = ctx[:workspace] || (project && project.folder)
+    parent_root = repo_root(ctx)
+
+    # SUBTASK-23, DEPLOY-9: when the parent works in its own worktree — a chat
+    # in Elia's own project — the child gets its own, forked from the parent's
+    # branch, so its in-progress work never touches the parent's tree. Anywhere
+    # else it shares the parent's workspace, as before.
+    child_root = child_workspace(child_id, parent_id, parent_root)
 
     # SUBTASK-12: the child's step limit defaults to the loop's own default. It
     # isn't in `spawn_task`'s schema, so the model doesn't choose it; a caller
@@ -302,7 +307,7 @@ defmodule Elia.Tasks do
 
     loop_opts =
       parent_opts
-      |> Keyword.drop([:skills, :max_steps, :session_id, :turn_id])
+      |> Keyword.drop([:skills, :max_steps, :session_id, :turn_id, :workspace])
       |> Keyword.merge(
         skills: fn -> Elia.Skills.Tasks.child_skills(project) end,
         max_steps: steps,
@@ -311,7 +316,7 @@ defmodule Elia.Tasks do
         pause_on_limit: true,
         budget_ms: budget_ms(input),
         llm: llm,
-        workspace: workspace
+        workspace: child_root
       )
 
     parent_snapshot = Elia.Agent.snapshot(parent_id)
@@ -332,7 +337,8 @@ defmodule Elia.Tasks do
              owner: self(),
              call_id: ctx[:call_id],
              start_commit: start_commit,
-             root: root
+             root: child_root,
+             parent_root: parent_root
            }) do
       Elia.Agent.subscribe(child_id)
       monitor = Process.monitor(child_pid)
@@ -350,10 +356,11 @@ defmodule Elia.Tasks do
         # this wait has no deadline of its own.
         outcome = await(child_id, monitor, nil)
 
-        result = build_result(child_id, start_commit, outcome, take_state(child_id), root)
+        result = build_result(child_id, start_commit, outcome, take_state(child_id), child_root)
+        hand_back(result, child_id, child_root, parent_root)
 
         update_saved(child_id, task, %{status: result["status"], result: result})
-        Checkpoint.rebase(ctx[:turn_id], root)
+        Checkpoint.rebase(ctx[:turn_id], parent_root)
         {:ok, Jason.encode!(result)}
       after
         Process.demonitor(monitor, [:flush])
@@ -368,6 +375,35 @@ defmodule Elia.Tasks do
         {:error, "Not started: another sub-task is active."}
     end
   end
+
+  # SUBTASK-23: the child's own worktree when the parent has one (Elia's own
+  # project, DEPLOY-1), the parent's workspace otherwise. A worktree that can't
+  # be made falls back to the parent's workspace, so the child always has
+  # somewhere to work.
+  defp child_workspace(child_id, parent_id, parent_root) do
+    with true <- Deploy.worktree_chat(parent_root) == parent_id,
+         {:ok, path} <- Deploy.ensure_child_worktree(child_id, parent_id) do
+      path
+    else
+      _ -> parent_root
+    end
+  end
+
+  # SUBTASK-25: a sub-task that ends as `done` hands its committed work back to
+  # the parent's branch. Anything else keeps its work on its own branch, where
+  # `reset_task` can discard it (SUBTASK-22); when the child shares the parent's
+  # workspace there is nothing to hand back.
+  defp hand_back(%{"status" => "done"}, child_id, child_root, parent_root)
+       when child_root != parent_root do
+    case Deploy.merge_child(child_id, parent_root) do
+      {:ok, _message} -> :ok
+      {:error, reason} -> Logger.warning("could not hand a sub-task's work back: #{reason}")
+    end
+
+    :ok
+  end
+
+  defp hand_back(_result, _child_id, _child_root, _parent_root), do: :ok
 
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
   defp child_selection(parent, model) do
@@ -421,7 +457,8 @@ defmodule Elia.Tasks do
   end
 
   # `state` is what the lock holds about the child: `finish` (SUBTASK-3) and
-  # `cancelled` (SUBTASK-16). `root` is the workspace they share (DEPLOY-9).
+  # `cancelled` (SUBTASK-16). `root` is the child's own workspace: its worktree
+  # in Elia's own project (SUBTASK-23), the parent's workspace otherwise.
   defp build_result(child_id, start_commit, outcome, state, root) do
     finish = state.finish
 
@@ -514,12 +551,15 @@ defmodule Elia.Tasks do
 
   @doc """
   The `reset_task` tool (SUBTASK-22): resets the workspace to the start commit
-  of a task of the caller that didn't finish as `done`. `ctx` is the tool
-  context (LOOP-18).
+  of a task of the caller that didn't finish as `done`. For a sub-task in
+  Elia's own project that is the sub-task's own worktree (SUBTASK-23), since a
+  non-`done` sub-task is never merged (SUBTASK-25); the parent's workspace has
+  nothing to undo. `ctx` is the tool context (LOOP-18).
   """
   @spec reset_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
   def reset_task(input, ctx) do
-    root = repo_root(ctx)
+    parent_root = repo_root(ctx)
+    root = reset_root(input["task_id"], parent_root)
 
     with {:ok, task} <- reset_target(ctx[:session_id], input["task_id"]),
          :ok <- check_none_active(),
@@ -530,7 +570,7 @@ defmodule Elia.Tasks do
 
       with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit], root),
            {_, 0} <- git(["clean", "-fdq"], root) do
-        Checkpoint.rebase(ctx[:turn_id], root)
+        Checkpoint.rebase(ctx[:turn_id], parent_root)
 
         {:ok,
          "Workspace reset to #{String.slice(task.start_commit, 0, 8)}.\n" <>
@@ -540,6 +580,16 @@ defmodule Elia.Tasks do
         {out, _} -> {:error, "git could not reset the workspace: #{String.trim(out)}"}
       end
     end
+  end
+
+  # SUBTASK-22, SUBTASK-23: the sub-task's own worktree when it has one (Elia's
+  # own project), the caller's workspace otherwise, as before.
+  defp reset_root(task_id, parent_root) do
+    path = if is_binary(task_id), do: Deploy.worktree_path(task_id)
+
+    if path != nil and File.dir?(path) and Deploy.worktree_chat(path) == task_id,
+      do: path,
+      else: parent_root
   end
 
   defp reset_target(parent_id, task_id) do

@@ -116,13 +116,13 @@ defmodule Elia.Deploy do
     end
   end
 
-  defp add_worktree(chat_id, path, root) do
+  defp add_worktree(chat_id, path, root, base \\ @live) do
     File.mkdir_p!(worktrees_dir(root))
 
     args =
       if branch_exists?(branch(chat_id), root),
         do: ["worktree", "add", "--force", path, branch(chat_id)],
-        else: ["worktree", "add", "--force", "-b", branch(chat_id), path, @live]
+        else: ["worktree", "add", "--force", "-b", branch(chat_id), path, base]
 
     case git(root, args) do
       {:ok, _output} ->
@@ -131,6 +131,50 @@ defmodule Elia.Deploy do
 
       {:error, reason} ->
         {:error, "could not create a worktree for this chat: #{reason}"}
+    end
+  end
+
+  @doc """
+  Creates a sub-task's own worktree (SUBTASK-23, DEPLOY-9): branch
+  `chat/<sub-task id>`, forked from its parent's branch `chat/<parent id>`, the
+  state the parent is in when it hands the work over. Idempotent, like
+  `ensure_worktree/2`, so the same worktree is reused.
+  """
+  @spec ensure_child_worktree(binary(), binary(), binary()) ::
+          {:ok, binary()} | {:error, binary()}
+  def ensure_child_worktree(child_id, parent_id, root \\ Workspace.runtime_root()) do
+    path = worktree_path(child_id, root)
+
+    cond do
+      File.dir?(path) ->
+        {:ok, path}
+
+      branch_exists?(branch(parent_id), root) ->
+        add_worktree(child_id, path, root, branch(parent_id))
+
+      true ->
+        {:error, "the parent chat has no worktree to fork from"}
+    end
+  end
+
+  @doc """
+  Hands a finished sub-task's work back (SUBTASK-25): merges its branch
+  `chat/<sub-task id>` into the branch checked out in `parent_workspace`, the
+  parent's worktree, fast-forward only. The parent is suspended while the
+  sub-task runs, so its branch has not moved and the merge is a fast-forward.
+  `{:ok, message}` or `{:error, reason}`.
+  """
+  @spec merge_child(binary(), binary()) :: {:ok, binary()} | {:error, binary()}
+  def merge_child(child_id, parent_workspace) do
+    case git(parent_workspace, ["merge", "--ff-only", branch(child_id)]) do
+      {:ok, output} ->
+        {:ok,
+         "#{branch(child_id)} merged into the parent's branch.#{if output == "", do: "", else: "\n" <> output}"}
+
+      {:error, reason} ->
+        {:error,
+         "Could not merge #{branch(child_id)} into the parent's branch (fast-forward " <>
+           "only): #{reason}"}
     end
   end
 
