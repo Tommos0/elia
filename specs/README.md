@@ -8,10 +8,14 @@ it.
 
 1. **Change the spec first.** New feature: add a file. Changed behaviour: edit
    the requirements it affects. Keep the change reviewable on its own.
-2. **Implement** the change in code.
-3. **Test** each new or changed requirement. Mention the requirement ID in the
+2. **Get the spec approved.** Stop and ask the user to approve the drafted spec
+   before implementing it, unless the user explicitly asked to skip the spec
+   approval for this change. Wait for that approval before touching code or
+   tests.
+3. **Implement** the change in code.
+4. **Test** each new or changed requirement. Mention the requirement ID in the
    test name or a comment (e.g. `# SHELL-3`) so the two can be traced.
-4. **Keep them in sync.** If code and spec disagree, one of them is a bug: fix
+5. **Keep them in sync.** If code and spec disagree, one of them is a bug: fix
    the code, or update the spec deliberately.
 
 ## Format
