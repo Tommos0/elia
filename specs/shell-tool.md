@@ -8,8 +8,10 @@ approved it.
 ## Requirements
 
 - **SHELL-1** Every `shell` call needs approval.
-- **SHELL-2** The command runs with `sh -c` in the workspace root, with stdin
-  connected to `/dev/null`, so it can never wait for input.
+- **SHELL-2** The command runs with `bash -c` where bash is installed,
+  otherwise with POSIX `sh -c` (`Elia.Shell.shell/1`), in the workspace root,
+  with stdin connected to `/dev/null`, so it can never wait for input. The
+  shell can be overridden per call with the `:shell` option.
 - **SHELL-3** The command runs in its own process group where `setsid` is
   available. On timeout the whole group is killed. The timeout is
   `timeout_seconds`, or the configured default (60s).
@@ -27,6 +29,10 @@ approved it.
   the shell to read, create or edit files (`cat`, `sed`, `echo >`, scripts that
   rewrite files) but to use the file tools, which apply the workspace policy.
   The `shell` tool's description says the same.
+- **SHELL-9** The skill's instructions and the `shell` tool's description say
+  which shell runs commands (`bash -c` where bash is installed, POSIX `sh -c`
+  otherwise) and warn that bash-only syntax (`${PIPESTATUS[0]}`, `[[ ... ]]`,
+  arrays, `set -o pipefail`) fails where the shell is `sh`.
 
 ## Configuration
 
@@ -40,4 +46,5 @@ config :elia, Elia.Skills.Shell, default_timeout: 60, max_output: 30_000
 
 ## Tests
 
-`test/elia/skills/shell_test.exs`, `test/elia/agent_test.exs`.
+`test/elia/skills/shell_test.exs`, `test/elia/shell_test.exs`,
+`test/elia/agent_test.exs`.

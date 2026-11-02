@@ -1,13 +1,32 @@
 defmodule Elia.Shell do
-  @moduledoc "Runs OS commands with a timeout, empty stdin and combined output."
+  @moduledoc """
+  Runs OS commands with a timeout, empty stdin and combined output.
+
+  Commands run with `bash -c` where bash is installed, otherwise with POSIX
+  `sh -c` (SHELL-2), so bash-only syntax works only where bash is present.
+  """
 
   @type result :: {:ok, binary(), non_neg_integer()} | {:timeout, binary()}
 
   @doc """
-  Runs `command` with `sh -c`.
+  The shell that runs commands: bash when it is installed, otherwise POSIX
+  `sh` (SHELL-2). Pass `shell: <path or name>` to override the choice.
+  """
+  @spec shell(keyword()) :: binary() | nil
+  def shell(opts \\ []) do
+    case Keyword.get(opts, :shell) do
+      nil -> System.find_executable("bash") || System.find_executable("sh")
+      # Resolve a name on PATH, but keep a path as given.
+      name -> System.find_executable(name) || name
+    end
+  end
+
+  @doc """
+  Runs `command` with the shell from `shell/1`.
 
   Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
-  pairs), `:timeout` in milliseconds (default 60s).
+  pairs), `:shell` (path or name, to override the shell), `:timeout` in
+  milliseconds (default 60s).
   """
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
@@ -17,8 +36,8 @@ defmodule Elia.Shell do
     {exe, args} =
       case System.find_executable("setsid") do
         # Own process group, so a timeout can kill the whole pipeline.
-        nil -> {System.find_executable("sh"), ["-c", script]}
-        setsid -> {setsid, ["--wait", "sh", "-c", script]}
+        nil -> {shell(opts), ["-c", script]}
+        setsid -> {setsid, ["--wait", shell(opts), "-c", script]}
       end
 
     env = for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}

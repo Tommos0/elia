@@ -24,8 +24,9 @@ itself.
 - **FOLDER-5** Load errors are specific: a missing `SKILL.md`, missing
   frontmatter, an invalid or missing field, invalid JSON, or
   "tools.json entry <i>: <reason>".
-- **FOLDER-6** A script tool runs its `command` with `sh -c` in the skill
-  folder.
+- **FOLDER-6** A script tool runs its `command` through `Elia.Shell.run/2`,
+  like the shell tool, so with `bash -c` where bash is installed and POSIX
+  `sh -c` otherwise (SHELL-2), in the skill folder.
 - **FOLDER-7** Tool input never goes into the command line. It is passed as
   JSON in `ELIA_INPUT`, and each top-level string, number or boolean field as
   `ELIA_ARG_<FIELD>` (upper-cased, with non-alphanumeric characters replaced

@@ -15,7 +15,8 @@ defmodule Elia.Skills.Folder do
       ---
       Instructions for the model, in Markdown.
 
-  `tools.json` is a list of tools. `command` runs with `sh -c` in the skill
+  `tools.json` is a list of tools. `command` runs with `bash -c` where bash is
+  installed, otherwise POSIX `sh -c` (FOLDER-6), in the skill
   folder. The tool input is passed as JSON in `$ELIA_INPUT`, and each
   top-level scalar field as `$ELIA_ARG_<FIELD>` (upper-cased), so input is
   never spliced into the command line:

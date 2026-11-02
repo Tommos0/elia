@@ -23,7 +23,12 @@ defmodule Elia.Skills.Shell do
     policy. Use the `shell` tool to run programs and inspect the machine. The \
     user approves each command before it runs, so prefer one clear command over \
     many small ones. Commands run non-interactively (stdin is empty) with \
-    `sh -c` in the workspace root.
+    `bash -c` where bash is installed, and POSIX `sh -c` otherwise, in the \
+    workspace root. Prefer POSIX constructs so a command works under either: \
+    bash-only syntax such as `${PIPESTATUS[0]}`, `[[ ... ]]`, arrays and \
+    `set -o pipefail` fails where the shell is `sh`. After a pipeline, `$?` is \
+    the status of its last command only, so a failing `mix test | tail` can look \
+    like a success.
     """
   end
 
@@ -33,8 +38,11 @@ defmodule Elia.Skills.Shell do
       %Elia.Tool{
         name: "shell",
         description:
-          "Run a command with `sh -c` and return its combined stdout/stderr and exit code. " <>
-            "Long output is truncated in the middle. Do not use this to read or edit files " <>
+          "Run a command with `bash -c` where bash is installed, POSIX `sh -c` " <>
+            "otherwise, and return its combined stdout/stderr and exit code. " <>
+            "Prefer POSIX constructs: bash-only `${PIPESTATUS[0]}`, `[[ ... ]]`, " <>
+            "arrays and `set -o pipefail` fail under `sh`. Long output is " <>
+            "truncated in the middle. Do not use this to read or edit files " <>
             "(cat, sed, echo >, scripts): use read_file, write_file and edit_file.",
         input_schema: %{
           "type" => "object",

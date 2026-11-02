@@ -22,6 +22,18 @@ defmodule Elia.Skills.ShellTest do
     assert description =~ "use read_file, write_file and edit_file"
   end
 
+  # SHELL-9
+  test "instructions and tool description say which shell runs and warn off bash-only syntax" do
+    assert [%{description: description}] = Shell.tools()
+
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "bash -c"
+      assert text =~ "POSIX"
+      assert text =~ "PIPESTATUS"
+      assert text =~ "set -o pipefail"
+    end
+  end
+
   test "does not wait on stdin" do
     assert {:ok, "\n[exit: 0]"} = Shell.run(%{"command" => "cat", "timeout_seconds" => 5})
   end
