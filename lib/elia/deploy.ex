@@ -157,27 +157,6 @@ defmodule Elia.Deploy do
     end
   end
 
-  @doc """
-  Hands a finished sub-task's work back (SUBTASK-25): merges its branch
-  `chat/<sub-task id>` into the branch checked out in `parent_workspace`, the
-  parent's worktree, fast-forward only. The parent is suspended while the
-  sub-task runs, so its branch has not moved and the merge is a fast-forward.
-  `{:ok, message}` or `{:error, reason}`.
-  """
-  @spec merge_child(binary(), binary()) :: {:ok, binary()} | {:error, binary()}
-  def merge_child(child_id, parent_workspace) do
-    case git(parent_workspace, ["merge", "--ff-only", branch(child_id)]) do
-      {:ok, output} ->
-        {:ok,
-         "#{branch(child_id)} merged into the parent's branch.#{if output == "", do: "", else: "\n" <> output}"}
-
-      {:error, reason} ->
-        {:error,
-         "Could not merge #{branch(child_id)} into the parent's branch (fast-forward " <>
-           "only): #{reason}"}
-    end
-  end
-
   # A fresh worktree has no dependencies (`deps` is git-ignored), so `mix test`
   # couldn't run there (DEPLOY-5). Share the live tree's, which tests read but
   # never write.

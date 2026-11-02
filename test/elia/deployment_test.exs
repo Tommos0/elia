@@ -314,7 +314,7 @@ defmodule Elia.DeploymentTest do
   end
 
   # DEPLOY-9, SUBTASK-23, SUBTASK-25
-  test "a sub-task works in its own worktree, and its done work reaches the parent", %{
+  test "a sub-task works in its own worktree, and the parent merges its work", %{
     tree: tree
   } do
     parent = chat()
@@ -363,14 +363,20 @@ defmodule Elia.DeploymentTest do
     child_path = Deploy.worktree_path(child)
     assert child_path != path
     assert branch(child_path) == "chat/#{child}"
-
-    # SUBTASK-25: finished as `done`, its committed work is merged into the
-    # parent's branch, so it is in the parent's worktree now.
     assert head(child_path) != before
+    assert File.read!(Path.join(child_path, "child-note.txt")) == "child"
+
+    # SUBTASK-25: the harness does not merge it. The work stays on the child's
+    # branch, and the parent's worktree and the live tree are untouched.
+    refute File.exists?(Path.join(path, "child-note.txt"))
+    refute File.exists?(Path.join(tree, "child-note.txt"))
+    assert head(path) == before
+
+    # The parent brings it in itself, fast-forward, as the instruction says.
+    assert {_, 0} = LiveTree.git(path, ["merge", "--ff-only", "chat/#{child}"])
     assert File.read!(Path.join(path, "child-note.txt")) == "child"
     assert branch(path) == "chat/#{parent}"
     assert head(path) == head(child_path)
-    refute File.exists?(Path.join(tree, "child-note.txt"))
 
     # And its result is reported relative to its own workspace.
     result =

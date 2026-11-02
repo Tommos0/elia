@@ -107,7 +107,9 @@ the checkpoints, git index and approvals are still shared.
   back to that snapshot, so it can never wipe the child's work, and
   the parent's own earlier changes were verified before the spawn
   (SUBTASK-4). A parent with no checkpoint yet takes one at its first change
-  after the child, as usual.
+  after the child, as usual. This matters when the sub-task shares the parent's
+  workspace and commits there (SUBTASK-23); one in its own worktree leaves the
+  parent's tree unchanged, so the new snapshot is the same.
 
 ### UI support (phase 2)
 
@@ -159,8 +161,8 @@ the checkpoints, git index and approvals are still shared.
   (ignored files are kept), then replaces the caller's turn checkpoint
   (CKPT-10) so a later rollback can't restore the discarded work. For a
   sub-task in Elia's own project it resets the sub-task's own worktree
-  (SUBTASK-23), not the parent's workspace: a non-`done` sub-task is never
-  merged, so the parent's workspace has nothing to undo (SUBTASK-25). It is never
+  (SUBTASK-23), not the parent's workspace, which the sub-task never touched
+  (SUBTASK-25). It is never
   run automatically. It is refused, as a tool error and without changing
   anything, when: the chat isn't a task of the caller; its status is `"done"`;
   a child is active (SUBTASK-11), which includes this one; the task has no
@@ -174,14 +176,16 @@ the checkpoints, git index and approvals are still shared.
   so its in-progress and uncommitted work never touches the parent's worktree.
   In another project, or when the parent has no worktree, the sub-task shares
   the parent's workspace, as before (DEPLOY-3).
-- **SUBTASK-25** When a sub-task ends as `done`, its branch is merged into the
-  parent's branch, fast-forward only, in the parent's worktree, so its
-  committed work is part of the parent's branch (SUBTASK-14 rebases the parent's
-  checkpoint so a later rollback can't wipe it). The parent is suspended while
-  the sub-task runs, so its branch has not moved and the merge is a
-  fast-forward. A sub-task that ends otherwise (`blocked`, `failed`,
-  `cancelled` or `unfinished`) is not merged: its work stays on its own branch,
-  and `reset_task` (SUBTASK-22) discards it there.
+- **SUBTASK-25** The harness never merges a sub-task's work into the parent's
+  branch itself. A sub-task's committed work stays on its own branch
+  `chat/<sub-task id>` (or, when it shares the parent's workspace, in the
+  parent's workspace as before); `reset_task` (SUBTASK-22) discards it. Instead
+  the parent is told, as a general instruction in the `tasks` skill and in the
+  `spawn_task` result, how to bring it in itself: merge the branch when it wants
+  the work (`git merge --ff-only chat/<task_id>`), rebasing and resolving
+  conflicts when its own branch has moved. So the merge is the parent agent's
+  decision, not a coded step, which lets several sub-tasks be merged in any
+  order (or discarded) and keeps a concurrent-spawn design possible.
 - **SUBTASK-24** A child runs with the loop's `:pause_on_limit` and a
   `:budget_ms` from `max_minutes` (LOOP-19, LOOP-20), so a limit pauses its turn
   instead of ending it: the child's session status becomes `:paused` (SESS-27)

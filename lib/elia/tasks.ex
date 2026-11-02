@@ -14,8 +14,6 @@ defmodule Elia.Tasks do
 
   use GenServer
 
-  require Logger
-
   alias Elia.{Checkpoint, Deploy, Harness, Store, Workspace}
   alias Elia.LLM.Message
 
@@ -357,7 +355,6 @@ defmodule Elia.Tasks do
         outcome = await(child_id, monitor, nil)
 
         result = build_result(child_id, start_commit, outcome, take_state(child_id), child_root)
-        hand_back(result, child_id, child_root, parent_root)
 
         update_saved(child_id, task, %{status: result["status"], result: result})
         Checkpoint.rebase(ctx[:turn_id], parent_root)
@@ -388,22 +385,6 @@ defmodule Elia.Tasks do
       _ -> parent_root
     end
   end
-
-  # SUBTASK-25: a sub-task that ends as `done` hands its committed work back to
-  # the parent's branch. Anything else keeps its work on its own branch, where
-  # `reset_task` can discard it (SUBTASK-22); when the child shares the parent's
-  # workspace there is nothing to hand back.
-  defp hand_back(%{"status" => "done"}, child_id, child_root, parent_root)
-       when child_root != parent_root do
-    case Deploy.merge_child(child_id, parent_root) do
-      {:ok, _message} -> :ok
-      {:error, reason} -> Logger.warning("could not hand a sub-task's work back: #{reason}")
-    end
-
-    :ok
-  end
-
-  defp hand_back(_result, _child_id, _child_root, _parent_root), do: :ok
 
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
   defp child_selection(parent, model) do

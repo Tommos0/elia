@@ -63,9 +63,8 @@ running app at all — the isolation is the filesystem, not a gate.
 
 - **DEPLOY-9** A sub-task in Elia's own project works in its own worktree,
   branch `chat/<sub-task id>` forked from its parent's branch
-  `chat/<parent id>` (SUBTASK-23). When it finishes as `done`, its branch is
-  merged into the parent's branch, fast-forward only (SUBTASK-25); a sub-task
-  that ends otherwise keeps its work on its own branch.
+  `chat/<parent id>` (SUBTASK-23). The harness leaves its work on that branch
+  and lets the parent agent merge it itself (SUBTASK-25).
 - **DEPLOY-10** A chat's worktree is created when the chat starts and removed
   when the chat is deleted; its `chat/<id>` branch is pruned. A branch is kept
   while its chat exists, since chats are resumable; there is no time-based
@@ -88,8 +87,8 @@ worktree).
 
 ## Implementation
 
-`Elia.Deploy` (worktrees, the sub-task's own worktree and the merge back into
-its parent, merge, deploy, restart, the inert request reloader),
+`Elia.Deploy` (worktrees, the sub-task's own worktree, merge, deploy, restart,
+the inert request reloader),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop` (verification in that workspace),

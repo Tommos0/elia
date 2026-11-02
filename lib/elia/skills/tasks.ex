@@ -33,6 +33,14 @@ defmodule Elia.Skills.Tasks do
     and `questions`. Check it before relying on it, for example by reading the \
     changed files, and tell the user what happened.
 
+    A sub-task in Elia's own project works in its own worktree, so its \
+    committed work stays on branch `chat/<task_id>` and is NOT merged into this \
+    chat's branch. Bring it in yourself when you want it: \
+    `git merge --ff-only chat/<task_id>`, rebasing on your branch first and \
+    resolving conflicts if it has moved since the spawn. Several sub-tasks can \
+    be merged in whatever order suits. In another project the sub-task commits \
+    in this chat's workspace, so there is nothing to merge.
+
     A sub-task that isn't `done` also reports `start_commit` and `tree_clean` \
     (false when it left uncommitted changes). The harness never undoes its work \
     by itself. To discard it, call `reset_task` with the `task_id`: it resets the \
@@ -49,7 +57,9 @@ defmodule Elia.Skills.Tasks do
         name: "spawn_task",
         description:
           "Run a sub-task in a new chat and wait for its result (JSON with status, summary, " <>
-            "commit, files, questions). The brief must be self-contained.",
+            "commit, files, questions). The brief must be self-contained. In Elia's own " <>
+            "project the sub-task's work is left on branch `chat/<task_id>` for you to merge " <>
+            "yourself; it is not merged for you.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
