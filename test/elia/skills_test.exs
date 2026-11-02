@@ -29,6 +29,20 @@ defmodule Elia.SkillsTest do
     assert [{:base, _}, {{:skill, @skill}, _}] = Skills.system_sections([@skill], nil)
   end
 
+  # SKILL-15, SKILL-16
+  test "the base prompt asks for occasional progress notes" do
+    [{:base, base}] = Skills.system_sections([], nil)
+
+    # SKILL-15: an occasional, short note in its normal reply on what it is
+    # doing at the moment — occasional, not one per tool call.
+    assert base =~ "every so often"
+    assert base =~ "one-sentence note"
+    assert base =~ "not one per tool call"
+
+    # SKILL-16: it says what it is about to run when a step will take a while.
+    assert base =~ "about to run"
+  end
+
   # SKILL-10, SKILL-11
   test "reads AGENTS.md from the root, fresh on every call", %{tmp_dir: dir} do
     write_agents(dir, "\n  First rule.\n\n")

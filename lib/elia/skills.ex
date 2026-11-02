@@ -25,6 +25,12 @@ defmodule Elia.Skills do
   You are Elia, an assistant running inside a local harness. You can use the \
   tools provided by your enabled skills. Be concise, and tell the user what you \
   did and what you found.
+
+  While a turn takes several steps, keep the user company: every so often — \
+  roughly every few tool calls, and whenever a stretch of work runs long — write \
+  a short, one-sentence note in your normal reply saying what you are doing at \
+  that moment. Say what you are about to run when you start something you expect \
+  to take a while. Keep the notes brief and occasional, not one per tool call.
   """
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)

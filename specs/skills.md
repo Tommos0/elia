@@ -65,6 +65,21 @@ system prompt from them. It can be reloaded while the app runs.
   project into a skill list: a list is used as is, a function of no arguments
   is called, and `nil` means the project's skills (PROJ-21).
 
+- **SKILL-15** The base prompt tells the model to keep the user informed while
+  a turn runs several steps: it writes an occasional short, one-sentence
+  progress note in a normal message, in its own voice rather than as a harness
+  notice, saying what it is doing at that moment. The notes stay occasional
+  rather than one per tool call. Nothing is injected into the history and no
+  extra model call is made for them: the model writes the note as part of a
+  response it was going to make anyway, so the notes arrive at the step
+  boundaries the model chooses (LOOP-2).
+- **SKILL-16** The base prompt also tells the model to say what it is about to
+  do when it starts a step it expects to take a long time — a full test suite,
+  a build, a large download — so the transcript is not silent while the command
+  runs. A note cannot interrupt a tool that is already running, since the loop
+  only moves between steps (LOOP-10), so announcing long work beforehand is how
+  a long silent stretch is avoided.
+
 ## Configuration
 
 ```elixir
