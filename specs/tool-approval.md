@@ -29,6 +29,7 @@ refused.
   | `shell` | always |
   | folder skill script tools | always |
   | `spawn_task`, `reset_task` | always (SUBTASK-2, SUBTASK-22) |
+  | `list_tasks`, `await_task` | never (SUBTASK-26, SUBTASK-27) |
   | `read_file` | only outside the workspace |
   | `write_file`, `edit_file` | see FILE-5 |
   | `hot_reload`, `rollback` | always |

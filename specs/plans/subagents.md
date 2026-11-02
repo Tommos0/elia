@@ -11,20 +11,24 @@ with a fresh context, wait for it, and get back a short structured result. This
 keeps long multi-step work (spec, implement, test, commit) from filling one
 chat's context, and gives each step a focused session.
 
-Out of scope for this plan: multiple projects, sandboxing, per-task git
-worktrees.
+Out of scope for this plan: multiple projects and sandboxing. Per-task git
+worktrees started here as "later" and became phase 4 (concurrent sub-tasks).
 
 ## Decisions
 
-- **Sequential only.** One writing child at a time. The workspace, checkpoints,
-  rollback, git index, hot reload and approvals are global, so concurrent
-  writers would race. Read-only children may run concurrently later (phase 4).
+- **Concurrent writers, each in its own worktree** (phase 5, formerly "later").
+  A child in Elia's own project works in its own git worktree, so it never
+  touches its parent's tree; `spawn_task` returns as soon as the child starts
+  and the parent goes on working, asking for results with `list_tasks` and
+  `await_task`. Children that would share one workspace (another project, or no
+  worktree) are still serialized, one writer per tree. Read-only children
+  running alongside a writer remain out of scope (phase 5).
 - **A child is a normal chat.** It is a `Elia.Agent.Session` with its own saved
   history, shown in the chat list, inspectable and resumable. It only has extra
   metadata linking it to its parent.
-- **The parent is suspended while the child runs.** `spawn_task` is a blocking
-  tool: the loop already runs a step's tools in tasks with `timeout: :infinity`
-  (LOOP-10), so the parent simply waits inside the tool call. No new loop state.
+- **The parent is not blocked.** A per-child watcher process (a task in the
+  task supervisor, LOOP-10) owns the wait, so `spawn_task` returns as soon as
+  the child has started and the parent's turn goes on (phase 5).
 - **The child sees the brief, not the parent transcript.** The brief is the
   whole interface. It still gets the normal system prompt (`AGENTS.md`, skills).
 - **Depth 1.** A child has no `spawn_task` tool.
@@ -41,8 +45,10 @@ worktrees.
 
 ### Tools
 
-- `spawn_task(title, brief, model?, max_steps?)`, parent only, approval
-  `:required`. Blocks until the child finishes. Returns the result as JSON.
+- `spawn_task(title, brief, model?, max_minutes?)`, parent only, approval
+  `:required`. Returns as soon as the child has started. `list_tasks` and
+  `await_task` (parent only, no approval) report status and bring the result
+  back (phase 5, SUBTASK-26, SUBTASK-27).
 - `finish_task(status, summary, questions?)`, child only. `status` is `done`,
   `blocked` or `failed`. The harness, not the model, fills in `commit` (HEAD if
   it changed since the spawn) and `files` (changed paths since the spawn).
@@ -72,9 +78,11 @@ option; a child session passes a skill list that has `finish_task` and not
 
 ### The lock
 
-A small `GenServer` (`Elia.Tasks`) holds the active child id and the parent id.
-It monitors both sessions and releases the lock when either dies. At most one
-active child in the whole app, not per chat, because the workspace is shared.
+A small `GenServer` (`Elia.Tasks`) is the registry of running children. It
+holds each active child with its parent, monitors the child's session and its
+watcher, and releases the entry when either dies. Since phase 5 it allows one
+child per workspace, so children in their own worktrees run at once and
+children sharing a tree are serialized.
 
 ### Persistence
 
@@ -237,7 +245,29 @@ Depends on 1; order with 2 is free.
 Read first: `specs/subtasks.md`, `specs/agent-sessions.md`,
 `specs/checkpoints.md`.
 
-### 4. Read-only children (reviewer, researcher)
+### 4. Concurrent sub-tasks
+
+- [ ] Spec, implementation, tests, commit (see `specs/subtasks.md`, SUBTASK-1,
+  SUBTASK-2, SUBTASK-4, SUBTASK-8, SUBTASK-11, SUBTASK-26 to SUBTASK-28)
+
+Depends on 1 to 3 (and the per-sub-task worktree, SUBTASK-23).
+
+- `spawn_task` stops waiting: it starts a watcher process and returns
+  `{task_id, title, status: "running"}`; the watcher records the result
+  (SUBTASK-28).
+- `list_tasks` and `await_task` (parent only, no approval) are how the parent
+  checks on children and collects results (SUBTASK-26, SUBTASK-27).
+- `Elia.Tasks` becomes a registry of running children, one writer per
+  workspace, instead of a single global lock (SUBTASK-11).
+- The spawn no longer needs a clean tree, an ignored `.elia/` or a green test
+  run: the child forks from the parent's committed branch and leaves the
+  parent's tree alone (SUBTASK-4). SUBTASK-14 is retired.
+- Stopping the parent stops every child it has running (SUBTASK-17).
+
+Read first: `specs/subtasks.md`, `docs/agents/testing.md`,
+`docs/agents/elixir.md`.
+
+### 5. Read-only children (reviewer, researcher)
 
 - [ ] Spec, implementation, tests, commit
 
@@ -261,10 +291,5 @@ Read first: `specs/subtasks.md`, `specs/workspace-policy.md`,
 
 - A user-facing "Run as task" action that starts a child from a brief without a
   parent chat.
-- Per-task git worktrees, which would allow concurrent writing children and
-  removes the clean-tree precondition. (Implemented: a sub-task in Elia's own
-  project works in its own worktree and its done work is merged into the
-  parent's branch, SUBTASK-23, SUBTASK-25, DEPLOY-9. Children still run one at
-  a time, and the clean-tree precondition stays.)
 - Children that return a patch for the parent to review instead of committing.
 - Different default model per role.

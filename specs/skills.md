@@ -26,7 +26,8 @@ system prompt from them. It can be reloaded while the app runs.
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
-  `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `reset_task`,
+  `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
+  `await_task`, `reset_task`,
   [Sub-tasks](subtasks.md)) and
   `self-modification` (`hot_reload`, `list_checkpoints`, `rollback`). The last
   one is a chat's only when its project is Elia's own (PROJ-17); a sub-task

@@ -93,8 +93,8 @@ progress so any number of UIs can follow it.
   restarted while this tool was running.") and the history is saved, as in
   SESS-12, so the chat can go on (SUBTASK-20).
 - **SESS-22** Stopping a running turn (SESS-8) first tells `Elia.Tasks`
-  (SUBTASK-16, SUBTASK-17): if this chat is the active sub-task it is marked
-  cancelled, and if it is the parent of the active sub-task that child's turn
+  (SUBTASK-16, SUBTASK-17): if this chat is a running sub-task it is marked
+  cancelled, and if it is the parent of running sub-tasks, each of their turns
   is stopped too.
 
 - **SESS-23** A turn runs in the chat's project: `send_message` puts the chat's

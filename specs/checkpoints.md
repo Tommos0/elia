@@ -47,8 +47,9 @@ state.
 - **CKPT-10** `rebase(turn_id)` replaces the checkpoint of a turn that has one
   with a new snapshot of the workspace as it is now, labelled
   `before agent turn <id> (after sub-task)`. A turn with none is left alone
-  (its first change takes one, CKPT-2). Used when a sub-task ends so a later
-  rollback of the parent keeps the child's work (SUBTASK-14).
+  (its first change takes one, CKPT-2). Used by `reset_task` when the reset
+  changed the caller's own workspace (an in-place sub-task, SUBTASK-22), so a
+  later rollback of the caller can't restore the discarded work.
 
 ## Implementation
 
