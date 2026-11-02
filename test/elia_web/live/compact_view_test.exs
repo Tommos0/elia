@@ -75,9 +75,9 @@ defmodule EliaWeb.CompactViewTest do
     assert has_element?(view, "#pin-m0")
   end
 
-  # UI-62: while a turn runs the compact view names the step, refreshed on the
-  # minute tick and cleared when the turn ends.
-  test "the compact view summarizes the current step once a minute", %{conn: conn} do
+  # UI-62: while a turn runs the compact view names the step, refreshed every
+  # second, and cleared when the turn ends.
+  test "the compact view summarizes the current step once a second", %{conn: conn} do
     id = Agent.new_id()
     test_pid = self()
 
@@ -107,14 +107,19 @@ defmodule EliaWeb.CompactViewTest do
     assert_receive {:streamed, llm}, 5000
     _ = :sys.get_state(view.pid)
 
-    # The tick names the step the turn is on.
-    send(view.pid, :tick_now)
+    # The one-second tick names the step the turn is on.
+    send(view.pid, :tick_work_summary)
     _ = :sys.get_state(view.pid)
     assert has_element?(view, "#work-summary", "Thinking.")
 
     send(llm, :finish)
     assert_receive {:agent, ^id, {:status, :idle}}, 5000
     refute has_element?(view, "#work-summary")
+
+    # An idle chat is left alone: the tick stops the one-second timer.
+    send(view.pid, :tick_work_summary)
+    _ = :sys.get_state(view.pid)
+    refute :sys.get_state(view.pid).socket.assigns.work_ticking
   end
 
   # UI-62: a call that waits for approval is named in the summary, which offers

@@ -99,15 +99,17 @@ defmodule EliaWeb.ChatLive do
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
         compact_view: false,
-        # UI-62: the current step of the turn, and the one-line summary of it
-        # that the compact view shows, refreshed once a minute.
+        # UI-62: the current step of the turn, the one-line summary of it that
+        # the compact view shows, and whether the one-second refresh runs.
         activity: nil,
-        work_summary: nil
+        work_summary: nil,
+        work_ticking: false
       )
       |> stream(:models, [])
       |> derive_view(snapshot.messages, snapshot.compaction, snapshot.last_usage)
       |> load_messages(snapshot.messages)
       |> refresh_work_summary()
+      |> start_work_ticker()
 
     {:ok, socket}
   end
@@ -1755,18 +1757,22 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # Keeps the sidebar's relative times current (UI-34), and refreshes the
-  # compact view's "working on" summary (UI-62) at most once a minute.
+  # Keeps the sidebar's relative times current (UI-34).
   def handle_info(:tick_now, socket) do
     Process.send_after(self(), :tick_now, 60_000)
-    socket = assign(socket, now: DateTime.utc_now())
+    {:noreply, assign(socket, now: DateTime.utc_now())}
+  end
 
-    socket =
-      if socket.assigns.status in [:running, :awaiting_approval],
-        do: assign(socket, work_summary: work_summary(current_activity(socket))),
-        else: socket
-
-    {:noreply, socket}
+  # UI-62: while a turn runs, refresh the compact view's "working on" summary
+  # about once a second, so it lags the step by no more than a second. The timer
+  # reschedules itself only while the turn runs, so an idle chat is left alone.
+  def handle_info(:tick_work_summary, socket) do
+    if socket.assigns.status == :running do
+      Process.send_after(self(), :tick_work_summary, 1_000)
+      {:noreply, refresh_work_summary(socket)}
+    else
+      {:noreply, assign(socket, work_ticking: false)}
+    end
   end
 
   # PROJ-24: a skills reload carries Elia's own skills; a chat in another project
@@ -1910,7 +1916,9 @@ defmodule EliaWeb.ChatLive do
         do: assign(socket, activity: nil),
         else: socket
 
-    assign(socket, work_summary: work_summary_for(status, socket))
+    socket
+    |> assign(work_summary: work_summary_for(status, socket))
+    |> start_work_ticker()
   end
 
   # UI-57, SESS-27: the turn paused at a limit.
@@ -2051,6 +2059,23 @@ defmodule EliaWeb.ChatLive do
 
   defp refresh_work_summary(socket),
     do: assign(socket, work_summary: work_summary_for(socket.assigns.status, socket))
+
+  # UI-62: starts the one-second summary timer, once, whenever a turn is running.
+  # It stops itself (and clears the flag) as soon as the turn is no longer
+  # running, so nothing ticks for an idle chat.
+  defp start_work_ticker(socket) do
+    cond do
+      socket.assigns.status != :running ->
+        socket
+
+      socket.assigns.work_ticking ->
+        socket
+
+      true ->
+        Process.send_after(self(), :tick_work_summary, 1_000)
+        assign(socket, work_ticking: true)
+    end
+  end
 
   defp work_summary_for(status, socket) when status in [:running, :awaiting_approval],
     do: work_summary(current_activity(socket))

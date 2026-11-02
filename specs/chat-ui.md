@@ -277,9 +277,10 @@ the hidden tool calls leave with a one-line summary of the current step.
   (`#work-summary`) names the current step: the tool that is running or awaiting
   approval ("Running `mix test`.", "Waiting for your approval to run
   `git commit`."), writing a reply, or thinking, and "Working." before the step
-  is known. It is set when the turn's status changes and refreshed at most once
-  a minute (on the minute timer, UI-34), so it lags no more than a minute behind
-  the step, and it is cleared when the turn ends. While it waits for approval it
+  is known. It is set when the turn's status changes and, while the turn runs,
+  refreshed about once a second, so it lags the step by no more than a second
+  (the one-second timer only runs while a turn is running, so an idle chat is
+  left alone). It is cleared when the turn ends. While it waits for approval it
   offers a "Review" button (`#work-summary-review`) that switches to the full
   view.
 
