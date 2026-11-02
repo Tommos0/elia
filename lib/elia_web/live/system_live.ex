@@ -67,6 +67,16 @@ defmodule EliaWeb.SystemLive do
             </div>
           </div>
 
+          <div class="mt-6 flex flex-wrap items-center gap-2">
+            <.link
+              id="logs-link"
+              navigate={~p"/logs"}
+              class="inline-flex items-center gap-2 rounded-lg border border-base-300 px-3 py-1.5 text-sm transition hover:border-base-content/20 hover:bg-base-200"
+            >
+              <.icon name="hero-document-text" class="size-4" /> Logs
+            </.link>
+          </div>
+
           <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <.tile id="tile-cpu" icon="hero-cpu-chip" label="CPU" pct={@cpu && @cpu.total}>
               <:detail>

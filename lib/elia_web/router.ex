@@ -24,6 +24,7 @@ defmodule EliaWeb.Router do
       live "/projects", ProjectsLive
       live "/sessions", SessionsLive
       live "/system", SystemLive
+      live "/logs", LogsLive
       live "/files", FilesLive
       live "/settings", SettingsLive
     end

@@ -28,4 +28,11 @@ defmodule EliaWeb.SystemLiveTest do
     assert has_element?(view, "#memory-sparkline polyline")
     refute has_element?(view, "#network [data-unavailable]")
   end
+
+  # LOG-10
+  test "links to the Log viewer", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/system")
+
+    assert has_element?(view, "#logs-link[href='/logs']")
+  end
 end

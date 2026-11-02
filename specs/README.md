@@ -54,6 +54,7 @@ deleting it.
 | [Compaction](compaction.md) | `COMPACT` | Keeps the full transcript but sends the model a smaller request view; pruning, a ledger and incremental summaries |
 | [Client sessions](client-sessions.md) | `CLIENT` | Sessions page listing open tabs with IP, browser and page |
 | [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |
+| [Log viewer](log-viewer.md) | `LOG` | In-memory capture of the server's logs, on a `/logs` page |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser with a plain-text file viewer |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |

@@ -12,6 +12,7 @@ defmodule Elia.Application do
       {DNSCluster, query: Application.get_env(:elia, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Elia.PubSub},
       EliaWeb.Presence,
+      Elia.Logs,
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
