@@ -75,6 +75,8 @@ defmodule EliaWeb.ChatLive do
         awaiting: Agent.awaiting_approval(),
         # UI-58: chats whose turn is paused at a limit, kept live.
         paused: Agent.paused(),
+        # UI-59: chats whose turn is running (working), kept live.
+        running: Agent.running(),
         # UI-57: the message of this chat's pause, when its turn is paused.
         pause: snapshot.pause,
         # UI-44: spawn_task call id => %{child_id, status}.
@@ -177,6 +179,7 @@ defmodule EliaWeb.ChatLive do
                   now={@now}
                   awaiting={chat.id in @awaiting}
                   paused={chat.id in @paused}
+                  running={chat.id in @running}
                 />
                 <div
                   :if={children != []}
@@ -190,6 +193,7 @@ defmodule EliaWeb.ChatLive do
                     now={@now}
                     awaiting={child.id in @awaiting}
                     paused={child.id in @paused}
+                    running={child.id in @running}
                   />
                 </div>
               <% end %>
@@ -481,9 +485,13 @@ defmodule EliaWeb.ChatLive do
   attr :now, :any, required: true
   attr :awaiting, :boolean, default: false
   attr :paused, :boolean, default: false
+  attr :running, :boolean, default: false
 
-  # UI-4, UI-34, UI-46, UI-47, UI-58
+  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59
   defp chat_row(assigns) do
+    {status_id, status} = chat_status(assigns.chat, assigns.running)
+    assigns = assign(assigns, status_id: status_id, status: status)
+
     ~H"""
     <.link
       navigate={~p"/c/#{@chat.id}"}
@@ -496,11 +504,7 @@ defmodule EliaWeb.ChatLive do
       ]}
     >
       <span class="flex items-center gap-1.5">
-        <.task_status_icon
-          :if={Map.get(@chat, :task_status)}
-          id={"chat-task-status-#{@chat.id}"}
-          status={@chat.task_status}
-        />
+        <.status_icon id={@status_id} status={@status} />
         <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
         <span
           :if={@paused}
@@ -536,27 +540,44 @@ defmodule EliaWeb.ChatLive do
   attr :id, :string, required: true
   attr :status, :string, required: true
 
-  # UI-44, UI-46: a task's status as an icon.
-  defp task_status_icon(assigns) do
-    {icon, class} =
-      case assigns.status do
-        "running" -> {"hero-arrow-path", "text-info motion-safe:animate-spin"}
-        "done" -> {"hero-check-circle", "text-success"}
-        "blocked" -> {"hero-pause-circle", "text-warning"}
-        "failed" -> {"hero-x-circle", "text-error"}
-        "unfinished" -> {"hero-question-mark-circle", "text-warning"}
-        "cancelled" -> {"hero-stop-circle", "text-base-content/60"}
-        _ -> {"hero-exclamation-triangle", "text-base-content/50"}
-      end
-
+  # UI-44, UI-46, UI-59: a chat's status as an icon — a task's own status, or an
+  # ordinary chat's loop activity (`working` while a turn runs, `idle` otherwise).
+  defp status_icon(assigns) do
+    {icon, class} = status_icon_spec(assigns.status)
     assigns = assign(assigns, icon: icon, class: class)
 
     ~H"""
-    <span id={@id} data-status={@status} title={"Task #{@status}"} class="inline-flex shrink-0">
-      <.icon name={@icon} class={["size-3.5", @class]} />
+    <span
+      id={@id}
+      data-status={@status}
+      title={status_title(@status)}
+      class="inline-flex shrink-0 items-center"
+    >
+      <.icon :if={@icon} name={@icon} class={["size-3.5", @class]} />
+      <span :if={!@icon} class={["block size-1.5 rounded-full bg-current", @class]}></span>
     </span>
     """
   end
+
+  defp status_icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
+  defp status_icon_spec("running"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
+  defp status_icon_spec("done"), do: {"hero-check-circle", "text-success"}
+  defp status_icon_spec("blocked"), do: {"hero-pause-circle", "text-warning"}
+  defp status_icon_spec("failed"), do: {"hero-x-circle", "text-error"}
+  defp status_icon_spec("unfinished"), do: {"hero-question-mark-circle", "text-warning"}
+  defp status_icon_spec("cancelled"), do: {"hero-stop-circle", "text-base-content/60"}
+  defp status_icon_spec("idle"), do: {nil, "text-base-content/30"}
+  defp status_icon_spec(_other), do: {"hero-exclamation-triangle", "text-base-content/50"}
+
+  defp status_title("working"), do: "Working"
+  defp status_title("idle"), do: "Idle"
+  defp status_title(status), do: "Task #{status}"
+
+  # UI-46, UI-59: a task chat shows its task status; every other chat shows
+  # whether its turn is running.
+  defp chat_status(%{id: id, task_status: status}, _running), do: {"chat-status-#{id}", status}
+  defp chat_status(chat, true), do: {"chat-status-#{chat.id}", "working"}
+  defp chat_status(chat, false), do: {"chat-status-#{chat.id}", "idle"}
 
   attr :task, :map, required: true
   attr :status, :string, required: true
@@ -570,7 +591,7 @@ defmodule EliaWeb.ChatLive do
     <div id="task-header" class="border-b border-base-300 bg-base-200/40">
       <div class="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-xs sm:px-6">
         <div class="flex items-center gap-2">
-          <.task_status_icon id="task-header-status" status={@status} />
+          <.status_icon id="task-header-status" status={@status} />
           <span class="text-base-content/60">Task of</span>
           <.link
             navigate={~p"/c/#{@task.parent_id}"}
@@ -1143,7 +1164,7 @@ defmodule EliaWeb.ChatLive do
         id={"task-card-#{@item.call_id}"}
         class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-2 text-xs"
       >
-        <.task_status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
+        <.status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
         <span class="capitalize text-base-content/70">{@item.task.status}</span>
         <span
           :if={@item.task.awaiting}
@@ -1646,16 +1667,18 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
-  # UI-47, UI-58: follows every chat's status, to flag those awaiting approval
-  # and those paused at a limit.
+  # UI-47, UI-58, UI-59: follows every chat's status, to flag those awaiting
+  # approval, those paused at a limit, and those working.
   def handle_info({:chat_status, id, status}, socket) do
     awaiting = put_member(socket.assigns.awaiting, id, status == :awaiting_approval)
     paused = put_member(socket.assigns.paused, id, status == :paused)
+    running = put_member(socket.assigns.running, id, status == :running)
 
-    if awaiting == socket.assigns.awaiting and paused == socket.assigns.paused do
+    if awaiting == socket.assigns.awaiting and paused == socket.assigns.paused and
+         running == socket.assigns.running do
       {:noreply, socket}
     else
-      socket = assign(socket, awaiting: awaiting, paused: paused)
+      socket = assign(socket, awaiting: awaiting, paused: paused, running: running)
 
       # UI-44, UI-58: the card of the task chat that is waiting.
       call_ids = for {call_id, %{child_id: ^id}} <- socket.assigns.tasks, do: call_id

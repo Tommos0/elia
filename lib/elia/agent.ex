@@ -14,6 +14,13 @@ defmodule Elia.Agent do
   def subscribe_activity, do: Phoenix.PubSub.subscribe(Elia.PubSub, activity_topic())
 
   @doc """
+  Ids of the sessions whose turn is running (SESS-28), read from the registry
+  without calling the sessions, like `awaiting_approval/0` and `paused/0`.
+  """
+  @spec running() :: [binary()]
+  def running, do: with_status(:running)
+
+  @doc """
   Ids of the sessions with a tool call awaiting approval (SESS-19), read from
   the registry without calling the sessions.
   """

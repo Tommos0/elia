@@ -53,6 +53,15 @@ stream in, approves or denies tool calls, and switches between saved chats.
   the `sm` breakpoint the header buttons show only their icon (the label stays
   in the DOM for screen readers and as the link's `title`), with tighter
   spacing; from `sm` up they show icon and label.
+- **UI-59** Every chat in the sidebar shows a status indicator
+  (`#chat-status-<id>`, with `data-status` and a `title`). A chat that isn't a
+  task chat (UI-46) shows `working` — an animated spinner — while its turn is
+  running, that is while its session status is `:running` (SESS-4), and `idle`
+  — a dim dot — otherwise; waiting for approval or paused counts as idle, since
+  those have their own badges (UI-47, UI-58). It is right on first render, from
+  `Elia.Agent.running/0` (SESS-28), and follows `{:chat_status, id, status}`
+  (SESS-19) live. A task chat shows its task status under the same element
+  (UI-46).
 
 ### Transcript
 
@@ -208,9 +217,9 @@ so it opens at `/c/<child id>` like any chat.
   list is shown on its own at the top level. The row (`#chat-link-<id>`) uses
   the task's title (STORE-17).
 - **UI-46** Each task chat in the sidebar shows its status as an icon
-  (`#chat-task-status-<id>`, with `data-status` as in UI-44, and a `title`
-  naming the status): a spinner while running, and a distinct icon for each
-  other status.
+  (`#chat-status-<id>`, with `data-status` as in UI-44, and a `title` naming
+  the status): a spinner while running, and a distinct icon for each other
+  status.
 - **UI-47** Any chat in the sidebar that has a tool call awaiting approval
   (SESS-4) shows a badge (`#chat-approval-<id>`, title "Needs approval"), so a
   pending prompt in a child chat is not missed from the parent or any other

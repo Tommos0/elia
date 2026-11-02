@@ -148,12 +148,14 @@ defmodule EliaWeb.TaskUITest do
     # An orphan stays at the top level.
     assert has_element?(view, "#chat-list > #chat-link-#{orphan}", "Orphan task")
     refute has_element?(view, "#chat-children-#{parent} #chat-link-#{orphan}")
-    # Ordinary chats have no status icon.
-    refute has_element?(view, "#chat-task-status-#{parent}")
+    # Ordinary chats have no status icon of their own yet: a chat that isn't a
+    # task shows its activity (UI-59), not a task status.
+    refute has_element?(view, "#chat-status-#{parent}[data-status='done']")
+    assert has_element?(view, "#chat-status-#{parent}[data-status='idle']")
 
-    assert has_element?(view, "#chat-task-status-#{child}[data-status='done']")
-    assert has_element?(view, "#chat-task-status-#{lost}[data-status='interrupted']")
-    assert has_element?(view, "#chat-task-status-#{orphan}[data-status='failed']")
+    assert has_element?(view, "#chat-status-#{child}[data-status='done']")
+    assert has_element?(view, "#chat-status-#{lost}[data-status='interrupted']")
+    assert has_element?(view, "#chat-status-#{orphan}[data-status='failed']")
   end
 
   # UI-47, SESS-19
@@ -205,6 +207,73 @@ defmodule EliaWeb.TaskUITest do
     refute has_element?(view, "#chat-approval-#{child}")
   end
 
+  # UI-59: an ordinary chat shows its activity, live.
+  test "an ordinary chat is idle, then working while its turn runs", %{
+    conn: conn,
+    parent: parent
+  } do
+    save_parent(parent)
+    other = Agent.new_id()
+    on_exit(fn -> Store.delete(other) end)
+    :ok = Store.save(other, [Message.user("hello")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    assert has_element?(view, "#chat-status-#{other}[data-status='idle'][title='Idle']")
+
+    activity_send(other, :running)
+    assert has_element?(view, "#chat-status-#{other}[data-status='working'][title='Working']")
+
+    activity_send(other, :idle)
+    assert has_element?(view, "#chat-status-#{other}[data-status='idle']")
+    refute has_element?(view, "#chat-status-#{other}[data-status='working']")
+  end
+
+  # UI-59, SESS-28: right on first render, from the registry.
+  test "a chat already running is shown as working when the page opens", %{
+    conn: conn,
+    parent: parent
+  } do
+    save_parent(parent)
+    running = Agent.new_id()
+    on_exit(fn -> Store.delete(running) end)
+    :ok = Store.save(running, [Message.user("hi")])
+
+    test_pid = self()
+
+    # A model call that blocks keeps the turn (and so the session) running.
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:blocking_model_call, self()})
+
+      receive do
+        :release ->
+          {:ok,
+           %{
+             message: FakeLLM.assistant([Message.text("done")]),
+             stop_reason: :end_turn,
+             model: "fake",
+             usage: %{}
+           }}
+      end
+    end)
+
+    {:ok, pid} = Agent.ensure_started(running, loop_opts: [llm: %{provider: FakeLLM}])
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(running)
+
+    :ok = Agent.send_message(running, "go")
+    assert_receive {:blocking_model_call, loop}, 5000
+    assert running in Agent.running()
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+    assert has_element?(view, "#chat-status-#{running}[data-status='working']")
+
+    # The sidebar follows the status to idle when the turn ends (SESS-19).
+    send(loop, :release)
+    assert_receive {:agent, ^running, {:status, :idle}}, 5000
+    assert has_element?(view, "#chat-status-#{running}[data-status='idle']")
+  end
+
   # UI-48
   test "a task chat shows who it belongs to, its brief and its result", %{
     conn: conn,
@@ -249,7 +318,7 @@ defmodule EliaWeb.TaskUITest do
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
 
-    assert has_element?(view, "#chat-task-status-#{child}[data-status='cancelled']")
+    assert has_element?(view, "#chat-status-#{child}[data-status='cancelled']")
 
     {:ok, view, _html} = live(conn, ~p"/c/#{child}")
     assert has_element?(view, "#task-header-status[data-status='cancelled']")

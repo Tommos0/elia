@@ -523,6 +523,28 @@ defmodule Elia.AgentTest do
     refute id in Agent.awaiting_approval()
   end
 
+  # SESS-28
+  test "the running ids are the sessions with a turn in progress", %{id: id} do
+    Agent.subscribe_activity()
+    refute id in Agent.running()
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "run it")
+    assert_receive {:chat_status, ^id, :running}
+    assert id in Agent.running()
+
+    # Waiting for approval is no longer "running" (SESS-4).
+    assert_receive {:chat_status, ^id, :awaiting_approval}
+    refute id in Agent.running()
+
+    :ok = Agent.deny(id, "c1")
+    assert_receive {:chat_status, ^id, :idle}, 5000
+    refute id in Agent.running()
+  end
+
   ## Projects (phase 3)
 
   defp tmp_dir(name) do

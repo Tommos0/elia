@@ -133,6 +133,11 @@ progress so any number of UIs can follow it.
   (SESS-11). Both return `{:error, :not_paused}` when the chat isn't paused.
   Ending the turn (SESS-8, SESS-11, SESS-12) clears the pause.
 
+- **SESS-28** `Elia.Agent.running/0` returns the ids of the sessions whose
+  status is `:running` (SESS-4) — a turn is running — read from the registry
+  without calling the sessions, like `awaiting_approval/0` and `paused/0`
+  (SESS-19), so a chat list can show which chats are working on first render.
+
 ## Out of scope
 
 - Several turns running at once in one session.
