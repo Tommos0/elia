@@ -362,6 +362,47 @@ defmodule Elia.LLM.OpenRouterTest do
     assert :counters.get(counter, 1) == 5
   end
 
+  # LLM-35
+  test "retries a stalled stream that received nothing, then gives up after two retries" do
+    counter = :counters.new(1, [])
+    test_pid = self()
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :timeout)
+      else
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, :second_request)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(
+          200,
+          "data: #{Jason.encode!(delta(%{"content" => "hi"}))}\n\n" <>
+            "data: #{Jason.encode!(finish("stop"))}\n\ndata: [DONE]\n\n"
+        )
+      end
+    end)
+
+    assert {:ok, %{stop_reason: :end_turn}} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert_received :second_request
+    assert :counters.get(counter, 1) == 2
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :timeout)
+    end)
+
+    assert {:error, "OpenRouter API request failed: timeout"} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 5
+  end
+
   # LLM-31
   test "GET requests retry on a closed connection" do
     counter = :counters.new(1, [])

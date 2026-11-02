@@ -247,7 +247,7 @@ defmodule Elia.LLM.AnthropicTest do
   end
 
   # LLM-30
-  test "gives up after two retries of a closed connection; other transport errors aren't retried" do
+  test "gives up after two retries of a closed connection" do
     counter = :counters.new(1, [])
 
     Req.Test.stub(__MODULE__, fn conn ->
@@ -259,16 +259,64 @@ defmodule Elia.LLM.AnthropicTest do
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 3
+  end
+
+  # LLM-30
+  test "other transport errors aren't retried" do
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+      Req.Test.transport_error(conn, :econnrefused)
+    end)
+
+    assert {:error, "Anthropic API request failed: " <> _} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 1
+  end
+
+  # LLM-35
+  test "retries a stalled stream that received nothing, then gives up after two retries" do
+    counter = :counters.new(1, [])
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      if :counters.get(counter, 1) == 1 do
+        Req.Test.transport_error(conn, :timeout)
+      else
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, :second_request)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(
+          200,
+          sse([
+            %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+            %{"type" => "message_delta", "delta" => %{"stop_reason" => "end_turn"}}
+          ])
+        )
+      end
+    end)
+
+    assert {:ok, %{stop_reason: :end_turn}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert_received :second_request
+    assert :counters.get(counter, 1) == 2
 
     Req.Test.stub(__MODULE__, fn conn ->
       :counters.add(counter, 1, 1)
       Req.Test.transport_error(conn, :timeout)
     end)
 
-    assert {:error, "Anthropic API request failed: " <> _} =
+    assert {:error, "Anthropic API request failed: timeout"} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
-    assert :counters.get(counter, 1) == 4
+    assert :counters.get(counter, 1) == 5
   end
 
   # LLM-31
