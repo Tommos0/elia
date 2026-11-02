@@ -32,7 +32,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(await_task edit_file hot_reload list_checkpoints list_tasks read_file reload_skills reset_task rollback run_tests shell spawn_task update_ledger write_file)
+             ~w(await_task edit_file list_checkpoints list_tasks read_file reload_skills reset_task rollback run_tests shell spawn_task update_ledger write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -657,7 +657,7 @@ defmodule Elia.AgentTest do
     assert request.system =~ "Skill: proj-skill"
     assert request.system =~ "Skill: harness"
     refute request.system =~ "self-modification"
-    refute "hot_reload" in Enum.map(request.tools, & &1.name)
+    refute "rollback" in Enum.map(request.tools, & &1.name)
     refute "list_checkpoints" in Enum.map(request.tools, & &1.name)
   end
 

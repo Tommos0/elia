@@ -1,6 +1,6 @@
 # Harness and guardrails
 
-Read this before editing `lib/`, `config/`, `test/`, `mix.exs` or `skills/`, or before calling `hot_reload`.
+Read this before editing `lib/`, `config/`, `test/`, `mix.exs` or `skills/`.
 
 Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, `specs/verification.md`, `specs/workspace-policy.md`, `specs/folder-skills.md`.
 
@@ -14,9 +14,9 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, `sp
 ## The live tree and chat worktrees
 
 - The live tree (`Elia.Workspace.runtime_root/0`, `config :elia, :runtime_root`, default: where the server was started) is where the server runs, where the code reloader reloads and where Elia's data (`.elia`) lives (DEPLOY-2). It is never edited by an agent.
-- A chat in Elia's own project works in its own git worktree, `<live tree>/.elia/worktrees/<chat id>`, on branch `chat/<chat id>` forked from `live` (DEPLOY-1). That worktree is the chat's workspace root: the file and shell tools, checkpoints, `mix test` and the end-of-turn verification all run there, through `ctx[:workspace]`. A sub-task in Elia's own project works in its own worktree, branch `chat/<sub-task id>` forked from its parent's branch; its work stays there, for the parent agent to merge itself (DEPLOY-9, SUBTASK-23, SUBTASK-25). `spawn_task` returns as soon as the child has started and the parent goes on working; several children run at once, each in its own worktree, and the parent collects results with `list_tasks` and `await_task` (SUBTASK-2, SUBTASK-26, SUBTASK-27, SUBTASK-28).
+- A chat in Elia's own project works in its own git worktree, `<live tree>/.elia/worktrees/<chat id>`, on branch `chat/<chat id>` forked from the trunk `master` (DEPLOY-1, DEPLOY-13). That worktree is the chat's workspace root: the file and shell tools, checkpoints, `mix test` and the end-of-turn verification all run there, through `ctx[:workspace]`. A sub-task in Elia's own project works in its own worktree, branch `chat/<sub-task id>` forked from its parent's branch; its work stays there, for the parent agent to merge itself (DEPLOY-9, SUBTASK-23, SUBTASK-25). `spawn_task` returns as soon as the child has started and the parent goes on working; several children run at once, each in its own worktree, and the parent collects results with `list_tasks` and `await_task` (SUBTASK-2, SUBTASK-26, SUBTASK-27, SUBTASK-28).
 - Chats in other projects work in the project's folder, with no worktree (PROJ-12).
-- A chat gets a worktree only when the live tree is on the branch `live`, the fork point and deploy target. Otherwise (a tree that was never set up for deployment) it works in the live tree itself, and a deploy only reloads. Set it up once with `git checkout -b live`.
+- A chat gets a worktree only when the live tree is *set up for deployment*: checked out on the branch `live`, with a `master` trunk at or ahead of it (DEPLOY-14, `Elia.Deploy.deployable/1`). Otherwise it works in the live tree itself. Set it up once with `git checkout -b live` and `git branch master`; a tree whose trunk is behind `live` needs `git branch -f master live` once.
 - **Never** edit `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` to weaken the guardrails.
 
 ## Recovery
@@ -24,12 +24,12 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, `sp
 - In the dev server, `/recover` (`EliaWeb.Recovery`, spec: `specs/recovery.md`) rolls the workspace back to a checkpoint. It sits before the code reloader in the endpoint, so it works when the app doesn't compile. Crash pages (HTML 500) get a banner linking to it.
 - Don't make it depend on reloadable app code.
 
-## Deploying: `hot_reload` and the restart button
+## Deploying
 
 - A deploy is the only thing that loads code into the running app (DEPLOY-8): a request recompiles and loads nothing, so edits stay invisible to the running app until a deploy. Browser live reload doesn't watch `lib/` either. Reload the page after a deploy to see UI changes.
-- `hot_reload` (`Elia.Harness.hot_reload/2`) runs the full test suite **in the chat's worktree**, merges `chat/<chat id>` into `live` (fast-forward only, so rebase on `live` first) and then recompiles and loads the live tree, keeping running state (DEPLOY-5, DEPLOY-6). If the tests fail, nothing is merged or loaded and the turn's changes are rolled back (HOT-4).
-- The chat UI's restart button does the same and then restarts the server, so it comes up on the deployed code in a clean process (DEPLOY-7, RESTART-11). It stops the runtime system with a non-zero status, which `bin/serve` turns into a restart (RESTART-1).
-- Make all the edits for a change first, run `run_tests`, then deploy — a multi-file edit is on the chat's branch, so the running app can't be broken halfway.
+- **Merging your work into the trunk is your step; deploying is the user's.** When a change is done: commit it, rebase on `master` if the trunk has moved, then `git push . HEAD:master` — fast-forward only, so the trunk must be an ancestor (DEPLOY-13). `AGENTS.md` and the `self-modification` skill say the same. The harness never merges your branch.
+- The user then deploys from the Settings page (`Elia.Deploy.deploy/1`, DEPLOY-5..DEPLOY-7): Elia runs the full test suite in the live tree, fast-forwards `live` to `master` (rolling it back if the tests fail, HOT-4) and loads the result — by "Hot reload", which recompiles and loads the live tree keeping running state (DEPLOY-6), or by "Restart", which stops the runtime system with a non-zero status so `bin/serve` starts it again on the deployed code in a clean process (DEPLOY-7, RESTART-1).
+- Make all the edits for a change first, run `run_tests`, then commit and merge — a multi-file edit is on the chat's branch, so the running app can't be broken halfway. Don't expect the change to be live until the user has deployed it.
 - Not needed for `skills/**` (use `reload_skills`) or for tests and docs.
 
 ## Adding a skill

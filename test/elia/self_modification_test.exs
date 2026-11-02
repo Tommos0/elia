@@ -158,7 +158,7 @@ defmodule Elia.SelfModificationTest do
       assert Elia.Skills.SelfModification.name() == "self-modification"
 
       assert Elia.Skills.SelfModification.tools() |> Enum.map(& &1.name) |> Enum.sort() ==
-               ~w(hot_reload list_checkpoints rollback)
+               ~w(list_checkpoints rollback)
     end
 
     # SKILL-9, PROJ-17
@@ -168,7 +168,11 @@ defmodule Elia.SelfModificationTest do
       assert instructions =~ "approval"
       assert instructions =~ "checkpoint"
       assert instructions =~ "rolled back"
-      assert instructions =~ "hot_reload"
+      # DEPLOY-13: merging its own branch into the trunk is where the agent's
+      # part ends; deploying is the user's step, from Settings (SKILL-9).
+      assert instructions =~ "git push . HEAD:master"
+      assert instructions =~ "Settings"
+      refute instructions =~ "hot_reload"
       assert instructions =~ "specs/README.md"
       assert instructions =~ "requirement IDs"
       assert instructions =~ "Never renumber"

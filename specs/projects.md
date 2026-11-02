@@ -61,8 +61,8 @@ kept apart from the ones that apply in every project.
 - **PROJ-13** Elia's own data — `.elia/projects.term` and `.elia/sessions/` —
   lives in Elia's root (the live tree, DEPLOY-2) whatever project a chat
   belongs to, so a project folder is never written to by the harness itself.
-- **PROJ-14** Checkpoints, `mix test` verification and the `hot_reload` tool
-  are bound to Elia's own project: the file and shell tools only checkpoint when
+- **PROJ-14** Checkpoints, `mix test` verification and the deploy workflow are
+  bound to Elia's own project: the file and shell tools only checkpoint when
   their project is Elia's own (DEPLOY-1), and only Elia's own project has the
   `self-modification` skill (PROJ-17).
 
@@ -77,7 +77,7 @@ kept apart from the ones that apply in every project.
   `update_ledger` (SKILL-7, COMPACT-22).
 - **PROJ-17** A built-in `self-modification` skill carries what only applies to
   Elia's own code: changing Elixir files, checkpoints, the spec-driven
-  workflow and `hot_reload`, with the tools `hot_reload`,
+  workflow and merging to the trunk (`master`), with the tools
   `list_checkpoints` and `rollback`. A chat has it only when its project is
   Elia's own.
 - **PROJ-18** A chat's skills are the built-in skills (PROJ-17), the folder

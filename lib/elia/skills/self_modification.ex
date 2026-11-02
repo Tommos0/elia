@@ -1,14 +1,15 @@
 defmodule Elia.Skills.SelfModification do
   @moduledoc """
   Changing Elia's own code, behind the guardrails (PROJ-17, SKILL-9): the
-  approval rules, the checkpoint per turn, `hot_reload` and `rollback`, and the
-  spec-driven workflow. A chat has this skill only when its project is Elia's
-  own; other projects get `Elia.Skills.Harness` alone (PROJ-16).
+  approval rules, the checkpoint per turn, `rollback`, merging the chat's branch
+  into the trunk and the spec-driven workflow. A chat has this skill only when
+  its project is Elia's own; other projects get `Elia.Skills.Harness` alone
+  (PROJ-16).
   """
 
   @behaviour Elia.Skill
 
-  alias Elia.{Checkpoint, Harness, Workspace}
+  alias Elia.{Checkpoint, Workspace}
 
   @impl true
   def name, do: "self-modification"
@@ -27,11 +28,14 @@ defmodule Elia.Skills.SelfModification do
 
     A chat in this project works in its own git worktree, not in the tree the \
     server runs from (DEPLOY-1). Running code therefore never changes while you \
-    edit: an Elixir change takes effect only after a deploy — `hot_reload`, \
-    which runs the tests, merges your branch into `live` and reloads the \
-    running app, or the restart button, which also restarts the server \
-    (DEPLOY-6, DEPLOY-7). Make all the edits for a change, run `run_tests`, then \
-    call `hot_reload` and tell the user the change is live. Never edit \
+    edit: an Elixir change reaches the running app only through a deploy, which \
+    the user runs from Settings — it brings the trunk `master` to `live` and \
+    then hot reloads or restarts the server (DEPLOY-5–DEPLOY-7). So make all the \
+    edits for a change first, run `run_tests`, then commit your work and merge \
+    your branch into the trunk yourself: rebase on `master` if it has moved, \
+    then `git push . HEAD:master`, which is fast-forward only (DEPLOY-13). That \
+    is where your part ends — tell the user the change is ready and let them \
+    deploy it. Never edit \
     `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` \
     to weaken the guardrails. `list_checkpoints` shows recent checkpoints and \
     `rollback` undoes a change that went wrong.
@@ -47,16 +51,6 @@ defmodule Elia.Skills.SelfModification do
   @impl true
   def tools do
     [
-      %Elia.Tool{
-        name: "hot_reload",
-        description:
-          "Run the full test suite, merge this chat's branch into `live`, then recompile and " <>
-            "load the live tree into the running app. If tests fail, the turn's changes are " <>
-            "rolled back instead and nothing is merged or loaded.",
-        input_schema: %{"type" => "object", "properties" => %{}},
-        approval: :required,
-        run: fn _input, ctx -> Harness.hot_reload(ctx[:turn_id], workspace(ctx)) end
-      },
       %Elia.Tool{
         name: "list_checkpoints",
         description: "List recent workspace checkpoints, newest first.",
@@ -103,7 +97,7 @@ defmodule Elia.Skills.SelfModification do
       {:ok,
        "Restored #{workspace(ctx)} to #{String.slice(target, 0, 12)}. " <>
          "Undo with rollback to #{String.slice(undo, 0, 12)}. Running code is unchanged " <>
-         "until hot_reload."}
+         "until a deploy."}
     end
   end
 end

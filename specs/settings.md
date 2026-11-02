@@ -5,7 +5,8 @@ Status: Implemented
 Provider API keys and the selected model are user settings, not workspace
 data, so they live in a small on-disk database in the user's data directory
 rather than in the repository. A Settings page lets the user enter, check and
-remove a key for each provider.
+remove a key for each provider, and deploy Elia's own code (DEPLOY-5): it is
+where the running server is brought up to date with the trunk `master`.
 
 ## Requirements
 
@@ -74,6 +75,22 @@ remove a key for each provider.
 - **CONF-18** The app header has no theme toggle; it is only on the Settings
   page.
 
+### Deployment
+
+- **CONF-19** `/settings` has a "Deployment" section (`#deployment`) that says,
+  in `#deploy-status`, what the live tree's deploy state is: how many commits on
+  the trunk are not deployed yet, that `live` is already at the trunk when
+  there is nothing to deploy, or why the live tree isn't set up for deployment
+  (DEPLOY-14). When it is set up for deployment the section has two buttons,
+  "Hot reload" (`#deploy-reload`) and "Restart" (`#deploy-restart`), each that
+  deploy mode (DEPLOY-6, DEPLOY-7).
+- **CONF-20** A deploy runs in the background, so the page stays responsive: the
+  button that started it shows a spinner and both are disabled until it is done,
+  and a click while one runs is ignored. The result arrives as a flash — what
+  was merged and what loaded on success, and the error (test output truncated)
+  on a test failure or a refusal — and the deploy status is refreshed
+  afterwards.
+
 ## Configuration
 
 ```elixir
@@ -90,7 +107,8 @@ Tests use a scratch file under the system temp directory.
 ## Implementation
 
 `Elia.Settings`, `Elia.LLM` (`api_key/1`, `check_key/2`, `save_key/2`,
-`delete_key/1`, `balance/1`), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
+`delete_key/1`, `balance/1`), `Elia.Deploy` (the deploy, DEPLOY-5),
+`EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
 
 ## Tests
 

@@ -379,18 +379,6 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-archive-box-arrow-down" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Compact</span>
               </button>
-              <%!-- DEPLOY-7, RESTART-11: deploy this chat's code and restart the server --%>
-              <button
-                :if={@project.harness?}
-                type="button"
-                id="restart-button"
-                phx-click="restart"
-                title="Run the tests, merge this chat's branch into live and restart the server"
-                class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
-              >
-                <.icon name="hero-arrow-path" class="size-3.5 shrink-0 opacity-70" />
-                <span class="font-medium">Restart</span>
-              </button>
             </div>
             <.form
               for={@form}
@@ -1557,29 +1545,6 @@ defmodule EliaWeb.ChatLive do
   def handle_event("fail_task", _params, socket) do
     Agent.fail_task(socket.assigns.session_id)
     {:noreply, socket}
-  end
-
-  # DEPLOY-7, RESTART-11: the hard deploy mode — run the tests, merge this chat's
-  # branch into live, then restart the server on the deployed code.
-  def handle_event("restart", _params, socket) do
-    workspace = Elia.Deploy.workspace(socket.assigns.project, socket.assigns.session_id)
-
-    case Elia.Deploy.restart(workspace) do
-      {:ok, message} ->
-        {:noreply, put_flash(socket, :info, message)}
-
-      {:tests_failed, output} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Tests failed; nothing was merged or restarted.\n\n" <>
-             Elia.Shell.truncate(output, 4_000)
-         )}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
-    end
   end
 
   def handle_event("open_picker", _params, socket) do

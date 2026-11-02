@@ -29,7 +29,7 @@ system prompt from them. It can be reloaded while the app runs.
   `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
   `await_task`, `reset_task`,
   [Sub-tasks](subtasks.md)) and
-  `self-modification` (`hot_reload`, `list_checkpoints`, `rollback`). The last
+  `self-modification` (`list_checkpoints`, `rollback`). The last
   one is a chat's only when its project is Elia's own (PROJ-17); a sub-task
   session, and only it, also gets the built-in `task` skill, which carries
   `finish_task` (SUBTASK-1).
@@ -38,9 +38,11 @@ system prompt from them. It can be reloaded while the app runs.
   with `reload_skills`, and to run the tests before finishing. Folder skills
   are written without approval, but their tools always ask.
 - **SKILL-9** The `self-modification` skill's instructions tell the model that
-  Elixir changes need the user's approval and only take effect after a deploy,
-  by hot reload or restart (DEPLOY-8); that the workspace is checkpointed before
-  its first
+  Elixir changes need the user's approval and only take effect after a deploy
+  (DEPLOY-8); that when its work is done it commits it and merges its own branch
+  into the trunk `master` itself (DEPLOY-13), which is where its part ends — the
+  user deploys, from Settings (DEPLOY-5–DEPLOY-7); that the workspace is
+  checkpointed before its first
   change in a turn and that a failing `mix test` rolls the change back; and
   that the project is spec-driven: before changing Elixir code it updates or
   adds the feature's spec in `specs/` (see `specs/README.md`), keeps

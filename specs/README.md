@@ -69,11 +69,11 @@ deleting it.
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
 | [Checkpoints](checkpoints.md) | `CKPT` | Git-backed workspace snapshots and rollback |
 | [Turn verification](verification.md) | `VERIFY` | `run_tests` and end-of-turn test runs with rollback |
-| [Hot reload](hot-reload.md) | `HOT` | Loading tested code into the running server; the soft deploy mode |
+| [Hot reload](hot-reload.md) | `HOT` | Hot reload: the soft deploy mode, loading tested code into the running server |
 | [Guarded files](guarded-files.md) | `GUARD` | Retired: per-chat worktrees replaced it; the "never reload on request" rule moved to Deployment |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons and service worker so the app installs on a phone |
 | [Recovery](recovery.md) | `RECOVER` | `/recover` page and crash-page banner that roll back to a checkpoint without the app |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat; `list_tasks`/`await_task` report its status and result; `finish_task` returns a structured result |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
-| [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees; deploy a chat's code to the live server by merge + hot reload or restart |
+| [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart |

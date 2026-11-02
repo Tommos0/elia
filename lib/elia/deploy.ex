@@ -1,23 +1,28 @@
 defmodule Elia.Deploy do
   @moduledoc """
-  Deploying a chat's code into the running app (spec: `specs/deployment.md`).
+  Deploying Elia's own code into the running app (spec: `specs/deployment.md`).
 
   Elia's own project runs from the *live tree* (`Elia.Workspace.runtime_root/0`):
   that is where the server runs, where the code reloader reloads, and where
-  Elia's data lives (DEPLOY-2). A chat in that project never edits the live
-  tree: it works in its own git worktree, on branch `chat/<chat id>`, forked
-  from `live` when the chat starts (DEPLOY-1, DEPLOY-3). Chats in other projects
-  work in the project's folder, with no worktree.
+  Elia's data lives (DEPLOY-2). Two branches of its repository matter: the
+  *trunk* `master`, the chats' fork point and the branch they merge their work
+  into (DEPLOY-1, DEPLOY-13), and `live`, the branch the live tree is checked out
+  on and a deploy's target (DEPLOY-14).
 
-  A *deploy* merges the chat's branch into `live` — fast-forward only, after the
-  full test suite has passed in the chat's worktree (DEPLOY-5) — and then loads
-  the result into the running app: by hot reload (`Elia.Harness.hot_reload/2`,
-  DEPLOY-6) or by restarting the server (`restart/1`, DEPLOY-7). Because the tree
-  a chat edits is never the tree that runs, an in-progress or broken edit cannot
-  reach the running app at all, and no request ever reloads code (DEPLOY-8).
+  A chat in that project never edits the live tree: it works in its own git
+  worktree, on branch `chat/<chat id>`, forked from the trunk (DEPLOY-1). When a
+  change is done the chat's agent merges its branch into the trunk itself
+  (`git push . HEAD:master`, which refuses anything but a fast-forward,
+  DEPLOY-13). A *deploy* is then the user's step, from the Settings page
+  (`EliaWeb.SettingsLive`): it runs the full test suite in the live tree,
+  fast-forwards `live` to the trunk when the tests pass (DEPLOY-5) and loads the
+  result into the running app — by hot reload (`hot_reload/1`, DEPLOY-6) or by
+  restarting the server (`restart/1`, DEPLOY-7). Because the tree a chat edits is
+  never the tree that runs, an in-progress or broken edit cannot reach the
+  running app at all, and no request ever reloads code (DEPLOY-8).
 
-  A chat works in a worktree when the live tree is on the branch `live`, the
-  fork point and deploy target. When it isn't (a tree that was never set up for
+  A chat works in a worktree when the live tree is *set up for deployment*
+  (`deployable/1`, DEPLOY-14). When it isn't (a tree that was never set up for
   deployment, such as a test workspace), the chat works in the live tree itself,
   as before.
   """
@@ -27,12 +32,13 @@ defmodule Elia.Deploy do
   alias Elia.Workspace
 
   @live "live"
+  @trunk "master"
   @chat_prefix "chat/"
 
-  # What the runtime system exits with when the restart button restarts the
-  # server. It must not be 0: `bin/serve` treats a zero exit as a deliberate
-  # shutdown and stays down (RESTART-1, RESTART-2), any other status as a crash
-  # to recover from.
+  # What the runtime system exits with when a deploy restarts the server. It
+  # must not be 0: `bin/serve` treats a zero exit as a deliberate shutdown and
+  # stays down (RESTART-1, RESTART-2), any other status as a crash to recover
+  # from.
   @restart_status 75
 
   ## Paths and branches
@@ -48,8 +54,11 @@ defmodule Elia.Deploy do
   @doc "The branch a chat's worktree is checked out on (DEPLOY-1)."
   def branch(chat_id), do: @chat_prefix <> chat_id
 
-  @doc "The branch a deploy forks from and merges into (DEPLOY-1, DEPLOY-5)."
+  @doc "The branch the live tree is checked out on and a deploy fast-forwards (DEPLOY-5)."
   def live_branch, do: @live
+
+  @doc "The trunk: the branch the chats fork from and merge into, and a deploy's target (DEPLOY-13)."
+  def trunk_branch, do: @trunk
 
   @doc """
   The chat whose worktree is at `workspace`, or `nil` when `workspace` isn't a
@@ -62,14 +71,53 @@ defmodule Elia.Deploy do
     if Path.dirname(workspace) == worktrees_dir(root), do: Path.basename(workspace)
   end
 
+  ## The trunk and the deploy target (DEPLOY-14)
+
   @doc """
-  Whether the live tree is deployable: it is on the branch `live`, so chats can
-  fork their worktrees from it and a deploy can merge back into it (DEPLOY-1,
-  DEPLOY-5).
+  Whether the live tree is set up for deployment (DEPLOY-14): it is checked out
+  on the branch `live`, has a trunk `master`, and `live` is an ancestor of the
+  trunk — a deploy only ever fast-forwards `live` onto it (DEPLOY-5).
+
+  `:ok`, or an error naming what is missing and the one-time fix.
   """
+  @spec deployable(binary()) :: :ok | {:error, binary()}
+  def deployable(root \\ Workspace.runtime_root()) do
+    cond do
+      not on_branch?(@live, root) ->
+        {:error,
+         "The live tree is not on the branch #{@live}: set it up once with " <>
+           "`git checkout -b #{@live}`."}
+
+      not branch_exists?(@trunk, root) ->
+        {:error,
+         "There is no #{@trunk} branch to fork chats from and merge into: create it " <>
+           "once with `git branch #{@trunk}`."}
+
+      not ancestor?(@live, @trunk, root) ->
+        {:error,
+         "#{@trunk} is behind #{@live}, so a deploy could not fast-forward it: " <>
+           "bring the trunk up to date once with `git branch -f #{@trunk} #{@live}`."}
+
+      true ->
+        :ok
+    end
+  end
+
+  @doc "Whether the live tree is set up for deployment (DEPLOY-14)."
   @spec deployable?(binary()) :: boolean()
-  def deployable?(root \\ Workspace.runtime_root()) do
-    match?({:ok, @live}, git(root, ["symbolic-ref", "--short", "--quiet", "HEAD"]))
+  def deployable?(root \\ Workspace.runtime_root()), do: deployable(root) == :ok
+
+  @doc """
+  What the Settings page reports about deployment (CONF-19): the number of
+  commits on the trunk that are not deployed yet, or why the live tree isn't set
+  up for deployment (DEPLOY-14).
+  """
+  @spec status(binary()) :: {:ok, non_neg_integer()} | {:error, binary()}
+  def status(root \\ Workspace.runtime_root()) do
+    with :ok <- deployable(root),
+         {:ok, count} <- git(root, ["rev-list", "--count", "#{@live}..#{@trunk}"]) do
+      {:ok, String.to_integer(count)}
+    end
   end
 
   ## Worktree per chat
@@ -95,10 +143,10 @@ defmodule Elia.Deploy do
   def workspace(project, _chat_id), do: project.folder
 
   @doc """
-  Creates the chat's worktree, on branch `chat/<chat id>` forked from `live`,
-  unless it already exists. Idempotent: a chat that is opened again, or resumes
-  after a restart, keeps the worktree (and its uncommitted work) it had
-  (DEPLOY-1, DEPLOY-10).
+  Creates the chat's worktree, on branch `chat/<chat id>` forked from the trunk
+  `master`, unless it already exists. Idempotent: a chat that is opened again,
+  or resumes after a restart, keeps the worktree (and its uncommitted work) it
+  had (DEPLOY-1, DEPLOY-10).
   """
   @spec ensure_worktree(binary(), binary()) :: {:ok, binary()} | {:error, binary()}
   def ensure_worktree(chat_id, root \\ Workspace.runtime_root()) do
@@ -108,15 +156,15 @@ defmodule Elia.Deploy do
       File.dir?(path) ->
         {:ok, path}
 
-      not deployable?(root) ->
-        {:error, "the live tree is not on the branch #{@live}, so it has no fork point"}
-
       true ->
-        add_worktree(chat_id, path, root)
+        case deployable(root) do
+          :ok -> add_worktree(chat_id, path, root, @trunk)
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 
-  defp add_worktree(chat_id, path, root, base \\ @live) do
+  defp add_worktree(chat_id, path, root, base) do
     File.mkdir_p!(worktrees_dir(root))
 
     args =
@@ -186,7 +234,7 @@ defmodule Elia.Deploy do
       git(root, ["worktree", "prune"])
     end
 
-    if deployable?(root) or branch_exists?(branch(chat_id), root) do
+    if branch_exists?(branch(chat_id), root) do
       git(root, ["branch", "-D", branch(chat_id)])
     end
 
@@ -196,69 +244,79 @@ defmodule Elia.Deploy do
   ## Deploying
 
   @doc """
-  Deploys a chat's code: runs the full test suite in `workspace` — the chat's
-  worktree — and then merges its branch into `live`, fast-forward only
-  (DEPLOY-5). Nothing is merged when the tests fail, so the running app is
-  unaffected (HOT-4).
+  Deploys the trunk into the live tree (DEPLOY-5): fast-forwards `live` to
+  `master`, runs the full test suite there, and rolls `live` back when the tests
+  fail, so nothing is deployed and the running app is unaffected (HOT-4).
 
-  `{:ok, message}`, `{:tests_failed, output}` or `{:error, reason}`.
+  `{:ok, message}`, `{:tests_failed, output}` or `{:error, reason}`. Nothing to
+  deploy when `live` is already at the trunk: no tests run, and the message says
+  so.
   """
-  @spec deploy(binary(), binary()) ::
-          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def deploy(workspace, root \\ Workspace.runtime_root()) do
-    case Elia.Harness.run_tests([], workspace) do
-      {:ok, _output} -> merge(workspace, root)
-      {:error, output} -> {:tests_failed, output}
+  @spec deploy(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def deploy(root \\ Workspace.runtime_root()) do
+    with :ok <- deployable(root),
+         :ok <- clean?(root),
+         {:ok, count} <- status(root) do
+      case count do
+        0 -> {:ok, "Nothing to deploy: #{@live} is already #{@trunk}."}
+        _ -> merge_and_test(count, root)
+      end
     end
   end
 
   @doc """
-  Merges a chat's worktree branch into `live`, fast-forward only (DEPLOY-5). A
-  workspace that isn't a chat worktree needs no merge: the code is already in
-  the live tree. `{:ok, message}` or `{:error, reason}`.
+  Fast-forwards `live` to the trunk `master` (DEPLOY-5). A merge can only ever
+  be a fast-forward: the trunk is at or ahead of `live` (DEPLOY-14).
+  `{:ok, message}` or `{:error, reason}`.
   """
-  @spec merge(binary(), binary()) :: {:ok, binary()} | {:error, binary()}
-  def merge(workspace, root \\ Workspace.runtime_root()) do
-    case worktree_chat(workspace, root) do
-      nil ->
-        {:ok, "nothing to merge: this chat works in the live tree itself."}
+  @spec merge(binary()) :: {:ok, binary()} | {:error, binary()}
+  def merge(root \\ Workspace.runtime_root()) do
+    case git(root, ["merge", "--ff-only", @trunk]) do
+      {:ok, _output} ->
+        {:ok, "#{@trunk} merged into #{@live}."}
 
-      chat_id ->
-        case git(root, ["merge", "--ff-only", branch(chat_id)]) do
-          {:ok, output} ->
-            {:ok,
-             "#{branch(chat_id)} merged into #{@live}.#{if output == "", do: "", else: "\n" <> output}"}
-
-          {:error, reason} ->
-            {:error,
-             "Could not merge #{branch(chat_id)} into #{@live}. A deploy is fast-forward only, " <>
-               "so rebase the chat's branch on #{@live} first.\n\n#{reason}"}
-        end
+      {:error, reason} ->
+        {:error,
+         "Could not merge #{@trunk} into #{@live}. A deploy is fast-forward only, so " <>
+           "#{@live} must be an ancestor of #{@trunk} (DEPLOY-14).\n\n#{reason}"}
     end
   end
 
   @doc """
-  The hard deploy mode (DEPLOY-7, RESTART-11): deploys the chat's code
-  (DEPLOY-5) and then restarts the server, so it comes up on the deployed code
-  in a clean process. Only works when `bin/serve` (or another service manager)
-  runs the server: it stops the runtime system with a non-zero status, which
-  `bin/serve` turns into a restart (RESTART-1, RESTART-2). Nothing is merged or
-  restarted when the tests fail.
+  The soft deploy mode (DEPLOY-6): deploys the trunk (DEPLOY-5), then recompiles
+  the live tree and loads the changed modules into the running app, keeping
+  running state. Only available when the dev server runs (HOT-2).
   """
-  @spec restart(binary(), binary()) ::
-          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def restart(workspace, root \\ Workspace.runtime_root()) do
+  @spec hot_reload(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def hot_reload(root \\ Workspace.runtime_root()) do
+    if hot_reload_available?() do
+      case deploy(root) do
+        {:ok, deployed} -> load(deployed)
+        other -> other
+      end
+    else
+      {:error, "Hot reload is only available when running the dev server (mix phx.server)."}
+    end
+  end
+
+  @doc """
+  The hard deploy mode (DEPLOY-7, RESTART-11): deploys the trunk (DEPLOY-5) and
+  then restarts the server, so it comes up on the deployed code in a clean
+  process. Only works when `bin/serve` (or another service manager) runs the
+  server: it stops the runtime system with a non-zero status, which `bin/serve`
+  turns into a restart (RESTART-1, RESTART-2). Nothing is deployed or restarted
+  when the tests fail.
+  """
+  @spec restart(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def restart(root \\ Workspace.runtime_root()) do
     with :ok <- restartable?() do
-      case deploy(workspace, root) do
-        {:ok, message} ->
+      case deploy(root) do
+        {:ok, deployed} ->
           stop()
-          {:ok, "#{message} Restarting the server on the deployed code."}
+          {:ok, "#{deployed} Restarting the server on the deployed code."}
 
-        {:tests_failed, output} ->
-          {:tests_failed, output}
-
-        {:error, reason} ->
-          {:error, reason}
+        other ->
+          other
       end
     end
   end
@@ -266,18 +324,90 @@ defmodule Elia.Deploy do
   @doc """
   Whether the server can be restarted: only the dev server, run by `bin/serve`
   or a service manager, comes back after it stops (DEPLOY-7). A server started
-  by hand in a shell can't be, so the restart button says so instead of stopping
+  by hand in a shell can't be, so the Settings page says so instead of stopping
   it for good.
   """
   @spec restartable?() :: :ok | {:error, binary()}
   def restartable? do
-    if Elia.Harness.hot_reload_available?() do
+    if hot_reload_available?() do
       :ok
     else
       {:error,
        "Restarting is only available when the dev server runs, started by bin/serve " <>
          "(or a service manager) so it comes back."}
     end
+  end
+
+  @doc "Whether in-VM code reloading is available (the dev server's code reloader, HOT-2)."
+  def hot_reload_available? do
+    Code.ensure_loaded?(Mix) and
+      Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true
+  end
+
+  # DEPLOY-5: merge, test in the live tree, and undo the merge when the tests
+  # fail so a failed deploy changes nothing.
+  defp merge_and_test(count, root) do
+    with {:ok, before} <- git(root, ["rev-parse", @live]),
+         {:ok, _merged} <- merge(root) do
+      case Elia.Harness.run_tests([], root) do
+        {:ok, _output} ->
+          {:ok, "#{commits(count)} merged into #{@live}."}
+
+        {:error, output} ->
+          {:tests_failed, output <> rollback_note(before, root)}
+      end
+    end
+  end
+
+  defp commits(1), do: "1 commit from #{@trunk}"
+  defp commits(count), do: "#{count} commits from #{@trunk}"
+
+  # HOT-4: the merge is undone when the tests fail, so `live` and the live tree
+  # are left exactly as they were.
+  defp rollback_note(sha, root) do
+    case git(root, ["reset", "--hard", sha]) do
+      {:ok, _output} ->
+        ""
+
+      {:error, reason} ->
+        "\n\nThe tests failed and #{@live} could not be rolled back to " <>
+          "#{String.slice(sha, 0, 12)}: #{reason}"
+    end
+  end
+
+  # A deploy merges into the live tree and rolls back with `git reset --hard`
+  # when the tests fail (DEPLOY-5), so it refuses a tree with uncommitted changes
+  # rather than touching them.
+  defp clean?(root) do
+    case git(root, ["status", "--porcelain"]) do
+      {:ok, ""} ->
+        :ok
+
+      {:ok, _changes} ->
+        {:error,
+         "The live tree has uncommitted changes: commit or discard them before deploying."}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # HOT-5: recompile the live tree and load the changed modules. Loading is a
+  # function so tests can replace it (`config :elia, Elia.Deploy, load: fun`):
+  # a real recompile inside a test run would rebuild Elia's own endpoint.
+  defp load(deployed) do
+    case loader().(EliaWeb.Endpoint) do
+      :ok ->
+        Elia.Skills.reload()
+        {:ok, "#{deployed} Recompiled and reloaded the running app."}
+
+      {:error, output} ->
+        {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
+    end
+  end
+
+  defp loader do
+    Application.get_env(:elia, __MODULE__, [])[:load] || (&Phoenix.CodeReloader.reload/1)
   end
 
   # How the server stops for a restart. Tests replace it with a message to
@@ -312,8 +442,16 @@ defmodule Elia.Deploy do
 
   ## Git
 
+  defp on_branch?(branch, root) do
+    match?({:ok, ^branch}, git(root, ["symbolic-ref", "--short", "--quiet", "HEAD"]))
+  end
+
   defp branch_exists?(branch, root) do
     match?({:ok, _}, git(root, ["rev-parse", "--verify", "--quiet", "refs/heads/#{branch}"]))
+  end
+
+  defp ancestor?(branch, other, root) do
+    match?({:ok, _}, git(root, ["merge-base", "--is-ancestor", branch, other]))
   end
 
   defp git(root, args) do

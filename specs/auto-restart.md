@@ -48,9 +48,9 @@ crash takes the VM down instead of leaving it empty.
 - **RESTART-10** `bin/install-service` refuses, before writing anything, a
   project root that contains whitespace, `%` or `$` (they'd need escaping in
   the unit), and exits non-zero. A `%` in `PATH` is written as `%%`.
-- **RESTART-11** The chat UI's restart button merges the chat's worktree branch
-  into `live` and restarts the server, so the server comes up on the deployed
-  code with a clean process (DEPLOY-7).
+- **RESTART-11** The Settings page's restart control (CONF-19) deploys the
+  trunk `master` into `live` and restarts the server, so the server comes up on
+  the deployed code with a clean process (DEPLOY-5, DEPLOY-7).
 
 ## Out of scope
 

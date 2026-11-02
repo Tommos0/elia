@@ -26,7 +26,7 @@ state.
   as `<short sha>  <timestamp>  <label>`.
 - **CKPT-7** The `rollback` tool needs approval. It rolls back to the given
   sha, or to this turn's checkpoint by default. It reloads skills and reports
-  the sha to undo with. Running code doesn't change until `hot_reload`.
+  the sha to undo with. Running code doesn't change until a deploy.
 - **CKPT-8** Turn → checkpoint mappings are kept in memory only and are lost
   on restart. The refs stay.
 - **CKPT-9** Each entry from `list/1` also has the `tree` of the snapshot, and

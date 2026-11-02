@@ -1,8 +1,8 @@
 defmodule Elia.LiveTree do
   @moduledoc """
   A throwaway live tree for tests (DEPLOY-2): a tiny git repo, checked out on the
-  branch `live`, holding a one-module Mix project, so a deploy's `mix test` runs
-  in a chat's worktree for real (DEPLOY-5).
+  branch `live` and with a `master` trunk, holding a one-module Mix project, so a
+  deploy's `mix test` runs in the live tree for real (DEPLOY-5, DEPLOY-14).
 
       tree = Elia.LiveTree.create()
       on_exit(fn -> Elia.LiveTree.remove(tree) end)
@@ -50,8 +50,10 @@ defmodule Elia.LiveTree do
     {_, 0} = git(dir, ["init", "--quiet"])
     {_, 0} = git(dir, ["add", "-A"])
     {_, 0} = git(dir, ["commit", "-q", "-m", "start"])
-    # The live tree is on the branch a deploy forks from and merges into.
+    # The live tree is on the branch a deploy fast-forwards (DEPLOY-5), and has
+    # the trunk the chats fork from and merge into (DEPLOY-13, DEPLOY-14).
     {_, 0} = git(dir, ["branch", "-m", "live"])
+    {_, 0} = git(dir, ["branch", "master"])
     dir
   end
 
@@ -72,7 +74,9 @@ defmodule Elia.LiveTree do
     out
   end
 
-  def head(dir), do: dir |> git!(["rev-parse", "HEAD"]) |> String.trim()
+  def sha(dir, ref), do: dir |> git!(["rev-parse", ref]) |> String.trim()
+
+  def head(dir), do: sha(dir, "HEAD")
 
   def branch(dir), do: dir |> git!(["rev-parse", "--abbrev-ref", "HEAD"]) |> String.trim()
 
@@ -81,6 +85,15 @@ defmodule Elia.LiveTree do
     git!(dir, ["commit", "-q", "-m", message])
     head(dir)
   end
+
+  @doc "The trunk: what a chat's worktree forks from and merges into (DEPLOY-13)."
+  def trunk, do: "master"
+
+  @doc """
+  Merges a worktree's branch into the trunk, the way a chat's agent does when
+  its work is done: fast-forward only, from inside the worktree (DEPLOY-13).
+  """
+  def push_to_trunk(path), do: git!(path, ["push", ".", "HEAD:" <> trunk()])
 
   @doc "A change on a chat's branch, unique to the test, committed there."
   @spec work!(binary()) :: binary()

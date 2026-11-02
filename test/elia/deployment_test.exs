@@ -6,27 +6,24 @@ defmodule Elia.DeploymentTest do
 
   @moduletag timeout: 120_000
 
-  # The live tree these tests run against: a tiny git repo on branch `live`,
-  # holding a one-module Mix project, so a deploy's `mix test` runs for real
-  # (DEPLOY-5).
-  setup_all do
+  # Each test gets its own live tree: a tiny git repo on branch `live`, with a
+  # `master` trunk and a one-module Mix project, so a deploy's `mix test` runs
+  # for real in it (DEPLOY-5, DEPLOY-14).
+  setup do
     tree = LiveTree.create()
-    on_exit(fn -> LiveTree.remove(tree) end)
-    %{tree: tree}
-  end
-
-  setup %{tree: tree} do
     previous = Application.get_env(:elia, :runtime_root)
     Application.put_env(:elia, :runtime_root, tree)
     start_supervised!(FakeLLM)
 
     on_exit(fn ->
+      LiveTree.remove(tree)
+
       if previous,
         do: Application.put_env(:elia, :runtime_root, previous),
         else: Application.delete_env(:elia, :runtime_root)
     end)
 
-    :ok
+    %{tree: tree}
   end
 
   ## Helpers
@@ -36,8 +33,17 @@ defmodule Elia.DeploymentTest do
   defp commit(dir, message), do: LiveTree.commit(dir, message)
   defp chat_work!(path), do: LiveTree.work!(path)
   defp git(dir, args), do: LiveTree.git(dir, args)
+  defp trunk(dir), do: LiveTree.sha(dir, LiveTree.trunk())
 
-  # A chat's worktree, from `live`, removed again at the end of the test.
+  # A change made on a chat's worktree and merged into the trunk the way its
+  # agent does when the work is done (DEPLOY-13).
+  defp work_on_trunk(path) do
+    file = chat_work!(path)
+    LiveTree.push_to_trunk(path)
+    file
+  end
+
+  # A chat's worktree, from the trunk, removed again at the end of the test.
   defp new_worktree do
     id = Agent.new_id()
     assert {:ok, path} = Deploy.ensure_worktree(id)
@@ -118,10 +124,43 @@ defmodule Elia.DeploymentTest do
     end)
   end
 
-  defp dev_server do
-    previous = Application.get_env(:elia, EliaWeb.Endpoint)
-    Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(previous, :code_reloader, true))
-    on_exit(fn -> Application.put_env(:elia, EliaWeb.Endpoint, previous) end)
+  # The dev server, as far as a deploy can tell: the endpoint's code reloader is
+  # on, and loading a deploy is a message to the test instead of a real
+  # recompile, which would rebuild Elia's own endpoint inside the test run
+  # (HOT-2, HOT-5).
+  defp dev_server(test_pid \\ self()) do
+    endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
+    deploy = Application.get_env(:elia, Elia.Deploy, [])
+
+    Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(endpoint, :code_reloader, true))
+
+    Application.put_env(
+      :elia,
+      Elia.Deploy,
+      Keyword.put(deploy, :load, fn _endpoint ->
+        send(test_pid, :loaded)
+        :ok
+      end)
+    )
+
+    on_exit(fn ->
+      Application.put_env(:elia, EliaWeb.Endpoint, endpoint)
+      Application.put_env(:elia, Elia.Deploy, deploy)
+    end)
+  end
+
+  # How the server stops for a restart (RESTART-1): a message to the test, not
+  # the end of the test run.
+  defp stop_server_with(test_pid) do
+    deploy = Application.get_env(:elia, Elia.Deploy, [])
+
+    Application.put_env(
+      :elia,
+      Elia.Deploy,
+      Keyword.put(deploy, :stop, &send(test_pid, {:stop, &1}))
+    )
+
+    on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
   end
 
   ## Requirements
@@ -181,7 +220,7 @@ defmodule Elia.DeploymentTest do
     refute File.exists?(Deploy.worktree_path(id))
 
     # A chat in Elia's own project in a tree that isn't set up for deployment
-    # (no `live` branch, DEPLOY-1) works in the live tree itself.
+    # (nothing to fork from, DEPLOY-1) works in the live tree itself.
     other_live = Path.join(System.tmp_dir!(), "elia-plain-#{System.unique_integer([:positive])}")
     File.mkdir_p!(other_live)
     on_exit(fn -> File.rm_rf!(other_live) end)
@@ -193,14 +232,14 @@ defmodule Elia.DeploymentTest do
     refute File.exists?(Deploy.worktree_path(id))
   end
 
-  # DEPLOY-1
-  test "a chat's worktree is on its own branch, forked from live", %{tree: tree} do
+  # DEPLOY-1, DEPLOY-13
+  test "a chat's worktree is on its own branch, forked from the trunk", %{tree: tree} do
     {id, path} = new_worktree()
 
     assert path == Path.join([tree, ".elia", "worktrees", id])
     assert branch(path) == "chat/#{id}"
-    # Forked from `live`, so it has the live tree's committed files.
-    assert head(path) == head(tree)
+    # Forked from the trunk, so it has the live tree's committed files.
+    assert head(path) == trunk(tree)
     assert File.exists?(Path.join(path, "mix.exs"))
 
     # Asking again keeps the worktree, and the work in it (DEPLOY-10).
@@ -209,40 +248,44 @@ defmodule Elia.DeploymentTest do
     assert File.read!(Path.join(path, "notes.txt")) == "wip"
   end
 
-  # DEPLOY-1, PROJ-12
-  test "a chat's tools work in its own worktree, not in the live tree", %{tree: tree} do
-    id = chat()
-    path = Deploy.worktree_path(id)
+  # DEPLOY-13: a chat merges its own branch into the trunk, so the next chat to
+  # start works on top of it.
+  test "the trunk carries the work a chat has merged into it", %{tree: tree} do
+    {_first, first} = new_worktree()
+    file = work_on_trunk(first)
 
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => "skills/note.txt", "content" => "here"})
-      ])
-    )
+    {_second, second} = new_worktree()
 
-    FakeLLM.push(FakeLLM.assistant([Message.text("Written.")]))
-
-    :ok = Agent.send_message(id, "write a note")
-    await_status(id, :idle)
-
-    assert File.read!(Path.join(path, "skills/note.txt")) == "here"
-    refute File.exists?(Path.join(tree, "skills/note.txt"))
+    assert head(second) == trunk(tree)
+    assert File.exists?(Path.join(second, file))
+    refute File.exists?(Path.join(tree, file))
   end
 
-  # DEPLOY-5
-  test "a deploy runs the tests in the worktree, then fast-forwards live", %{tree: tree} do
+  # DEPLOY-5, DEPLOY-13
+  test "a deploy fast-forwards live to the trunk once the tests pass", %{tree: tree} do
     {_id, path} = new_worktree()
-    file = chat_work!(path)
+    file = work_on_trunk(path)
 
     before = head(tree)
-    assert {:ok, message} = Deploy.deploy(path)
+    assert Deploy.status() == {:ok, 1}
+    assert {:ok, message} = Deploy.deploy()
 
     assert message =~ "merged into live"
     assert head(tree) != before
-    assert head(tree) == head(path)
+    assert head(tree) == trunk(tree)
     # The code is in the live tree now, and the running app is unchanged until a
     # deploy loads it (DEPLOY-8).
     assert File.exists?(Path.join(tree, file))
+  end
+
+  # DEPLOY-5: nothing to do when the trunk is already deployed.
+  test "there is nothing to deploy when live is already the trunk", %{tree: tree} do
+    assert Deploy.status() == {:ok, 0}
+
+    live = head(tree)
+    assert {:ok, message} = Deploy.deploy()
+    assert message =~ "Nothing to deploy"
+    assert head(tree) == live
   end
 
   # DEPLOY-5, DEPLOY-8, HOT-4
@@ -260,83 +303,158 @@ defmodule Elia.DeploymentTest do
     """)
 
     commit(path, "broken")
+    LiveTree.push_to_trunk(path)
 
     live = head(tree)
-    assert {:tests_failed, output} = Deploy.deploy(path)
+    assert {:tests_failed, output} = Deploy.deploy()
     assert output =~ "1 failure"
     assert head(tree) == live
     refute File.exists?(Path.join(tree, "test/broken_test.exs"))
   end
 
-  # DEPLOY-5
-  test "a deploy is fast-forward only: a rebase is needed first", %{tree: tree} do
-    {id, path} = new_worktree()
-    chat_work!(path)
+  # DEPLOY-5, DEPLOY-14
+  test "a deploy refuses a live tree with uncommitted changes", %{tree: tree} do
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
 
-    # The live tree moves on after the chat forked, so the branch has diverged
-    # and the merge can't be a fast-forward.
-    File.write!(Path.join(tree, "lib/other.ex"), "defmodule Other do\nend\n")
-    live = commit(tree, "another chat merged first")
+    File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
 
-    assert {:error, message} = Deploy.merge(path)
-    assert message =~ "fast-forward only"
-    assert message =~ "chat/#{id}"
+    live = head(tree)
+    assert {:error, message} = Deploy.deploy()
+    assert message =~ "uncommitted changes"
     assert head(tree) == live
   end
 
+  # DEPLOY-14: the one-time setup a live tree needs before anything can be
+  # deployed from it.
+  test "a live tree is set up for deployment with a trunk at or ahead of live" do
+    assert Deploy.deployable() == :ok
+
+    # Not a repository at all.
+    plain = Path.join(System.tmp_dir!(), "elia-plain-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(plain)
+    on_exit(fn -> File.rm_rf!(plain) end)
+    Application.put_env(:elia, :runtime_root, plain)
+
+    assert {:error, message} = Deploy.deployable()
+    assert message =~ "not on the branch live"
+    assert {:error, _} = Deploy.status()
+    refute Deploy.deployable?()
+
+    # On `live`, but with no trunk.
+    no_trunk = LiveTree.create()
+    on_exit(fn -> LiveTree.remove(no_trunk) end)
+    LiveTree.git!(no_trunk, ["branch", "-D", LiveTree.trunk()])
+    Application.put_env(:elia, :runtime_root, no_trunk)
+
+    assert {:error, message} = Deploy.deployable()
+    assert message =~ "no master branch"
+
+    # The trunk is behind `live`.
+    behind = LiveTree.create()
+    on_exit(fn -> LiveTree.remove(behind) end)
+    File.write!(Path.join(behind, "lib/extra.ex"), "defmodule Extra do\nend\n")
+    LiveTree.commit(behind, "live moved on")
+    Application.put_env(:elia, :runtime_root, behind)
+
+    assert {:error, message} = Deploy.deployable()
+    assert message =~ "git branch -f master live"
+    assert {:error, ^message} = Deploy.deploy()
+  end
+
+  # DEPLOY-5, DEPLOY-14
+  test "merging the trunk into live is fast-forward only" do
+    tree = LiveTree.create()
+    on_exit(fn -> LiveTree.remove(tree) end)
+    Application.put_env(:elia, :runtime_root, tree)
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    # The live tree moves on by hand, so `live` and the trunk have diverged.
+    File.write!(Path.join(tree, "lib/other.ex"), "defmodule Other do\nend\n")
+    commit(tree, "committed straight on live")
+
+    assert {:error, message} = Deploy.merge()
+    assert message =~ "fast-forward only"
+    assert {:error, _} = Deploy.deployable()
+    assert {:error, _} = Deploy.deploy()
+  end
+
   # DEPLOY-6, HOT-5
-  test "hot reload runs the tests, merges, then reloads the running app", %{tree: tree} do
+  test "hot reload deploys, then reloads the running app", %{tree: tree} do
     dev_server()
     {_id, path} = new_worktree()
-    file = chat_work!(path)
+    file = work_on_trunk(path)
 
     before = head(tree)
-    assert {:ok, message} = Elia.Harness.hot_reload(nil, path)
+    assert {:ok, message} = Deploy.hot_reload()
 
+    assert_received :loaded
     assert message =~ "merged into live"
     assert message =~ "Recompiled and reloaded"
     assert head(tree) != before
     assert File.exists?(Path.join(tree, file))
   end
 
+  # DEPLOY-6, HOT-6
+  test "a compile error is reported, truncated" do
+    dev_server()
+    output = String.duplicate("x", 30_000)
+
+    Application.put_env(
+      :elia,
+      Elia.Deploy,
+      Keyword.put(Application.get_env(:elia, Elia.Deploy, []), :load, fn _endpoint ->
+        {:error, output}
+      end)
+    )
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    assert {:error, message} = Deploy.hot_reload()
+    assert message =~ "Compilation failed:"
+    assert String.length(message) < 21_000
+  end
+
   # DEPLOY-6, HOT-2
   test "hot reload is only available when the dev server runs", %{tree: tree} do
     {_id, path} = new_worktree()
-    chat_work!(path)
+    work_on_trunk(path)
 
     before = head(tree)
-    assert {:error, message} = Elia.Harness.hot_reload(nil, path)
+    assert {:error, message} = Deploy.hot_reload()
     assert message =~ "only available when running the dev server"
     assert head(tree) == before
   end
 
   # DEPLOY-7, RESTART-11, RESTART-1, RESTART-2
-  test "the restart button merges and restarts the server on a non-zero status", %{tree: tree} do
+  test "restart deploys and restarts the server on a non-zero status", %{tree: tree} do
     dev_server()
-    test_pid = self()
-    Application.put_env(:elia, Elia.Deploy, stop: &send(test_pid, {:stop, &1}))
-    on_exit(fn -> Application.delete_env(:elia, Elia.Deploy) end)
+    stop_server_with(self())
 
     {_id, path} = new_worktree()
-    chat_work!(path)
+    work_on_trunk(path)
 
     before = head(tree)
-    assert {:ok, message} = Deploy.restart(path)
+    assert {:ok, message} = Deploy.restart()
 
     # A non-zero status is what makes `bin/serve` start the server again.
     assert_receive {:stop, status}
     assert status != 0
     assert message =~ "merged into live"
+    assert message =~ "Restarting the server"
     assert head(tree) != before
   end
 
   # DEPLOY-7, RESTART-2
-  test "the restart button refuses when nothing would bring the server back", %{tree: tree} do
+  test "restart refuses when nothing would bring the server back", %{tree: tree} do
     {_id, path} = new_worktree()
-    chat_work!(path)
+    work_on_trunk(path)
 
     before = head(tree)
-    assert {:error, message} = Deploy.restart(path)
+    assert {:error, message} = Deploy.restart()
     assert message =~ "bin/serve"
     refute_received {:stop, _}
     assert head(tree) == before

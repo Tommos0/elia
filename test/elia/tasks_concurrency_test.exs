@@ -31,7 +31,8 @@ defmodule Elia.TasksConcurrencyTest do
 
   ## Helpers
 
-  # A chat in Elia's own project: it works in its own worktree, forked from `live`.
+  # A chat in Elia's own project: it works in its own worktree, forked from the
+  # trunk `master`.
   defp chat do
     id = Agent.new_id()
 

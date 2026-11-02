@@ -1,7 +1,8 @@
 defmodule Elia.Harness do
   @moduledoc """
   Guardrails for self-modification: running the test suite, verifying a
-  turn's changes, rolling back, and hot-reloading code in development.
+  turn's changes and rolling them back. Loading code into the running app is a
+  deploy, and lives in `Elia.Deploy`.
   """
 
   alias Elia.{Checkpoint, Workspace}
@@ -101,63 +102,5 @@ defmodule Elia.Harness do
 
   defp core_elixir?(path, root) do
     Path.extname(path) in @elixir_exts and Workspace.classify(path, root) == :core
-  end
-
-  @doc "Whether in-VM code reloading is available (dev server with code reloader)."
-  def hot_reload_available? do
-    Code.ensure_loaded?(Mix) and
-      Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true
-  end
-
-  @doc """
-  The soft deploy mode (DEPLOY-6): runs the full test suite in the chat's
-  workspace — its own worktree (DEPLOY-1) — merges its branch into `live`
-  (DEPLOY-5), then recompiles and loads the live tree into the running app,
-  keeping running state. `workspace` is the chat's workspace root.
-  """
-  @spec hot_reload(term(), binary()) :: {:ok, binary()} | {:error, binary()}
-  def hot_reload(turn_id, workspace \\ Workspace.root()) do
-    cond do
-      not hot_reload_available?() ->
-        {:error, "Hot reload is only available when running the dev server (mix phx.server)."}
-
-      true ->
-        case Elia.Deploy.deploy(workspace) do
-          {:ok, merged} ->
-            load(merged)
-
-          {:tests_failed, output} ->
-            {:error, tests_failed(turn_id, workspace, output)}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-    end
-  end
-
-  # HOT-5: recompile the live tree and load the changed modules.
-  defp load(merged) do
-    case Phoenix.CodeReloader.reload(EliaWeb.Endpoint) do
-      :ok ->
-        Elia.Skills.reload()
-        {:ok, "Tests passed; #{merged} Recompiled and reloaded the running app."}
-
-      {:error, output} ->
-        {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
-    end
-  end
-
-  # HOT-4: nothing was merged or loaded; roll the turn's workspace back.
-  defp tests_failed(turn_id, workspace, output) do
-    rolled_back =
-      with sha when is_binary(sha) <- Checkpoint.for_turn(turn_id),
-           {:ok, _} <- Checkpoint.rollback(sha, workspace) do
-        Elia.Skills.reload()
-        " The workspace was rolled back to the checkpoint taken at the start of this turn."
-      else
-        _ -> ""
-      end
-
-    "Tests failed; nothing was merged or loaded.#{rolled_back}\n\n#{output}"
   end
 end

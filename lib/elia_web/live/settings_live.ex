@@ -1,7 +1,7 @@
 defmodule EliaWeb.SettingsLive do
   use EliaWeb, :live_view
 
-  alias Elia.LLM
+  alias Elia.{Deploy, LLM}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -18,7 +18,11 @@ defmodule EliaWeb.SettingsLive do
         # key => :check | :save | :check_current while a request is in flight
         pending: %{},
         # key => :loading | {:ok, balance} | {:error, message}
-        balances: %{}
+        balances: %{},
+        # CONF-19: the deploy state (DEPLOY-14), and "reload" | "restart" while
+        # a deploy runs
+        deployment: Deploy.status(),
+        deploying: nil
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
       |> refresh_keys()
@@ -217,6 +221,77 @@ defmodule EliaWeb.SettingsLive do
             </section>
           </div>
 
+          <%!-- CONF-19, CONF-20, DEPLOY-5..DEPLOY-7: deployment means bringing
+          the trunk `master` to `live` and loading it here. --%>
+          <section
+            id="deployment"
+            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+          >
+            <div class="flex items-center gap-3">
+              <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                <.icon name="hero-rocket-launch" class="size-5" />
+              </div>
+              <div>
+                <h2 class="font-medium">Deployment</h2>
+                <p class="text-xs text-base-content/50">
+                  Bring the app up to date: merging <code class="font-mono">master</code>
+                  into <code class="font-mono">live</code>, then loading it into the running server.
+                </p>
+              </div>
+            </div>
+
+            <p
+              id="deploy-status"
+              class={[
+                "mt-4 flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
+                deploy_ready?(@deployment) && "bg-base-200 text-base-content/70",
+                !deploy_ready?(@deployment) && "bg-warning/10 text-warning"
+              ]}
+            >
+              <.icon
+                name={
+                  if deploy_ready?(@deployment),
+                    do: "hero-check-circle",
+                    else: "hero-exclamation-triangle"
+                }
+                class="mt-px size-4 shrink-0"
+              />
+              <span class="break-words">{deploy_status(@deployment)}</span>
+            </p>
+
+            <div :if={deploy_ready?(@deployment)} class="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                id="deploy-reload"
+                phx-click="deploy"
+                phx-value-mode="reload"
+                disabled={@deploying != nil}
+                title="Run the tests, merge master into live and reload the running app, keeping its state"
+                class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 active:scale-95 disabled:opacity-50"
+              >
+                <.spinner :if={@deploying == "reload"} />
+                <.icon :if={@deploying != "reload"} name="hero-arrow-path" class="size-4" />
+                Hot reload
+              </button>
+              <button
+                type="button"
+                id="deploy-restart"
+                phx-click="deploy"
+                phx-value-mode="restart"
+                disabled={@deploying != nil}
+                title="Run the tests, merge master into live and restart the server on the deployed code"
+                class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+              >
+                <.spinner :if={@deploying == "restart"} />
+                <.icon
+                  :if={@deploying != "restart"}
+                  name="hero-arrow-path-rounded-square"
+                  class="size-4"
+                /> Restart
+              </button>
+            </div>
+          </section>
+
           <p
             id="settings-path"
             class="mt-8 flex items-center gap-2 text-xs text-base-content/50"
@@ -304,6 +379,17 @@ defmodule EliaWeb.SettingsLive do
     """
   end
 
+  # CONF-19: whether the live tree is set up for deployment (DEPLOY-14) — the
+  # deploy buttons only make sense when it is.
+  defp deploy_ready?({:ok, _commits}), do: true
+  defp deploy_ready?({:error, _reason}), do: false
+
+  # CONF-19: what the deployment section says about the live tree.
+  defp deploy_status({:ok, 0}), do: "live is up to date with master: nothing to deploy."
+  defp deploy_status({:ok, 1}), do: "1 commit on master is not deployed yet."
+  defp deploy_status({:ok, commits}), do: "#{commits} commits on master are not deployed yet."
+  defp deploy_status({:error, reason}), do: reason
+
   defp mask(key), do: "••••" <> String.slice(key, -4, 4)
 
   defp provider_blurb("anthropic"), do: "Claude models via the Anthropic API"
@@ -364,6 +450,22 @@ defmodule EliaWeb.SettingsLive do
      |> load_balance(key)}
   end
 
+  # CONF-19, CONF-20, DEPLOY-6, DEPLOY-7: deploy in the background, so the page
+  # stays responsive while the tests and the deploy run.
+  def handle_event("deploy", %{"mode" => mode}, socket) when mode in ~w(reload restart) do
+    if socket.assigns.deploying do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(deploying: mode)
+       |> start_async({:deploy, mode}, fn -> deploy(mode) end)}
+    end
+  end
+
+  defp deploy("reload"), do: Deploy.hot_reload()
+  defp deploy("restart"), do: Deploy.restart()
+
   defp run(socket, key, action, fun) do
     if Map.has_key?(socket.assigns.pending, key) or LLM.provider_info(key) == nil do
       socket
@@ -419,6 +521,32 @@ defmodule EliaWeb.SettingsLive do
         else: socket
 
     {:noreply, socket}
+  end
+
+  # CONF-20, DEPLOY-5..DEPLOY-7: report what the deploy did, and how the live
+  # tree stands now. `start_async` wraps the result in `{:ok, result}`.
+  def handle_async({:deploy, _mode}, result, socket) do
+    socket = assign(socket, deploying: nil, deployment: Deploy.status())
+
+    {:noreply,
+     case result do
+       {:ok, {:ok, message}} ->
+         put_flash(socket, :info, message)
+
+       {:ok, {:tests_failed, output}} ->
+         put_flash(
+           socket,
+           :error,
+           "Tests failed; nothing was merged or loaded.\n\n" <>
+             Elia.Shell.truncate(output, 4_000)
+         )
+
+       {:ok, {:error, reason}} ->
+         put_flash(socket, :error, reason)
+
+       {:exit, reason} ->
+         put_flash(socket, :error, "The deploy failed: #{Exception.format_exit(reason)}")
+     end}
   end
 
   defp put_result(socket, key, result) do
