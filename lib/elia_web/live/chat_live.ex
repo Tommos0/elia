@@ -1320,7 +1320,7 @@ defmodule EliaWeb.ChatLive do
 
   attr :item, :map, required: true
 
-  # COMPACT-21, COMPACT-25: what the model was sent of this item, and a pin. The
+  # COMPACT-25: what the model was sent of this item. The
   # UI never implies the model saw something it did not.
   defp item_meta(assigns) do
     assigns =
@@ -1331,24 +1331,6 @@ defmodule EliaWeb.ChatLive do
 
     ~H"""
     <div class="mt-1 flex items-center gap-2 text-[11px]">
-      <button
-        :if={is_integer(Map.get(@item, :index))}
-        type="button"
-        id={"pin-#{@id}"}
-        phx-click="toggle_pin"
-        phx-value-index={@item.index}
-        aria-pressed={to_string(@item[:pinned] == true)}
-        title={
-          if @item[:pinned], do: "Unpin: compaction may elide it again", else: "Pin: never elide this"
-        }
-        class={[
-          "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-base-content/40 transition hover:bg-base-200 hover:text-base-content",
-          @item[:pinned] && "text-warning hover:text-warning"
-        ]}
-      >
-        <.icon name="hero-map-pin" class="size-3" />
-        <span>{if @item[:pinned], do: "Pinned", else: "Pin"}</span>
-      </button>
       <span
         :if={@label}
         id={"status-#{@id}"}
@@ -1493,19 +1475,6 @@ defmodule EliaWeb.ChatLive do
 
       {:error, :busy} ->
         {:noreply, put_flash(socket, :error, "Elia is working; try again in a moment.")}
-    end
-  end
-
-  # COMPACT-21: the user pins a message so no rule may elide it.
-  def handle_event("toggle_pin", %{"index" => index}, socket) do
-    case Integer.parse(index) do
-      {index, ""} ->
-        on? = not Compaction.pinned?(socket.assigns.compaction, index)
-        Agent.set_pin(socket.assigns.session_id, index, nil, on?)
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
     end
   end
 

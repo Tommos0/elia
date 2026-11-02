@@ -169,8 +169,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 The session keeps and shows the full history; the model is sent a smaller
 **request view** (COMPACT-2). The transcript is honest about which parts of it
-the model did or did not see, and the user can pin a message or compact the chat
-by hand.
+the model did or did not see, and the user can compact the chat by hand.
 
 - **UI-51** The transcript always shows the whole conversation, including what
   compaction elided (COMPACT-1), and annotates each item with its request-view
@@ -180,9 +179,9 @@ by hand.
   where the item is `m<index>`, `m<index>-<block>` or `call-<call_id>`) is dim
   and names the elided amount when there is one. An item the model was sent in
   full carries no note.
-- **UI-52** Every transcript item has a pin toggle (`#pin-<item>`) that pins or
-  unpins its message (COMPACT-21, SESS-25) and shows the state: "Pin" when it is
-  not pinned, "Pinned" and `aria-pressed="true"` when it is.
+- ~~**UI-52** Every transcript item has a pin toggle (`#pin-<item>`) that pins or
+  unpins its message and shows the state.~~ Removed: the transcript has no pin
+  control; the user no longer pins messages (COMPACT-21).
 - **UI-53** A folded summary renders as a collapsible notice
   (`#compaction-summary`, open by default) at the boundary of the region it
   covers, with its text (`#compaction-summary-text`) and its length in words, so
@@ -277,8 +276,7 @@ the hidden tool calls leave with a one-line summary of the current step.
 - **UI-61** In the compact view the transcript shows only the direct messages:
   user messages, assistant text (saved and streaming) and notices (including
   the folded summary, UI-53). Tool calls, reasoning (saved and streaming, UI-8,
-  UI-29) and the per-item pin and request-view notes (UI-51, UI-52) are not
-  rendered. A task chat's header (UI-48) and the pause banner (UI-57) stay
+  UI-29) and the per-item request-view notes (UI-51) are not rendered. A task chat's header (UI-48) and the pause banner (UI-57) stay
   visible.
 - **UI-62** While the compact view is on and the turn is working (`:running` or
   `:awaiting_approval`, SESS-4), a one-sentence "working on" summary

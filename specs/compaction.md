@@ -163,9 +163,10 @@ order, stopping as soon as the estimate is at or below the target:
 
 ### Pinning and the ledger
 
-- **COMPACT-21** A message or block can be **pinned**. Pinned items are never
-  elided by any rule above. The user pins from the UI; the model can pin by
-  writing to the ledger.
+- **COMPACT-21** A message or block can be **pinned** (through
+  `Elia.Agent.set_pin/4`, SESS-25). Pinned items are never
+  elided by any rule above. The transcript has no pin control (UI-52); the model
+  can pin by writing to the ledger.
 - **COMPACT-22** Alongside the summary there is an append-only **ledger** of
   exact facts — file paths, decisions, requirement IDs, open questions — kept
   verbatim and sent in the request view. It is append-and-trim only, never

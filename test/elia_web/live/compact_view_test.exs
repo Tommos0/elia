@@ -57,22 +57,19 @@ defmodule EliaWeb.CompactViewTest do
     # The full view shows everything.
     assert has_element?(view, "#items-call-r1")
     assert has_element?(view, "#transcript .reasoning-text", "I should read the file")
-    assert has_element?(view, "#pin-m0")
 
     view |> element("#view-toggle") |> render_click()
 
     # The compact view keeps the direct messages...
     assert has_element?(view, "#items-m0", "please read it")
     assert has_element?(view, "#transcript .markdown", "All read.")
-    # ...and drops the tool call, the reasoning and the metadata.
+    # ...and drops the tool call and the reasoning.
     refute has_element?(view, "#items-call-r1")
     refute has_element?(view, "#transcript .reasoning-text")
-    refute has_element?(view, "#pin-m0")
 
     # Switching back restores them.
     view |> element("#view-toggle") |> render_click()
     assert has_element?(view, "#items-call-r1")
-    assert has_element?(view, "#pin-m0")
   end
 
   # UI-62: while a turn runs the compact view names the step, refreshed every

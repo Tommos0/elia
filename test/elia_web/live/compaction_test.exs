@@ -266,25 +266,4 @@ defmodule EliaWeb.CompactionTest do
     assert has_element?(view, "#status-m1-0", "Not sent to the model")
     assert has_element?(view, "#transcript", "an answer for turn 1")
   end
-
-  # COMPACT-21, COMPACT-25, UI-52
-  test "the user pins a message from the transcript", %{conn: conn} do
-    id = Agent.new_id()
-    on_exit(fn -> Elia.Store.delete(id) end)
-    :ok = Elia.Store.save(id, chat_messages())
-
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
-
-    assert has_element?(view, "#pin-m0[aria-pressed='false']", "Pin")
-    view |> element("#pin-m0") |> render_click()
-    _ = :sys.get_state(view.pid)
-
-    assert has_element?(view, "#pin-m0[aria-pressed='true']", "Pinned")
-    assert [{0, nil}] = Agent.snapshot(id).compaction.pins
-
-    view |> element("#pin-m0") |> render_click()
-    _ = :sys.get_state(view.pid)
-    assert has_element?(view, "#pin-m0[aria-pressed='false']")
-    assert [] = Agent.snapshot(id).compaction.pins
-  end
 end
