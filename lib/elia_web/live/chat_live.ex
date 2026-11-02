@@ -489,7 +489,7 @@ defmodule EliaWeb.ChatLive do
 
   # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59
   defp chat_row(assigns) do
-    {status_id, status} = chat_status(assigns.chat, assigns.running)
+    {status_id, status} = chat_status(assigns.chat, assigns)
     assigns = assign(assigns, status_id: status_id, status: status)
 
     ~H"""
@@ -506,24 +506,6 @@ defmodule EliaWeb.ChatLive do
       <span class="flex items-center gap-1.5">
         <.status_icon id={@status_id} status={@status} />
         <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
-        <span
-          :if={@paused}
-          id={"chat-paused-#{@chat.id}"}
-          title="Paused"
-          class="inline-flex shrink-0 items-center rounded-full bg-warning/20 p-0.5 text-warning"
-        >
-          <.icon name="hero-pause-circle" class="size-3" />
-          <span class="sr-only">Paused</span>
-        </span>
-        <span
-          :if={@awaiting}
-          id={"chat-approval-#{@chat.id}"}
-          title="Needs approval"
-          class="inline-flex shrink-0 items-center rounded-full bg-warning/20 p-0.5 text-warning"
-        >
-          <.icon name="hero-hand-raised" class="size-3" />
-          <span class="sr-only">Needs approval</span>
-        </span>
       </span>
       <time
         id={"chat-time-#{@chat.id}"}
@@ -540,8 +522,9 @@ defmodule EliaWeb.ChatLive do
   attr :id, :string, required: true
   attr :status, :string, required: true
 
-  # UI-44, UI-46, UI-59: a chat's status as an icon — a task's own status, or an
-  # ordinary chat's loop activity (`working` while a turn runs, `idle` otherwise).
+  # UI-44, UI-46, UI-47, UI-58, UI-59: a chat's status as an icon — waiting for
+  # approval or paused first (UI-47, UI-58), then a task's own status (UI-46),
+  # then an ordinary chat's loop activity (`working`/`idle`, UI-59).
   defp status_icon(assigns) do
     {icon, class} = status_icon_spec(assigns.status)
     assigns = assign(assigns, icon: icon, class: class)
@@ -561,6 +544,8 @@ defmodule EliaWeb.ChatLive do
 
   defp status_icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
   defp status_icon_spec("running"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
+  defp status_icon_spec("awaiting_approval"), do: {"hero-hand-raised", "text-warning"}
+  defp status_icon_spec("paused"), do: {"hero-pause-circle", "text-warning"}
   defp status_icon_spec("done"), do: {"hero-check-circle", "text-success"}
   defp status_icon_spec("blocked"), do: {"hero-pause-circle", "text-warning"}
   defp status_icon_spec("failed"), do: {"hero-x-circle", "text-error"}
@@ -571,13 +556,16 @@ defmodule EliaWeb.ChatLive do
 
   defp status_title("working"), do: "Working"
   defp status_title("idle"), do: "Idle"
+  defp status_title("awaiting_approval"), do: "Needs approval"
+  defp status_title("paused"), do: "Paused"
   defp status_title(status), do: "Task #{status}"
 
-  # UI-46, UI-59: a task chat shows its task status; every other chat shows
-  # whether its turn is running.
-  defp chat_status(%{id: id, task_status: status}, _running), do: {"chat-status-#{id}", status}
-  defp chat_status(chat, true), do: {"chat-status-#{chat.id}", "working"}
-  defp chat_status(chat, false), do: {"chat-status-#{chat.id}", "idle"}
+  # UI-46, UI-47, UI-58, UI-59: the one status indicator a sidebar chat shows.
+  defp chat_status(chat, %{awaiting: true}), do: {"chat-status-#{chat.id}", "awaiting_approval"}
+  defp chat_status(chat, %{paused: true}), do: {"chat-status-#{chat.id}", "paused"}
+  defp chat_status(%{task_status: status} = chat, _state), do: {"chat-status-#{chat.id}", status}
+  defp chat_status(chat, %{running: true}), do: {"chat-status-#{chat.id}", "working"}
+  defp chat_status(chat, _state), do: {"chat-status-#{chat.id}", "idle"}
 
   attr :task, :map, required: true
   attr :status, :string, required: true

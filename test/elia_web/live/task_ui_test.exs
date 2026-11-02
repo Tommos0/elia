@@ -159,7 +159,7 @@ defmodule EliaWeb.TaskUITest do
   end
 
   # UI-47, SESS-19
-  test "a chat awaiting approval is badged in the sidebar, live", %{
+  test "a chat awaiting approval is shown in the sidebar, live", %{
     conn: conn,
     parent: parent,
     child: child
@@ -167,23 +167,24 @@ defmodule EliaWeb.TaskUITest do
     save_parent(parent)
     save_child(child, parent)
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    refute has_element?(view, "#chat-approval-#{child}")
+    refute has_element?(view, "#chat-status-#{child}[data-status='awaiting_approval']")
 
     activity_send(child, :awaiting_approval)
 
     assert has_element?(
              view,
-             "#chat-link-#{child} #chat-approval-#{child}[title='Needs approval']"
+             "#chat-link-#{child} #chat-status-#{child}[data-status='awaiting_approval'][title='Needs approval']"
            )
 
-    refute has_element?(view, "#chat-approval-#{parent}")
+    refute has_element?(view, "#chat-status-#{parent}[data-status='awaiting_approval']")
 
     activity_send(child, :idle)
-    refute has_element?(view, "#chat-approval-#{child}")
+    refute has_element?(view, "#chat-status-#{child}[data-status='awaiting_approval']")
+    assert has_element?(view, "#chat-status-#{child}[data-status='done']")
   end
 
   # UI-47: right on first render
-  test "a chat that is already awaiting approval is badged when the page opens", %{
+  test "a chat that is already awaiting approval is flagged when the page opens", %{
     conn: conn,
     parent: parent,
     child: child
@@ -199,12 +200,12 @@ defmodule EliaWeb.TaskUITest do
     assert_receive {:agent, ^child, {:status, :awaiting_approval}}, 5000
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    assert has_element?(view, "#chat-approval-#{child}")
+    assert has_element?(view, "#chat-status-#{child}[data-status='awaiting_approval']")
 
     :ok = Agent.deny(child, "c1")
     assert_receive {:agent, ^child, {:status, :idle}}, 5000
     _ = render(view)
-    refute has_element?(view, "#chat-approval-#{child}")
+    assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
   end
 
   # UI-59: an ordinary chat shows its activity, live.
@@ -371,7 +372,7 @@ defmodule EliaWeb.TaskUITest do
 
     # UI-58: the sidebar and the parent's card are flagged on first render.
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    assert has_element?(view, "#chat-paused-#{child}[title='Paused']")
+    assert has_element?(view, "#chat-status-#{child}[data-status='paused'][title='Paused']")
     assert has_element?(view, "#task-card-s1 #task-paused-s1")
 
     # UI-57: the banner is there on first render too, with both decisions.
@@ -422,17 +423,17 @@ defmodule EliaWeb.TaskUITest do
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
     refute has_element?(view, "#task-paused-s1")
-    refute has_element?(view, "#chat-paused-#{child}")
+    refute has_element?(view, "#chat-status-#{child}[data-status='paused']")
 
     topic_send(parent, {:subtask, "s1", child, "running"})
     activity_send(child, :paused)
 
     assert has_element?(view, "#task-card-s1 #task-paused-s1")
-    assert has_element?(view, "#chat-paused-#{child}[title='Paused']")
+    assert has_element?(view, "#chat-status-#{child}[data-status='paused'][title='Paused']")
 
     activity_send(child, :running)
     refute has_element?(view, "#task-paused-s1")
-    refute has_element?(view, "#chat-paused-#{child}")
+    refute has_element?(view, "#chat-status-#{child}[data-status='paused']")
   end
 
   # Scripts the model to call a tool that needs no approval `times` times, so
