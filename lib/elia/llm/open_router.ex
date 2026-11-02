@@ -16,7 +16,7 @@ defmodule Elia.LLM.OpenRouter do
 
   require Logger
 
-  alias Elia.LLM.{Message, SSE}
+  alias Elia.LLM.{Message, Retry, SSE}
 
   @retry_statuses [408, 429, 500, 502, 503, 504]
   @max_retries 2
@@ -254,7 +254,7 @@ defmodule Elia.LLM.OpenRouter do
           json: body,
           headers: [{"authorization", "Bearer " <> api_key}, {"x-title", "Elia"}],
           retry: false,
-          receive_timeout: :timer.minutes(10),
+          receive_timeout: Retry.stream_idle_timeout(),
           into: fn {:data, chunk}, {req, resp} ->
             Process.put(:elia_open_router_received, true)
             {:cont, {req, handle_chunk(resp, chunk, on_event)}}
@@ -277,18 +277,20 @@ defmodule Elia.LLM.OpenRouter do
       {:ok, %Req.Response{status: status} = resp} ->
         {:error, "OpenRouter API error #{status}: #{error_message(resp)}"}
 
-      # LLM-31: a pooled connection that went stale while idle.
-      {:error, %Req.TransportError{reason: :closed} = exception}
-      when attempt < @max_retries ->
-        if Process.get(:elia_open_router_received) do
-          {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}
-        else
-          Logger.warning("OpenRouter connection was closed, retrying on a fresh one")
-          do_stream(body, api_key, config, on_event, attempt + 1)
-        end
-
+      # LLM-31, LLM-35: a pooled connection that went stale while idle, or a
+      # stream that stalled before any data arrived — neither has emitted an
+      # event, so a fresh attempt can't repeat one.
       {:error, exception} ->
-        {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}
+        if Retry.retryable?(exception, Process.get(:elia_open_router_received)) and
+             attempt < @max_retries do
+          Logger.warning(
+            "OpenRouter stream failed (#{Exception.message(exception)}), retrying on a fresh one"
+          )
+
+          do_stream(body, api_key, config, on_event, attempt + 1)
+        else
+          {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}
+        end
     end
   end
 

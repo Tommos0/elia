@@ -19,7 +19,7 @@ defmodule Elia.LLM.Anthropic do
 
   require Logger
 
-  alias Elia.LLM.{Message, SSE}
+  alias Elia.LLM.{Message, Retry, SSE}
 
   @api_version "2026-10-21"
   @fallback_beta "server-side-fallback-2026-07-01"
@@ -242,6 +242,11 @@ defmodule Elia.LLM.Anthropic do
   ## Transport
 
   defp do_stream(body, api_key, config, on_event, attempt) do
+    # LLM-30, LLM-35: whether this attempt has received any response data. Set
+    # before the request, so a transport error before the first chunk can be
+    # told apart from one after it.
+    Process.put(:elia_anthropic_received, false)
+
     options =
       Keyword.merge(
         [
@@ -249,8 +254,9 @@ defmodule Elia.LLM.Anthropic do
           json: body,
           headers: headers(api_key, body),
           retry: false,
-          receive_timeout: :timer.minutes(10),
+          receive_timeout: Retry.stream_idle_timeout(),
           into: fn {:data, chunk}, {req, resp} ->
+            Process.put(:elia_anthropic_received, true)
             {:cont, {req, handle_chunk(resp, chunk, on_event)}}
           end
         ],
@@ -271,18 +277,20 @@ defmodule Elia.LLM.Anthropic do
       {:ok, %Req.Response{status: status} = resp} ->
         {:error, "Anthropic API error #{status}: #{error_message(resp)}"}
 
-      # LLM-30: a pooled connection that went stale while idle.
-      {:error, %Req.TransportError{reason: :closed} = exception}
-      when attempt < @max_retries ->
-        if Process.get(:elia_anthropic_received) do
-          {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
-        else
-          Logger.warning("Anthropic connection was closed, retrying on a fresh one")
-          do_stream(body, api_key, config, on_event, attempt + 1)
-        end
-
+      # LLM-30, LLM-35: a pooled connection that went stale while idle, or a
+      # stream that stalled before any data arrived — neither has emitted an
+      # event, so a fresh attempt can't repeat one.
       {:error, exception} ->
-        {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
+        if Retry.retryable?(exception, Process.get(:elia_anthropic_received)) and
+             attempt < @max_retries do
+          Logger.warning(
+            "Anthropic stream failed (#{Exception.message(exception)}), retrying on a fresh one"
+          )
+
+          do_stream(body, api_key, config, on_event, attempt + 1)
+        else
+          {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
+        end
     end
   end
 

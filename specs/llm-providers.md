@@ -84,7 +84,7 @@ access to many other models.
   the app sat idle. Once any response data has been received the call is not
   retried, so no streamed event is ever emitted twice; it returns
   `{:error, "Anthropic API request failed: ..."}`. Other transport errors are
-  not retried.
+  not retried, except the stalled-stream timeout of LLM-35.
 - **LLM-31** LLM-30 also applies to OpenRouter's streaming call (with an
   `OpenRouter API request failed: ...` error), and to the `GET` requests of
   both providers (model list, key check, balance; their errors keep their
@@ -129,6 +129,26 @@ access to many other models.
   LLM-10. Other errors return the API's error message.
 - **LLM-24** Tool arguments that fail to parse become empty input, with the
   raw text kept in `invalid_input` (as LLM-11).
+
+### Streaming timeouts
+
+- **LLM-34** A streaming model request uses an idle timeout of 90 seconds by
+  default (`config :elia, :stream_idle_timeout`), not 10 minutes, so a stream
+  that stops receiving data is cut off and the turn fails in a minute and a
+  half instead of ten. It is an *idle* timeout — Req's `receive_timeout`, which
+  Finch applies per chunk — not a cap on the whole answer: any byte, a text or
+  reasoning delta as much as an SSE keep-alive comment, resets it, so a slow
+  but live stream runs as long as it needs. Both providers send it.
+- **LLM-35** A streaming call that ends in a transport timeout
+  (`Req.TransportError` with reason `:timeout`) *before any response data
+  arrived* — the stalled stream LLM-34 cuts off — is retried at once on a
+  fresh connection, up to two times, sharing the retry budget of LLM-10
+  (Anthropic) and LLM-23 (OpenRouter). Once any response data has been received
+  the call is not retried, since a partial stream cannot be replayed without
+  emitting its events twice; it returns `{:error, "… API request failed: …"}`,
+  as for a closed connection (LLM-30, LLM-31). Both providers' streaming calls
+  follow this rule; its two decisions (retry a stall that received nothing,
+  retry nothing once data has arrived) live in `Elia.LLM.Retry`.
 
 ### Credits
 
@@ -175,6 +195,9 @@ config :elia, Elia.LLM.OpenRouter,
   model: "anthropic/claude-opus-5.5",
   max_tokens: nil,               # model default
   effort: nil                    # "low" | "medium" | "high"
+
+# LLM-34: how long a stream may receive no data at all before it is cut off.
+config :elia, :stream_idle_timeout, 90_000
 ```
 
 Tests use `Elia.FakeLLM`.
@@ -187,7 +210,11 @@ Tests use `Elia.FakeLLM`.
 ## Tests
 
 `test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`,
-`test/elia/llm/message_test.exs`. The pairing rule (LLM-33) is covered where it
-is kept: `test/elia/llm/compaction_test.exs` (a call and its result are kept or
-dropped together) and `test/elia/agent_test.exs` (a stopped turn, a crash and an
-app restart each close every unanswered call, SESS-8, SESS-12, SESS-21).
+`test/elia/llm/retry_test.exs`, `test/elia/llm/message_test.exs`. The stream
+idle timeout and the stalled-stream retry (LLM-34, LLM-35) are also exercised
+over a real socket in `test/elia/llm/stream_timeout_test.exs`, since a
+`Req.Test` plug never applies `receive_timeout`. The pairing rule (LLM-33) is
+covered where it is kept: `test/elia/llm/compaction_test.exs` (a call and its
+result are kept or dropped together) and `test/elia/agent_test.exs` (a stopped
+turn, a crash and an app restart each close every unanswered call, SESS-8,
+SESS-12, SESS-21).
