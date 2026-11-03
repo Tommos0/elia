@@ -25,7 +25,7 @@ Each spec follows the same shape:
 ```markdown
 # <Feature name>
 
-Status: Implemented | Draft | Planned
+Status: Implemented | Draft | Planned | Retired
 
 <One paragraph: what the feature is and why it exists.>
 
@@ -68,13 +68,13 @@ deleting it.
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
 | [File tools](file-tools.md) | `FILE` | `read_file`, `write_file`, `edit_file` |
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
-| [Checkpoints](checkpoints.md) | `CKPT` | Git-backed workspace snapshots and rollback |
-| [Turn verification](verification.md) | `VERIFY` | `run_tests` and end-of-turn test runs with rollback |
+| [Checkpoints](checkpoints.md) | `CKPT` | Retired: per-chat worktrees replaced snapshots and rollback |
+| [Test runs](verification.md) | `VERIFY` | `run_tests`: running `mix test` in a chat's workspace |
 | [Hot reload](hot-reload.md) | `HOT` | Hot reload: the soft deploy mode, loading tested code into the running server |
 | [Guarded files](guarded-files.md) | `GUARD` | Retired: per-chat worktrees replaced it; the "never reload on request" rule moved to Deployment |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons and service worker so the app installs on a phone |
-| [Recovery](recovery.md) | `RECOVER` | `/recover` page and crash-page banner that roll back to a checkpoint without the app |
+| [Recovery](recovery.md) | `RECOVER` | Retired: per-chat worktrees and the deploy gate replaced `/recover` |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat; `list_tasks`/`await_task` report its status and result; `finish_task` returns a structured result |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
 | [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart |

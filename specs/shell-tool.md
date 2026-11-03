@@ -21,7 +21,8 @@ approved it.
 - **SHELL-5** Output longer than `max_output` characters (default 30,000) is
   cut in the middle and replaced with a marker that gives the number of
   characters removed.
-- **SHELL-6** The workspace is checkpointed before the command runs (CKPT-2).
+- ~~**SHELL-6** The workspace is checkpointed before the command runs
+  (CKPT-2).~~ Retired: nothing is checkpointed (CKPT).
 - **SHELL-7** The shell isn't sandboxed: an approved command can do anything,
   including get around the workspace policy. The approval prompt is the only
   safeguard.

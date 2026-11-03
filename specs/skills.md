@@ -27,12 +27,10 @@ system prompt from them. It can be reloaded while the app runs.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
   `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
-  `await_task`, `reset_task`,
-  [Sub-tasks](subtasks.md)) and
-  `self-modification` (`list_checkpoints`, `rollback`). The last
-  one is a chat's only when its project is Elia's own (PROJ-17); a sub-task
-  session, and only it, also gets the built-in `task` skill, which carries
-  `finish_task` (SUBTASK-1).
+  `await_task`, [Sub-tasks](subtasks.md)) and `self-modification` (instructions
+  only). The last one is a chat's only when its project is Elia's own (PROJ-17);
+  a sub-task session, and only it, also gets the built-in `task` skill, which
+  carries `finish_task` (SUBTASK-1).
 - **SKILL-8** The `harness` skill's instructions apply in every project: they
   tell the model to prefer a folder skill over changing code, to reload skills
   with `reload_skills`, and to run the tests before finishing. Folder skills
@@ -41,9 +39,7 @@ system prompt from them. It can be reloaded while the app runs.
   Elixir changes need the user's approval and only take effect after a deploy
   (DEPLOY-8); that when its work is done it commits it and merges its own branch
   into the trunk `master` itself (DEPLOY-13), which is where its part ends — the
-  user deploys, from Settings (DEPLOY-5–DEPLOY-7); that the workspace is
-  checkpointed before its first
-  change in a turn and that a failing `mix test` rolls the change back; and
+  user deploys, from Settings (DEPLOY-5–DEPLOY-7); and
   that the project is spec-driven: before changing Elixir code it updates or
   adds the feature's spec in `specs/` (see `specs/README.md`), keeps
   requirement IDs stable and cites the IDs it touched in the tests it writes.

@@ -2,27 +2,28 @@
 
 Read this before editing `lib/`, `config/`, `test/`, `mix.exs` or `skills/`.
 
-Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/checkpoints.md`, `specs/verification.md`, `specs/workspace-policy.md`, `specs/folder-skills.md`.
+Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `specs/workspace-policy.md`, `specs/folder-skills.md`.
 
 ## What needs approval
 
 - `skills/**` changes apply without asking, but a folder skill's tools always ask the user before running.
 - Elixir changes (`lib/`, `config/`, `test/`) need the user's approval.
-- The workspace is checkpointed (`Elia.Checkpoint`) before the first change of each turn.
-- When a turn that changed Elixir files ends, the harness runs `mix test`. If it fails, the changes are rolled back and you're told why. Run `run_tests` yourself before finishing.
 
 ## The live tree and chat worktrees
 
 - The live tree (`Elia.Workspace.runtime_root/0`, `config :elia, :runtime_root`, default: where the server was started) is where the server runs, where the code reloader reloads and where Elia's data (`.elia`) lives (DEPLOY-2). It is never edited by an agent.
-- A chat in Elia's own project works in its own git worktree, `<live tree>/.elia/worktrees/<chat id>`, on branch `chat/<chat id>` forked from the trunk `master` (DEPLOY-1, DEPLOY-13). That worktree is the chat's workspace root: the file and shell tools, checkpoints, `mix test` and the end-of-turn verification all run there, through `ctx[:workspace]`. A sub-task in Elia's own project works in its own worktree, branch `chat/<sub-task id>` forked from its parent's branch; its work stays there, for the parent agent to merge itself (DEPLOY-9, SUBTASK-23, SUBTASK-25). `spawn_task` returns as soon as the child has started and the parent goes on working; several children run at once, each in its own worktree, and the parent collects results with `list_tasks` and `await_task` (SUBTASK-2, SUBTASK-26, SUBTASK-27, SUBTASK-28).
+- A chat in Elia's own project works in its own git worktree, `<live tree>/.elia/worktrees/<chat id>`, on branch `chat/<chat id>` forked from the trunk `master` (DEPLOY-1, DEPLOY-13). That worktree is the chat's workspace root: the file and shell tools run there, as does `mix test`, through `ctx[:workspace]`. A sub-task in Elia's own project works in its own worktree, branch `chat/<sub-task id>` forked from its parent's branch; its work stays there, for the parent agent to merge itself (DEPLOY-9, SUBTASK-23, SUBTASK-25). `spawn_task` returns as soon as the child has started and the parent goes on working; several children run at once, each in its own worktree, and the parent collects results with `list_tasks` and `await_task` (SUBTASK-2, SUBTASK-26, SUBTASK-27, SUBTASK-28).
 - Chats in other projects work in the project's folder, with no worktree (PROJ-12).
 - A chat gets a worktree only when the live tree is *set up for deployment*: checked out on the branch `live`, with a `master` trunk at or ahead of it (DEPLOY-14, `Elia.Deploy.deployable/1`). Otherwise it works in the live tree itself. Set it up once with `git checkout -b live` and `git branch master`; a tree whose trunk is behind `live` needs `git branch -f master live` once.
-- **Never** edit `lib/elia/harness.ex`, `lib/elia/checkpoint.ex` or `lib/elia/workspace.ex` to weaken the guardrails.
+- **Never** edit `lib/elia/harness.ex` or `lib/elia/workspace.ex` to weaken the guardrails.
+
+## Tests
+
+- A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run `run_tests` (or `MIX_ENV=test mix precommit`) before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5).
 
 ## Recovery
 
-- In the dev server, `/recover` (`EliaWeb.Recovery`, spec: `specs/recovery.md`) rolls the workspace back to a checkpoint. It sits before the code reloader in the endpoint, so it works when the app doesn't compile. Crash pages (HTML 500) get a banner linking to it.
-- Don't make it depend on reloadable app code.
+- There is no checkpoint to roll back to and no `/recover` page (`specs/checkpoints.md`, `specs/recovery.md`): a chat's work is on its own branch, and a deploy refuses to load a tree whose suite or compile fails (DEPLOY-5, HOT-4).
 
 ## Deploying
 

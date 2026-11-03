@@ -1,8 +1,9 @@
 # Sub-tasks
 
 Status: Implemented (phases 1 to 3 of [the plan](plans/subagents.md): core,
-task cards, a nested chat list and a task header in the chat UI, and cancel,
-budget, crash recovery and reset; phase 4: concurrent sub-tasks)
+task cards, a nested chat list and a task header in the chat UI, cancel, budget
+and crash recovery; the reset tool is retired, SUBTASK-22. Phase 4: concurrent
+sub-tasks)
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context and get back a short structured result. The child is an
@@ -56,8 +57,8 @@ its own workspace; children that would share one workspace are serialized
 - **SUBTASK-5** Otherwise `spawn_task` records the start commit (`HEAD`),
   creates a chat with a new id and saved task metadata (`parent_id`, `title`,
   `brief`, `started_at`, `status: "running"`, `start_commit`; STORE-16), starts
-  its session with the parent's loop options (so the same model request fields
-  and `verify` setting) except `skills` and `max_steps`, and sends it the
+  its session with the parent's loop options (so the same model request fields)
+  except `skills` and `max_steps`, and sends it the
   brief as its first user message. The message starts with a short preamble: it
   is a sub-task agent, works only from this brief, commits its work, ends by
   calling `finish_task`, does not wait for the user, and lists unresolved
@@ -81,9 +82,8 @@ its own workspace; children that would share one workspace are serialized
   watcher process, started at the spawn (SUBTASK-28), watches for that, builds
   the result and records it; the parent's `spawn_task` call doesn't wait. If the
   child session dies first, the result is `status: "failed"` with a summary
-  saying so. The child's turn is verified, checkpointed and retried like any
-  turn (VERIFY-3, LOOP-13, LOOP-14), so the end is only reached after
-  verification.
+  saying so. The child's turn is an ordinary turn (LOOP), so nothing
+  else happens at its end.
 - **SUBTASK-9** The result is a JSON object
   `{"status", "summary", "commit", "files", "questions"}`. `status` is what
   `finish_task` recorded, `"unfinished"` (SUBTASK-10) or `"failed"`. The
@@ -114,13 +114,13 @@ its own workspace; children that would share one workspace are serialized
   `status` and the `result` (STORE-16, SESS-18), its entry is released, and the
   final `{:subtask, …}` event is broadcast.
 
-### Interaction with checkpoints and verification
+### Retired: interaction with checkpoints and verification
 
 - ~~**SUBTASK-14**~~ *Retired (phase 4).* It used to replace the parent's turn
   checkpoint when the child ended, so a rollback couldn't wipe the child's
-  work. The child now leaves the parent's workspace alone (SUBTASK-23) and
-  `spawn_task` doesn't block the parent, so the parent's checkpoint is simply
-  left where it is.
+  work. The child leaves the parent's workspace alone (SUBTASK-23) and
+  `spawn_task` doesn't block the parent, so there was nothing left to replace —
+  and checkpoints themselves are gone now (CKPT, VERIFY).
 
 ### UI support (phase 2)
 
@@ -165,7 +165,7 @@ its own workspace; children that would share one workspace are serialized
   `"error"` (the turn ended with another error). When the status isn't `"done"`
   it also has `start_commit` and `tree_clean` (`git status --porcelain` is
   empty), so the parent knows whether uncommitted changes were left behind.
-- **SUBTASK-22** The tool `reset_task` (parent only, in the skill `tasks`,
+- ~~**SUBTASK-22** The tool `reset_task` (parent only, in the skill `tasks`,
   approval `:required`) takes `task_id` (from a result) and resets the workspace
   to the task's `start_commit` with `git reset --hard` and `git clean -fd`
   (ignored files are kept), then replaces the caller's turn checkpoint
@@ -180,18 +180,22 @@ its own workspace; children that would share one workspace are serialized
   that task itself is still running (SUBTASK-11); the task has no
   `start_commit`; or the `start_commit` isn't an ancestor of `HEAD`. A task
   that was interrupted by a restart (SUBTASK-20) can be reset. Its output lists
-  what was discarded (commits and changed files).
+  what was discarded (commits and changed files).~~ Retired: in a worktree a
+  sub-task's work stays on its own branch `chat/<task_id>` and is never merged
+  (SUBTASK-25), so discarding it is ordinary git in that worktree — or simply
+  deleting the sub-task's chat, which removes the worktree and prunes the branch
+  (DEPLOY-10). There is also no caller checkpoint to replace (CKPT).
 - **SUBTASK-23** A sub-task in Elia's own project works in its own git
   worktree, on branch `chat/<sub-task id>` forked from its parent's branch
   `chat/<parent id>` when it starts (DEPLOY-9). That worktree is its workspace:
-  the file and shell tools, checkpoints and verification run there (DEPLOY-1),
-  so its in-progress and uncommitted work never touches the parent's worktree.
+  the file and shell tools and `mix test` run there (DEPLOY-1), so its
+  in-progress and uncommitted work never touches the parent's worktree.
   In another project, or when the parent has no worktree, the sub-task shares
   the parent's workspace, as before (DEPLOY-3).
 - **SUBTASK-25** The harness never merges a sub-task's work into the parent's
   branch itself. A sub-task's committed work stays on its own branch
   `chat/<sub-task id>` (or, when it shares the parent's workspace, in the
-  parent's workspace as before); `reset_task` (SUBTASK-22) discards it. Instead
+  parent's workspace as before), for the parent to merge or leave alone. Instead
   the parent is told, as a general instruction in the `tasks` skill and in the
   `spawn_task` result, how to bring it in itself: merge the branch when it wants
   the work (`git merge --ff-only chat/<task_id>`), rebasing and resolving
@@ -246,7 +250,7 @@ Read-only children (phase 5).
 
 ## Implementation
 
-`Elia.Tasks` (the registry of running children, spawn, await, cancel, reset),
+`Elia.Tasks` (the registry of running children, spawn, await, cancel),
 `Elia.Skills.Tasks` (the skills and tools), `Elia.Store` (metadata),
 `Elia.Agent.Session` (task metadata, `selection` option, stop, dangling calls),
 `Elia.Agent.Loop` (`max_steps`, skill functions, tool context),
@@ -256,9 +260,9 @@ Core files touched: `lib/elia/agent/loop.ex`, `lib/elia/skills.ex`,
 `lib/elia/skills/tasks.ex`, `lib/elia/deploy.ex`, `config/config.exs`.
 (`lib/elia/tasks.ex` and `lib/elia/deploy.ex` carry the per-sub-task worktree
 and the concurrent registry, SUBTASK-11, SUBTASK-23, SUBTASK-26 to SUBTASK-28.
-`lib/elia/checkpoint.ex` and `lib/elia/harness.ex` are no longer involved:
-retiring SUBTASK-14 removed the `Checkpoint.rebase/1` and
-`Harness.core_elixir_changed?/1` calls from the spawn path.)
+Neither `Elia.Checkpoint` nor
+`Elia.Harness.verify/2` exists any more: retiring SUBTASK-14 and SUBTASK-22
+removed their last callers (see `specs/checkpoints.md`).)
 
 ## Tests
 

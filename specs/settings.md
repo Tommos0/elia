@@ -21,8 +21,7 @@ where the running server is brought up to date with the trunk `master`.
   `0600`, since it holds secrets.
 - **CONF-3** Every write is synced to disk before it returns, so settings
   survive a crash or restart.
-- **CONF-4** Settings are outside the workspace, so they are never committed,
-  checkpointed or rolled back.
+- **CONF-4** Settings are outside the workspace, so they are never committed.
 
 ### API keys
 

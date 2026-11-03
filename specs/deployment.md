@@ -35,12 +35,11 @@ gate.
 
 - **DEPLOY-1** A chat in Elia's own project works in its own git worktree, on
   branch `chat/<chat id>`, forked from the trunk `master` when the chat starts.
-  That worktree is the chat's workspace root: the file and shell tools,
-  checkpoints and end-of-turn verification operate there (PROJ-12).
+  That worktree is the chat's workspace root: the file and shell tools operate
+  there (PROJ-12).
 - **DEPLOY-2** The live tree is where the server runs, where the code reloader
   reloads, and where Elia's data lives: `.elia` sits directly under it, so
-  chats and checkpoints are the same across a chat's worktrees and across a
-  deploy. It is `config :elia, :runtime_root` (default: the server's working
+  chats are the same across a chat's worktrees and across a deploy. It is `config :elia, :runtime_root` (default: the server's working
   directory).
 - **DEPLOY-3** Elia's own project's folder is the live tree (PROJ-3), while
   each of its chats works in a worktree (DEPLOY-1). Chats in other projects are
@@ -111,7 +110,7 @@ gate.
 
 - **DEPLOY-11** There is no guarded-file list: `Elia.Guarded` and GUARD-1,
   GUARD-6 and GUARD-9–GUARD-13 are retired. "Never edit `harness.ex`,
-  `checkpoint.ex` or `workspace.ex` to weaken them" stays as prose in
+  `workspace.ex` to weaken them" stays as prose in
   `AGENTS.md` and the self-modification skill. The no-op request behaviour
   (GUARD-8) is kept by DEPLOY-8.
 
@@ -120,7 +119,7 @@ gate.
 HOT (hot reload is a deploy mode, with no tool), CONF (the Settings page's
 deployment section), RESTART (the restart control), PROJ (per-chat worktrees
 for Elia's own project; the live tree), SKILL and APPR (the
-`self-modification` skill's tools), CKPT (the `rollback` message), SUBTASK
+`self-modification` skill's tools), CKPT and RECOVER (both retired), SUBTASK
 (the sub-task's own worktree).
 
 ## Implementation
@@ -129,8 +128,7 @@ for Elia's own project; the live tree), SKILL and APPR (the
 restart, `deployable/1`, `status/1`, the inert request reloader),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
-workspace), `Elia.Agent.Loop` (verification in that workspace),
-`Elia.Checkpoint` and `Elia.Harness` (snapshots, tests and reloading per
+workspace), `Elia.Agent.Loop`, `Elia.Harness` (running the tests in that
 workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}`,
 `Elia.Tasks` (the sub-task's worktree, the repository it runs git in),
 `Elia.Store.delete/1` (removes the worktree), `EliaWeb.SettingsLive` (the

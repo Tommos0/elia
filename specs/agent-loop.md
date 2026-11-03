@@ -3,8 +3,7 @@
 Status: Implemented
 
 One turn of the agent: call the model, run the tools it asks for, send the
-results back, and repeat until the model answers without calling a tool. At
-the end, the turn's changes are verified.
+results back, and repeat until the model answers without calling a tool.
 
 ## Requirements
 
@@ -40,13 +39,15 @@ the end, the turn's changes are verified.
   `:done`.
 - **LOOP-12** A tool that raises gets the error result
   "Tool crashed: <message>"; the turn continues.
-- **LOOP-13** When the model finishes, the turn is verified (VERIFY-3). If
+- ~~**LOOP-13** When the model finishes, the turn is verified (VERIFY-3). If
   verification rolled the workspace back, the model gets a harness message
-  explaining the rollback, with the test output, and the turn continues.
-- **LOOP-14** If a second verification in the same turn rolls back, the turn
-  ends with an error saying tests kept failing.
-- **LOOP-15** Verification can be disabled with the `verify: false` option
-  (used in tests).
+  explaining the rollback, with the test output, and the turn continues.~~
+  Retired: a turn is not verified (see `specs/verification.md`).
+- ~~**LOOP-14** If a second verification in the same turn rolls back, the turn
+  ends with an error saying tests kept failing.~~ Retired: nothing is rolled
+  back.
+- ~~**LOOP-15** Verification can be disabled with the `verify: false` option
+  (used in tests).~~ Retired: there is no verification step to disable.
 
 - **LOOP-16** The `max_steps` option sets the step limit of LOOP-3 for the
   turn. Sessions pass it from their loop options (used by sub-tasks, SUBTASK-12).

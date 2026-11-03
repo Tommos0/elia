@@ -28,12 +28,11 @@ refused.
   | --- | --- |
   | `shell` | always |
   | folder skill script tools | always |
-  | `spawn_task`, `reset_task` | always (SUBTASK-2, SUBTASK-22) |
+  | `spawn_task` | always (SUBTASK-2) |
   | `list_tasks`, `await_task` | never (SUBTASK-26, SUBTASK-27) |
   | `read_file` | only outside the workspace |
   | `write_file`, `edit_file` | see FILE-5 |
-  | `rollback` | always |
-  | `reload_skills`, `run_tests`, `list_checkpoints`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
+  | `reload_skills`, `run_tests`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
 
 ### Auto-approval
 
@@ -60,9 +59,9 @@ per-tool switch; it never loosens what a tool's own policy refuses.
   is rejected with `{:error, :not_approvable}`. A name already in the set can
   always be turned off, e.g. after its skill was removed.
 
-Auto-approving `shell`, `write_file`/`edit_file`, script tools or `rollback`
-lets the model act in that chat without review. The
-UI says so next to the switch (UI-39).
+Auto-approving `shell`, `write_file`/`edit_file` or a script tool lets the
+model act in that chat without review. The UI says so next to the switch
+(UI-39).
 
 ## Implementation
 

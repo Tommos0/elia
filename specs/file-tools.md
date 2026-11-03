@@ -23,9 +23,8 @@ workspace class.
 - **FILE-7** `edit_file` replaces `old_string` with `new_string`. It fails if
   `old_string` is empty or not found, or if it occurs more than once and
   `replace_all` isn't set. The error says how many times it occurs.
-- **FILE-8** Both write tools checkpoint the workspace before their first
-  change in a turn (CKPT-2). `edit_file` checks the replacement before taking
-  the checkpoint.
+- **FILE-8** `edit_file` checks that `old_string` occurs as requested (FILE-7)
+  before it writes anything.
 - **FILE-9** Success results name the relative path and the bytes written or
   the number of replacements.
 - **FILE-10** The skill's instructions open by telling the model to use these

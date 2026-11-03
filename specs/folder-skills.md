@@ -34,9 +34,8 @@ itself.
   (PROJ-12).
 - **FOLDER-8** Script tools always need approval, because the agent can write
   them without approval (WS-1).
-- **FOLDER-9** A script tool checkpoints the workspace before running
-  (CKPT-2). Its output and exit status are formatted like the shell tool's
-  (SHELL-4).
+- **FOLDER-9** A script tool's output and exit status are formatted like the
+  shell tool's (SHELL-4).
 
 ## Implementation
 
