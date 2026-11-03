@@ -10,7 +10,9 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=@ROOT@
 Environment=PATH=@PATH@
-Environment=MIX_ENV=dev
+# The environment is not pinned here: the server runs in Mix's default dev env
+# either way, and a value would be inherited by every command it spawns
+# (RESTART-8, ISOL-24).
 # Optional: API keys, PORT, ... as KEY=value lines. The file may be missing.
 EnvironmentFile=-%h/.config/elia/env
 ExecStart=@ROOT@/bin/serve
