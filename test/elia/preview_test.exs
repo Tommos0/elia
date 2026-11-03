@@ -34,6 +34,21 @@ defmodule Elia.PreviewTest do
     end
   end
 
+  # PREVIEW-13
+  describe "the colour scheme a preview emulates" do
+    test "is the one `ELIA_PREVIEW_THEME` names" do
+      assert Preview.theme("dark") == :dark
+      assert Preview.theme("light") == :light
+    end
+
+    test "is the browser's own default otherwise" do
+      assert Preview.theme(nil) == nil
+      assert Preview.theme("") == nil
+      assert Preview.theme("darkk") == nil
+      assert Preview.theme("system") == nil
+    end
+  end
+
   # PREVIEW-5
   describe "the chat a preview's link is for" do
     test "is the worktree's own name" do

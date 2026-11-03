@@ -37,6 +37,11 @@ have something to render.
   `ELIA_PREVIEW_HEIGHT` (default 1280 × 900, so a narrow width previews the
   small-screen layout) and waits `ELIA_PREVIEW_WAIT` milliseconds after load
   (default 500) so client hooks have run. It captures the whole scrollable page.
+- **PREVIEW-13** It emulates the colour scheme `ELIA_PREVIEW_THEME` names —
+  `dark` or `light` — through the browser's `prefers-color-scheme`, which the
+  app's theme script follows when no theme is stored (`data-theme="dark"`).
+  Unset or anything else leaves the browser's own default. So a preview can
+  show the dark theme (CONF-17), or the light one on a machine set to dark.
 - **PREVIEW-4** It writes one PNG per path under `tmp/preview/` in that
   workspace (gitignored), named `<n>-<slug>.png`: `n` is the path's position in
   the arguments and the slug is the path with anything that isn't a letter or
@@ -110,6 +115,7 @@ bin/preview                      # the empty state and the sample chat
 bin/preview @chat                # just the sample chat
 bin/preview / /files /settings   # three pages, three PNGs, three links
 ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
+ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 ```
 
 | Variable | Default | Meaning |
@@ -118,6 +124,7 @@ ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 | `ELIA_PREVIEW_WIDTH` | `1280` | viewport width |
 | `ELIA_PREVIEW_HEIGHT` | `900` | viewport height |
 | `ELIA_PREVIEW_WAIT` | `500` | milliseconds to settle after load |
+| `ELIA_PREVIEW_THEME` | *(browser default)* | colour scheme to emulate: `dark` or `light` |
 
 `tmp/preview/` is gitignored, so a preview is never committed and never reaches
 a deploy.

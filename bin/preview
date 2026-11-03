@@ -6,6 +6,7 @@
 #   bin/preview @chat                # just the sample chat
 #   bin/preview / /files /settings   # pages of your choosing
 #   ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
+#   ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 #
 # It prints a Markdown image link per picture, which is what shows a screenshot
 # in the chat. The pictures go to tmp/preview/ (gitignored).
@@ -15,6 +16,7 @@
 #   ELIA_PREVIEW_WIDTH   viewport width  (default 1280)
 #   ELIA_PREVIEW_HEIGHT  viewport height (default 900)
 #   ELIA_PREVIEW_WAIT    milliseconds to settle after a page loads (default 500)
+#   ELIA_PREVIEW_THEME   colour scheme to emulate: dark or light
 
 cd "$(dirname "$0")/.." || exit 1
 

@@ -18,6 +18,7 @@ defmodule EliaWeb.PreviewTest do
       bin/preview
       bin/preview / /files
       ELIA_PREVIEW_WIDTH=390 bin/preview @chat
+      ELIA_PREVIEW_THEME=dark bin/preview @chat
   """
 
   use PhoenixTest.Playwright.Case, async: false
@@ -38,16 +39,29 @@ defmodule EliaWeb.PreviewTest do
     # PREVIEW-3: the viewport comes from the environment, so a narrow width
     # previews the small-screen layout. This runs before the browser context is
     # created, which is where a viewport applies.
+    # PREVIEW-13: so does the colour scheme, as the app's theme script reads it.
     config = Application.get_env(:phoenix_test, :playwright, [])
+
+    opts = [
+      viewport: %{
+        width: env_int("ELIA_PREVIEW_WIDTH", 1280),
+        height: env_int("ELIA_PREVIEW_HEIGHT", 900)
+      }
+    ]
+
+    opts =
+      case Preview.theme(System.get_env("ELIA_PREVIEW_THEME")) do
+        nil -> opts
+        theme -> Keyword.put(opts, :color_scheme, theme)
+      end
 
     Application.put_env(
       :phoenix_test,
       :playwright,
-      Keyword.put(config, :browser_context_opts,
-        viewport: %{
-          width: env_int("ELIA_PREVIEW_WIDTH", 1280),
-          height: env_int("ELIA_PREVIEW_HEIGHT", 900)
-        }
+      Keyword.put(
+        config,
+        :browser_context_opts,
+        Keyword.merge(Keyword.get(config, :browser_context_opts, []), opts)
       )
     )
 

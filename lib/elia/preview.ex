@@ -55,6 +55,17 @@ defmodule Elia.Preview do
   def resolve_path(path), do: path
 
   @doc """
+  The colour scheme a preview emulates (PREVIEW-13): `:dark` or `:light` when
+  `ELIA_PREVIEW_THEME` names one, else `nil` for the browser's own default. The
+  scheme reaches the app as `prefers-color-scheme`, which its theme script
+  follows when no theme is stored, so `:dark` renders the dark theme (CONF-17).
+  """
+  @spec theme(binary() | nil) :: :dark | :light | nil
+  def theme("dark"), do: :dark
+  def theme("light"), do: :light
+  def theme(_), do: nil
+
+  @doc """
   The URL the chat shows `file` at (PREVIEW-5, PREVIEW-7). The running app
   serves it from the chat's own worktree, whoever is looking.
   """
