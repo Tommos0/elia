@@ -773,14 +773,39 @@ defmodule Elia.Tasks do
     :exit, _ -> :ok
   end
 
-  defp git(args, root), do: System.cmd("git", args, cd: root, stderr_to_stdout: true)
+  # ISOL-1: the harness's own git calls go through the jail like every other
+  # process it spawns. They run in a chat's workspace — a worktree for a chat in
+  # Elia's own project — so the `:worktree` profile binds the tree, the
+  # repository's git directory, which a worktree's `.git` pointer file leads to
+  # (ISOL-13), and the shared dependencies read-only. They are local calls, so
+  # nothing needs the network (ISOL-11).
+  defp git(args, root), do: git_cmd(args, root)
 
-  defp git_out(args, root, trim? \\ true) do
-    case System.cmd("git", args, cd: root, stderr_to_stdout: true) do
+  # The output of a git call in `root`, or `nil` when it fails (public for the
+  # tests that cover the jail these calls run in).
+  @doc false
+  def git_out(args, root, trim? \\ true) do
+    case git_cmd(args, root) do
       {out, 0} -> if trim?, do: String.trim(out), else: out
       _ -> nil
     end
   end
+
+  # `Elia.Shell.run/2` runs a script, so the arguments are quoted for the shell
+  # on the other side of it. The result is the `{output, status}` pair
+  # `System.cmd/3` gave, with a timeout counting as a failure (SHELL-3), which
+  # no caller of these calls has to tell apart from git exiting non-zero.
+  defp git_cmd(args, root) do
+    command = Enum.map_join(["git" | args], " ", &quote_arg/1)
+
+    case Elia.Shell.run(command, cd: root) do
+      {:ok, out, status} -> {out, status}
+      {:timeout, out} -> {out, 1}
+    end
+  end
+
+  # POSIX single-quoting, which bash and `sh` both read as one word.
+  defp quote_arg(arg), do: "'" <> String.replace(arg, "'", "'\\''") <> "'"
 
   ## Server
 
