@@ -105,10 +105,11 @@ its own workspace; children that would share one workspace are serialized
   child. A spawn is refused (SUBTASK-4) when an active entry has the same
   workspace root, so a tree has at most one writer at a time; children in
   different worktrees (SUBTASK-23) run at once.
-- **SUBTASK-12** The child's loop step limit is a loop option (LOOP-16),
-  defaulting to the loop's own default (LOOP-3). It isn't in `spawn_task`'s
+- **SUBTASK-12** The child's step limit becomes the child chat's own limit
+  (LIMIT-2, LIMIT-5), defaulting to the loop's own default (LOOP-3). It isn't in
+  `spawn_task`'s
   schema, so the model doesn't choose it; a caller may still pass `max_steps`
-  (default 100, at most 100) to override it, which tests use to reach the limit
+  (default 100, at most 100) to set it, which tests use to reach the limit
   quickly. Reaching it pauses the child's turn (SUBTASK-24).
 - **SUBTASK-13** When the child ends, its saved metadata gets the final
   `status` and the `result` (STORE-16, SESS-18), its entry is released, and the
@@ -147,7 +148,9 @@ its own workspace; children that would share one workspace are serialized
   at most 120; the application setting `:task_minutes` changes the default). The
   time a child spends with its status `:awaiting_approval` doesn't count. When
   the time is up, the child's turn pauses (SUBTASK-24). A child that hits its
-  step limit (SUBTASK-12) pauses the same way.
+  step limit (SUBTASK-12) pauses the same way. Both are set as the child
+  chat's own limits when it is spawned (LIMIT-5), so from then on they belong
+  to that chat and can be changed in its settings page (LIMIT-6).
 - **SUBTASK-19** If a child's watcher process (SUBTASK-28) dies while the child
   is still running (it crashed), `Elia.Tasks` finishes the job itself without
   blocking the server: the child's turn is stopped, the saved status becomes
@@ -202,8 +205,9 @@ its own workspace; children that would share one workspace are serialized
   conflicts when its own branch has moved. So the merge is the parent agent's
   decision, not a coded step, which lets several sub-tasks be merged in any
   order (or discarded) and keeps a concurrent-spawn design possible.
-- **SUBTASK-24** A child runs with the loop's `:pause_on_limit` and a
-  `:budget_ms` from `max_minutes` (LOOP-19, LOOP-20), so a limit pauses its turn
+- **SUBTASK-24** A child's limits are the ones set at its spawn — `max_steps`
+  from SUBTASK-12 and `max_minutes` from SUBTASK-18, with `pause_on_limit` on
+  (LIMIT-5) — so a limit pauses its turn
   instead of ending it: the child's session status becomes `:paused` (SESS-27)
   and its watcher (SUBTASK-28) — and so an `await_task` call on it
   (SUBTASK-27) — keeps waiting, with no deadline of its own. The user decides

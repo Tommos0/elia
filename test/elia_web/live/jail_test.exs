@@ -20,26 +20,46 @@ defmodule EliaWeb.JailTest do
     %{id: id}
   end
 
-  # UI-67, SESS-30
-  test "the composer has a jail switch next to the model picker and auto-approve", %{
+  defp settings(conn, id), do: live(conn, ~p"/c/#{id}/settings")
+
+  # UI-67, CSET-5: the switch sits in the Jail section, with its state written
+  # out, and the chat's other settings are on the same page.
+  test "the chat settings page has the jail switch, with its state in words", %{
+    conn: conn,
+    id: id
+  } do
+    {:ok, view, _html} = settings(conn, id)
+
+    assert has_element?(view, "#settings-jail #jail-toggle[role='switch'][aria-checked='true']")
+    assert has_element?(view, "#jail-state", "Jailed")
+    refute has_element?(view, "#jail-warning")
+
+    # The controls the composer used to hold are on this page too (CSET-5).
+    assert has_element?(view, "#settings-model #model-picker-button")
+    assert has_element?(view, "#settings-auto-approve #auto-approve-button")
+  end
+
+  # CSET-8: the composer keeps one link to that page, carrying the model in use,
+  # and no longer the picker, the auto-approve button or the switch.
+  test "the composer links to the settings page instead of holding the controls", %{
     conn: conn,
     id: id
   } do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
-    assert has_element?(view, "#model-picker-button")
-    assert has_element?(view, "#auto-approve-button")
-    assert has_element?(view, "#jail-toggle[role='switch'][aria-checked='true']")
-    assert has_element?(view, "#jail-state", "Jailed")
-    refute has_element?(view, "#jail-warning")
+    assert has_element?(view, "#chat-settings-link[href='/c/#{id}/settings']")
+    assert has_element?(view, "#chat-settings-model")
+    refute has_element?(view, "#model-picker-button")
+    refute has_element?(view, "#auto-approve-button")
+    refute has_element?(view, "#jail-toggle")
   end
 
-  # UI-67, SESS-30, ISOL-16
+  # UI-67, SESS-30, ISOL-16, CSET-4
   test "the switch turns the chat's jail off and on, and says what that means", %{
     conn: conn,
     id: id
   } do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
 
     view |> element("#jail-toggle") |> render_click()
     assert has_element?(view, "#jail-toggle[aria-checked='false']")
@@ -58,10 +78,11 @@ defmodule EliaWeb.JailTest do
     refute has_element?(view, "#jail-warning")
   end
 
-  # UI-67, SESS-30: the switch follows `{:jail, on?}`, so every tab agrees.
-  test "every tab on the chat follows the switch", %{conn: conn, id: id} do
-    {:ok, first, _} = live(conn, ~p"/c/#{id}")
-    {:ok, second, _} = live(conn, ~p"/c/#{id}")
+  # UI-67, SESS-30, CSET-3: the switch follows `{:jail, on?}`, so every view of
+  # the chat agrees — a second tab here.
+  test "every view of the chat follows the switch", %{conn: conn, id: id} do
+    {:ok, first, _} = settings(conn, id)
+    {:ok, second, _} = settings(conn, id)
 
     first |> element("#jail-toggle") |> render_click()
 
@@ -75,7 +96,7 @@ defmodule EliaWeb.JailTest do
   test "a chat whose jail is off shows it when opened again", %{conn: conn, id: id} do
     :ok = Elia.Store.save(id, [Message.user("hi")], jail: false)
 
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#jail-toggle[aria-checked='false']")
     assert has_element?(view, "#jail-state", "Not jailed")
   end
@@ -86,7 +107,7 @@ defmodule EliaWeb.JailTest do
     Application.put_env(:elia, Elia.Shell, jail: true, bwrap: "/nonexistent/bwrap")
     on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
 
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
 
     assert has_element?(view, "#jail-toggle[disabled]")
     # The chat is not shown as protected where it isn't.
@@ -97,7 +118,38 @@ defmodule EliaWeb.JailTest do
     assert has_element?(view, "#jail-toggle[aria-checked='false']")
   end
 
-  # UI-69, ISOL-17
+  # CSET-9, UI-68, ISOL-17: the chat page still says where commands run, next to
+  # its settings link, since that is where they run.
+  test "the chat page says when its commands run unjailed", %{conn: conn, id: id} do
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    refute has_element?(view, "#jail-warning")
+
+    # Turned off here (through the session, as the settings page does)...
+    :ok = Agent.set_jail(id, false)
+
+    # ...the chat page says so, without a reload.
+    render(view)
+    assert has_element?(view, "#jail-warning", "credentials")
+    refute has_element?(view, "#jail-toggle")
+
+    :ok = Agent.set_jail(id, true)
+    render(view)
+    refute has_element?(view, "#jail-warning")
+  end
+
+  # CSET-9, UI-68, ISOL-20
+  test "with no jail on the host the chat page says so", %{conn: conn, id: id} do
+    previous = Application.get_env(:elia, Elia.Shell)
+    Application.put_env(:elia, Elia.Shell, jail: true, bwrap: "/nonexistent/bwrap")
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    assert has_element?(view, "#jail-unavailable")
+    refute has_element?(view, "#jail-warning")
+  end
+
+  # UI-69, ISOL-17, CSET-4: the jail turned off on the settings page is the jail
+  # the chat's commands run under.
   test "an approval prompt in a chat whose jail is off says the command runs unjailed", %{
     conn: conn,
     id: id
@@ -106,11 +158,12 @@ defmodule EliaWeb.JailTest do
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
 
+    {:ok, settings, _html} = settings(conn, id)
+    settings |> element("#jail-toggle") |> render_click()
+    assert has_element?(settings, "#jail-state", "Not jailed")
+
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
     Agent.subscribe(id)
-
-    view |> element("#jail-toggle") |> render_click()
-    assert has_element?(view, "#jail-state", "Not jailed")
 
     view |> form("#chat-form", chat: %{text: "go"}) |> render_submit()
     assert_receive {:agent, ^id, {:status, :awaiting_approval}}, 5000

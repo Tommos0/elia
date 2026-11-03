@@ -27,6 +27,7 @@ progress so any number of UIs can follow it.
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
   `{:jail, on?}` (the chat's jail setting changed, SESS-30),
+  `{:limits, limits}` (the chat's turn limits changed, SESS-31, LIMIT-2),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
@@ -36,7 +37,8 @@ progress so any number of UIs can follow it.
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
-  auto-approved tool names (sorted list), its jail setting (ISOL-16), its task
+  auto-approved tool names (sorted list), its jail setting (ISOL-16), its turn
+  limits (SESS-31, LIMIT-1), its task
   metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
   compaction state (`compaction`, COMPACT-24) and its pause message (`pause`,
@@ -65,8 +67,8 @@ progress so any number of UIs can follow it.
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
   their defaults and the saved model selection (SESS-14), auto-approved
-  tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24) and jail
-  setting (SESS-30) are
+  tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24), jail
+  setting (SESS-30) and turn limits (SESS-31) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
@@ -82,9 +84,10 @@ progress so any number of UIs can follow it.
   is allowed mid-turn (ISOL-19).
 
 - **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16),
-  `selection` (a model selection, MODEL-1) and `auto_approve` (a list of
-  tool-name strings, APPR-8) set the new session's values instead of the saved
-  ones. None stores the selection as the default model (MODEL-15). The session
+  `selection` (a model selection, MODEL-1), `auto_approve` (a list of
+  tool-name strings, APPR-8) and `limits` (turn limits, SESS-31) set the new
+  session's values instead of the saved ones. None stores the selection as the
+  default model (MODEL-15). The session
   saves its task metadata with the history (STORE-16), and a session whose state
   predates the `task` field is upgraded as in SESS-15.
 - **SESS-18** `Elia.Agent.update_task/2` (chat id, map of changes) merges the
@@ -158,6 +161,15 @@ progress so any number of UIs can follow it.
   then removes the saved chat (STORE-23). A chat with no session is simply
   removed. It returns `:ok`, and `{:error, :invalid_id}` for an invalid id
   (STORE-4).
+
+- **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
+  session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
+  `Elia.Agent.set_limits/2` (chat id, a map of changes) sets this chat's step
+  limit, time budget and whether a limit pauses the turn (LIMIT-1), saves them
+  with the chat once it has messages (as SESS-14, STORE-27) and broadcasts
+  `{:limits, limits}` (SESS-6), so every view of the chat agrees. It is allowed
+  mid-turn (LIMIT-3), and `snapshot/1` carries them (SESS-7). A turn is started
+  with them without overriding an option the caller passed explicitly (LIMIT-3).
 
 ## Out of scope
 

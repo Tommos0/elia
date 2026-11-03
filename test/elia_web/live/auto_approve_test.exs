@@ -15,14 +15,20 @@ defmodule EliaWeb.AutoApproveTest do
 
   defp open_popover(view), do: view |> element("#auto-approve-button") |> render_click()
 
-  # UI-38
-  test "the composer has an auto-approve button that opens and closes a popover", %{
+  defp settings(conn, id), do: live(conn, ~p"/c/#{id}/settings")
+
+  # UI-38, CSET-5
+  test "the chat settings page has an auto-approve button that opens and closes a popover", %{
     conn: conn,
     id: id
   } do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
 
-    assert has_element?(view, "#auto-approve-button[aria-expanded='false']")
+    assert has_element?(
+             view,
+             "#settings-auto-approve #auto-approve-button[aria-expanded='false']"
+           )
+
     refute has_element?(view, "#auto-approve-count")
     refute has_element?(view, "#auto-approve")
 
@@ -44,7 +50,7 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-39, APPR-13
   test "the popover lists only tools that can need approval", %{conn: conn, id: id} do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     open_popover(view)
 
     for tool <- ~w(shell read_file write_file edit_file) do
@@ -60,7 +66,7 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-38, UI-39, APPR-8
   test "switching a tool on and off updates the switch and the count", %{conn: conn, id: id} do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     open_popover(view)
 
     view |> element("#auto-approve-shell") |> render_click()
@@ -79,10 +85,11 @@ defmodule EliaWeb.AutoApproveTest do
     assert %{auto_approve: []} = Agent.snapshot(id)
   end
 
-  # UI-39, SESS-16
-  test "every tab on the chat follows the switch", %{conn: conn, id: id} do
-    {:ok, first, _} = live(conn, ~p"/c/#{id}")
-    {:ok, second, _} = live(conn, ~p"/c/#{id}")
+  # UI-39, SESS-16, CSET-3: a switch moved on one view of the chat (its settings
+  # page, here in two tabs) shows up on the other.
+  test "every view of the chat follows the switch", %{conn: conn, id: id} do
+    {:ok, first, _} = settings(conn, id)
+    {:ok, second, _} = settings(conn, id)
     open_popover(first)
     open_popover(second)
 
@@ -99,7 +106,7 @@ defmodule EliaWeb.AutoApproveTest do
   test "a chat that already auto-approves tools shows them when opened", %{conn: conn, id: id} do
     :ok = Elia.Store.save(id, [Message.user("hi")], auto_approve: ["edit_file"])
 
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#auto-approve-count", "1")
 
     open_popover(view)
@@ -107,29 +114,30 @@ defmodule EliaWeb.AutoApproveTest do
     assert has_element?(view, "#auto-approve-shell[aria-checked='false']")
   end
 
-  # APPR-8
+  # CSET-4, APPR-8: auto-approval set on the settings page applies to the chat.
   test "an auto-approved call shows no approval buttons and runs", %{conn: conn, id: id} do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
     FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, chat, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     Agent.subscribe(id)
     open_popover(view)
     view |> element("#auto-approve-shell") |> render_click()
 
-    view |> form("#chat-form", chat: %{text: "go"}) |> render_submit()
+    chat |> form("#chat-form", chat: %{text: "go"}) |> render_submit()
     assert_receive {:agent, ^id, {:status, :idle}}, 5000
 
-    html = render(view)
+    html = render(chat)
     assert html =~ "All done."
     refute_received {:agent, ^id, {:status, :awaiting_approval}}
-    refute has_element?(view, "#approve-c1")
-    refute has_element?(view, "#always-allow-c1")
+    refute has_element?(chat, "#approve-c1")
+    refute has_element?(chat, "#always-allow-c1")
   end
 
   # UI-42
   test "each switch says On or Off in text", %{conn: conn, id: id} do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = settings(conn, id)
     open_popover(view)
     assert has_element?(view, "#auto-approve-state-shell", "Off")
 
@@ -154,6 +162,7 @@ defmodule EliaWeb.AutoApproveTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, settings, _html} = settings(conn, id)
     Agent.subscribe(id)
 
     view |> form("#chat-form", chat: %{text: "go"}) |> render_submit()
@@ -168,9 +177,12 @@ defmodule EliaWeb.AutoApproveTest do
     assert html =~ "All done."
     # c2 was approved automatically, so it never asked.
     refute_received {:agent, ^id, {:tool_status, "c2", :awaiting_approval}}
-    assert has_element?(view, "#auto-approve-count", "1")
 
-    open_popover(view)
-    assert has_element?(view, "#auto-approve-shell[aria-checked='true']")
+    # The settings page shows it, without a reload.
+    render(settings)
+    assert has_element?(settings, "#auto-approve-count", "1")
+
+    open_popover(settings)
+    assert has_element?(settings, "#auto-approve-shell[aria-checked='true']")
   end
 end

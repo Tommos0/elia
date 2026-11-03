@@ -27,6 +27,9 @@ defmodule EliaWeb.Router do
     live_session :default, on_mount: EliaWeb.ClientTracker do
       live "/", ChatLive, :new
       live "/c/:id", ChatLive, :show
+      # CSET-1: this chat's own settings — model, auto-approval, jail, limits
+      # and context — on their own page instead of in the composer.
+      live "/c/:id/settings", ChatSettingsLive
       live "/p/:project_id/new", ChatLive, :new
       live "/projects", ProjectsLive
       live "/sessions", SessionsLive

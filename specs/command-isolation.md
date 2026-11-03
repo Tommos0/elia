@@ -129,7 +129,8 @@ genuinely needs the rest of the machine (ISOL-16).
 - **ISOL-16** Every chat has a jail setting, on by default: a chat whose file
   carries no value is jailed (STORE-26). It is saved with the chat (STORE-25),
   broadcast when it changes (SESS-30), so it survives a restart, and the user
-  turns it off and on for one chat from the chat UI (UI-67).
+  turns it off and on for one chat from that chat's settings page (UI-67,
+  CSET-5).
 - **ISOL-17** While a chat's jail is off, each approval prompt in that chat says
   the command runs unjailed (UI-69), so the state is visible at the moment it
   matters.

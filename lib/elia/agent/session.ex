@@ -16,7 +16,7 @@ defmodule Elia.Agent.Session do
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:jail, on?}`, `{:paused, message}`, `{:task, metadata}`.
+  `{:jail, on?}`, `{:limits, limits}`, `{:paused, message}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -50,6 +50,9 @@ defmodule Elia.Agent.Session do
     # Whether this chat's commands run in the jail (ISOL-16): on by default,
     # and the host's own switch can only turn it off (ISOL-20).
     jail: true,
+    # This chat's turn limits (LIMIT-1, LIMIT-2): a step limit, a time budget
+    # and whether a limit pauses the turn. Empty means the loop's own default.
+    limits: %{max_steps: nil, max_minutes: nil, pause_on_limit: false},
     # call_id => :awaiting_approval | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
@@ -87,7 +90,8 @@ defmodule Elia.Agent.Session do
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       auto_approve: initial_auto_approve(opts[:id], persist, opts[:auto_approve]),
-      jail: initial_jail(opts[:id], persist, opts[:jail])
+      jail: initial_jail(opts[:id], persist, opts[:jail]),
+      limits: initial_limits(opts[:id], persist, opts[:limits])
     }
 
     # SESS-21: tool calls the app stopped in the middle of never got a result.
@@ -96,13 +100,15 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause` or `:jail` existed (a
-  # session that outlived a hot reload). Fields it already has are kept.
+  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail` or `:limits`
+  # existed (a session that outlived a hot reload). Fields it already has are
+  # kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
-             not is_map_key(state, :pause) or not is_map_key(state, :jail) do
+             not is_map_key(state, :pause) or not is_map_key(state, :jail) or
+             not is_map_key(state, :limits) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -146,6 +152,11 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | jail: initial_jail(upgraded.id, upgraded.persist, nil)}
 
+    upgraded =
+      if is_map_key(state, :limits),
+        do: upgraded,
+        else: %{upgraded | limits: initial_limits(upgraded.id, upgraded.persist, nil)}
+
     handle_call(msg, from, upgraded)
   end
 
@@ -161,7 +172,8 @@ defmodule Elia.Agent.Session do
         :project,
         :compaction,
         :pause,
-        :jail
+        :jail,
+        :limits
       ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
@@ -214,6 +226,10 @@ defmodule Elia.Agent.Session do
         compaction_overhead: overhead(state)
       )
 
+    # LIMIT-3: the chat's own limits are the turn's, unless the caller passed
+    # its own (a sub-task's spawn, or a test driving a limit directly).
+    opts = Keyword.merge(Elia.Limits.loop_opts(Map.get(state, :limits, %{})), opts)
+
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
         Elia.Agent.Loop.run(session, state.messages, opts)
@@ -249,7 +265,10 @@ defmodule Elia.Agent.Session do
       | options: Map.merge(state.compaction.options, Map.new(options))
     }
 
-    state = save(%{state | compaction: compaction})
+    state = %{state | compaction: compaction}
+    # As with the chat's other settings, an empty chat is saved with its first
+    # message (CSET-6).
+    state = if state.messages == [], do: state, else: save(state)
     broadcast(state, {:compaction, compaction})
     {:reply, :ok, state}
   end
@@ -333,6 +352,24 @@ defmodule Elia.Agent.Session do
     state = if state.messages == [], do: state, else: save(state)
     broadcast(state, {:jail, on?})
     {:reply, :ok, state}
+  end
+
+  # SESS-31, LIMIT-2: this chat's turn limits (LIMIT-1), which the next turn is
+  # started with (LIMIT-3). A value that isn't valid is rejected and changes
+  # nothing (LIMIT-7).
+  def handle_call({:set_limits, changes}, _from, state) do
+    case Elia.Limits.validate(changes) do
+      {:ok, changes} ->
+        limits = Elia.Limits.new(Map.merge(Map.get(state, :limits, %{}), changes))
+        state = %{state | limits: limits}
+        # As with the model selection, an empty chat is saved with its first message.
+        state = if state.messages == [], do: state, else: save(state)
+        broadcast(state, {:limits, limits})
+        {:reply, :ok, state}
+
+      {:error, message} ->
+        {:reply, {:error, message}, state}
+    end
   end
 
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
@@ -550,6 +587,14 @@ defmodule Elia.Agent.Session do
   defp initial_jail(id, true), do: Elia.Store.load_jail(id)
   defp initial_jail(_id, false), do: true
 
+  # SESS-31, LIMIT-5, SESS-17: a caller may set the new session's turn limits
+  # (the budget a sub-task is spawned with) instead of the chat's saved ones.
+  defp initial_limits(id, persist, nil), do: initial_limits(id, persist)
+  defp initial_limits(_id, _persist, limits) when is_map(limits), do: Elia.Limits.new(limits)
+
+  defp initial_limits(id, true), do: Elia.Store.load_limits(id)
+  defp initial_limits(_id, false), do: Elia.Limits.defaults()
+
   # COMPACT-9, COMPACT-24: the chat's saved compaction state, with any options
   # its session was started with.
   defp initial_compaction(id, true, overrides) do
@@ -696,7 +741,8 @@ defmodule Elia.Agent.Session do
              task: Map.get(state, :task_meta),
              project: project(state).id,
              compaction: saved_compaction(Map.get(state, :compaction)),
-             jail: Map.get(state, :jail, true)
+             jail: Map.get(state, :jail, true),
+             limits: Map.get(state, :limits, Elia.Limits.defaults())
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end

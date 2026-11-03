@@ -100,6 +100,15 @@ reopened.
   chat file, without decoding it; it is `false` for an invalid id and for an id
   with no file.
 
+- **STORE-27** `save/3` takes `limits:` (the chat's turn limits, LIMIT-1) and
+  stores it as `limits`, with only the values that aren't the default, so a chat
+  that sets none carries no entry and one that clears a limit drops it from the
+  file.
+- **STORE-28** `load_limits/1` returns the chat's saved limits, merged over the
+  defaults (LIMIT-1: no step limit of its own, no time budget, no pause), so it
+  answers like LIMIT-1 for a chat that is missing, unreadable, corrupt or has
+  none.
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.

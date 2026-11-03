@@ -78,7 +78,8 @@ are not.
   turn once it reaches the trigger.
 - **COMPACT-9** The budget, the fraction, the target, the size of the working
   set — in turns and in tokens (COMPACT-12, COMPACT-28) — and whether automatic
-  compaction is on are configurable per chat.
+  compaction is on are configurable per chat, from the chat settings page
+  (CSET-5, COMPACT-30).
 - **COMPACT-10** A manual "compact now" action compacts an idle chat on demand,
   ignoring the threshold and the target.
 
@@ -193,6 +194,17 @@ order, stopping as soon as the estimate is at or below the target:
   adjustment, as a conversation reset does, since the calibrated figure
   described a different history.
 
+- **COMPACT-30** The chat settings page sets this chat's compaction options
+  (COMPACT-9): whether automatic compaction is on, as a switch
+  (`#compaction-auto`, CSET-7), and the token budget, the fraction of the
+  model's window — shown and entered as a percentage — the target as a
+  percentage of the trigger and the working set in turns, in a form with a Save
+  button. A value that isn't a positive number, a percentage outside 0 to 100,
+  or a working set below one turn is rejected and leaves the chat's options as
+  they were (CSET-7). The section also shows the trigger those values give for
+  the chat's model window (COMPACT-6), or says that no window is known
+  (COMPACT-7).
+
 ## Out of scope
 
 - Summarizing the whole conversation into a fresh one ("start over"): a manual
@@ -208,7 +220,8 @@ turn start and the elision-only `trim/3` mid-turn), `Elia.Agent.Session`
 `Elia.Agent.Loop` (derives and sends the request view at every step,
 COMPACT-29), `Elia.Store` (saving the summary, ledger and pins),
 `Elia.LLM.Context` (estimate over the request view), `EliaWeb.ChatLive`
-(annotations, the summary notice, "compact now").
+(annotations, the summary notice, "compact now"),
+`EliaWeb.ChatSettingsLive` (this chat's compaction options, COMPACT-30).
 
 The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is a `level`
 (how far down the ladder the cold region has been taken), the `covered` index
@@ -253,4 +266,5 @@ trigger, the manual action, the ledger, and the mid-turn pass end to end: a late
 request smaller than an earlier one, the current turn sent in full, the
 `{:compaction, state}` broadcast before the turn ends, COMPACT-29),
 `test/elia_web/live/compaction_test.exs` (annotations, the notice, the estimate,
-the pin, "compact now").
+the pin, "compact now"), `test/elia_web/live/chat_settings_test.exs` (the
+Context section, COMPACT-30).

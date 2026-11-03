@@ -21,7 +21,9 @@ defmodule Elia.Store do
   `opts[:project]` the id of the project it belongs to (STORE-19) and
   `opts[:compaction]` its compaction state (COMPACT-24); each is kept alongside
   the messages when given. `opts[:jail]` (a boolean) is the chat's jail setting
-  (STORE-25) and is stored only when it is `false`.
+  (STORE-25) and is stored only when it is `false`, and `opts[:limits]` the
+  chat's turn limits (STORE-27), of which only the values that aren't the
+  default (LIMIT-1) are stored.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -50,6 +52,14 @@ defmodule Elia.Store do
 
     # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
     chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
+
+    # STORE-27: only the limits that aren't the default (LIMIT-1) are written,
+    # so a chat that sets none carries no entry at all.
+    chat =
+      case Elia.Limits.stored(opts[:limits] || %{}) do
+        limits when map_size(limits) > 0 -> Map.put(chat, :limits, limits)
+        _none -> chat
+      end
 
     data = :erlang.term_to_binary(chat)
 
@@ -106,6 +116,22 @@ defmodule Elia.Store do
       jail
     else
       _ -> true
+    end
+  end
+
+  @doc """
+  The chat's saved turn limits (STORE-28), over the defaults of LIMIT-1, so it
+  answers like LIMIT-1 does for a chat that is missing, unreadable, corrupt or
+  has none.
+  """
+  @spec load_limits(binary()) :: Elia.Limits.t()
+  def load_limits(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{limits: %{} = limits} <- decode(data) do
+      Elia.Limits.new(limits)
+    else
+      _ -> Elia.Limits.defaults()
     end
   end
 

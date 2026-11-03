@@ -135,8 +135,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-24** While the agent isn't idle, the input is disabled and the send
   button is replaced by a Stop button that stops the turn (SESS-8).
 
-- **UI-38** The composer has an "Auto-approve" button (`#auto-approve-button`)
-  next to the model picker. It shows how many tools the chat auto-approves
+- **UI-38** The chat settings page (CSET-5) has an "Auto-approve" button
+  (`#auto-approve-button`) in its Auto-approve section (the composer only links
+  to that page, CSET-8). It shows how many tools the chat auto-approves
   (`#auto-approve-count`, hidden at zero) and opens a popover
   (`#auto-approve`) that Escape or a click outside closes.
 - **UI-39** The popover lists each tool that can need approval (APPR-13) with a
@@ -144,7 +145,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   this chat, and a note that auto-approved tools run without review. Tools
   from folder skills appear after a skill
   reload. The switch state follows `{:auto_approve, names}` events (SESS-16),
-  so every tab on the chat stays in sync.
+  so every view of the chat stays in sync.
 - **UI-40** A call awaiting approval has an "Always allow" button
   (`#always-allow-<call_id>`) that turns auto-approval on for its tool
   (APPR-11, which also approves this call).
@@ -154,13 +155,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-42** In the popover each switch row says "On" or "Off" in text next to
   the switch, so the state doesn't rely on colour or hover and is clear on
   touch screens.
-- **UI-67** The composer has a "Jail" switch (`#jail-toggle`) next to the model
-  picker and the auto-approve button (UI-38), with its state written out as text
+- **UI-67** The chat settings page (CSET-5) has a "Jail" switch
+  (`#jail-toggle`) in its Jail section, with its state written out as text
   (`#jail-state`): "Jailed" when on, "Not jailed" when off. It reflects and
   toggles ISOL-16 for this chat, is saved with the chat, and follows
-  `{:jail, on?}` events (SESS-30) so every tab on the chat stays in sync.
+  `{:jail, on?}` events (SESS-30) so every view of the chat stays in sync.
   Turning it off shows that commands can then read the settings database and
-  the user's credentials (ISOL-16, ISOL-17).
+  the user's credentials (ISOL-16, ISOL-17), and while it is off the chat page
+  says so next to its settings link (CSET-9).
 - **UI-68** When the host has no jail (ISOL-12, ISOL-20) the switch is disabled
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
@@ -322,12 +324,16 @@ the hidden tool calls leave with a one-line summary of the current step.
 
 ## Implementation
 
-`EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`.
+`EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`,
+`EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
+CSET; the model picker, the auto-approve switches and the jail switch,
+UI-38, UI-39, UI-67, UI-68).
 
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
 `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
+`test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),
 `test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,

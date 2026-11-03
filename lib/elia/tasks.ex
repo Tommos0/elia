@@ -206,10 +206,11 @@ defmodule Elia.Tasks do
     end
   end
 
-  # SUBTASK-18: wall-clock budget in milliseconds.
-  defp budget_ms(input) do
-    minutes = input["max_minutes"] || Application.get_env(:elia, :task_minutes, @default_minutes)
-    trunc(min(minutes, @max_minutes) * 60_000)
+  # SUBTASK-18: the child's wall-clock budget, in minutes. It becomes the
+  # child's own time limit (LIMIT-5).
+  defp minutes(input) do
+    given = input["max_minutes"] || Application.get_env(:elia, :task_minutes, @default_minutes)
+    min(given, @max_minutes)
   end
 
   defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
@@ -293,17 +294,25 @@ defmodule Elia.Tasks do
 
     loop_opts =
       parent_opts
-      |> Keyword.drop([:skills, :max_steps, :session_id, :turn_id, :workspace])
+      |> Keyword.drop([
+        :skills,
+        :max_steps,
+        :budget_ms,
+        :pause_on_limit,
+        :session_id,
+        :turn_id,
+        :workspace
+      ])
       |> Keyword.merge(
         skills: fn -> Elia.Skills.Tasks.child_skills(project) end,
-        max_steps: steps,
-        # SUBTASK-24: a limit pauses the child's turn (LOOP-19, LOOP-20) instead
-        # of ending it, so the user can continue it or fail it.
-        pause_on_limit: true,
-        budget_ms: budget_ms(input),
         llm: llm,
         workspace: child_root
       )
+
+    # LIMIT-5: the child's budget becomes its own turn limits, so its settings
+    # page shows the budget it runs with and the user can give it more of it
+    # while it is paused. The parent's own limits are not inherited.
+    limits = %{max_steps: steps, max_minutes: minutes(input), pause_on_limit: true}
 
     parent_snapshot = Elia.Agent.snapshot(parent_id)
 
@@ -311,6 +320,7 @@ defmodule Elia.Tasks do
       Elia.Agent.ensure_started(child_id,
         loop_opts: loop_opts,
         task: task,
+        limits: limits,
         selection: child_selection(parent_snapshot, model),
         # SUBTASK-6: the child inherits a copy of the parent's auto-approved
         # tools so the user doesn't approve them all over again.

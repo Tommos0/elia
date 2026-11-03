@@ -92,21 +92,14 @@ defmodule EliaWeb.ChatLive do
         chats_open: false,
         now: DateTime.utc_now(),
         selection: LLM.selection(snapshot.selection),
-        picker_open: false,
-        model_query: "",
-        search_form: to_form(%{"q" => ""}, as: :model_search),
-        # provider key => :loading | {:ok, models} | {:error, message}
-        catalogs: %{},
-        auto_approve: snapshot.auto_approve,
-        auto_approve_open: false,
-        # UI-67, UI-68: this chat's jail setting (ISOL-16) and whether the host
-        # has a jail at all (ISOL-12, ISOL-20), which decides if it can be off.
+        # CSET-9: the chat page names the jail setting (ISOL-16) and whether
+        # the host has one at all (ISOL-12, ISOL-20); the switch itself is on
+        # the chat settings page (CSET-5).
         jail: snapshot.jail,
         jail_available: Elia.Shell.jailed?(),
         # UI-70, ISOL-23: whether this chat's worktree is being synced right now
         # (a page that connects mid-sync shows it), then `{:deps_sync, on?}`.
         deps_sync: Elia.DepsSync.syncing?(Elia.Deploy.worktree_path(id)),
-        approvable_tools: approvable_tools(skills),
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
         compact_view: false,
@@ -346,18 +339,32 @@ defmodule EliaWeb.ChatLive do
 
           <div class="border-t border-base-300 bg-base-100">
             <div class="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 pt-3 sm:px-6">
-              <.model_picker
-                selection={@selection}
-                open={@picker_open}
-                search_form={@search_form}
-                streams={@streams}
-              />
-              <.auto_approve_picker
-                open={@auto_approve_open}
-                tools={@approvable_tools}
-                enabled={@auto_approve}
-              />
-              <.jail_toggle on={@jail} available={@jail_available} />
+              <%!-- CSET-8: the chat's own settings (model, auto-approval, jail,
+              limits, context) live on their own page; this link carries the
+              model in use, so what is answering is still visible here. --%>
+              <.link
+                navigate={~p"/c/#{@session_id}/settings"}
+                id="chat-settings-link"
+                title="This chat's model, auto-approval, jail, limits and context"
+                class="group flex max-w-full items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
+              >
+                <.icon name="hero-cog-6-tooth" class="size-3.5 shrink-0 opacity-70" />
+                <.provider_badge provider={@selection.provider} size="xs" />
+                <span id="chat-settings-model" class="truncate font-medium">
+                  {@selection.name}
+                </span>
+              </.link>
+              <%!-- CSET-9, ISOL-17: the jail belongs where commands run. --%>
+              <span
+                :if={!@jail_available}
+                id="jail-unavailable"
+                class="text-xs text-base-content/50"
+              >
+                This host has no jail, so commands run unjailed.
+              </span>
+              <span :if={@jail_available and !@jail} id="jail-warning" class="text-xs text-warning">
+                Not jailed: commands can read the settings database and your credentials.
+              </span>
               <%!-- UI-60: switch the transcript between full and compact. --%>
               <button
                 type="button"
@@ -872,314 +879,6 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
-  attr :open, :boolean, required: true
-  attr :tools, :list, required: true
-  attr :enabled, :list, required: true
-
-  # UI-38, UI-39
-  defp auto_approve_picker(assigns) do
-    ~H"""
-    <div class="relative inline-block max-w-full">
-      <button
-        type="button"
-        id="auto-approve-button"
-        phx-click="toggle_auto_approve_picker"
-        aria-haspopup="true"
-        aria-expanded={to_string(@open)}
-        class={[
-          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
-          @open && "border-primary/50 bg-primary/5",
-          !@open &&
-            "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
-        ]}
-      >
-        <.icon name="hero-shield-check" class="size-3.5 shrink-0 opacity-70" />
-        <span class="font-medium">Auto-approve</span>
-        <span
-          :if={@enabled != []}
-          id="auto-approve-count"
-          class="rounded-full bg-warning/20 px-1.5 text-[11px] font-medium tabular-nums text-warning"
-        >
-          {length(@enabled)}
-        </span>
-      </button>
-
-      <div
-        :if={@open}
-        id="auto-approve"
-        phx-click-away="close_auto_approve_picker"
-        phx-window-keydown="close_auto_approve_picker"
-        phx-key="Escape"
-        class="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
-      >
-        <p class="border-b border-base-300 px-3 py-2 text-xs text-base-content/60">
-          Auto-approved tools run in this chat without asking.
-        </p>
-        <ul class="max-h-72 overflow-y-auto py-1">
-          <li :for={tool <- @tools} class="px-1">
-            <button
-              type="button"
-              id={"auto-approve-#{tool.name}"}
-              phx-click="toggle_auto_approve"
-              phx-value-tool={tool.name}
-              role="switch"
-              aria-checked={to_string(tool.name in @enabled)}
-              class="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-base-200"
-            >
-              <.icon name={tool_icon(tool.name)} class="size-4 shrink-0 text-base-content/60" />
-              <span class="min-w-0 flex-1 truncate font-medium">{tool.name}</span>
-              <span
-                id={"auto-approve-state-#{tool.name}"}
-                class={[
-                  "text-xs font-medium",
-                  tool.name in @enabled && "text-warning",
-                  tool.name not in @enabled && "text-base-content/50"
-                ]}
-              >
-                {if tool.name in @enabled, do: "On", else: "Off"}
-              </span>
-              <span class={[
-                "relative h-5 w-9 shrink-0 rounded-full transition",
-                tool.name in @enabled && "bg-warning",
-                tool.name not in @enabled && "bg-base-300"
-              ]}>
-                <span class={[
-                  "absolute top-0.5 size-4 rounded-full bg-base-100 shadow transition-all",
-                  tool.name in @enabled && "left-[1.125rem]",
-                  tool.name not in @enabled && "left-0.5"
-                ]} />
-              </span>
-            </button>
-          </li>
-          <li :if={@tools == []} class="px-3 py-2 text-xs text-base-content/40">
-            No tools need approval
-          </li>
-        </ul>
-      </div>
-    </div>
-    """
-  end
-
-  attr :on, :boolean, required: true
-  attr :available, :boolean, required: true
-
-  # UI-67, UI-68: the chat's jail switch, next to the model picker and the
-  # auto-approve button. A host with no jail (ISOL-12, ISOL-20) can't protect a
-  # chat, so the switch is disabled and says so rather than claiming it does.
-  defp jail_toggle(assigns) do
-    assigns = assign(assigns, :jailed, assigns.on and assigns.available)
-
-    ~H"""
-    <div class="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        id="jail-toggle"
-        phx-click="toggle_jail"
-        role="switch"
-        aria-checked={to_string(@jailed)}
-        disabled={!@available}
-        title={jail_title(@jailed, @available)}
-        class={[
-          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100",
-          @jailed && "border-primary/50 bg-primary/5 text-primary",
-          !@jailed && @available &&
-            "border-warning/50 bg-warning/5 text-warning hover:border-warning/70",
-          !@available && "border-base-300 text-base-content/40"
-        ]}
-      >
-        <.icon
-          name={if @jailed, do: "hero-lock-closed", else: "hero-lock-open"}
-          class="size-3.5 shrink-0 opacity-70"
-        />
-        <span class="font-medium">Jail</span>
-        <span id="jail-state" class="font-medium">{jail_state(@jailed)}</span>
-      </button>
-      <span :if={!@available} id="jail-unavailable" class="text-xs text-base-content/50">
-        This host has no jail (bubblewrap is unavailable), so commands run unjailed.
-      </span>
-      <span :if={@available and !@on} id="jail-warning" class="text-xs text-warning">
-        Commands run unjailed: they can read the settings database and your credentials.
-      </span>
-    </div>
-    """
-  end
-
-  defp jail_state(true), do: "Jailed"
-  defp jail_state(false), do: "Not jailed"
-
-  defp jail_title(true, _available),
-    do: "Commands run in a jail holding the workspace and the toolchain, and nothing else"
-
-  defp jail_title(false, true), do: "Commands run unjailed, on the whole machine"
-  defp jail_title(false, false), do: "This host has no jail, so commands run unjailed"
-
-  attr :selection, :map, required: true
-  attr :open, :boolean, required: true
-  attr :search_form, :any, required: true
-  attr :streams, :any, required: true
-
-  defp model_picker(assigns) do
-    ~H"""
-    <div class="relative inline-block max-w-full">
-      <button
-        type="button"
-        id="model-picker-button"
-        phx-click={if @open, do: "close_picker", else: "open_picker"}
-        aria-haspopup="listbox"
-        aria-expanded={to_string(@open)}
-        class={[
-          "group flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
-          @open && "border-primary/50 bg-primary/5",
-          !@open &&
-            "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
-        ]}
-      >
-        <.provider_badge provider={@selection.provider} id="selected-provider" />
-        <span id="selected-model" class="truncate font-medium">{@selection.name}</span>
-        <.icon
-          name="hero-chevron-up-down"
-          class="size-3.5 shrink-0 opacity-60 transition group-hover:opacity-100"
-        />
-      </button>
-
-      <div
-        :if={@open}
-        id="model-picker"
-        phx-click-away="close_picker"
-        phx-window-keydown="close_picker"
-        phx-key="Escape"
-        class="absolute bottom-full left-0 z-30 mb-2 flex max-h-[28rem] w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
-      >
-        <.form
-          for={@search_form}
-          id="model-search-form"
-          phx-change="search_models"
-          phx-submit="search_models"
-          class="border-b border-base-300 p-2"
-        >
-          <label class="flex items-center gap-2 rounded-lg bg-base-200/60 px-2.5 focus-within:ring-1 focus-within:ring-primary/50">
-            <.icon name="hero-magnifying-glass" class="size-4 shrink-0 text-base-content/40" />
-            <input
-              type="text"
-              id="model-search"
-              name={@search_form[:q].name}
-              value={@search_form[:q].value}
-              placeholder="Search models…"
-              autocomplete="off"
-              phx-debounce="120"
-              phx-mounted={JS.focus()}
-              class="h-9 w-full bg-transparent text-sm outline-none"
-            />
-          </label>
-        </.form>
-        <ul id="model-list" phx-update="stream" role="listbox" class="flex-1 overflow-y-auto py-1">
-          <li :for={{dom_id, entry} <- @streams.models} id={dom_id}>
-            <.model_entry entry={entry} selection={@selection} />
-          </li>
-        </ul>
-      </div>
-    </div>
-    """
-  end
-
-  attr :entry, :map, required: true
-  attr :selection, :map, required: true
-
-  defp model_entry(%{entry: %{kind: :header}} = assigns) do
-    ~H"""
-    <div
-      id={"group-#{@entry.provider}"}
-      class="sticky top-0 z-10 flex items-center gap-2 border-b border-base-300/60 bg-base-100/95 px-3 py-2 backdrop-blur [li:not(:first-child)>&]:mt-1 [li:not(:first-child)>&]:border-t"
-    >
-      <.provider_badge provider={@entry.provider} />
-      <span class="truncate text-[11px] text-base-content/50">{provider_route(@entry.provider)}</span>
-      <span :if={@entry.count} class="ml-auto text-[11px] tabular-nums text-base-content/40">
-        {@entry.count}
-      </span>
-    </div>
-    <%= case @entry.status do %>
-      <% :loading -> %>
-        <div class="flex items-center gap-2 px-3 py-2 text-xs text-base-content/50">
-          <.icon name="hero-arrow-path" class="size-3.5 motion-safe:animate-spin" /> Loading models…
-        </div>
-      <% :no_key -> %>
-        <.link
-          navigate={~p"/settings"}
-          id={"add-key-#{@entry.provider}"}
-          class="mx-2 mb-1 flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-primary transition hover:bg-primary/10"
-        >
-          <.icon name="hero-key" class="size-3.5" /> Add an API key in Settings
-          <.icon name="hero-arrow-right" class="ml-auto size-3.5" />
-        </.link>
-      <% {:error, message} -> %>
-        <div
-          id={"catalog-error-#{@entry.provider}"}
-          class="mx-2 mb-1 flex items-start gap-2 rounded-lg bg-error/10 px-2 py-2 text-xs text-error"
-        >
-          <.icon name="hero-exclamation-triangle" class="mt-px size-3.5 shrink-0" />
-          <span class="break-words">{message}</span>
-        </div>
-      <% :empty -> %>
-        <p class="px-3 py-2 text-xs text-base-content/40">No matching models</p>
-      <% _ -> %>
-    <% end %>
-    """
-  end
-
-  defp model_entry(assigns) do
-    assigns =
-      assign(assigns,
-        selected?:
-          assigns.selection.provider == assigns.entry.provider and
-            assigns.selection.model == assigns.entry.model
-      )
-
-    ~H"""
-    <button
-      type="button"
-      role="option"
-      aria-selected={to_string(@selected?)}
-      phx-click="select_model"
-      phx-value-provider={@entry.provider}
-      phx-value-model={@entry.model}
-      phx-value-name={@entry.name}
-      class={[
-        "group mx-1 flex w-[calc(100%-0.5rem)] items-center gap-3 rounded-lg px-2 py-1.5 text-left transition",
-        @selected? && "bg-primary/10",
-        !@selected? && "hover:bg-base-200"
-      ]}
-    >
-      <div class="min-w-0 flex-1">
-        <p class={["truncate text-sm", @selected? && "font-medium text-primary"]}>{@entry.name}</p>
-        <p class="flex min-w-0 items-center gap-1.5">
-          <.provider_badge provider={@entry.provider} size="xs" />
-          <span class="truncate font-mono text-[11px] text-base-content/40">{@entry.model}</span>
-        </p>
-      </div>
-      <div class="shrink-0 text-right text-[11px] leading-tight text-base-content/50">
-        <p :if={@entry.context_length}>{format_context(@entry.context_length)}</p>
-        <p :if={@entry.prompt_price}>
-          {format_price(@entry.prompt_price)} / {format_price(@entry.completion_price)}
-        </p>
-      </div>
-      <.icon
-        name="hero-check"
-        class={["size-4 shrink-0 text-primary", !@selected? && "invisible"]}
-      />
-    </button>
-    """
-  end
-
-  defp provider_route("anthropic"), do: "Direct from the Anthropic API"
-  defp provider_route("openrouter"), do: "Many vendors, routed via OpenRouter"
-  defp provider_route(_key), do: ""
-
-  defp format_context(tokens) when tokens >= 1_000_000,
-    do: "#{Float.round(tokens / 1_000_000, 1) |> trim_float()}M ctx"
-
-  defp format_context(tokens) when tokens >= 1000, do: "#{div(tokens, 1000)}K ctx"
-  defp format_context(tokens), do: "#{tokens} ctx"
-
   # CTX-10: the provider adjustment can be negative.
   defp format_tokens(tokens) when tokens < 0, do: "-#{format_tokens(-tokens)}"
 
@@ -1199,18 +898,9 @@ defmodule EliaWeb.ChatLive do
   defp context_bar_class(percent) when percent <= 85, do: "bg-warning"
   defp context_bar_class(_percent), do: "bg-error"
 
-  defp format_price(nil), do: "?"
-  defp format_price(price) when price == 0, do: "free"
-  defp format_price(price) when price < 0.1, do: "$#{Float.round(price, 3) |> trim_float()}"
-  defp format_price(price), do: "$#{Float.round(price, 2) |> trim_float()}"
-
   defp trim_float(float) do
     if float == Float.round(float), do: trunc(float), else: float
   end
-
-  @doc "DOM id of a model in the picker (ids contain `/`, `:` and `.`)."
-  def model_dom_id(provider, model),
-    do: "models-m-#{provider}-#{Base.url_encode64(model, padding: false)}"
 
   attr :item, :map, required: true
   attr :jail, :boolean, default: true
@@ -1602,27 +1292,10 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # UI-40, APPR-11: the chat's "Always allow" button turns auto-approval on for
+  # this chat (the switches themselves are on the chat settings page, CSET-5).
   def handle_event("always_allow", %{"tool" => tool}, socket) do
     set_auto_approve(socket, tool, true)
-  end
-
-  def handle_event("toggle_auto_approve", %{"tool" => tool}, socket) do
-    set_auto_approve(socket, tool, tool not in socket.assigns.auto_approve)
-  end
-
-  def handle_event("toggle_auto_approve_picker", _params, socket) do
-    {:noreply, assign(socket, auto_approve_open: !socket.assigns.auto_approve_open)}
-  end
-
-  def handle_event("close_auto_approve_picker", _params, socket) do
-    {:noreply, assign(socket, auto_approve_open: false)}
-  end
-
-  # UI-67, SESS-30: turn this chat's jail on or off. The switch follows the
-  # session's broadcast, so every tab stays in sync.
-  def handle_event("toggle_jail", _params, socket) do
-    Agent.set_jail(socket.assigns.session_id, not socket.assigns.jail)
-    {:noreply, socket}
   end
 
   def handle_event("stop", _params, socket) do
@@ -1662,74 +1335,6 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
-  def handle_event("open_picker", _params, socket) do
-    catalogs =
-      for info <- LLM.providers(), LLM.api_key(info.key) != nil, into: %{} do
-        case socket.assigns.catalogs[info.key] do
-          {:ok, _} = loaded -> {info.key, loaded}
-          _ -> {info.key, :loading}
-        end
-      end
-
-    socket =
-      Enum.reduce(catalogs, socket, fn
-        {key, :loading}, socket -> start_async(socket, {:catalog, key}, fn -> LLM.models(key) end)
-        _loaded, socket -> socket
-      end)
-
-    socket
-    |> assign(
-      picker_open: true,
-      catalogs: catalogs,
-      model_query: "",
-      search_form: to_form(%{"q" => ""}, as: :model_search)
-    )
-    |> stream_models()
-    |> noreply()
-  end
-
-  def handle_event("close_picker", _params, socket) do
-    {:noreply, assign(socket, picker_open: false)}
-  end
-
-  def handle_event("search_models", %{"model_search" => %{"q" => query}}, socket) do
-    socket
-    |> assign(model_query: query, search_form: to_form(%{"q" => query}, as: :model_search))
-    |> stream_models()
-    |> noreply()
-  end
-
-  def handle_event("select_model", %{"provider" => key, "model" => model} = params, socket) do
-    case Agent.select_model(socket.assigns.session_id, key, model, params["name"]) do
-      {:ok, selection} ->
-        socket
-        |> assign(selection: selection, context_window: LLM.context_window(selection))
-        |> assign(picker_open: false)
-        |> noreply()
-
-      {:error, message} ->
-        {:noreply, put_flash(socket, :error, message)}
-    end
-  end
-
-  @impl true
-  def handle_async({:catalog, key}, result, socket) do
-    catalog =
-      case result do
-        {:ok, {:ok, models}} -> {:ok, models}
-        {:ok, {:error, message}} -> {:error, message}
-        {:exit, reason} -> {:error, "Could not load models: #{Exception.format_exit(reason)}"}
-      end
-
-    socket
-    |> assign(
-      catalogs: Map.put(socket.assigns.catalogs, key, catalog),
-      context_window: LLM.context_window(socket.assigns.selection)
-    )
-    |> stream_models()
-    |> noreply()
-  end
-
   defp noreply(socket), do: {:noreply, socket}
 
   defp set_auto_approve(socket, tool, on?) do
@@ -1742,76 +1347,14 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # Tools the user can auto-approve: those that can need approval (APPR-13).
-  defp approvable_tools(skills) do
-    skills
-    |> Elia.Skills.tools()
-    |> Enum.filter(&(&1.approval != :never))
-    |> Enum.sort_by(& &1.name)
-  end
-
-  # Rebuilds the picker list: a header per provider, then its matching models.
-  defp stream_models(%{assigns: %{picker_open: false}} = socket), do: socket
-
-  defp stream_models(socket) do
-    query = socket.assigns.model_query |> String.trim() |> String.downcase()
-
-    entries =
-      Enum.flat_map(LLM.providers(), fn info ->
-        header = %{id: "g-#{info.key}", kind: :header, provider: info.key, name: info.name}
-
-        case socket.assigns.catalogs[info.key] do
-          nil ->
-            [Map.merge(header, %{status: :no_key, count: nil})]
-
-          {:ok, models} ->
-            matches = Enum.filter(models, &model_matches?(&1, query))
-            status = if matches == [], do: :empty, else: :ok
-
-            count =
-              if query == "", do: length(models), else: "#{length(matches)}/#{length(models)}"
-
-            [Map.merge(header, %{status: status, count: count})] ++
-              Enum.map(matches, &model_entry_data(info.key, &1))
-
-          other ->
-            [Map.merge(header, %{status: other, count: nil})]
-        end
-      end)
-
-    stream(socket, :models, entries, reset: true)
-  end
-
-  defp model_matches?(_model, ""), do: true
-
-  defp model_matches?(model, query) do
-    String.contains?(String.downcase(model.name), query) or
-      String.contains?(String.downcase(model.id), query)
-  end
-
-  defp model_entry_data(key, model) do
-    "models-" <> id = model_dom_id(key, model.id)
-
-    %{
-      id: id,
-      kind: :model,
-      provider: key,
-      model: model.id,
-      name: model.name,
-      context_length: model[:context_length],
-      prompt_price: model[:prompt_price],
-      completion_price: model[:completion_price]
-    }
-  end
-
   @impl true
-  # PROJ-24: the popover and context follow the chat's project, so a reload
-  # re-resolves that project's skills (the broadcast carries Elia's own).
+  # PROJ-24: the context follows the chat's project, so a reload re-resolves
+  # that project's skills (the broadcast carries Elia's own).
   def handle_info({:skills_reloaded, skills}, socket) do
     {skills, instructions} = project_skills(socket.assigns.project, skills)
 
     socket
-    |> assign(skills: skills, approvable_tools: approvable_tools(skills))
+    |> assign(skills: skills)
     |> put_context(Context.put_skills(socket.assigns.context, skills, instructions))
     |> noreply()
   end
@@ -1934,10 +1477,15 @@ defmodule EliaWeb.ChatLive do
   defp apply_event({:model, selection}, socket) do
     socket
     |> assign(selection: selection, context_window: LLM.context_window(selection))
-    |> stream_models()
   end
 
-  defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
+  # CSET-8: this page shows the chat's model only in its settings link, so a new
+  # selection redraws that label and nothing else. Auto-approval has no control
+  # here at all (APPR-8 is set on the chat settings page, CSET-5), and neither
+  # does the turn's limits; the jail setting still decides the warning next to
+  # the link (CSET-9, UI-67).
+  defp apply_event({:auto_approve, _names}, socket), do: socket
+  defp apply_event({:limits, _limits}, socket), do: socket
 
   # UI-67, SESS-30: every tab on the chat follows the jail setting.
   defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)

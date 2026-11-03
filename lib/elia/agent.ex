@@ -79,6 +79,17 @@ defmodule Elia.Agent do
     do: GenServer.call(Session.via(id), {:set_jail, on?})
 
   @doc """
+  Sets this chat's turn limits (SESS-31, LIMIT-2): any of `:max_steps` (a whole
+  number of steps, LOOP-16), `:max_minutes` (a number of minutes, LOOP-20) and
+  `:pause_on_limit` (whether a limit pauses the turn, LOOP-19). `nil` clears a
+  limit, so the loop's own default applies (LIMIT-1). An invalid value returns
+  `{:error, message}` and changes nothing (LIMIT-7). Allowed mid-turn: the next
+  turn is started with the new limits (LIMIT-3).
+  """
+  @spec set_limits(binary(), map() | keyword()) :: :ok | {:error, binary()}
+  def set_limits(id, changes), do: GenServer.call(Session.via(id), {:set_limits, changes})
+
+  @doc """
   Sets the chat's model (MODEL-1). Also remembers it as the default for new
   chats (MODEL-15).
   """

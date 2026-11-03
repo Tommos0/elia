@@ -6,7 +6,7 @@ defmodule EliaWeb.ModelPickerTest do
 
   alias Elia.{Agent, LLM, Settings}
   alias Elia.LLM.{Anthropic, OpenRouter}
-  alias EliaWeb.ChatLive
+  alias EliaWeb.ChatSettingsLive
 
   setup do
     reset_settings()
@@ -47,7 +47,7 @@ defmodule EliaWeb.ModelPickerTest do
     conn: conn,
     id: id
   } do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}/settings")
     assert has_element?(view, "#selected-model", "claude-configured")
     assert has_element?(view, "#selected-provider[data-provider=anthropic]", "Anthropic")
     refute has_element?(view, "#model-picker")
@@ -63,11 +63,11 @@ defmodule EliaWeb.ModelPickerTest do
   # MODEL-10, MODEL-12
   test "searching filters models and clicking one selects it", %{conn: conn, id: id} do
     :ok = Settings.put({:api_key, "openrouter"}, "or-key")
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}/settings")
     open_picker(view)
 
-    gpt = "#" <> ChatLive.model_dom_id("openrouter", "openai/gpt-x")
-    gemini = "#" <> ChatLive.model_dom_id("openrouter", "google/gemini-y")
+    gpt = "#" <> ChatSettingsLive.model_dom_id("openrouter", "openai/gpt-x")
+    gemini = "#" <> ChatSettingsLive.model_dom_id("openrouter", "google/gemini-y")
     assert has_element?(view, gpt, "400K ctx")
     assert has_element?(view, "#{gpt} [data-provider=openrouter]", "OpenRouter")
     assert has_element?(view, gemini)
@@ -99,14 +99,14 @@ defmodule EliaWeb.ModelPickerTest do
     :ok = Settings.put({:api_key, "openrouter"}, "or-key")
     Req.Test.stub(OpenRouter, fn conn -> Plug.Conn.send_resp(conn, 502, "bad gateway") end)
 
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}/settings")
     open_picker(view)
     assert has_element?(view, "#catalog-error-openrouter", "bad gateway")
   end
 
   # MODEL-12
   test "closing the picker keeps the selection", %{conn: conn, id: id} do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}/settings")
     open_picker(view)
 
     render_hook(view, "close_picker", %{})
@@ -116,7 +116,7 @@ defmodule EliaWeb.ModelPickerTest do
 
   # MODEL-1, SESS-14
   test "a selection made in another tab of the chat updates it", %{conn: conn, id: id} do
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}/settings")
     {:ok, _} = Agent.select_model(id, "openrouter", "vendor/model", "Vendor Model")
     assert render(view) =~ "Vendor Model"
     assert has_element?(view, "#selected-model", "Vendor Model")
@@ -127,8 +127,8 @@ defmodule EliaWeb.ModelPickerTest do
     other = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(other) end)
 
-    {:ok, view_a, _} = live(conn, ~p"/c/#{id}")
-    {:ok, view_b, _} = live(conn, ~p"/c/#{other}")
+    {:ok, view_a, _} = live(conn, ~p"/c/#{id}/settings")
+    {:ok, view_b, _} = live(conn, ~p"/c/#{other}/settings")
     {:ok, _} = Agent.select_model(id, "openrouter", "vendor/model", "Vendor Model")
     {:ok, _} = Agent.select_model(other, "anthropic", "claude-other", "Claude Other")
 
@@ -136,11 +136,11 @@ defmodule EliaWeb.ModelPickerTest do
     assert has_element?(view_b, "#selected-model", "Claude Other")
 
     # Reopening a chat shows its own model, not the last choice made anywhere.
-    {:ok, reopened, _} = live(conn, ~p"/c/#{id}")
+    {:ok, reopened, _} = live(conn, ~p"/c/#{id}/settings")
     assert has_element?(reopened, "#selected-model", "Vendor Model")
 
     # A chat that never chose one starts on the last choice.
-    {:ok, fresh, _} = live(conn, ~p"/c/#{Agent.new_id()}")
+    {:ok, fresh, _} = live(conn, ~p"/c/#{Agent.new_id()}/settings")
     assert has_element?(fresh, "#selected-model", "Claude Other")
   end
 end
