@@ -359,10 +359,11 @@ defmodule Elia.DepsSyncTest do
     refute DepsSync.syncing?(dir)
   end
 
-  # ISOL-23: a sync that failed leaves the chat usable and shows up in the
-  # result of the next command, which doesn't run against a half-synced tree.
-  # Nothing is remembered, so a later command tries the sync again (ISOL-7).
-  test "a command whose worktree sync failed reports it and doesn't run (ISOL-23)" do
+  # ISOL-23: a sync that failed leaves the chat usable — the command it was owed
+  # still runs, carrying the failure — and a command that does need the
+  # dependencies fails with its own error. Nothing is remembered, so a later
+  # command tries the sync again (ISOL-7).
+  test "a command whose worktree sync failed reports it and still runs (ISOL-23)" do
     Application.put_env(:elia, Elia.DepsSync, run: fn _command, _opts -> {:ok, "boom", 1} end)
     dir = worktree()
 
@@ -371,10 +372,11 @@ defmodule Elia.DepsSyncTest do
         assert {:ok, output, status} = Shell.run("touch ran.txt", cd: dir)
         assert output =~ "The shared dependencies could not be synced"
         assert output =~ "mix deps.get exited with 1"
-        assert status != 0
 
-        # The command didn't run at all.
-        refute File.exists?(Path.join(dir, "ran.txt"))
+        # The command ran all the same: a broken sync must not make the chat
+        # unusable over a dependency this command doesn't need.
+        assert status == 0
+        assert File.exists?(Path.join(dir, "ran.txt"))
       end)
 
     assert log =~ "Could not sync the dependencies"
@@ -382,8 +384,9 @@ defmodule Elia.DepsSyncTest do
 
     # A later command tries again rather than giving up on the worktree.
     capture_log(fn ->
-      assert {:ok, _output, status} = Shell.run("echo hi", cd: dir)
-      assert status != 0
+      assert {:ok, output, 0} = Shell.run("echo hi", cd: dir)
+      assert output =~ "The shared dependencies could not be synced"
+      assert output =~ "hi\n"
     end)
   end
 

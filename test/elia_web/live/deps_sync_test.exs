@@ -147,16 +147,16 @@ defmodule EliaWeb.DepsSyncTest do
     assert DepsSync.recorded(dir) == nil
     assert has_element?(view, "#chat-input")
 
-    # ISOL-23: the failure is in the result of the next command, which doesn't
-    # run against a half-synced tree. It isn't held this time, so the command
-    # gets there.
+    # ISOL-23: the failure is in the result of the next command, which still
+    # runs — a broken sync must not make the chat unusable. It isn't held this
+    # time, so the command gets there.
     Application.put_env(:elia, Elia.DepsSync, run: fn _command, _opts -> {:ok, "boom", 1} end)
 
     log =
       capture_log(fn ->
-        assert {:ok, output, status} = Elia.Shell.run("echo hi", cd: dir)
+        assert {:ok, output, 0} = Elia.Shell.run("echo hi", cd: dir)
         assert output =~ "The shared dependencies could not be synced"
-        assert status != 0
+        assert output =~ "hi\n"
       end)
 
     # A failure is logged, not raised: it can't take the chat down.

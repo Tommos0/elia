@@ -80,11 +80,10 @@ defmodule Elia.Shell do
 
     # ISOL-7: a worktree's compile is a harness step, and the command that needs
     # one waits for it — including one already running, since `Elia.DepsSync`
-    # lets a single sync of a shared `deps` run at a time. It never runs against
-    # a half-synced tree.
+    # lets a single sync of a shared `deps` run at a time.
     case sync_deps(cd, opts) do
       :ok -> execute(script, cd, opts)
-      {:error, reason} -> {:ok, unsynced(reason), 1}
+      {:error, reason} -> with_notice(execute(script, cd, opts), unsynced(reason))
     end
   end
 
@@ -133,13 +132,17 @@ defmodule Elia.Shell do
     if profile(cd, opts) == :worktree, do: Elia.DepsSync.sync_worktree(cd), else: :ok
   end
 
-  # ISOL-23: a failed sync says so in the result of the command that needed it,
-  # and the command doesn't run — compiling against a half-synced tree is what
-  # the sync is there to prevent. The chat stays usable: nothing is remembered,
-  # so the next command tries the sync again.
+  # ISOL-23: a failed sync says so in the result of the command that asked for
+  # it, and the command still runs. Refusing it would leave the chat unusable
+  # over a dependency it may not need — `git commit` is not a compile — while a
+  # command that does need the dependencies fails with its own error, which says
+  # more than a refusal. Nothing was remembered, so the next command tries the
+  # sync again (ISOL-7).
+  defp with_notice({:ok, output, status}, notice), do: {:ok, notice <> output, status}
+  defp with_notice({:timeout, output}, notice), do: {:timeout, notice <> output}
+
   defp unsynced(reason) do
-    "The shared dependencies could not be synced, so this command did not run:\n" <>
-      reason <> "\n"
+    "The shared dependencies could not be synced:\n" <> reason <> "\n"
   end
 
   defp jail_args(script, cd, opts) do
