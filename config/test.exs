@@ -1,11 +1,24 @@
 import Config
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# We don't run a server during test, except for the real-browser tests, which
+# ask for it with ELIA_BROWSER_TESTS=1 (BROWSER-3). Keeping a plain `mix test`
+# serverless means runs that overlap on one machine (a chat and its sub-tasks)
+# can't collide on the port, which ELIA_TEST_PORT can move.
 config :elia, EliaWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("ELIA_TEST_PORT", "4002"))],
   secret_key_base: "Pac3kJrObCElMVU07qb/sTiYCV1OVBBo1qJZEAi5cY++bmi3bc81cR9TV4voBIBV",
-  server: false
+  server: System.get_env("ELIA_BROWSER_TESTS") == "1"
+
+# PhoenixTest drives that endpoint from a real browser (BROWSER-3). The
+# Playwright CLI sits in assets/node_modules (BROWSER-2); errors the page logs
+# are recorded and fail the test that caused them (BROWSER-8).
+config :phoenix_test,
+  otp_app: :elia
+
+config :phoenix_test, :playwright,
+  js_logger: EliaWeb.BrowserJsLogger,
+  screenshot_dir: "tmp/screenshots",
+  trace_dir: "tmp/traces"
 
 # Print only warnings and errors during test
 config :logger, level: :warning
