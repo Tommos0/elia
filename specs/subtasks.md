@@ -251,6 +251,12 @@ its own workspace; children that would share one workspace are serialized
   deletes (SESS-29, UI-65) stays deleted rather than being written back by its
   watcher.
 
+- **SUBTASK-30** The child chat starts with a copy of the parent's jail setting
+  (ISOL-18): jailed unless the parent's is off, even where the parent's own
+  value is the default and so isn't in its file (STORE-26). The copy is the
+  child's own from then on (ISOL-18): changing either chat's setting afterwards
+  never affects the other.
+
 ## Out of scope (later phases of the plan)
 
 Read-only children (phase 5).

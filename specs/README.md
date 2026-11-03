@@ -66,6 +66,7 @@ deleting it.
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
+| [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [File tools](file-tools.md) | `FILE` | `read_file`, `write_file`, `edit_file` |
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
 | [Checkpoints](checkpoints.md) | `CKPT` | Retired: per-chat worktrees replaced snapshots and rollback |

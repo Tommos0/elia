@@ -50,6 +50,13 @@ reopened.
 - **STORE-15** Loading a chat's auto-approved tools returns `[]` when the chat
   is missing, unreadable, corrupt or has none.
 
+- **STORE-25** `save/3` takes `jail:` (a boolean) and stores it only when it is
+  `false`, so a chat that keeps the default (`true`, ISOL-16) carries no entry
+  and turning the jail back on removes it from the file.
+- **STORE-26** `load_jail/1` returns `true` when the chat is missing,
+  unreadable, corrupt or has no value, since the jail is on by default
+  (ISOL-16).
+
 - **STORE-16** `save/3` takes `task:` (a map) and stores it as `task` with the
   chat. It holds the metadata of a chat started by `spawn_task`: `parent_id`,
   `title`, `brief`, `started_at`, `status` (`"running"`, `"done"`, `"blocked"`,

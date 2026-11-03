@@ -154,6 +154,17 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-42** In the popover each switch row says "On" or "Off" in text next to
   the switch, so the state doesn't rely on colour or hover and is clear on
   touch screens.
+- **UI-67** The composer has a "Jail" switch (`#jail-toggle`) next to the model
+  picker and the auto-approve button (UI-38), with its state written out as text
+  (`#jail-state`): "Jailed" when on, "Not jailed" when off. It reflects and
+  toggles ISOL-16 for this chat, is saved with the chat, and follows
+  `{:jail, on?}` events (SESS-30) so every tab on the chat stays in sync.
+  Turning it off shows that commands can then read the settings database and
+  the user's credentials (ISOL-16, ISOL-17).
+- **UI-68** When the host has no jail (ISOL-12, ISOL-20) the switch is disabled
+  and says so, rather than showing a chat as protected where it isn't.
+- **UI-69** An approval prompt in a chat whose jail is off says the command
+  runs unjailed (ISOL-17).
 
 ### Markdown
 
@@ -310,6 +321,7 @@ the hidden tool calls leave with a one-line summary of the current step.
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
+`test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

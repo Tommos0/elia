@@ -26,13 +26,15 @@ progress so any number of UIs can follow it.
   `{:compaction, state}` (the chat's compaction state changed, COMPACT-24),
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
+  `{:jail, on?}` (the chat's jail setting changed, SESS-30),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
-  auto-approved tool names (sorted list), its task metadata (`task`, `nil`
+  auto-approved tool names (sorted list), its jail setting (ISOL-16), its task
+  metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
   compaction state (`compaction`, COMPACT-24) and its pause message (`pause`,
   `nil` unless the turn is paused, SESS-27), so a UI that connects mid-turn
@@ -60,7 +62,8 @@ progress so any number of UIs can follow it.
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
   their defaults and the saved model selection (SESS-14), auto-approved
-  tools (SESS-16), project (PROJ-9) and compaction state (COMPACT-24) are
+  tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24) and jail
+  setting (SESS-30) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
@@ -68,6 +71,11 @@ progress so any number of UIs can follow it.
   tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
   messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the
   sorted list. It is allowed mid-turn (APPR-11).
+- **SESS-30** A session loads its saved jail setting on start (STORE-26) and
+  every session it starts from (a sub-task, SUBTASK-30) carries it. `set_jail/2`
+  (chat id, boolean) turns the jail for this chat's commands on or off (ISOL-16),
+  saves it (STORE-25) and broadcasts `{:jail, on?}`, so every view of the chat
+  agrees. It is allowed mid-turn (ISOL-19).
 
 - **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16),
   `selection` (a model selection, MODEL-1) and `auto_approve` (a list of
