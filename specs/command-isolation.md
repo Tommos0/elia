@@ -42,7 +42,9 @@ genuinely needs the rest of the machine (ISOL-16).
   outside.
 - **ISOL-4** The jail holds exactly what ISOL-13's profile lists, and, next to
   the workspace, only the read-only toolchain (`/usr`, `/lib`, `/lib64`, `/bin`,
-  `/sbin`, `/etc`) and `$HOME/.mix` read-write (mix archives live there). For a
+  `/sbin`, `/etc`), `$HOME/.mix` read-write (mix archives live there) and the
+  browser cache the real-browser tests drive (`$HOME/.cache/ms-playwright`,
+  read-only, when it exists) — browsers, not secrets. For a
   chat worktree it also holds the repository's git directory read-write, which
   commits need: the worktree's `.git` is a pointer file into
   `<live>/.git/worktrees/<id>`, whose common dir is `<live>/.git` (ISOL-3).

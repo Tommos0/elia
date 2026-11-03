@@ -164,14 +164,24 @@ defmodule Elia.Shell do
   end
 
   # mix keeps its archives and its lock in `$HOME/.mix`, which has to be
-  # writable (ISOL-4). Nothing else under the home directory is bound, so a
-  # credential store anywhere else in it doesn't exist inside the jail, and an
-  # empty home stands where the real one is (ISOL-5).
+  # writable (ISOL-4). The browser the real-browser tests drive lives in the
+  # user's cache, bound read-only so a jailed `mix test --only real_browser`
+  # works; it holds browsers, not secrets, and nothing else in the cache is
+  # bound. Nothing else under the home directory is bound either, so a
+  # credential store anywhere else in it doesn't exist inside the jail (ISOL-5).
   defp home_args do
     case System.get_env("HOME") do
       nil -> []
-      home -> ["--dir", home] ++ bind_try(Path.join(home, ".mix"), "--bind-try")
+      home -> ["--dir", home] ++ mix_args(home) ++ browser_args(home)
     end
+  end
+
+  defp mix_args(home), do: bind_try(Path.join(home, ".mix"), "--bind-try")
+
+  defp browser_args(home) do
+    cache = Path.join([home, ".cache", "ms-playwright"])
+
+    if File.dir?(cache), do: ["--ro-bind", cache, cache], else: []
   end
 
   defp profile(cd, opts) do

@@ -29,9 +29,27 @@ defmodule Elia.CommandIsolationTest do
     assert {:ok, "hi\n", 0} = jailed("echo hi")
   end
 
-  test "the home directory is stripped to what mix needs (ISOL-4, ISOL-5, ISOL-8)" do
+  test "the home directory is stripped to mix and the browser cache (ISOL-4, ISOL-5, ISOL-8)" do
     assert {:ok, output, 0} = jailed("ls -A $HOME")
-    assert String.split(output, "\n", trim: true) in [[], [".mix"]]
+
+    assert output
+           |> String.split("\n", trim: true)
+           |> Enum.all?(&(&1 in [".cache", ".mix"]))
+  end
+
+  test "the browser the real-browser tests drive is there, read-only (ISOL-4)" do
+    cache = Path.join([System.user_home!(), ".cache", "ms-playwright"])
+
+    if File.dir?(cache) do
+      # Only the browser cache is bound, not the cache directory itself.
+      assert {:ok, output, 0} = jailed("ls -A $HOME/.cache")
+      assert String.split(output, "\n", trim: true) == ["ms-playwright"]
+
+      assert {:ok, _output, 0} = jailed("ls -d $HOME/.cache/ms-playwright/*")
+
+      assert {:ok, _output, status} = jailed("touch $HOME/.cache/ms-playwright/probe")
+      assert status != 0, "the browser cache must be read-only"
+    end
   end
 
   test "credentials and the settings store are absent (ISOL-5)" do
