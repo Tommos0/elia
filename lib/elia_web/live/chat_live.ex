@@ -279,7 +279,7 @@ defmodule EliaWeb.ChatLive do
           </div>
           <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
-              <div id="transcript" phx-update="stream" class="space-y-5">
+              <div id="transcript" phx-update="stream" class="space-y-5" phx-hook=".ZoomImage">
                 <div id="transcript-empty" class="hidden only:block py-24 text-center">
                   <p class="text-2xl font-semibold tracking-tight">What should we work on?</p>
                   <p class="mt-2 text-sm text-base-content/60">
@@ -550,6 +550,26 @@ defmodule EliaWeb.ChatLive do
             if (stored === "1") this.pushEvent("set_compact_view", {on: true})
             this.handleEvent("view:remember", ({on}) => {
               try { localStorage.setItem(KEY, on ? "1" : "0") } catch (_e) {}
+            })
+          }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ZoomImage">
+        // PREVIEW-8: a preview's screenshot is shown at the transcript's width,
+        // which can be too small to read, so a click opens the file itself. A
+        // delegated listener (rather than wrapping the images) leaves the
+        // server's markup alone, so DOM patching never fights it.
+        export default {
+          mounted() {
+            this.el.addEventListener("click", event => {
+              const img = event.target instanceof HTMLImageElement ? event.target : null
+              if (!img || img.closest("a")) return
+
+              const link = document.createElement("a")
+              link.href = img.currentSrc || img.src
+              link.target = "_blank"
+              link.rel = "noopener"
+              link.click()
             })
           }
         }

@@ -42,6 +42,17 @@ defmodule Elia.Skills.SelfModification do
     changing Elixir code, update the affected spec or add one for a new feature, \
     then implement it and cite the requirement IDs you touched in your tests \
     (e.g. `# SHELL-3`). Never renumber or reuse requirement IDs.
+
+    A UI change — a template, `assets/css/`, a hook or another client-side file \
+    — is invisible to the user until they deploy it, so show them what it looks \
+    like: run `bin/preview` in the workspace (it can take seconds to a minute the \
+    first time, because it builds assets and starts a browser, so give the \
+    `shell` call a longer `timeout_seconds`), and put the Markdown image links \
+    it prints into your reply. That is a preview: the workspace's own code in a \
+    real headless browser, in the test env, with no deploy and no API key \
+    (`specs/ui-preview.md`). Pictures of the pages you changed are the useful \
+    ones — `bin/preview /files` or `bin/preview @chat`; check the "page errors" \
+    it reports, too.
     """
   end
 

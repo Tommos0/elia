@@ -32,6 +32,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - The user then deploys from the Settings page (`Elia.Deploy.deploy/1`, DEPLOY-5..DEPLOY-7): Elia runs the full test suite in the live tree, fast-forwards `live` to `master` (rolling it back if the tests fail, HOT-4) and loads the result — by "Hot reload", which recompiles and loads the live tree keeping running state (DEPLOY-6), or by "Restart", which stops the runtime system with a non-zero status so `bin/serve` starts it again on the deployed code in a clean process (DEPLOY-7, RESTART-1).
 - Make all the edits for a change first, run `run_tests`, then commit and merge — a multi-file edit is on the chat's branch, so the running app can't be broken halfway. Don't expect the change to be live until the user has deployed it.
 - Not needed for `skills/**` (use `reload_skills`) or for tests and docs.
+- A UI change — a template, `assets/css/`, a hook — can be seen *before* it is deployed: `bin/preview` in the chat's workspace screenshots its own code in a real headless browser, in the test env, and prints a Markdown image link per page (PREVIEW, `specs/ui-preview.md`). Nothing is deployed, no API key is involved and no live data is read; the pictures land in the gitignored `tmp/preview/`, and the running app serves a chat's own ones at `/preview/<chat id>/<file>` (PREVIEW-7). Paste the links into a reply to show the user.
 
 ## Adding a skill
 

@@ -157,6 +157,32 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chat-link-#{id}[title='#{text}']")
   end
 
+  # PREVIEW-8: a preview's screenshot reaches the chat as a picture, shown at
+  # the transcript's width and openable at its own size.
+  test "an image in a message renders as a picture", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    :ok =
+      Elia.Store.save(id, [
+        Message.user("show me"),
+        %Message{
+          role: :assistant,
+          content: [Message.text("Here it is: ![preview](/preview/#{id}/0-root.png)")]
+        }
+      ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    document = view |> render() |> LazyHTML.from_fragment()
+
+    assert [image] = document |> LazyHTML.query(".markdown img") |> Enum.to_list()
+    assert LazyHTML.attribute(image, "src") == ["/preview/#{id}/0-root.png"]
+
+    # The hook that opens the picture at its own size is on the transcript.
+    assert [hook] = LazyHTML.query(document, "#transcript") |> LazyHTML.attribute("phx-hook")
+    assert hook =~ "ZoomImage"
+  end
+
   # UI-34: each sidebar chat shows its start time, and the text keeps up with the clock.
   test "sidebar chats show a relative start time that refreshes", %{conn: conn} do
     id = Agent.new_id()

@@ -1,0 +1,45 @@
+#!/bin/sh
+# Takes a UI preview: screenshots of this workspace's own pages, taken before
+# they are deployed (specs/ui-preview.md, PREVIEW-1).
+#
+#   bin/preview                      # the empty state and the sample chat
+#   bin/preview @chat                # just the sample chat
+#   bin/preview / /files /settings   # pages of your choosing
+#   ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
+#
+# It prints a Markdown image link per picture, which is what shows a screenshot
+# in the chat. The pictures go to tmp/preview/ (gitignored).
+#
+# Environment:
+#   ELIA_PREVIEW_PORT    port the preview server listens on (default 4010)
+#   ELIA_PREVIEW_WIDTH   viewport width  (default 1280)
+#   ELIA_PREVIEW_HEIGHT  viewport height (default 900)
+#   ELIA_PREVIEW_WAIT    milliseconds to settle after a page loads (default 500)
+
+cd "$(dirname "$0")/.." || exit 1
+
+# A preview must not show a stale bundle: build the assets the browser loads
+# (PREVIEW-1, PREVIEW-6). Both steps are no-ops once they have been run. They
+# run in the test env — the preview's own env, and the one the harness keeps a
+# chat worktree's dependencies compiled for (ISOL-7), so this works inside the
+# jail a command runs in.
+MIX_ENV=test mix assets.setup || exit 1
+MIX_ENV=test mix assets.build || exit 1
+
+# Where the pictures go, and where the preview test writes them (PREVIEW-4).
+ELIA_PREVIEW_DIR="$PWD/tmp/preview"
+export ELIA_PREVIEW_DIR
+
+# The test env server it drives (BROWSER-3), on its own port so it can't meet a
+# chat that is running its tests at the same time (BROWSER-2, PREVIEW-1).
+export ELIA_BROWSER_TESTS=1
+ELIA_TEST_PORT=${ELIA_PREVIEW_PORT:-4010}
+export ELIA_TEST_PORT
+
+# The pages to preview, one per line (PREVIEW-11: `@chat` is the sample chat).
+if [ "$#" -gt 0 ]; then
+  PREVIEW_PATHS=$(printf '%s\n' "$@")
+  export PREVIEW_PATHS
+fi
+
+exec env MIX_ENV=test mix test --only preview

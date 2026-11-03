@@ -63,6 +63,17 @@ Playwright.
   in the LiveView suite where you can, and reach for a browser only for what
   JavaScript and layout do (e.g. `#chat-input`'s Enter-to-send hook).
 
+### UI previews
+
+`bin/preview` (`specs/ui-preview.md`, PREVIEW) points the same browser at pages
+instead of assertions: it boots the workspace's own code as the test env app,
+screenshots the pages you ask for into the gitignored `tmp/preview/`, and prints
+a Markdown image link per picture, which the chat renders at
+`/preview/<chat id>/<file>` (`EliaWeb.PreviewController`). It is how a UI change
+is shown before it is deployed. `test/elia_web/browser/preview_test.exs` is the
+run itself, tagged `:preview` and excluded like these tests, so it never starts
+a browser during `mix test`.
+
 ## Running
 
 - One file: `mix test test/path_test.exs` (or `run_tests`). Previously failed: `mix test --failed`.

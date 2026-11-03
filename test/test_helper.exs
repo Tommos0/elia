@@ -8,7 +8,10 @@ File.mkdir_p!(root)
 # the `run_tests` tool and `mix precommit` never start a browser or need Node
 # (BROWSER-5). Run them with
 # `ELIA_BROWSER_TESTS=1 mix test --only real_browser`.
-ExUnit.start(exclude: [:real_browser])
+#
+# A UI preview (`bin/preview`) is a browser run too, and is excluded the same
+# way (PREVIEW-6): `mix test --only preview`.
+ExUnit.start(exclude: [:real_browser, :preview])
 
 if System.get_env("ELIA_BROWSER_TESTS") == "1" do
   # The Playwright driver, and the URL of the test server it drives

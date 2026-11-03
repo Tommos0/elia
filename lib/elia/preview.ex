@@ -1,0 +1,203 @@
+defmodule Elia.Preview do
+  @moduledoc """
+  What a UI preview names, seeds and serves (`specs/ui-preview.md`).
+
+  A preview boots the chat's own code as the test env app and screenshots pages
+  with the browser layer's Playwright (PREVIEW-1 - PREVIEW-6); that half lives
+  in the test layer, where the Playwright dependency is (BROWSER-1). What is
+  here is what the running app shares with it: the file names a preview writes
+  (PREVIEW-4), the sample chat it seeds so the pages have something to render
+  (PREVIEW-10 - PREVIEW-12), and the lookup the route serving those images does
+  (PREVIEW-7) — no browser involved.
+  """
+
+  alias Elia.LLM.Message
+  alias Elia.{Deploy, Explorer, Store, Workspace}
+
+  # PREVIEW-4: a preview's own dir, gitignored so it never reaches a commit or
+  # a deploy.
+  @dir "tmp/preview"
+
+  # PREVIEW-11: a fixed id keeps the sample chat's page and file name stable
+  # from one run to the next.
+  @sample_id "preview"
+
+  @extensions ~w(.png .jpg .jpeg .webp)
+
+  @doc "The dir a workspace's previews are written to, under `root` (PREVIEW-4)."
+  @spec dir(binary()) :: binary()
+  def dir(root \\ Workspace.root()), do: Path.join(root, @dir)
+
+  @doc "The file a path's screenshot gets: `<n>-<slug>.<ext>` (PREVIEW-4)."
+  @spec file_name(non_neg_integer(), binary()) :: binary()
+  def file_name(index, path), do: "#{index}-#{slug(path)}.png"
+
+  # PREVIEW-4: the slug is the path with anything that isn't a letter or digit
+  # turned into `-`, so `/` is `root` and the name is stable across runs.
+  defp slug(path) do
+    case path |> String.replace(~r/[^A-Za-z0-9]+/, "-") |> String.trim("-") do
+      "" -> "root"
+      slug -> slug |> String.downcase() |> String.slice(0, 40)
+    end
+  end
+
+  @doc "The sample chat's id (PREVIEW-11)."
+  @spec sample_id() :: binary()
+  def sample_id, do: @sample_id
+
+  @doc "The sample chat's path in the app (PREVIEW-11)."
+  @spec sample_path() :: binary()
+  def sample_path, do: "/c/" <> @sample_id
+
+  @doc "What a preview's argument means as a path: `@chat` is the sample chat (PREVIEW-11)."
+  @spec resolve_path(binary()) :: binary()
+  def resolve_path("@chat"), do: sample_path()
+  def resolve_path(path), do: path
+
+  @doc """
+  The URL the chat shows `file` at (PREVIEW-5, PREVIEW-7). The running app
+  serves it from the chat's own worktree, whoever is looking.
+  """
+  @spec url(binary(), binary()) :: binary()
+  def url(chat_id, file), do: "/preview/#{chat_id}/#{file}"
+
+  @doc """
+  The file `file` names in `chat_id`'s worktree, if it is there and may be
+  served (PREVIEW-7): `{:ok, absolute path}`, or `:not_found` for anything else
+  — an unknown chat, a file name that isn't a single segment with an image
+  extension, a path that leads out of `tmp/preview/` or through a symlink
+  (EXPL-1, EXPL-2), or a file that isn't a regular file. There is nothing here
+  to enumerate and nothing else to reach.
+  """
+  @spec path(binary(), binary(), binary()) :: {:ok, binary()} | {:error, :not_found}
+  def path(chat_id, file, root \\ Workspace.runtime_root()) do
+    with :ok <- check_id(chat_id),
+         :ok <- check_file(file),
+         {:ok, abs} <-
+           Explorer.safe_path(Path.join(@dir, file), Deploy.worktree_path(chat_id, root)),
+         {:ok, %File.Stat{type: :regular}} <- File.stat(abs) do
+      {:ok, abs}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp check_id(chat_id) do
+    if Store.valid_id?(chat_id), do: :ok, else: {:error, :not_found}
+  end
+
+  defp check_file(file) do
+    cond do
+      not is_binary(file) -> {:error, :not_found}
+      Path.basename(file) != file -> {:error, :not_found}
+      String.downcase(Path.extname(file)) not in @extensions -> {:error, :not_found}
+      true -> :ok
+    end
+  end
+
+  @doc """
+  The chat whose worktree `root` is, or `nil` when it isn't one (PREVIEW-5).
+
+  A preview runs *inside* the worktree, where the live tree isn't the configured
+  root (a test run's config points at its own scratch workspace), so the chat
+  comes from the path itself: the one `Elia.Deploy.worktrees_dir/1` puts a
+  chat's worktree at, `<data dir>/worktrees/<chat id>` (DEPLOY-1).
+  """
+  @spec worktree_chat(binary()) :: binary() | nil
+  def worktree_chat(root) do
+    root = Path.expand(root)
+    dir = Path.dirname(root)
+    id = Path.basename(root)
+
+    if Path.basename(dir) == Path.basename(Deploy.worktrees_dir()) and
+         Path.basename(Path.dirname(dir)) == Path.basename(Workspace.data_dir()) and
+         Store.valid_id?(id) do
+      id
+    end
+  end
+
+  @doc """
+  Saves the sample chat into the app's own data, so the pages a preview takes a
+  picture of have something to render (PREVIEW-10). Its workspace is the one
+  the preview runs in (PREVIEW-2), so no other data is touched.
+  """
+  @spec seed() :: :ok | {:error, term()}
+  def seed, do: Store.save(@sample_id, sample_messages())
+
+  @doc """
+  The sample chat's messages (PREVIEW-10): a user message, an assistant reply
+  with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), a
+  `shell` call with its output and a failed one (UI-15, UI-16, UI-20).
+  """
+  @spec sample_messages() :: [Message.t()]
+  def sample_messages do
+    [
+      Message.user("What does a chat look like once it has done some work?"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{
+            type: :reasoning,
+            text:
+              "A sample transcript, seeded by `bin/preview`. It should show the " <>
+                "pieces a chat renders: a reply with Markdown, a tool call with " <>
+                "its output, and one that failed."
+          },
+          Message.text(markdown()),
+          %{
+            type: :tool_call,
+            id: "call-preview-1",
+            name: "shell",
+            input: %{"command" => "mix test"}
+          },
+          %{
+            type: :tool_call,
+            id: "call-preview-2",
+            name: "shell",
+            input: %{"command" => "git push"}
+          }
+        ]
+      },
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]"),
+          Message.tool_result(
+            "call-preview-2",
+            "fatal: no upstream branch to push to\n[exit: 128]",
+            true
+          )
+        ]
+      },
+      %Message{
+        role: :assistant,
+        content: [
+          Message.text("The suite passes. Nothing is pushed: there is no upstream branch yet.")
+        ]
+      }
+    ]
+  end
+
+  defp markdown do
+    """
+    Here is what the harness did, in the order it did it.
+
+    ## What changed
+
+    - a new `Elia.Preview` module with the preview's file names and path safety
+    - a route that serves a preview's images, and only those
+
+    | Piece | Where |
+    | --- | --- |
+    | naming | `Elia.Preview` |
+    | serving | `EliaWeb.PreviewController` |
+
+    ```elixir
+    def file_name(index, path), do: "\#{index}-\#{slug(path)}.png"
+    ```
+
+    The workflow is written up in `AGENTS.md`, and the spec is
+    [ui-preview.md](/files?path=specs%2Fui-preview.md).
+    """
+  end
+end

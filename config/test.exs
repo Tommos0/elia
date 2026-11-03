@@ -11,13 +11,15 @@ config :elia, EliaWeb.Endpoint,
 
 # PhoenixTest drives that endpoint from a real browser (BROWSER-3). The
 # Playwright CLI sits in assets/node_modules (BROWSER-2); errors the page logs
-# are recorded and fail the test that caused them (BROWSER-8).
+# are recorded and fail the test that caused them (BROWSER-8). A UI preview
+# writes its pictures into its own dir, where the chat that asked for them looks
+# for them (PREVIEW-4, PREVIEW-7).
 config :phoenix_test,
   otp_app: :elia
 
 config :phoenix_test, :playwright,
   js_logger: EliaWeb.BrowserJsLogger,
-  screenshot_dir: "tmp/screenshots",
+  screenshot_dir: System.get_env("ELIA_PREVIEW_DIR", "tmp/screenshots"),
   trace_dir: "tmp/traces"
 
 # Print only warnings and errors during test
