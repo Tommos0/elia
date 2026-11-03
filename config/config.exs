@@ -89,6 +89,13 @@ config :elia, Elia.Skills,
     Elia.Skills.SelfModification
   ]
 
+# Command isolation (ISOL): tool calls run inside a bubblewrap jail, which holds
+# the workspace and the toolchain and nothing else. `false` turns the jail off
+# for every chat on this host; a chat's own setting can turn it off for one chat
+# (ISOL-20).
+config :elia, Elia.Shell,
+  jail: true
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

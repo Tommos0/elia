@@ -30,3 +30,8 @@ config :elia, Elia.Settings,
 
 # Tests run against a scratch workspace (a fresh git repo, see test_helper.exs).
 config :elia, :workspace, Path.join(System.tmp_dir!(), "elia-test-workspace")
+
+# The suite runs commands unjailed so it needs no bubblewrap; the isolation
+# tests turn the jail on per call and skip where bubblewrap is missing
+# (ISOL-12).
+config :elia, Elia.Shell, jail: false
