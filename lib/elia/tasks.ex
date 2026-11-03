@@ -565,12 +565,17 @@ defmodule Elia.Tasks do
     Elia.Agent.update_task(child_id, changes)
   catch
     :exit, _ ->
-      Store.save(child_id, Store.load(child_id),
-        model: Store.load_model(child_id),
-        auto_approve: Store.load_auto_approve(child_id),
-        task: Map.merge(task, changes),
-        project: Store.load_project(child_id)
-      )
+      # SUBTASK-29: a session that is gone can mean the user deleted the chat
+      # (SESS-29), and writing the metadata to disk would recreate it. Save the
+      # fallback only while the chat's file is still there.
+      if Store.exists?(child_id) do
+        Store.save(child_id, Store.load(child_id),
+          model: Store.load_model(child_id),
+          auto_approve: Store.load_auto_approve(child_id),
+          task: Map.merge(task, changes),
+          project: Store.load_project(child_id)
+        )
+      end
   end
 
   defp saved_status(child_id) do

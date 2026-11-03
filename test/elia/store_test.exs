@@ -279,6 +279,27 @@ defmodule Elia.StoreTest do
     )
   end
 
+  # STORE-24
+  test "exists?/1 reports whether a valid id has a saved chat file" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    refute Store.exists?(id)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.exists?(id)
+
+    # No decoding, so a file that can't be read as a chat still exists.
+    File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
+    assert Store.exists?(id)
+
+    assert :ok = Store.delete(id)
+    refute Store.exists?(id)
+
+    refute Store.exists?("../bad")
+    refute Store.exists?("")
+  end
+
   # STORE-23
   test "deleting a chat that was never saved is ok, and an invalid id removes nothing" do
     assert :ok = Store.delete(Elia.Agent.new_id())

@@ -225,6 +225,14 @@ defmodule Elia.Store do
   end
 
   @doc """
+  Whether `id` is a valid chat id with a saved chat file (STORE-24). The file
+  isn't decoded, so this is cheap; it is `false` for an invalid id (STORE-4) and
+  for an id with no file.
+  """
+  @spec exists?(binary()) :: boolean()
+  def exists?(id), do: valid_id?(id) and File.exists?(path(id))
+
+  @doc """
   Deletes a saved chat. A chat's worktree goes with it — removed, and its branch
   pruned (DEPLOY-10) — and a chat that has no saved file yet is deleted too
   (STORE-23). Only that chat goes: a parent's task chats, and a task chat's

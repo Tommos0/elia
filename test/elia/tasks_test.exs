@@ -710,6 +710,28 @@ defmodule Elia.TasksTest do
              List.last(Agent.snapshot(parent).messages)
   end
 
+  # SUBTASK-29, SESS-29
+  test "a running sub-task chat the user deletes stays deleted", %{parent: parent} do
+    child = spawn_blocked_child(parent, self())
+
+    assert Store.exists?(child)
+    assert [%{id: ^child}] = children_of(parent)
+
+    # SESS-29, UI-65: deleting the running child stops its turn, kills its
+    # session and removes its file.
+    :ok = Agent.delete(child)
+    refute Store.exists?(child)
+    assert children_of(parent) == []
+
+    # Its watcher still ends the task and saves the final metadata (SUBTASK-13).
+    # SUBTASK-29: with the file gone, that save must not write the chat back.
+    await_status(parent, :idle)
+
+    assert Tasks.active() == []
+    refute Store.exists?(child)
+    assert children_of(parent) == []
+  end
+
   # SUBTASK-19, SUBTASK-28
   test "when a child's watcher dies, the registry finishes the job", %{parent: parent} do
     child = spawn_blocked_child(parent, self())
