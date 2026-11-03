@@ -316,7 +316,7 @@ defmodule Elia.Deploy do
     else
       {:error,
        "Hot reload is only available when the endpoint's code reloader is on " <>
-         "(`code_reloader`, HOT-7)."}
+         "(`code_reloader: true`)."}
     end
   end
 
