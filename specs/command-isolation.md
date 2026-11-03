@@ -166,9 +166,12 @@ genuinely needs the rest of the machine (ISOL-16).
   the one place a jailed process has `.elia` in reach, and it is a deliberate
   trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).
 - **ISOL-23** While a worktree's sync (ISOL-7) is in flight the chat says so
-  (UI-70), and a command waiting for one says what it is waiting for. The
-  indicator goes when the sync ends, whether it succeeded or failed; a failure
-  leaves the chat usable and shows up in the result of the next command.
+  (UI-70), covering a sync a chat started in the background and one a command is
+  waiting for; for the latter it doubles as the command's "what am I waiting
+  for". The indicator goes when the sync ends, whether it succeeded or failed. A
+  failure leaves the chat usable: the command the sync was owed still runs, its
+  result says the sync failed and a command that does need the dependencies
+  fails with its own error.
 
 ## Configuration
 
