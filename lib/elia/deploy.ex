@@ -154,7 +154,7 @@ defmodule Elia.Deploy do
 
     cond do
       File.dir?(path) ->
-        {:ok, path}
+        synced(path, root)
 
       true ->
         case deployable(root) do
@@ -172,10 +172,14 @@ defmodule Elia.Deploy do
         do: ["worktree", "add", "--force", path, branch(chat_id)],
         else: ["worktree", "add", "--force", "-b", branch(chat_id), path, base]
 
-    case git(root, args) do
+    # The worktree is created *inside* the live tree's data dir, so this call
+    # needs that writable: the profile for the harness's own steps in the live
+    # tree (ISOL-13), not the masked `:live_tree` one a tool call there gets
+    # (ISOL-6).
+    case git(root, args, profile: :deps_sync) do
       {:ok, _output} ->
         link_deps(path, root)
-        {:ok, path}
+        synced(path, root)
 
       {:error, reason} ->
         {:error, "could not create a worktree for this chat: #{reason}"}
@@ -195,7 +199,7 @@ defmodule Elia.Deploy do
 
     cond do
       File.dir?(path) ->
-        {:ok, path}
+        synced(path, root)
 
       branch_exists?(branch(parent_id), root) ->
         add_worktree(child_id, path, root, branch(parent_id))
@@ -203,6 +207,15 @@ defmodule Elia.Deploy do
       true ->
         {:error, "the parent chat has no worktree to fork from"}
     end
+  end
+
+  # ISOL-7: a worktree's `deps` is the live tree's, bound read-only for a
+  # command that runs there (ISOL-13), so the harness keeps the shared tree
+  # compiled itself before any jailed command needs it — for a worktree it just
+  # created, and for one that predates this and is resolved again (DEPLOY-1).
+  defp synced(path, root) do
+    Elia.DepsSync.sync(path, root)
+    {:ok, path}
   end
 
   # A fresh worktree has no dependencies (`deps` is git-ignored), so `mix test`
@@ -226,18 +239,21 @@ defmodule Elia.Deploy do
     path = worktree_path(chat_id, root)
 
     if File.dir?(path) do
-      case git(root, ["worktree", "remove", "--force", path]) do
+      # The worktree itself lives under the live tree's data dir, so its
+      # removal is one of the harness's own steps there (ISOL-13).
+      case git(root, ["worktree", "remove", "--force", path], profile: :deps_sync) do
         {:ok, _} -> :ok
         {:error, _} -> File.rm_rf!(path)
       end
 
-      git(root, ["worktree", "prune"])
+      git(root, ["worktree", "prune"], profile: :deps_sync)
     end
 
     if branch_exists?(branch(chat_id), root) do
       git(root, ["branch", "-D", branch(chat_id)])
     end
 
+    Elia.DepsSync.forget(path, root)
     :ok
   end
 
@@ -349,6 +365,10 @@ defmodule Elia.Deploy do
   defp merge_and_test(count, root) do
     with {:ok, before} <- git(root, ["rev-parse", @live]),
          {:ok, _merged} <- merge(root) do
+      # ISOL-14: the merged trunk's suite runs in the live tree, jailed by
+      # default — no chat's setting is involved (ISOL-15), and the live tree's
+      # `:live_tree` profile is what `Elia.Harness.run_tests/2` gets from the
+      # working directory it runs in (ISOL-13).
       case Elia.Harness.run_tests([], root) do
         {:ok, _output} ->
           {:ok, "#{commits(count)} merged into #{@live}."}
@@ -454,12 +474,32 @@ defmodule Elia.Deploy do
     match?({:ok, _}, git(root, ["merge-base", "--is-ancestor", branch, other]))
   end
 
-  defp git(root, args) do
-    case System.cmd("git", args, cd: root, stderr_to_stdout: true) do
-      {out, 0} -> {:ok, String.trim(out)}
-      {out, _} -> {:error, String.trim(out)}
+  # Every git call the harness makes goes through `Elia.Shell.run/2` (ISOL-1):
+  # jailed by default, with the environment rebuilt from the allowlist (ISOL-8)
+  # rather than the full server environment `System.cmd/3` inherited. The
+  # working directory, the arguments and the reading of the exit status and
+  # output are as they were. A run whose jail was skipped says so above git's
+  # own output (ISOL-12), which is what `strip_notice/1` takes off.
+  defp git(root, args, opts \\ []) do
+    command = "git " <> Enum.map_join(args, " ", &quote_arg/1)
+    opts = Keyword.merge([cd: root, timeout: :timer.minutes(2)], opts)
+
+    case Elia.Shell.run(command, opts) do
+      {:ok, output, 0} -> {:ok, out(output)}
+      {:ok, output, _status} -> {:error, out(output)}
+      {:timeout, output} -> {:error, "timed out: #{out(output)}"}
     end
   rescue
     e -> {:error, "could not run git: #{Exception.message(e)}"}
   end
+
+  defp out(output) do
+    output
+    |> String.replace_leading(Elia.Shell.jail_skipped_notice() <> "\n", "")
+    |> String.trim()
+  end
+
+  # git's arguments go through a shell (SHELL-2), so each is quoted: a path with
+  # a space, or a quote, still reaches git as one argument.
+  defp quote_arg(arg), do: "'" <> String.replace(arg, "'", "'\\''") <> "'"
 end
