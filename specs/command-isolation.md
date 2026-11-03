@@ -27,7 +27,8 @@ genuinely needs the rest of the machine (ISOL-16).
   (FOLDER), and the `git` calls the harness itself makes in a chat's workspace
   (DEPLOY-9, SUBTASK). All of them go through `Elia.Shell.run/2`; the
   `System.cmd("git", …)` calls in `Elia.Tasks` and `Elia.Deploy` move behind it,
-  since they bypass it today.
+  since they bypass it today. A git call that times out counts as a failure,
+  like one that exits non-zero (ISOL-10).
 - **ISOL-2** The jail is bubblewrap, run as the same user with no privileges:
   `--die-with-parent`, `--unshare-pid`, `--unshare-uts`, `--unshare-ipc`,
   `--unshare-cgroup-try`, `--proc /proc`, `--dev /dev`, `--tmpfs /tmp`, and
@@ -76,8 +77,14 @@ genuinely needs the rest of the machine (ISOL-16).
   `ptrace_scope=0`, so unjailed any command could read it.)
 - **ISOL-10** A jailed command is otherwise unchanged: `bash -c` where bash is
   installed and POSIX `sh -c` otherwise, empty stdin, its own process group, the
-  same timeout, output truncation and `[exit: …]` result (SHELL-2..SHELL-5). On
-  timeout the jail is killed, which takes its whole pid namespace with it.
+  same timeout, output truncation and `[exit: …]` result (SHELL-2..SHELL-5). That
+  process group is the runtime's doing — the VM starts a port program as its own
+  session and process group leader — so the group kill on timeout reaches the
+  command and everything it started. No `setsid` goes in front of it: `setsid`
+  forks when it is already a group leader, and the pid the port reports would
+  then be the wrapper's, in whose group the command is not. On timeout the jail
+  is killed, which takes its whole pid namespace with it; with the jail off
+  (ISOL-16, ISOL-20) the process-group kill does the work.
 - **ISOL-11** The jail doesn't restrict the network, and it changes neither what
   a command may write inside its workspace nor what approval it needs (APPR,
   WS). It is a second line behind the approval prompt, not a replacement for it.
