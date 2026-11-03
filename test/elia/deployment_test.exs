@@ -124,11 +124,11 @@ defmodule Elia.DeploymentTest do
     end)
   end
 
-  # The dev server, as far as a deploy can tell: the endpoint's code reloader is
-  # on, and loading a deploy is a message to the test instead of a real
-  # recompile, which would rebuild Elia's own endpoint inside the test run
-  # (HOT-2, HOT-5).
-  defp dev_server(test_pid \\ self()) do
+  # The running server, as far as a deploy can tell: the endpoint's code
+  # reloader is on (HOT-2, HOT-7; the suite turns it off, config/test.exs), and
+  # loading a deploy is a message to the test instead of a real recompile, which
+  # would rebuild Elia's own endpoint inside the test run (HOT-5).
+  defp running_server(test_pid \\ self()) do
     endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
     deploy = Application.get_env(:elia, Elia.Deploy, [])
 
@@ -400,7 +400,7 @@ defmodule Elia.DeploymentTest do
 
   # DEPLOY-6, HOT-5
   test "hot reload deploys, then reloads the running app", %{tree: tree} do
-    dev_server()
+    running_server()
     {_id, path} = new_worktree()
     file = work_on_trunk(path)
 
@@ -416,7 +416,7 @@ defmodule Elia.DeploymentTest do
 
   # DEPLOY-6, HOT-6
   test "a compile error is reported, truncated" do
-    dev_server()
+    running_server()
     output = String.duplicate("x", 30_000)
 
     Application.put_env(
@@ -435,20 +435,27 @@ defmodule Elia.DeploymentTest do
     assert String.length(message) < 21_000
   end
 
-  # DEPLOY-6, HOT-2
-  test "hot reload is only available when the dev server runs", %{tree: tree} do
+  # DEPLOY-6, HOT-2, HOT-7
+  test "hot reload is only available with the endpoint's code reloader on", %{tree: tree} do
+    # The suite runs with the code reloader off (config/test.exs, HOT-7); the
+    # value is read at runtime, so a test can turn it off as well (HOT-2).
+    endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
+    Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(endpoint, :code_reloader, false))
+    on_exit(fn -> Application.put_env(:elia, EliaWeb.Endpoint, endpoint) end)
+
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
     before = head(tree)
+    refute Deploy.hot_reload_available?()
     assert {:error, message} = Deploy.hot_reload()
-    assert message =~ "only available when running the dev server"
+    assert message =~ "code_reloader"
     assert head(tree) == before
   end
 
   # DEPLOY-7, RESTART-11, RESTART-1, RESTART-2
   test "restart deploys and restarts the server on a non-zero status", %{tree: tree} do
-    dev_server()
+    running_server()
     stop_server_with(self())
 
     {_id, path} = new_worktree()

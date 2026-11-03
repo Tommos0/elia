@@ -21,6 +21,12 @@ config :elia, EliaWeb.Endpoint,
   pubsub_server: Elia.PubSub,
   live_view: [signing_salt: "Sj47a7MI"]
 
+# The reload pipeline is part of the deploy, not of the Mix environment (HOT-7),
+# so every environment carries it; it sits here rather than in config/runtime.exs
+# because the endpoint reads `code_reloader` at compile time. Only the suite
+# turns it off (config/test.exs): a test run is not an operating mode.
+config :elia, EliaWeb.Endpoint, code_reloader: true
+
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.

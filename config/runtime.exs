@@ -29,16 +29,18 @@ end
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
 config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
 
-if config_env() == :dev do
-  # Reload browser tabs when matching files change.
-  config :elia, EliaWeb.Endpoint,
-    live_reload: [
-      web_console_logger: true,
-      # Never reloads on notification; only a deploy loads code (DEPLOY-8).
-      reloader: {Elia.Deploy, :reload, [[]]},
-      patterns: Elia.Deploy.static_reload_patterns()
-    ]
-end
+# Reload browser tabs when matching files change. Every environment the server
+# runs in gets it, not just the dev Mix env (HOT-7): the live reload and the
+# in-VM code reloader (HOT-2, HOT-5) are part of the deploy. It stays in
+# config/runtime.exs because it calls into Elia.Deploy, which config/config.exs
+# is loaded before the project compiles.
+config :elia, EliaWeb.Endpoint,
+  live_reload: [
+    web_console_logger: true,
+    # Never reloads on notification; only a deploy loads code (DEPLOY-8).
+    reloader: {Elia.Deploy, :reload, [[]]},
+    patterns: Elia.Deploy.static_reload_patterns()
+  ]
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

@@ -303,7 +303,8 @@ defmodule Elia.Deploy do
   @doc """
   The soft deploy mode (DEPLOY-6): deploys the trunk (DEPLOY-5), then recompiles
   the live tree and loads the changed modules into the running app, keeping
-  running state. Only available when the dev server runs (HOT-2).
+  running state. Only available when the endpoint's code reloader is on
+  (HOT-2, HOT-7).
   """
   @spec hot_reload(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
   def hot_reload(root \\ Workspace.runtime_root()) do
@@ -313,7 +314,9 @@ defmodule Elia.Deploy do
         other -> other
       end
     else
-      {:error, "Hot reload is only available when running the dev server (mix phx.server)."}
+      {:error,
+       "Hot reload is only available when the endpoint's code reloader is on " <>
+         "(`code_reloader`, HOT-7)."}
     end
   end
 
@@ -340,10 +343,10 @@ defmodule Elia.Deploy do
   end
 
   @doc """
-  Whether the server can be restarted: only the dev server, run by `bin/serve`
-  or a service manager, comes back after it stops (DEPLOY-7). A server started
-  by hand in a shell can't be, so the Settings page says so instead of stopping
-  it for good.
+  Whether the server can be restarted: only a server run by `bin/serve` or
+  another service manager comes back after it stops (DEPLOY-7). A server
+  started by hand in a shell can't be, so the Settings page says so instead of
+  stopping it for good.
   """
   @spec restartable?() :: :ok | {:error, binary()}
   def restartable? do
@@ -351,12 +354,12 @@ defmodule Elia.Deploy do
       :ok
     else
       {:error,
-       "Restarting is only available when the dev server runs, started by bin/serve " <>
+       "Restarting is only available when the server runs, started by bin/serve " <>
          "(or a service manager) so it comes back."}
     end
   end
 
-  @doc "Whether in-VM code reloading is available (the dev server's code reloader, HOT-2)."
+  @doc "Whether in-VM code reloading is available (the endpoint's code reloader, HOT-2, HOT-7)."
   def hot_reload_available? do
     Code.ensure_loaded?(Mix) and
       Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true

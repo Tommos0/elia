@@ -220,11 +220,11 @@ defmodule EliaWeb.SettingsLiveTest do
     LiveTree.push_to_trunk(path)
   end
 
-  # The dev server, as far as a deploy can tell: the endpoint's code reloader is
-  # on, and loading a deploy is a message to the test instead of a real
-  # recompile, which would rebuild Elia's own endpoint inside the test run
-  # (HOT-2, HOT-5).
-  defp dev_server do
+  # The running server, as far as a deploy can tell: the endpoint's code
+  # reloader is on (HOT-2, HOT-7; the suite turns it off, config/test.exs), and
+  # loading a deploy is a message to the test instead of a real recompile, which
+  # would rebuild Elia's own endpoint inside the test run (HOT-5).
+  defp running_server do
     endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
     deploy = Application.get_env(:elia, Deploy, [])
     test_pid = self()
@@ -269,7 +269,7 @@ defmodule EliaWeb.SettingsLiveTest do
   test "hot reload deploys what the chats merged, and the page stays responsive", %{
     conn: conn
   } do
-    dev_server()
+    running_server()
     tree = live_tree()
     work_on_trunk()
 
@@ -295,7 +295,7 @@ defmodule EliaWeb.SettingsLiveTest do
 
   # CONF-19, CONF-20, DEPLOY-7, RESTART-11
   test "restart deploys and restarts the server", %{conn: conn} do
-    dev_server()
+    running_server()
     stop_server_with(self())
     tree = live_tree()
     work_on_trunk()
@@ -313,7 +313,7 @@ defmodule EliaWeb.SettingsLiveTest do
 
   # CONF-20
   test "a deploy that refuses says why", %{conn: conn} do
-    dev_server()
+    running_server()
     tree = live_tree()
     work_on_trunk()
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")

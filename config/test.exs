@@ -7,6 +7,10 @@ import Config
 config :elia, EliaWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("ELIA_TEST_PORT", "4002"))],
   secret_key_base: "Pac3kJrObCElMVU07qb/sTiYCV1OVBBo1qJZEAi5cY++bmi3bc81cR9TV4voBIBV",
+  # A test run is not an operating mode: no code reloader and no live reload
+  # (HOT-7). The endpoint reads `code_reloader` at compile time, so tests that
+  # fake a running server set it at runtime (Elia.Deploy.hot_reload_available?/0).
+  code_reloader: false,
   server: System.get_env("ELIA_BROWSER_TESTS") == "1"
 
 # PhoenixTest drives that endpoint from a real browser (BROWSER-3). The
