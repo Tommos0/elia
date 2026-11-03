@@ -50,6 +50,7 @@ deleting it.
 | --- | --- | --- |
 | [Projects](projects.md) | `PROJ` | Project folders; chats belong to a project, which supplies its own `AGENTS.md` and skills |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
+| [Image viewer](image-viewer.md) | `IMG` | An image in the transcript opens over the chat, closable by its own button or the back button, never in a new tab |
 | [Chat settings](chat-settings.md) | `CSET` | The per-chat settings page: model, auto-approval, jail, limits and compaction options |
 | [Turn limits](turn-limits.md) | `LIMIT` | Per-chat step limit, time budget and whether a limit pauses the turn |
 | [Context indicator](context-indicator.md) | `CTX` | Context size and window shown per chat, with a clickable breakdown |

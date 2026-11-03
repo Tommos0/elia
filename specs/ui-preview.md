@@ -96,9 +96,10 @@ live tree's saved chats are never touched.
   a re-run of a preview shows the new picture and not a cached one.
 - **PREVIEW-8** An image in an assistant message (UI-25, UI-27) is shown, not
   linked: it scales down to at most the transcript's width, keeps rounded
-  corners and a border like a card, and clicking it opens the full-size image in
-  a new tab. A screenshot therefore appears in the chat as the agent's reply,
-  with no deploy and no page of its own.
+  corners and a border like a card, and clicking it opens it at full size in the
+  viewer over the chat (IMG-1 in `specs/image-viewer.md`), never in a new tab. A
+  screenshot therefore appears in the chat as the agent's reply, with no deploy
+  and no page of its own.
 
 ### The workflow
 

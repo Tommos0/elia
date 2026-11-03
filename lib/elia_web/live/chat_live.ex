@@ -272,7 +272,7 @@ defmodule EliaWeb.ChatLive do
           </div>
           <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
-              <div id="transcript" phx-update="stream" class="space-y-5" phx-hook=".ZoomImage">
+              <div id="transcript" phx-update="stream" class="space-y-5">
                 <div id="transcript-empty" class="hidden only:block py-24 text-center">
                   <p class="text-2xl font-semibold tracking-tight">What should we work on?</p>
                   <p class="mt-2 text-sm text-base-content/60">
@@ -446,6 +446,34 @@ defmodule EliaWeb.ChatLive do
             </.form>
           </div>
         </div>
+        <%!-- IMG-1 - IMG-6: an image in the transcript opens here, over the chat
+        (specs/image-viewer.md), so a click never leaves the page and the back
+        button closes the viewer rather than the app. The server renders it
+        hidden, outside the transcript's stream; `.ZoomImage` shows it, fills in
+        the picture and keeps the history entry (IMG-4). --%>
+        <div
+          id="image-lightbox"
+          phx-hook=".ZoomImage"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image"
+          class="fixed inset-0 z-50 flex-col items-center justify-center gap-3 bg-black/85 p-4 touch-pinch-zoom"
+        >
+          <button
+            type="button"
+            id="image-lightbox-close"
+            title="Close (Esc)"
+            aria-label="Close image"
+            class="absolute top-3 right-3 grid size-11 place-items-center rounded-full bg-base-100/90 text-base-content shadow-lg transition hover:bg-base-100 active:scale-95"
+          >
+            <.icon name="hero-x-mark" class="size-6" />
+          </button>
+          <img
+            id="image-lightbox-image"
+            alt=""
+            class="max-h-full max-w-full rounded-lg border border-base-300 bg-base-100 object-contain shadow-2xl"
+          />
+        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SubmitOnEnter">
@@ -562,22 +590,88 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ZoomImage">
-        // PREVIEW-8: a preview's screenshot is shown at the transcript's width,
-        // which can be too small to read, so a click opens the file itself. A
-        // delegated listener (rather than wrapping the images) leaves the
-        // server's markup alone, so DOM patching never fights it.
+        // PREVIEW-8, IMG-1 - IMG-6 (specs/image-viewer.md): an image in the
+        // transcript — a preview's screenshot, for instance — is shown at the
+        // transcript's width, which can be too small to read, so a click opens
+        // it in this viewer, over the chat. Never a new tab: that leaves the
+        // page, and in an installed app it leaves the back button nothing to go
+        // back to, so Android's closes the whole app.
         export default {
           mounted() {
-            this.el.addEventListener("click", event => {
-              const img = event.target instanceof HTMLImageElement ? event.target : null
-              if (!img || img.closest("a")) return
+            this.viewer = this.el.querySelector("#image-lightbox-image")
+            this.closeButton = this.el.querySelector("#image-lightbox-close")
 
-              const link = document.createElement("a")
-              link.href = img.currentSrc || img.src
-              link.target = "_blank"
-              link.rel = "noopener"
-              link.click()
+            // IMG-6: a delegated listener (rather than wrapping the images)
+            // leaves the transcript's markup alone, so DOM patching never
+            // fights it. It takes an image wherever Markdown put it — a saved
+            // message or a streaming draft, which is outside the transcript's
+            // stream — and leaves an image inside a link to its link (IMG-1).
+            this.onClick = event => {
+              const img = event.target instanceof HTMLImageElement ? event.target : null
+              if (!img || !img.closest(".markdown") || img.closest("a")) return
+              this.open(img)
+            }
+            document.addEventListener("click", this.onClick)
+
+            // IMG-3: the backdrop closes it — never the picture itself — and so
+            // does the viewer's own close button.
+            this.el.addEventListener("click", event => {
+              if (event.target === this.el) this.close()
             })
+            this.closeButton.addEventListener("click", () => this.close())
+
+            this.onKey = event => {
+              if (event.key === "Escape") this.close()
+            }
+            window.addEventListener("keydown", this.onKey)
+
+            // IMG-3: a page navigation takes the viewer away with it, without
+            // touching the history the navigation itself has just changed.
+            this.onNavigate = () => this.close({left: true})
+            window.addEventListener("phx:navigate", this.onNavigate)
+
+            // IMG-4: the back button — Android's in an installed app included —
+            // closes the viewer rather than leaving the chat.
+            this.onPop = () => this.close({left: true})
+            window.addEventListener("popstate", this.onPop)
+          },
+
+          destroyed() {
+            document.removeEventListener("click", this.onClick)
+            window.removeEventListener("keydown", this.onKey)
+            window.removeEventListener("phx:navigate", this.onNavigate)
+            window.removeEventListener("popstate", this.onPop)
+          },
+
+          // IMG-2: the picture, scaled to fit the viewport. IMG-5: focus goes to
+          // the close button, so Escape and Enter work without a tap.
+          open(img) {
+            if (this.openImage) return
+
+            this.openImage = img
+            // The URL the Markdown wrote, not the absolute one the DOM reports,
+            // so it stays right behind a proxy that prefixes the app's paths.
+            this.viewer.src = img.getAttribute("src") || img.src
+            this.viewer.alt = img.alt || ""
+            this.el.setAttribute("aria-label", img.alt || "Image")
+            this.el.style.display = "flex"
+            this.closeButton.focus()
+
+            // IMG-4: one entry, the URL unchanged, so the back button closes
+            // the viewer instead of leaving the chat.
+            history.pushState({eliaImageViewer: true}, "", window.location.href)
+          },
+
+          // `left` is for the ways that already moved the history — the back
+          // button, a navigation — which must not be moved again here (IMG-4).
+          close({left = false} = {}) {
+            if (!this.openImage) return
+
+            this.openImage = null
+            this.el.style.display = ""
+            this.viewer.removeAttribute("src")
+            this.viewer.alt = ""
+            if (!left) history.back()
           }
         }
       </script>

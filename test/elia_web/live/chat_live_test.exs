@@ -157,8 +157,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chat-link-#{id}[title='#{text}']")
   end
 
-  # PREVIEW-8: a preview's screenshot reaches the chat as a picture, shown at
-  # the transcript's width and openable at its own size.
+  # PREVIEW-8, IMG-6: a preview's screenshot reaches the chat as a picture,
+  # shown at the transcript's width, with the viewer it opens in — the server's
+  # own markup, hidden until the hook fills it in (`specs/image-viewer.md`).
   test "an image in a message renders as a picture", %{conn: conn} do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -178,9 +179,23 @@ defmodule EliaWeb.ChatLiveTest do
     assert [image] = document |> LazyHTML.query(".markdown img") |> Enum.to_list()
     assert LazyHTML.attribute(image, "src") == ["/preview/#{id}/0-root.png"]
 
-    # The hook that opens the picture at its own size is on the transcript.
-    assert [hook] = LazyHTML.query(document, "#transcript") |> LazyHTML.attribute("phx-hook")
+    # IMG-6: the hook that shows the viewer is on the viewer, outside the
+    # transcript's stream.
+    assert [] == LazyHTML.query(document, "#transcript") |> LazyHTML.attribute("phx-hook")
+
+    assert [hook] =
+             document |> LazyHTML.query("#image-lightbox") |> LazyHTML.attribute("phx-hook")
+
     assert hook =~ "ZoomImage"
+
+    # IMG-3: the close button is the viewer's own, so closing it never depends
+    # on the browser's or the phone's back control.
+    assert [close] = document |> LazyHTML.query("#image-lightbox-close") |> Enum.to_list()
+    assert LazyHTML.attribute(close, "aria-label") == ["Close image"]
+
+    # IMG-2: the picture itself, empty until the hook puts one in.
+    assert [viewer] = document |> LazyHTML.query("#image-lightbox-image") |> Enum.to_list()
+    assert LazyHTML.attribute(viewer, "src") == []
   end
 
   # UI-34: each sidebar chat shows its start time, and the text keeps up with the clock.
