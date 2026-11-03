@@ -798,9 +798,14 @@ defmodule Elia.Tasks do
   defp git_cmd(args, root) do
     command = Enum.map_join(["git" | args], " ", &quote_arg/1)
 
+    # A run whose jail was skipped says so in its output (ISOL-12), but these
+    # callers read the output as a value — a ref, a path, a NUL-separated list —
+    # so the notice comes off before it gets to them.
+    notice = Elia.Shell.jail_skipped_notice() <> "\n"
+
     case Elia.Shell.run(command, cd: root) do
-      {:ok, out, status} -> {out, status}
-      {:timeout, out} -> {out, 1}
+      {:ok, out, status} -> {String.replace_leading(out, notice, ""), status}
+      {:timeout, out} -> {String.replace_leading(out, notice, ""), 1}
     end
   end
 

@@ -70,17 +70,48 @@ defmodule Elia.TasksGitTest do
            ) == ""
   end
 
-  # ISOL-1: the calls go through `Elia.Shell.run/2` rather than around it. A call
-  # that did its own `System.cmd("git", …)` would print the ref and nothing
-  # else; through `Elia.Shell` it carries the notice a run without a jail adds
-  # (ISOL-12), so this fails if the calls ever bypass the chokepoint again.
-  test "the calls go through Elia.Shell, which says when the jail is skipped (ISOL-1)", %{
+  # ISOL-12: a run whose jail was skipped says so in the shell's output, but a
+  # harness caller reads that output as a value, so the notice is stripped
+  # before it reaches one (a prepended notice used to break `Elia.Deploy`'s
+  # reading of git's output).
+  test "the skip notice never reaches the value a caller reads (ISOL-12)", %{
     worktree: path
   } do
     Application.put_env(:elia, Elia.Shell, jail: true, bwrap: "/nonexistent/bwrap")
     refute Shell.jailed?([])
 
-    assert Tasks.git_out(["rev-parse", "--abbrev-ref", "HEAD"], path) =~
-             "[jail: skipped, bubblewrap is unavailable]"
+    out = Tasks.git_out(["rev-parse", "HEAD"], path)
+    assert out == LiveTree.head(path)
+    refute out =~ "jail: skipped"
+  end
+
+  # ISOL-1, ISOL-8: the calls go through `Elia.Shell.run/2` rather than around
+  # it. A jailed run has its environment rebuilt from an allowlist, so an alias
+  # injected through the server's own environment never reaches git — a call
+  # that did its own `System.cmd("git", …)` would run it.
+  test "the calls go through Elia.Shell, whose jail clears the environment (ISOL-1, ISOL-8)", %{
+    tree: tree,
+    worktree: path
+  } do
+    for {key, value} <- [
+          {"GIT_CONFIG_COUNT", "1"},
+          {"GIT_CONFIG_KEY_0", "alias.jailprobe"},
+          {"GIT_CONFIG_VALUE_0", "rev-parse --git-common-dir"}
+        ],
+        do: System.put_env(key, value)
+
+    on_exit(fn ->
+      for key <- ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"],
+          do: System.delete_env(key)
+    end)
+
+    # Jailed: the environment is cleared, so the alias doesn't exist.
+    assert Tasks.git_out(["jailprobe"], path) == nil
+
+    # The same alias does work with the jail off, so the check has teeth.
+    Application.put_env(:elia, Elia.Shell, jail: false)
+
+    assert Tasks.git_out(["jailprobe"], path)
+           |> Path.expand(path) == Path.join(tree, ".git")
   end
 end
