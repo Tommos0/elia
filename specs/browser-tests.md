@@ -1,6 +1,6 @@
 # Real-browser tests
 
-Status: Draft
+Status: Implemented
 
 `Phoenix.LiveViewTest` renders the server's HTML in-process and speaks the
 LiveView protocol, so it sees none of what a browser adds: JavaScript hooks,
