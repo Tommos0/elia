@@ -122,6 +122,18 @@ defmodule Elia.SkillsTest do
 
   defp names(skills), do: Enum.map(skills, & &1.name)
 
+  # PREVIEW-9
+  test "the preview instruction names the dark, mobile default" do
+    instructions = Elia.Skills.SelfModification.instructions()
+
+    assert instructions =~ "bin/preview"
+    assert instructions =~ "ELIA_PREVIEW_THEME=dark"
+    assert instructions =~ "ELIA_PREVIEW_WIDTH=390"
+
+    # The project instructions carry the same default, so the two agree.
+    assert File.read!("AGENTS.md") =~ "ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390"
+  end
+
   # SKILL-7, PROJ-17
   test "self-modification is a built-in skill of Elia's own project only", %{tmp_dir: dir} do
     assert "self-modification" in names(Skills.current())

@@ -54,7 +54,9 @@ defmodule Elia.Skills.SelfModification do
     real headless browser, in the test env, with no deploy and no API key \
     (`specs/ui-preview.md`). Pictures of the pages you changed are the useful \
     ones — `bin/preview /files` or `bin/preview @chat`; check the "page errors" \
-    it reports, too.
+    it reports, too. Preview in dark mode at a mobile width by default \
+    (`ELIA_PREVIEW_THEME=dark` with `ELIA_PREVIEW_WIDTH=390`), and take a light \
+    or desktop picture as well only when the change is about that.
     """
   end
 

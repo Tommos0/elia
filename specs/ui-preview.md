@@ -107,7 +107,10 @@ live tree's saved chats are never touched.
   changing a template, a stylesheet (`assets/css/`), a hook or another
   client-side file, run a preview and put its image links in the reply, since
   the user cannot see the change in the running app until they deploy it. The
-  wording lives in `AGENTS.md` and the `self-modification` skill.
+  wording lives in `AGENTS.md` and the `self-modification` skill. By default a
+  preview for that purpose is taken in the dark theme at a mobile width
+  (`ELIA_PREVIEW_THEME=dark` with `ELIA_PREVIEW_WIDTH=390`, PREVIEW-3), and a
+  light or desktop picture is taken as well only when the change is about that.
 
 ## Configuration
 
@@ -115,6 +118,7 @@ live tree's saved chats are never touched.
 bin/preview                      # the empty state and the sample chat
 bin/preview @chat                # just the sample chat
 bin/preview / /files /settings   # three pages, three PNGs, three links
+ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat  # the agent's default
 ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 ```
@@ -159,5 +163,8 @@ a deploy.
 - `test/elia_web/controllers/preview_controller_test.exs` (PREVIEW-7), against a
   throwaway live tree with a chat worktree (`Elia.LiveTree.create/0`).
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).
+- `test/elia/skills_test.exs` (the preview instruction the agent follows names
+  the dark, mobile default, in the `self-modification` skill and `AGENTS.md`,
+  PREVIEW-9).
 - The preview run itself is checked by hand, since it needs a browser:
   `bin/preview`, from a chat in Elia's own project.
