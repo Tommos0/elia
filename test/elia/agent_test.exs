@@ -1226,4 +1226,130 @@ defmodule Elia.AgentTest do
 
     assert %{compaction: %Elia.LLM.Compaction{level: 0}} = Agent.snapshot(id)
   end
+
+  # SESS-15, SESS-30
+  test "a session with state from before :jail existed is upgraded", %{id: id} do
+    :ok = Elia.Store.save(id, [Message.user("hi")], jail: false)
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :jail))
+
+    # The upgrade loads the chat's saved setting (STORE-26).
+    assert %{jail: false} = Agent.snapshot(id)
+  end
+
+  # SESS-7, SESS-30, ISOL-16
+  test "a chat is jailed by default, and the snapshot says so", %{id: id} do
+    assert %{jail: true} = Agent.snapshot(id)
+  end
+
+  # SESS-6, SESS-30
+  test "setting the jail broadcasts it and shows in the snapshot", %{id: id} do
+    :ok = Agent.set_jail(id, false)
+    assert_receive {:agent, ^id, {:jail, false}}
+    assert %{jail: false} = Agent.snapshot(id)
+
+    :ok = Agent.set_jail(id, true)
+    assert_receive {:agent, ^id, {:jail, true}}
+    assert %{jail: true} = Agent.snapshot(id)
+  end
+
+  # SESS-30, STORE-25, ISOL-16, ISOL-18
+  test "the jail setting is per chat and survives a restart", %{id: id} do
+    other = Agent.new_id()
+    {:ok, other_pid} = Agent.ensure_started(other)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, other_pid) end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    :ok = Agent.set_jail(id, false)
+    assert Elia.Store.load_jail(id) == false
+    # The setting belongs to one chat (ISOL-18).
+    assert %{jail: true} = Agent.snapshot(other)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    ref = Process.monitor(pid)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}
+
+    {:ok, _} = Agent.ensure_started(id)
+    assert %{jail: false} = Agent.snapshot(id)
+
+    :ok = Agent.set_jail(id, true)
+    assert Elia.Store.load_jail(id) == true
+  end
+
+  # SESS-30: an empty chat isn't written to disk (SESS-14)
+  test "turning the jail off in an empty chat writes nothing", %{id: id} do
+    :ok = Agent.set_jail(id, false)
+    assert Elia.Store.load_jail(id) == true
+    refute File.exists?(Path.join(Elia.Store.dir(), id <> ".term"))
+  end
+
+  # SESS-30, ISOL-19: allowed mid-turn
+  test "the jail can be turned off while a turn runs", %{id: id} do
+    parent = self()
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(parent, {:turn_started, self()})
+
+      receive do
+        :go ->
+          {:ok,
+           %{
+             message: FakeLLM.assistant([Message.text("Done.")]),
+             stop_reason: :end_turn,
+             model: "fake",
+             usage: %{}
+           }}
+      end
+    end)
+
+    :ok = Agent.send_message(id, "hi")
+    assert_receive {:turn_started, loop}, 2000
+
+    assert :ok = Agent.set_jail(id, false)
+    assert_receive {:agent, ^id, {:jail, false}}
+    assert %{jail: false} = Agent.snapshot(id)
+
+    send(loop, :go)
+    await_status(id, :idle)
+    assert Elia.Store.load_jail(id) == false
+  end
+
+  # ISOL-15: the tool context of a turn carries the chat's jail setting, so the
+  # tools jail a call according to the chat they run in.
+  test "the turn's tool context carries the chat's jail setting" do
+    id = Agent.new_id()
+    test_pid = self()
+
+    spy = %Elia.Tool{
+      name: "spy",
+      description: "reports the tool context it was given",
+      input_schema: %{"type" => "object", "properties" => %{}},
+      approval: :never,
+      run: fn _input, ctx ->
+        send(test_pid, {:tool_ctx, ctx})
+        {:ok, "reported"}
+      end
+    }
+
+    skills = [%Elia.Skill{name: "spy", description: "spy", tools: [spy]}]
+
+    {:ok, pid} =
+      Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM}, skills: skills])
+
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(id)
+    :ok = Agent.set_jail(id, false)
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "spy", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:tool_ctx, ctx}, 5000
+    assert ctx.jail == false
+    await_status(id, :idle)
+  end
 end

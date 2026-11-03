@@ -99,6 +99,10 @@ defmodule EliaWeb.ChatLive do
         catalogs: %{},
         auto_approve: snapshot.auto_approve,
         auto_approve_open: false,
+        # UI-67, UI-68: this chat's jail setting (ISOL-16) and whether the host
+        # has a jail at all (ISOL-12, ISOL-20), which decides if it can be off.
+        jail: snapshot.jail,
+        jail_available: Elia.Shell.jailed?(),
         approvable_tools: approvable_tools(skills),
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
@@ -290,7 +294,7 @@ defmodule EliaWeb.ChatLive do
                     class={["transition-opacity", pruned?(item) && "opacity-40 hover:opacity-100"]}
                     data-pruned={to_string(pruned?(item))}
                   >
-                    <.item item={item} />
+                    <.item item={item} jail={@jail} />
                   </div>
                   <.item_meta :if={!@compact_view and Map.get(item, :request_status)} item={item} />
                 </div>
@@ -350,6 +354,7 @@ defmodule EliaWeb.ChatLive do
                 tools={@approvable_tools}
                 enabled={@auto_approve}
               />
+              <.jail_toggle on={@jail} available={@jail_available} />
               <%!-- UI-60: switch the transcript between full and compact. --%>
               <button
                 type="button"
@@ -921,6 +926,59 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  attr :on, :boolean, required: true
+  attr :available, :boolean, required: true
+
+  # UI-67, UI-68: the chat's jail switch, next to the model picker and the
+  # auto-approve button. A host with no jail (ISOL-12, ISOL-20) can't protect a
+  # chat, so the switch is disabled and says so rather than claiming it does.
+  defp jail_toggle(assigns) do
+    assigns = assign(assigns, :jailed, assigns.on and assigns.available)
+
+    ~H"""
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        id="jail-toggle"
+        phx-click="toggle_jail"
+        role="switch"
+        aria-checked={to_string(@jailed)}
+        disabled={!@available}
+        title={jail_title(@jailed, @available)}
+        class={[
+          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100",
+          @jailed && "border-primary/50 bg-primary/5 text-primary",
+          !@jailed && @available &&
+            "border-warning/50 bg-warning/5 text-warning hover:border-warning/70",
+          !@available && "border-base-300 text-base-content/40"
+        ]}
+      >
+        <.icon
+          name={if @jailed, do: "hero-lock-closed", else: "hero-lock-open"}
+          class="size-3.5 shrink-0 opacity-70"
+        />
+        <span class="font-medium">Jail</span>
+        <span id="jail-state" class="font-medium">{jail_state(@jailed)}</span>
+      </button>
+      <span :if={!@available} id="jail-unavailable" class="text-xs text-base-content/50">
+        This host has no jail (bubblewrap is unavailable), so commands run unjailed.
+      </span>
+      <span :if={@available and !@on} id="jail-warning" class="text-xs text-warning">
+        Commands run unjailed: they can read the settings database and your credentials.
+      </span>
+    </div>
+    """
+  end
+
+  defp jail_state(true), do: "Jailed"
+  defp jail_state(false), do: "Not jailed"
+
+  defp jail_title(true, _available),
+    do: "Commands run in a jail holding the workspace and the toolchain, and nothing else"
+
+  defp jail_title(false, true), do: "Commands run unjailed, on the whole machine"
+  defp jail_title(false, false), do: "This host has no jail, so commands run unjailed"
+
   attr :selection, :map, required: true
   attr :open, :boolean, required: true
   attr :search_form, :any, required: true
@@ -1121,6 +1179,7 @@ defmodule EliaWeb.ChatLive do
     do: "models-m-#{provider}-#{Base.url_encode64(model, padding: false)}"
 
   attr :item, :map, required: true
+  attr :jail, :boolean, default: true
 
   defp item(%{item: %{kind: :user}} = assigns) do
     ~H"""
@@ -1276,7 +1335,12 @@ defmodule EliaWeb.ChatLive do
         :if={@item.status == :awaiting_approval}
         class="flex items-center justify-end gap-2 border-t border-base-300 px-3 py-2"
       >
-        <span class="mr-auto text-xs text-base-content/60">Allow this?</span>
+        <span class="mr-auto text-xs text-base-content/60">
+          Allow this? <%!-- ISOL-17, UI-69: the state is visible at the moment it matters. --%>
+          <span :if={!@jail} id={"unjailed-#{@item.call_id}"} class="font-medium text-warning">
+            It runs unjailed.
+          </span>
+        </span>
         <button
           id={"always-allow-#{@item.call_id}"}
           phx-click="always_allow"
@@ -1518,6 +1582,13 @@ defmodule EliaWeb.ChatLive do
 
   def handle_event("close_auto_approve_picker", _params, socket) do
     {:noreply, assign(socket, auto_approve_open: false)}
+  end
+
+  # UI-67, SESS-30: turn this chat's jail on or off. The switch follows the
+  # session's broadcast, so every tab stays in sync.
+  def handle_event("toggle_jail", _params, socket) do
+    Agent.set_jail(socket.assigns.session_id, not socket.assigns.jail)
+    {:noreply, socket}
   end
 
   def handle_event("stop", _params, socket) do
@@ -1833,6 +1904,9 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
+
+  # UI-67, SESS-30: every tab on the chat follows the jail setting.
+  defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)
 
   # UI-44, UI-49: the card's status and link follow the child.
   defp apply_event({:subtask, call_id, child_id, status}, socket) do

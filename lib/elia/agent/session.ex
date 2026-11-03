@@ -16,7 +16,7 @@ defmodule Elia.Agent.Session do
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:paused, message}`, `{:task, metadata}`.
+  `{:jail, on?}`, `{:paused, message}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -47,6 +47,9 @@ defmodule Elia.Agent.Session do
     compaction: %Compaction{},
     # Tool names the user lets run without asking in this chat (APPR-8).
     auto_approve: MapSet.new(),
+    # Whether this chat's commands run in the jail (ISOL-16): on by default,
+    # and the host's own switch can only turn it off (ISOL-20).
+    jail: true,
     # call_id => :awaiting_approval | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
@@ -83,7 +86,8 @@ defmodule Elia.Agent.Session do
       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
-      auto_approve: initial_auto_approve(opts[:id], persist, opts[:auto_approve])
+      auto_approve: initial_auto_approve(opts[:id], persist, opts[:auto_approve]),
+      jail: initial_jail(opts[:id], persist, opts[:jail])
     }
 
     # SESS-21: tool calls the app stopped in the middle of never got a result.
@@ -92,13 +96,13 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction` or `:pause` existed (a session that
-  # outlived a hot reload). Fields it already has are kept.
+  # `:project`, `:workspace`, `:compaction`, `:pause` or `:jail` existed (a
+  # session that outlived a hot reload). Fields it already has are kept.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
-             not is_map_key(state, :pause) do
+             not is_map_key(state, :pause) or not is_map_key(state, :jail) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -137,6 +141,11 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | compaction: initial_compaction(upgraded.id, upgraded.persist, nil)}
 
+    upgraded =
+      if is_map_key(state, :jail),
+        do: upgraded,
+        else: %{upgraded | jail: initial_jail(upgraded.id, upgraded.persist, nil)}
+
     handle_call(msg, from, upgraded)
   end
 
@@ -151,7 +160,8 @@ defmodule Elia.Agent.Session do
         :selection,
         :project,
         :compaction,
-        :pause
+        :pause,
+        :jail
       ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
@@ -192,6 +202,9 @@ defmodule Elia.Agent.Session do
         llm: llm,
         project: project(state),
         workspace: workspace(state),
+        # ISOL-15: the tool context carries this chat's jail setting, so the
+        # shell tools and `run_tests` follow it.
+        jail: Map.get(state, :jail, true),
         # COMPACT-2, COMPACT-29: the loop is given the full history and derives
         # the request view from it at every step, with the trigger, target and
         # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
@@ -310,6 +323,16 @@ defmodule Elia.Agent.Session do
       broadcast(state, {:auto_approve, names(auto)})
       {:reply, :ok, if(on?, do: approve_pending(state, name), else: state)}
     end
+  end
+
+  # SESS-30, ISOL-16: the chat's jail setting. Allowed mid-turn (ISOL-19): a
+  # command already running isn't killed, and later calls follow the new value.
+  def handle_call({:set_jail, on?}, _from, state) when is_boolean(on?) do
+    state = %{state | jail: on?}
+    # As with the model selection, an empty chat is saved with its first message.
+    state = if state.messages == [], do: state, else: save(state)
+    broadcast(state, {:jail, on?})
+    {:reply, :ok, state}
   end
 
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
@@ -519,6 +542,14 @@ defmodule Elia.Agent.Session do
   defp initial_auto_approve(id, true), do: MapSet.new(Elia.Store.load_auto_approve(id))
   defp initial_auto_approve(_id, false), do: MapSet.new()
 
+  # SESS-30, SUBTASK-30: a caller may set the new session's jail setting (the
+  # child's copy of its parent's) instead of loading the chat's saved one.
+  defp initial_jail(id, persist, nil), do: initial_jail(id, persist)
+  defp initial_jail(_id, _persist, on?) when is_boolean(on?), do: on?
+
+  defp initial_jail(id, true), do: Elia.Store.load_jail(id)
+  defp initial_jail(_id, false), do: true
+
   # COMPACT-9, COMPACT-24: the chat's saved compaction state, with any options
   # its session was started with.
   defp initial_compaction(id, true, overrides) do
@@ -664,7 +695,8 @@ defmodule Elia.Agent.Session do
              auto_approve: auto,
              task: Map.get(state, :task_meta),
              project: project(state).id,
-             compaction: saved_compaction(Map.get(state, :compaction))
+             compaction: saved_compaction(Map.get(state, :compaction)),
+             jail: Map.get(state, :jail, true)
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end

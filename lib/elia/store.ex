@@ -20,7 +20,8 @@ defmodule Elia.Store do
   the sub-task metadata of a chat started by `spawn_task` (STORE-16),
   `opts[:project]` the id of the project it belongs to (STORE-19) and
   `opts[:compaction]` its compaction state (COMPACT-24); each is kept alongside
-  the messages when given.
+  the messages when given. `opts[:jail]` (a boolean) is the chat's jail setting
+  (STORE-25) and is stored only when it is `false`.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -46,6 +47,9 @@ defmodule Elia.Store do
         [_ | _] = names -> Map.put(chat, :auto_approve, names)
         _ -> chat
       end
+
+    # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
+    chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
 
     data = :erlang.term_to_binary(chat)
 
@@ -85,6 +89,23 @@ defmodule Elia.Store do
       names
     else
       _ -> []
+    end
+  end
+
+  @doc """
+  The chat's saved jail setting (STORE-26): `true` unless the chat turned it
+  off, and `true` when the chat is missing, unreadable, corrupt or has no value,
+  since the jail is on by default (ISOL-16).
+  """
+  @spec load_jail(binary()) :: boolean()
+  def load_jail(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{jail: jail} <- decode(data),
+         true <- is_boolean(jail) do
+      jail
+    else
+      _ -> true
     end
   end
 

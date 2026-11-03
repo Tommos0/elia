@@ -161,7 +161,7 @@ defmodule Elia.Skills.Folder do
     ]
 
     Elia.Skills.Shell.result(
-      Elia.Shell.run(command, cd: dir, env: env, timeout: timeout),
+      Elia.Shell.run(command, cd: dir, env: env, timeout: timeout, jail: ctx[:jail]),
       timeout
     )
   end

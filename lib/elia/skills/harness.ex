@@ -57,7 +57,11 @@ defmodule Elia.Skills.Harness do
           "properties" => %{"args" => %{"type" => "array", "items" => %{"type" => "string"}}}
         },
         run: fn input, ctx ->
-          Harness.run_tests(input["args"] || [], ctx[:workspace] || Elia.Workspace.root())
+          Harness.run_tests(
+            input["args"] || [],
+            ctx[:workspace] || Elia.Workspace.root(),
+            jail: ctx[:jail]
+          )
         end
       },
       %Elia.Tool{

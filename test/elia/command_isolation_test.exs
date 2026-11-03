@@ -53,6 +53,7 @@ defmodule Elia.CommandIsolationTest do
     # A process that is definitely running outside the jail.
     assert {:ok, output, 0} =
              Shell.run("setsid sleep 62 >/dev/null 2>&1 & echo $!", shell: "sh", jail: false)
+
     pid = String.trim(output)
     assert {:ok, _output, 0} = Shell.run("ls -d /proc/#{pid}", shell: "sh", jail: false)
 
@@ -89,5 +90,81 @@ defmodule Elia.CommandIsolationTest do
   test "a chat is jailed by default where the host allows it (ISOL-1, ISOL-16)" do
     assert Shell.jailed?([])
     refute Shell.jailed?(jail: false)
+  end
+
+  # ISOL-15: the tool context carries the chat's jail decision, so a tool jails
+  # its call according to the chat it runs in, and a caller with no chat gets the
+  # default, which is on.
+  describe "the tool context's jail setting (ISOL-15)" do
+    # These build the argv/behaviour without needing a real jail (ISOL-12).
+    @describetag skip: false
+
+    setup do
+      # The host allows a jail but has no bubblewrap, so a call that asked for
+      # one reports it was skipped (ISOL-12) and one that didn't says nothing.
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true, bwrap: "/nonexistent/bwrap")
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+      %{notice: "[jail: skipped, bubblewrap is unavailable]"}
+    end
+
+    test "the shell tool follows the context, and jails a call with no chat", %{notice: notice} do
+      # No chat at all: the default, which is jailed.
+      assert {:ok, output} = Elia.Skills.Shell.run(%{"command" => "echo hi"}, %{})
+      assert output =~ notice
+
+      assert {:ok, output} = Elia.Skills.Shell.run(%{"command" => "echo hi"}, %{jail: true})
+      assert output =~ notice
+
+      # A chat whose jail is off runs the command unjailed.
+      assert {:ok, output} = Elia.Skills.Shell.run(%{"command" => "echo hi"}, %{jail: false})
+
+      refute output =~ notice
+    end
+
+    test "a folder skill's script tool follows the context", %{notice: notice} do
+      dir = Path.join(System.tmp_dir!(), "elia-jail-folder-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      File.write!(
+        Path.join(dir, "SKILL.md"),
+        "---\nname: probe\ndescription: probe\n---\nprobe\n"
+      )
+
+      File.write!(
+        Path.join(dir, "tools.json"),
+        Jason.encode!([
+          %{
+            "name" => "probe",
+            "description" => "probe",
+            "command" => "echo hi",
+            "input_schema" => %{"type" => "object", "properties" => %{}}
+          }
+        ])
+      )
+
+      {:ok, skill} = Elia.Skills.Folder.load(dir)
+      [tool] = skill.tools
+
+      assert {:ok, output} = Elia.Tool.call(tool, %{}, %{jail: true})
+      assert output =~ notice
+
+      assert {:ok, output} = Elia.Tool.call(tool, %{}, %{jail: false})
+      refute output =~ notice
+    end
+
+    test "run_tests follows the context", %{notice: notice} do
+      dir = Path.join(System.tmp_dir!(), "elia-jail-tests-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(dir, "test"))
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      # No project to test, so `mix test` fails fast — enough to see the notice.
+      assert {:error, output} = Elia.Harness.run_tests(["test/nope_test.exs"], dir)
+      assert output =~ notice
+
+      assert {:error, output} = Elia.Harness.run_tests(["test/nope_test.exs"], dir, jail: false)
+      refute output =~ notice
+    end
   end
 end
