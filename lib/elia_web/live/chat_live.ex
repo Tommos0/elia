@@ -446,18 +446,26 @@ defmodule EliaWeb.ChatLive do
             </.form>
           </div>
         </div>
-        <%!-- IMG-1 - IMG-6: an image in the transcript opens here, over the chat
+        <%!-- IMG-1 - IMG-8: an image in the transcript opens here, over the chat
         (specs/image-viewer.md), so a click never leaves the page and the back
         button closes the viewer rather than the app. The server renders it
         hidden, outside the transcript's stream; `.ZoomImage` shows it, fills in
-        the picture and keeps the history entry (IMG-4). --%>
+        the picture and keeps the history entry (IMG-4). Its hidden state and its
+        backdrop are its own markup's, never a rule in assets/css (IMG-7): a
+        reload reaches an open page as markup while it keeps the stylesheet it
+        loaded (HOT-8), and an overlay as wide as the page that only a *new* rule
+        keeps hidden would swallow every tap of such a page. LiveView never
+        patches it either (IMG-7): it is the client's, whose own `style` says
+        whether it is open (IMG-8). --%>
         <div
           id="image-lightbox"
           phx-hook=".ZoomImage"
+          phx-update="ignore"
           role="dialog"
           aria-modal="true"
           aria-label="Image"
-          class="fixed inset-0 z-50 flex-col items-center justify-center gap-3 bg-black/85 p-4 touch-pinch-zoom"
+          style="display: none; background-color: rgb(0 0 0 / 0.85)"
+          class="fixed inset-0 z-50 flex-col items-center justify-center gap-3 p-4 touch-pinch-zoom"
         >
           <button
             type="button"
@@ -590,7 +598,7 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ZoomImage">
-        // PREVIEW-8, IMG-1 - IMG-6 (specs/image-viewer.md): an image in the
+        // PREVIEW-8, IMG-1 - IMG-8 (specs/image-viewer.md): an image in the
         // transcript — a preview's screenshot, for instance — is shown at the
         // transcript's width, which can be too small to read, so a click opens
         // it in this viewer, over the chat. Never a new tab: that leaves the
@@ -643,12 +651,19 @@ defmodule EliaWeb.ChatLive do
             window.removeEventListener("popstate", this.onPop)
           },
 
+          // IMG-8: whether the viewer is open is the DOM's own state — the
+          // element's inline style, which the server renders closed — never
+          // this instance's memory, so a hook that has just mounted closes a
+          // viewer an earlier instance opened (see `close` below).
+          isOpen() {
+            return this.el.style.display !== "none"
+          },
+
           // IMG-2: the picture, scaled to fit the viewport. IMG-5: focus goes to
           // the close button, so Escape and Enter work without a tap.
           open(img) {
-            if (this.openImage) return
+            if (this.isOpen()) return
 
-            this.openImage = img
             // The URL the Markdown wrote, not the absolute one the DOM reports,
             // so it stays right behind a proxy that prefixes the app's paths.
             this.viewer.src = img.getAttribute("src") || img.src
@@ -662,13 +677,14 @@ defmodule EliaWeb.ChatLive do
             history.pushState({eliaImageViewer: true}, "", window.location.href)
           },
 
-          // `left` is for the ways that already moved the history — the back
-          // button, a navigation — which must not be moved again here (IMG-4).
+          // The DOM says whether it is open, so this is the same answer in a hook
+          // whose own opening it never saw (IMG-8). `left` is for the ways that
+          // already moved the history — the back button, a navigation — which
+          // must not be moved again here (IMG-4).
           close({left = false} = {}) {
-            if (!this.openImage) return
+            if (!this.isOpen()) return
 
-            this.openImage = null
-            this.el.style.display = ""
+            this.el.style.display = "none"
             this.viewer.removeAttribute("src")
             this.viewer.alt = ""
             if (!left) history.back()

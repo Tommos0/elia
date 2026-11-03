@@ -40,13 +40,29 @@ user's.
   stacktrace depth, the HEEx annotations and the expensive runtime checks, its
   `secret_key_base`, and the esbuild/tailwind watchers. A test run is not an
   operating mode, so the suite may keep its own value.
+- **HOT-8** A reload reaches a page that is already open as **markup**: the
+  LiveView's next render comes from the newly loaded modules and the client
+  patches it in (HOT-5), while the page keeps the stylesheet it loaded — a
+  browser fetches a new one only on a full page load, and a cache in front of
+  the app (a proxy, a PWA's own store) can hold an old one longer. A change
+  therefore must not rely on new CSS arriving with new markup: anything that
+  hides, disables or "turns off" an element through a *new* rule would leave an
+  open page with a control it cannot see or get rid of — a full-screen overlay
+  blocking every tap, say. What keeps such a piece safe belongs in its own
+  markup (IMG-7 in `specs/image-viewer.md`). A `priv/static` change is also
+  what makes the browser's own live reload fire (DEPLOY-12), so a page whose
+  assets did not change is not reloaded at all.
 
 ## Implementation
 
 `Elia.Deploy.hot_reload/1` (the tests → merge → reload deploy, DEPLOY-6),
 `Elia.Deploy.hot_reload_available?/0`, `Elia.Deploy`, `config/config.exs` and
-`config/runtime.exs` (HOT-7), `mix.exs` (the dependency).
+`config/runtime.exs` (HOT-7), `mix.exs` (the dependency). HOT-8 is a rule for
+each UI change rather than for a module: its first instance is the image
+viewer's markup (`specs/image-viewer.md`, IMG-7).
 
 ## Tests
 
-`test/elia/deployment_test.exs`, `test/elia_web/live/settings_live_test.exs`.
+`test/elia/deployment_test.exs`, `test/elia_web/live/settings_live_test.exs`;
+HOT-8 is what the image viewer's browser test holds to
+(`test/elia_web/browser/chat_browser_test.exs`, IMG-7).

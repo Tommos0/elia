@@ -177,17 +177,18 @@
 .markdown th { background: var(--color-base-200); font-weight: 600; }
 /* PREVIEW-8: a preview's screenshot is shown at the transcript's width; a click
    opens it in the viewer over the chat (IMG-1 in specs/image-viewer.md, the
-   `.ZoomImage` hook in `EliaWeb.ChatLive`). The viewer is hidden until then —
-   the rule also gives it the `display: flex` it lays out with, which the hook
-   toggles through the element's own style, so a LiveView patch of its classes
-   can never show it or take it away (IMG-6). */
+   `.ZoomImage` hook in `EliaWeb.ChatLive`). The viewer's own hidden state and
+   its backdrop are its markup's, never a rule here (IMG-7): a reload reaches an
+   open page as markup while it keeps the stylesheet it loaded (HOT-8), so a
+   viewer kept hidden by a *new* rule — or a deploy, which never rebuilds these
+   built assets — would leave such a page with a full-screen overlay swallowing
+   every tap. */
 .markdown img {
   max-width: 100%;
   border: 1px solid var(--color-base-300);
   border-radius: 0.5rem;
   cursor: zoom-in;
 }
-#image-lightbox { display: none; }
 
 /* Syntax highlighting for the file explorer (EXPL-14). highlight.js only adds
    `hljs-*` classes; the colours come from the daisyUI theme so they follow the

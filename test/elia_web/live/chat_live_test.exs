@@ -183,10 +183,18 @@ defmodule EliaWeb.ChatLiveTest do
     # transcript's stream.
     assert [] == LazyHTML.query(document, "#transcript") |> LazyHTML.attribute("phx-hook")
 
-    assert [hook] =
-             document |> LazyHTML.query("#image-lightbox") |> LazyHTML.attribute("phx-hook")
-
+    assert [lightbox] = document |> LazyHTML.query("#image-lightbox") |> Enum.to_list()
+    assert [hook] = LazyHTML.attribute(lightbox, "phx-hook")
     assert hook =~ "ZoomImage"
+
+    # IMG-7: the viewer is hidden by its own markup, not by a rule in
+    # assets/css/app.css — a page can render this markup while its stylesheet is
+    # the one from before the change (HOT-8) — its backdrop is its own markup's
+    # too, and LiveView never patches it.
+    assert [style] = LazyHTML.attribute(lightbox, "style")
+    assert style =~ "display: none"
+    assert style =~ "background-color: rgb(0 0 0 / 0.85)"
+    assert ["ignore"] = LazyHTML.attribute(lightbox, "phx-update")
 
     # IMG-3: the close button is the viewer's own, so closing it never depends
     # on the browser's or the phone's back control.

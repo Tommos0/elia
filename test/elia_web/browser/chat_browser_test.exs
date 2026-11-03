@@ -139,6 +139,83 @@ defmodule EliaWeb.ChatBrowserTest do
     assert_path(conn, "/c/#{id}")
   end
 
+  # IMG-7 (specs/image-viewer.md): the closed viewer is not on the page whatever
+  # stylesheet the page has. A page can render this markup while its stylesheet
+  # is the one from before the change — a deploy hot-reloads code into a running
+  # app (DEPLOY-6) and a browser fetches a new stylesheet only on a full page
+  # load (HOT-8), and a deploy never rebuilds the built assets at all — so a
+  # full-screen overlay kept hidden by a *new* rule would swallow every tap of
+  # a page that never loaded that rule.
+  test "the closed viewer is not visible without the app's stylesheet", %{conn: conn} do
+    id = image_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      # The stylesheet a page has when it has not been reloaded since the change.
+      |> evaluate(
+        "document.querySelectorAll('link[rel=stylesheet]').forEach(el => el.disabled = true)"
+      )
+
+    # Untouchable: nothing of it takes a tap (this is a visibility assertion).
+    refute_has(conn, "#image-lightbox")
+
+    # IMG-2, IMG-7: the dark backdrop is its own markup's too, so what it shows
+    # is still a viewer once the hook opens it.
+    evaluate(
+      conn,
+      "getComputedStyle(document.querySelector('#image-lightbox')).backgroundColor",
+      fn colour ->
+        assert colour =~ ~r/rgba?\(0, 0, 0, 0\.85\)/,
+               "the viewer has no backdrop of its own: #{colour}"
+      end
+    )
+  end
+
+  # IMG-8 (specs/image-viewer.md): whether the viewer is open is the DOM's own
+  # state, so a hook that has just mounted closes a viewer an earlier instance
+  # opened — on its close button, on the backdrop and on Escape alike (IMG-3).
+  #
+  # That instance is LiveView's own: it mounts the hook on an element it sees
+  # added, so each round takes the viewer out of the page and lets the next
+  # patch put it back. What the test writes to it then is exactly what opening
+  # it writes — the picture, its alt text, the element's own `style` and the
+  # history entry (IMG-4) — because the server renders the viewer closed
+  # (IMG-7), so nothing else can put an open viewer under an instance that never
+  # opened one.
+  test "a hook that has just mounted closes a viewer an earlier instance opened", %{conn: conn} do
+    id = image_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+
+    # IMG-3: the viewer's own close button.
+    conn =
+      conn
+      |> viewer_open_beside_a_fresh_hook()
+      |> click("#image-lightbox-close")
+      |> refute_has("#image-lightbox")
+      |> history_clean()
+
+    # IMG-3: the backdrop, never the picture itself.
+    conn =
+      conn
+      |> viewer_open_beside_a_fresh_hook()
+      |> click_backdrop()
+      |> refute_has("#image-lightbox")
+      |> history_clean()
+
+    # IMG-3: Escape.
+    conn
+    |> viewer_open_beside_a_fresh_hook()
+    |> press("#image-lightbox-close", "Escape")
+    |> refute_has("#image-lightbox")
+    |> history_clean()
+  end
+
   # IMG-1: a chat with a picture in an assistant message. It is one of the app's
   # own static files, so the test needs nothing else served.
   defp image_chat do
@@ -162,6 +239,36 @@ defmodule EliaWeb.ChatBrowserTest do
   defp connected(conn),
     do:
       wait_until(conn, "document.querySelector('.phx-connected')", "the LiveView never connected")
+
+  # IMG-8: the page with a hook LiveView has just mounted on its viewer, and the
+  # viewer open in the DOM and in the history, which that instance never opened.
+  # LiveView mounts a hook on an element it sees added, so the viewer goes out of
+  # the page and the next patch of the chat puts it back — as a fresh mount.
+  defp viewer_open_beside_a_fresh_hook(conn) do
+    conn
+    |> evaluate("""
+    (() => {
+      document.querySelector("#image-lightbox").remove()
+      document.querySelector("#view-toggle").click()
+    })()
+    """)
+    |> wait_until(
+      "!!document.querySelector('#image-lightbox')",
+      "LiveView never put the viewer back"
+    )
+    # Exactly what opening the viewer writes (IMG-2, IMG-4).
+    |> evaluate("""
+    (() => {
+      const viewer = document.querySelector("#image-lightbox")
+      const image = viewer.querySelector("#image-lightbox-image")
+      image.src = "/images/icon-192.png"
+      image.alt = "shot"
+      viewer.style.display = "flex"
+      history.pushState({eliaImageViewer: true}, "", window.location.href)
+    })()
+    """)
+    |> assert_has("#image-lightbox")
+  end
 
   # IMG-3: Playwright clicks an element's centre, which on the viewer is where the
   # picture is, so the backdrop gets a click at a point in its own corner instead.
