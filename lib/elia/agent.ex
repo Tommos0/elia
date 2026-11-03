@@ -71,6 +71,14 @@ defmodule Elia.Agent do
     do: GenServer.call(Session.via(id), {:set_auto_approve, tool_name, on?})
 
   @doc """
+  Turns the jail for this chat's commands on or off (SESS-30, ISOL-16). Allowed
+  mid-turn (ISOL-19).
+  """
+  @spec set_jail(binary(), boolean()) :: :ok
+  def set_jail(id, on?) when is_boolean(on?),
+    do: GenServer.call(Session.via(id), {:set_jail, on?})
+
+  @doc """
   Sets the chat's model (MODEL-1). Also remembers it as the default for new
   chats (MODEL-15).
   """

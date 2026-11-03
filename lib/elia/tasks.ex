@@ -315,6 +315,9 @@ defmodule Elia.Tasks do
         # SUBTASK-6: the child inherits a copy of the parent's auto-approved
         # tools so the user doesn't approve them all over again.
         auto_approve: parent_snapshot.auto_approve,
+        # SUBTASK-30: and a copy of the parent's jail setting (ISOL-18), which is
+        # the child's own from then on.
+        jail: parent_snapshot.jail,
         project: project
       )
 

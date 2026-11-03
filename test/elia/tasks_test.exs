@@ -456,6 +456,52 @@ defmodule Elia.TasksTest do
     assert Tasks.active() == []
   end
 
+  # SUBTASK-30, ISOL-18
+  test "a sub-task chat carries its parent's jail setting" do
+    parent = new_session()
+    # The parent's jail is off, so the child must start with its own copy of that.
+    :ok = Agent.set_jail(parent, false)
+
+    push_turns(
+      router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
+    )
+
+    run_parent(parent, ["s1"])
+
+    child = session_json(parent, "spawn_task", 0)["task_id"]
+
+    assert Agent.snapshot(child).jail == false
+
+    # ISOL-18: the copy is the child's own from then on; changing either chat
+    # afterwards never affects the other.
+    :ok = Agent.set_jail(parent, true)
+    assert Agent.snapshot(parent).jail == true
+    assert Agent.snapshot(child).jail == false
+
+    :ok = Agent.set_jail(child, true)
+    assert Agent.snapshot(child).jail == true
+    assert Agent.snapshot(parent).jail == true
+
+    stop_session(child)
+  end
+
+  # SUBTASK-30, STORE-26
+  test "a child of a chat that keeps the default is jailed", %{parent: parent} do
+    # The parent's value is the default and so isn't in its file (STORE-25).
+    assert Agent.snapshot(parent).jail == true
+
+    push_turns(
+      router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
+    )
+
+    run_parent(parent, ["s1"])
+
+    child = session_json(parent, "spawn_task", 0)["task_id"]
+    assert Agent.snapshot(child).jail == true
+
+    stop_session(child)
+  end
+
   # PROJ-10
   test "a sub-task chat carries its parent's project" do
     dir = Path.join(System.tmp_dir!(), "elia-task-#{System.unique_integer([:positive])}")

@@ -34,6 +34,22 @@ defmodule Elia.Skills.ShellTest do
     end
   end
 
+  # ISOL-21
+  test "instructions and tool description explain the jail and when it is off" do
+    assert [%{description: description}] = Shell.tools()
+
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "jail by default"
+      assert text =~ "workspace"
+      assert text =~ "toolchain"
+      assert text =~ "settings database"
+      assert text =~ "saved conversations"
+      assert text =~ "credentials"
+      assert text =~ "expected, not broken"
+      assert text =~ "unjailed"
+    end
+  end
+
   test "does not wait on stdin" do
     assert {:ok, "\n[exit: 0]"} = Shell.run(%{"command" => "cat", "timeout_seconds" => 5})
   end

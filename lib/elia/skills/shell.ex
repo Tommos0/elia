@@ -29,6 +29,14 @@ defmodule Elia.Skills.Shell do
     `set -o pipefail` fails where the shell is `sh`. After a pipeline, `$?` is \
     the status of its last command only, so a failing `mix test | tail` can look \
     like a success.
+
+    A command runs in a jail by default: a fresh mount namespace that holds the \
+    workspace and the toolchain and nothing else. The settings database, the \
+    saved conversations and the user's credentials (`~/.ssh`, \
+    `~/.git-credentials`, `~/.config/gh`, `~/.netrc`) are not in it, so a \
+    command that can't find them is expected, not broken — read them with the \
+    file tools if the user asks. In a chat whose jail the user turned off, \
+    commands run unjailed, on the whole machine.
     """
   end
 
@@ -43,7 +51,12 @@ defmodule Elia.Skills.Shell do
             "Prefer POSIX constructs: bash-only `${PIPESTATUS[0]}`, `[[ ... ]]`, " <>
             "arrays and `set -o pipefail` fail under `sh`. Long output is " <>
             "truncated in the middle. Do not use this to read or edit files " <>
-            "(cat, sed, echo >, scripts): use read_file, write_file and edit_file.",
+            "(cat, sed, echo >, scripts): use read_file, write_file and edit_file. " <>
+            "The command runs in a jail by default, which holds the workspace and " <>
+            "the toolchain and nothing else: the settings database, the saved " <>
+            "conversations and the user's credentials are not in it, so a command " <>
+            "that can't find them is expected, not broken. In a chat whose jail " <>
+            "the user turned off, commands run unjailed.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -64,7 +77,11 @@ defmodule Elia.Skills.Shell do
 
   def run(input, ctx \\ %{}) do
     timeout = :timer.seconds(input["timeout_seconds"] || config(:default_timeout))
-    result(Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout), timeout)
+
+    result(
+      Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout, jail: ctx[:jail]),
+      timeout
+    )
   end
 
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat

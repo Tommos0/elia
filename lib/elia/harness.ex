@@ -13,16 +13,23 @@ defmodule Elia.Harness do
   @doc """
   Runs `mix test` in `root` (Elia's own root by default). `args` may be test
   paths under `test/` (optionally `path:line`) and a few safe flags; anything
-  else is rejected so the tool cannot run arbitrary code.
+  else is rejected so the tool cannot run arbitrary code. `opts[:jail]` is the
+  chat's jail setting (ISOL-15): `false` runs the suite unjailed, and without a
+  chat the default is on (ISOL-14).
   """
-  @spec run_tests([binary()], Path.t()) :: {:ok, binary()} | {:error, binary()}
-  def run_tests(args \\ [], root \\ Workspace.root()) do
+  @spec run_tests([binary()], Path.t(), keyword()) :: {:ok, binary()} | {:error, binary()}
+  def run_tests(args \\ [], root \\ Workspace.root(), opts \\ []) do
     with :ok <- check_test_args(args) do
       command = Enum.map_join(["mix", "test" | args], " ", &shell_quote/1)
       timeout = :timer.minutes(10)
 
       Elia.Skills.Shell.result(
-        Elia.Shell.run(command, cd: root, env: [{"MIX_ENV", "test"}], timeout: timeout),
+        Elia.Shell.run(command,
+          cd: root,
+          env: [{"MIX_ENV", "test"}],
+          timeout: timeout,
+          jail: opts[:jail]
+        ),
         timeout
       )
     end

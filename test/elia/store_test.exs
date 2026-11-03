@@ -41,8 +41,51 @@ defmodule Elia.StoreTest do
     assert Store.load_auto_approve("../bad") == []
   end
 
+  # STORE-25, STORE-26: the jail is on by default, so only "off" is stored.
+  test "a chat's jail setting is saved only when it is off, and defaults to on" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_jail(id) == true
+    # A chat that keeps the default carries no entry at all.
+    chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
+    refute Map.has_key?(chat, :jail)
+
+    # A stored true is never written, but reads back as on all the same.
+    :ok = Store.save(id, [Message.user("hi")], jail: true)
+    assert Store.load_jail(id) == true
+
+    :ok = Store.save(id, [Message.user("hi")], jail: false)
+    assert Store.load_jail(id) == false
+    assert [%Message{}] = Store.load(id)
+
+    # Turning it back on removes the entry from the file.
+    :ok = Store.save(id, [Message.user("hi")], jail: true)
+    assert Store.load_jail(id) == true
+  end
+
+  # STORE-26
+  test "a missing, unreadable, corrupt or valueless chat is jailed" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    assert Store.load_jail("missing-chat") == true
+    assert Store.load_jail("../bad") == true
+    assert Store.load_jail("") == true
+
+    # Corrupt on disk.
+    File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
+    assert Store.load_jail(id) == true
+
+    # A saved chat with no value of its own.
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_jail(id) == true
+  end
+
   # STORE-3: a fresh dev VM hasn't loaded the modules whose atoms a saved
   # chat uses; loading must load them before the safe decode.
+
   test "loading a chat loads app modules first so the safe decode succeeds" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)

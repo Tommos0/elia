@@ -27,8 +27,9 @@ defmodule Elia.Agent.Loop do
   LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:llm` (extra request
   fields), `:project` (the chat's project),
   `:workspace` (the chat's workspace root: its own git
-  worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12)
-  and, for the mid-turn pass, `:compaction` (the chat's
+  worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12),
+  `:jail` (the chat's jail setting for the tool context, ISOL-15) and, for the
+  mid-turn pass, `:compaction` (the chat's
   `t:Elia.LLM.Compaction.t/0`, `nil` to send the history as it is),
   `:compaction_trigger`, `:compaction_target` and `:compaction_overhead`.
   """
@@ -68,6 +69,9 @@ defmodule Elia.Agent.Loop do
         turn_id: opts[:turn_id],
         workspace: workspace,
         project: project,
+        # ISOL-15: the chat's jail setting, so a tool jails its call according
+        # to the chat it runs in; nil (no chat) means the default, which is on.
+        jail: opts[:jail],
         loop_opts: opts
       },
       llm_opts: Keyword.get(opts, :llm, %{})
