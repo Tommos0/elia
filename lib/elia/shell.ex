@@ -65,19 +65,18 @@ defmodule Elia.Shell do
     script = "exec </dev/null\n" <> command
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
 
+    # Spawned directly: the VM makes a port program its own session and process
+    # group leader, so `kill -PGID` in `kill/1` reaches the command and
+    # everything it started (SHELL-3). A `setsid` wrapper must not go here —
+    # `setsid` forks when it is already a group leader, and the pid the port
+    # reports would then be the wrapper's, whose group holds the command
+    # itself only (a timeout killed the server's child and leaked the command).
+    # A killed jail takes its pid namespace with it (ISOL-10).
     {exe, args} =
       if jailed?(opts) do
         {bwrap(), jail_args(script, cd, opts)}
       else
         {shell(opts), ["-c", script]}
-      end
-
-    {exe, args} =
-      case System.find_executable("setsid") do
-        # Own process group, so a timeout can kill the whole pipeline. A killed
-        # jail takes its pid namespace with it (ISOL-10).
-        nil -> {exe, args}
-        setsid -> {setsid, ["--wait", exe | args]}
       end
 
     env = for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}
@@ -152,7 +151,8 @@ defmodule Elia.Shell do
   end
 
   defp profile(cd, opts) do
-    Keyword.get(opts, :profile) || if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
+    Keyword.get(opts, :profile) ||
+      if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
   end
 
   defp bind_args(cd, profile) do
@@ -206,7 +206,8 @@ defmodule Elia.Shell do
   end
 
   defp wanted?(opts) do
-    Keyword.get(opts, :jail) != false and Application.get_env(:elia, __MODULE__, [])[:jail] != false
+    Keyword.get(opts, :jail) != false and
+      Application.get_env(:elia, __MODULE__, [])[:jail] != false
   end
 
   # A command that wanted a jail and didn't get one says so, so a run that
@@ -239,9 +240,15 @@ defmodule Elia.Shell do
     end
   end
 
+  # Kills the command and everything it started (SHELL-3). `Port.info/2` gives
+  # the pid of the process the VM spawned, which is a session and process group
+  # leader (`run/2` spawns no wrapper around it), so the negative pid reaches
+  # the shell, every process of a pipeline and their children. `--` keeps the
+  # negative pid from being read as an option; the pid itself is killed too, in
+  # case the group is already gone.
   defp kill(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid) do
-      System.cmd("kill", ["-KILL", "-#{pid}"], stderr_to_stdout: true)
+      System.cmd("kill", ["-KILL", "--", "-#{pid}"], stderr_to_stdout: true)
       System.cmd("kill", ["-KILL", "#{pid}"], stderr_to_stdout: true)
     end
   end
