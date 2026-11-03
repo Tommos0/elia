@@ -18,6 +18,20 @@ defmodule Elia.DepsSync do
   one value per worktree, the `mix.lock` it last synced with, kept as a file
   under the live tree's data dir (DEPLOY-2).
 
+  It doesn't hold up the start of a chat (ISOL-7): `sync_in_background/2` is
+  what a chat that just got its worktree calls, and the first jailed command in
+  a worktree that isn't synced yet waits for the sync instead (`sync/2`, called
+  by `Elia.Shell`), so no command ever compiles against a half-synced tree. Two
+  syncs of the same shared `deps` never run at once — the resource is that tree,
+  not the worktree, since every worktree of a live tree compiles against the
+  same one — and a caller that waited its turn finds the work done. A failure
+  isn't remembered (nothing is written), so the next command tries again.
+
+  While a sync is in flight the chat whose worktree it is says so (ISOL-23,
+  UI-70): `syncing?/1` answers for a page that connects, and the sync broadcasts
+  `{:deps_sync, on?}` on the chat's topic (`Elia.Agent.topic/1`, as `Elia.Tasks`
+  does for `{:subtask, …}`) as it starts and ends.
+
   This is a harness step, not a tool call: it needs no approval, and the model
   doesn't choose it.
   """
@@ -34,13 +48,56 @@ defmodule Elia.DepsSync do
   deps.compile` in it, under the `:deps_sync` profile, and the lock is
   remembered. `:ok`, or `{:error, reason}` when a step failed (nothing is
   remembered then, so the next call tries again).
+
+  Only one sync of a live tree's shared `deps` runs at a time (ISOL-7), so a
+  caller that finds one in flight — a command in the worktree whose compile it
+  is — waits for it rather than starting a second one, and then finds the work
+  already done.
   """
   @spec sync(Path.t(), Path.t()) :: :ok | {:error, binary()}
   def sync(dir, root \\ Workspace.runtime_root()) do
     case mix_lock(dir) do
       nil -> :ok
-      lock -> if lock == recorded(dir, root), do: :ok, else: compile(dir, lock, root)
+      lock -> if lock == recorded(dir, root), do: :ok, else: in_turn(dir, lock, root)
     end
+  end
+
+  @doc """
+  Starts a worktree's sync (ISOL-7) and returns without waiting for it, so a
+  chat that just got its worktree — or resolved an existing one — opens at once.
+  The first jailed command in the worktree waits for the sync instead (`sync/2`).
+
+  A failure is logged (as `sync/2` does) and nothing takes the chat down: the
+  worktree's next command tries the sync again (ISOL-23).
+  """
+  @spec sync_in_background(Path.t(), Path.t()) :: :ok
+  def sync_in_background(dir, root \\ Workspace.runtime_root()) do
+    dir = Path.expand(dir)
+
+    # Not `Task.async`: nothing waits for this one. Nothing links to it either,
+    # so a failure can't reach the chat that started it.
+    {:ok, _pid} =
+      Task.start(fn ->
+        try do
+          sync(dir, root)
+        rescue
+          e ->
+            Logger.warning("Could not sync the dependencies of #{dir}: #{Exception.message(e)}")
+        end
+      end)
+
+    :ok
+  end
+
+  @doc """
+  Whether a sync of the shared `deps` a worktree compiles against is in flight
+  (ISOL-7, ISOL-23), which is what a page that connects mid-sync shows (UI-70).
+  A `dir` that isn't a chat worktree of this live tree is never syncing: nothing
+  syncs it.
+  """
+  @spec syncing?(Path.t(), Path.t()) :: boolean()
+  def syncing?(dir, root \\ Workspace.runtime_root()) do
+    Deploy.worktree_chat(dir, root) != nil and :global.whereis_name(deps_id(root)) != :undefined
   end
 
   @doc """
@@ -87,6 +144,68 @@ defmodule Elia.DepsSync do
   end
 
   ## Syncing
+
+  # ISOL-7: two syncs of the same `deps` never run at once. They write the same
+  # files in the shared tree — a compile into a dependency's own tree, a fetch
+  # into the hex cache — and a file torn that way breaks every worktree that
+  # compiles against it. So the lock is keyed on that tree, not on the worktree:
+  # every worktree of a live tree compiles against the same `deps`, and the two
+  # callers that have to serialize are usually two different worktrees'. The
+  # nodes list is this node alone — there is one server.
+  #
+  # A `:global` lock is released when its holder dies, so a sync that crashed
+  # can't leave a stale lock behind and block every later command; `after`
+  # releases it on the ordinary path.
+  defp in_turn(dir, lock, root) do
+    id = deps_id(root)
+
+    :global.set_lock({id, self()}, [node()])
+
+    try do
+      # ISOL-7: taken, so the tree is this caller's to write. A caller that
+      # queued behind another sync of the same tree finds the compile done here
+      # and doesn't redo it — the check before the lock is only the fast path
+      # for a worktree that was synced long ago.
+      in_flight(dir, root, fn ->
+        if recorded(dir, root) == lock, do: :ok, else: compile(dir, lock, root)
+      end)
+    after
+      :global.del_lock({id, self()}, [node()])
+    end
+  end
+
+  # The shared `deps` of a live tree, which is what a sync is serialized on and
+  # what a page reads as "syncing" (ISOL-7, ISOL-23).
+  defp deps_id(root), do: {:elia_deps_sync, Path.expand(Path.join(root, "deps"))}
+
+  # ISOL-23, UI-70: the chat whose worktree is being compiled says so. The state
+  # is a `:global` name held by the syncing process, so it goes when the sync
+  # ends — whether it succeeded or failed — and can't outlive it either: naming
+  # a dead process is undone like a lock.
+  defp in_flight(dir, root, fun) do
+    id = deps_id(root)
+    chat = Deploy.worktree_chat(dir, root)
+    :global.register_name(id, self())
+    if chat, do: broadcast(chat, true)
+
+    try do
+      fun.()
+    after
+      if chat, do: broadcast(chat, false)
+      :global.unregister_name(id)
+    end
+  end
+
+  # The event a chat's page follows, on the chat's own topic. `Elia.Tasks`
+  # broadcasts `{:subtask, …}` the same way, since the sync isn't a session's
+  # own step either.
+  defp broadcast(chat, on?) do
+    Phoenix.PubSub.broadcast(
+      Elia.PubSub,
+      Elia.Agent.topic(chat),
+      {:agent, chat, {:deps_sync, on?}}
+    )
+  end
 
   defp mix_lock(dir) do
     case File.read(Path.join(dir, "mix.lock")) do

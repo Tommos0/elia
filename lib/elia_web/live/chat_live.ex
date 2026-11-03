@@ -103,6 +103,9 @@ defmodule EliaWeb.ChatLive do
         # has a jail at all (ISOL-12, ISOL-20), which decides if it can be off.
         jail: snapshot.jail,
         jail_available: Elia.Shell.jailed?(),
+        # UI-70, ISOL-23: whether this chat's worktree is being synced right now
+        # (a page that connects mid-sync shows it), then `{:deps_sync, on?}`.
+        deps_sync: Elia.DepsSync.syncing?(Elia.Deploy.worktree_path(id)),
         approvable_tools: approvable_tools(skills),
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
@@ -388,6 +391,17 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-archive-box-arrow-down" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Compact</span>
               </button>
+              <%!-- UI-70, ISOL-23: the worktree's dependency sync, while it runs.
+              Text beside the controls, so it never blocks the composer or the
+              transcript. --%>
+              <span
+                :if={@deps_sync}
+                id="deps-sync"
+                class="flex items-center gap-1.5 text-xs text-base-content/60"
+              >
+                <.icon name="hero-arrow-path" class="size-3.5 shrink-0 motion-safe:animate-spin" />
+                Preparing shared dependencies…
+              </span>
             </div>
             <.form
               for={@form}
@@ -1907,6 +1921,10 @@ defmodule EliaWeb.ChatLive do
 
   # UI-67, SESS-30: every tab on the chat follows the jail setting.
   defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)
+
+  # UI-70, ISOL-23: the worktree's dependency sync, on while it is in flight and
+  # gone when it ends, whether that was a success or a failure.
+  defp apply_event({:deps_sync, on?}, socket), do: assign(socket, deps_sync: on?)
 
   # UI-44, UI-49: the card's status and link follow the child.
   defp apply_event({:subtask, call_id, child_id, status}, socket) do

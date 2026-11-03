@@ -211,10 +211,12 @@ defmodule Elia.Deploy do
 
   # ISOL-7: a worktree's `deps` is the live tree's, bound read-only for a
   # command that runs there (ISOL-13), so the harness keeps the shared tree
-  # compiled itself before any jailed command needs it — for a worktree it just
-  # created, and for one that predates this and is resolved again (DEPLOY-1).
+  # compiled itself — for a worktree it just created, and for one that predates
+  # this and is resolved again (DEPLOY-1). It runs in the background, so the
+  # chat this is on the way to starting doesn't wait for the compile; the first
+  # jailed command in the worktree waits for it instead (ISOL-7, `Elia.Shell`).
   defp synced(path, root) do
-    Elia.DepsSync.sync(path, root)
+    Elia.DepsSync.sync_in_background(path, root)
     {:ok, path}
   end
 

@@ -77,8 +77,18 @@ defmodule Elia.Shell do
     # Commands must not wait on stdin.
     script = "exec </dev/null\n" <> command
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
-    sync_deps(cd, opts)
 
+    # ISOL-7: a worktree's compile is a harness step, and the command that needs
+    # one waits for it — including one already running, since `Elia.DepsSync`
+    # lets a single sync of a shared `deps` run at a time. It never runs against
+    # a half-synced tree.
+    case sync_deps(cd, opts) do
+      :ok -> execute(script, cd, opts)
+      {:error, reason} -> {:ok, unsynced(reason), 1}
+    end
+  end
+
+  defp execute(script, cd, opts) do
     # Spawned directly: the VM makes a port program its own session and process
     # group leader, so `kill -PGID` in `kill/1` reaches the command and
     # everything it started (SHELL-3). A `setsid` wrapper must not go here —
@@ -115,14 +125,21 @@ defmodule Elia.Shell do
 
   ## The jail
 
-  # ISOL-7: a chat worktree's `deps` is the live tree's, bound read-only for a
-  # command that runs there (ISOL-13), and a compile can need to write inside
-  # one. So before a command runs in a worktree whose `mix.lock` changed since it
+  # ISOL-7: before a command runs in a worktree whose `mix.lock` changed since it
   # was last synced, the harness compiles the shared tree itself, under the
   # `:deps_sync` profile. Only the `:worktree` profile: that run must never
   # re-enter this, and the live tree's own profile has nothing to sync.
   defp sync_deps(cd, opts) do
     if profile(cd, opts) == :worktree, do: Elia.DepsSync.sync_worktree(cd), else: :ok
+  end
+
+  # ISOL-23: a failed sync says so in the result of the command that needed it,
+  # and the command doesn't run — compiling against a half-synced tree is what
+  # the sync is there to prevent. The chat stays usable: nothing is remembered,
+  # so the next command tries the sync again.
+  defp unsynced(reason) do
+    "The shared dependencies could not be synced, so this command did not run:\n" <>
+      reason <> "\n"
   end
 
   defp jail_args(script, cd, opts) do
