@@ -165,6 +165,12 @@ stream in, approves or denies tool calls, and switches between saved chats.
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
   runs unjailed (ISOL-17).
+- **UI-70** The chat shows a worktree's dependency sync in progress (ISOL-7,
+  ISOL-23) as text next to the composer (`#deps-sync`, "Preparing shared
+  dependencies…"), following an event like `{:deps_sync, on?}`, gone when the
+  sync ends whether it succeeded or failed. It covers both a sync the chat
+  started in the background and one a command is waiting for, and it never
+  blocks the composer or the transcript.
 
 ### Markdown
 
@@ -322,6 +328,7 @@ the hidden tool calls leave with a one-line summary of the current step.
 
 `test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
 `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
+`test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

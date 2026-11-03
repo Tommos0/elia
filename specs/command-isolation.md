@@ -70,6 +70,14 @@ genuinely needs the rest of the machine (ISOL-16).
   remembers is one value per worktree, the `mix.lock` it last synced with. This
   is a harness step, not a tool call: it needs no approval and the model doesn't
   choose it.
+
+  It doesn't hold up the start of a chat: it runs in the background, and the
+  first jailed command in a worktree that isn't synced yet waits for it, so no
+  command ever compiles against a half-synced tree. Two syncs of the same `deps`
+  never run at once: they would write the same files in the shared tree — a
+  compile writes into a dependency's own tree, a fetch into the hex cache — and a
+  file torn that way breaks every worktree that compiles against it. A failure
+  isn't remembered (nothing is written), so the next command tries again.
 - **ISOL-8** The environment is cleared and rebuilt from an allowlist: `PATH`,
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
   them. Nothing is inherited, so a key in the server's own environment (CONF-5)
@@ -157,6 +165,10 @@ genuinely needs the rest of the machine (ISOL-16).
   steps and their arguments are the harness's, fixed at the call site. This is
   the one place a jailed process has `.elia` in reach, and it is a deliberate
   trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).
+- **ISOL-23** While a worktree's sync (ISOL-7) is in flight the chat says so
+  (UI-70), and a command waiting for one says what it is waiting for. The
+  indicator goes when the sync ends, whether it succeeded or failed; a failure
+  leaves the chat usable and shows up in the result of the next command.
 
 ## Configuration
 
