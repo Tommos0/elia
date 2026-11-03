@@ -244,6 +244,13 @@ its own workspace; children that would share one workspace are serialized
   `spawn_task` returns at once (SUBTASK-2) and several watchers can run at
   once.
 
+- **SUBTASK-29** Saving a child's final metadata when its session is gone
+  (SUBTASK-13, SUBTASK-19), by writing straight to disk, never recreates a chat
+  that was deleted: it saves only while the child's file still exists
+  (`Elia.Store.exists?/1`, STORE-24), so a running sub-task chat the user
+  deletes (SESS-29, UI-65) stays deleted rather than being written back by its
+  watcher.
+
 ## Out of scope (later phases of the plan)
 
 Read-only children (phase 5).

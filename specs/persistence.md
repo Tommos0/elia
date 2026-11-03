@@ -89,6 +89,9 @@ reopened.
   whether or not a file exists yet; an invalid id (STORE-4) removes nothing and
   returns `{:error, :invalid_id}`. Deleting a chat never deletes other chats: a
   parent's task chats and a task chat's parent are left saved (UI-66).
+- **STORE-24** `Elia.Store.exists?/1` reports whether a valid id has a saved
+  chat file, without decoding it; it is `false` for an invalid id and for an id
+  with no file.
 
 ## Implementation
 
