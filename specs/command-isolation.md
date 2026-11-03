@@ -91,7 +91,10 @@ genuinely needs the rest of the machine (ISOL-16).
 - **ISOL-12** When there is no jail — bubblewrap not installed, user namespaces
   not permitted (ISOL-20) — a command runs unjailed as it does today and its
   result says the jail was skipped, so a run that wasn't isolated never looks
-  like one that was. The chat UI says the same (UI-68).
+  like one that was. The chat UI says the same (UI-68). A harness caller that
+  reads a command's output as a value takes that notice off first
+  (`Elia.Shell.jail_skipped_notice/0`), so it never becomes part of a ref, a path
+  or a count.
 
 ### Profiles
 
@@ -100,7 +103,7 @@ genuinely needs the rest of the machine (ISOL-16).
   | Profile | For | Workspace | Shared `deps` | Repo git dir | `.elia` |
   | --- | --- | --- | --- | --- | --- |
   | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | ro | rw | not bound |
-  | `:deps_sync` | the harness's `mix deps.get` / `deps.compile` (ISOL-7) | rw | rw | rw | not bound |
+  | `:deps_sync` | the harness's own steps: `mix deps.get` / `deps.compile` (ISOL-7) and the `git worktree` commands that create, remove or prune a worktree (ISOL-22) | rw | rw | rw | not bound |
   | `:live_tree` | a chat that works in the live tree (DEPLOY-14) and the deploy's suite run (ISOL-14) | rw | rw, inside the tree | inside the tree | masked empty |
 
 - **ISOL-14** The deploy's test run (`Elia.Deploy`, DEPLOY-5) is jailed with
@@ -140,6 +143,18 @@ genuinely needs the rest of the machine (ISOL-16).
   conversations and the user's credentials aren't in it — so a command that
   can't find them is expected, not broken (SHELL-8, SHELL-9). They say too that
   a chat whose jail the user turned off (ISOL-16) runs commands unjailed.
+
+### The harness's own steps
+
+- **ISOL-22** The harness's worktree administration — `git worktree add`,
+  `remove` and `prune`, and the dependency compile of ISOL-7 — runs as a harness
+  step under a profile that leaves `.elia` reachable (ISOL-13), because a chat's
+  worktree is created *inside* `.elia/worktrees`. Under `:live_tree` the mask
+  would swallow the new worktree and the command would still exit 0, having
+  written nowhere the harness can see. Nothing the model wrote goes into these
+  steps and their arguments are the harness's, fixed at the call site. This is
+  the one place a jailed process has `.elia` in reach, and it is a deliberate
+  trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).
 
 ## Configuration
 
@@ -181,7 +196,7 @@ and `Elia.Harness` (pass the chat's setting from the tool context),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
 (`save/3`'s `jail:`, `load_jail/1`), `Elia.Tasks` and `Elia.Deploy` (spawn `git`
 through `Elia.Shell.run/2`, and sync a worktree's deps before the first jailed
-command in it),
+command in it), `Elia.DepsSync` (the sync itself),
 `Elia.Tasks` (copy the parent's setting to the child, SUBTASK-30),
 `EliaWeb.ChatLive` (the switch).
 
@@ -192,6 +207,8 @@ the fallback when bubblewrap is missing), `test/elia/command_isolation_test.exs`
 (the settings path and `$HOME` absent, the server pid not in `/proc`, the
 workspace writable, a timeout still cleaning up), `test/elia/harness_test.exs`
 (`run_tests` jailed), `test/elia/deployment_test.exs` (the `:deps_sync` step),
+`test/elia/deps_sync_test.exs` and `test/elia/tasks_git_test.exs` (the sync and
+the harness's git calls),
 `test/elia/store_test.exs` and `test/elia/tasks_test.exs` (the setting and its
 inheritance), `test/elia_web/live/jail_test.exs` (UI-67..UI-69).
 
