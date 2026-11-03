@@ -1147,6 +1147,78 @@ defmodule Elia.AgentTest do
     assert Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
   end
 
+  # SESS-29
+  test "delete removes the chat and its session, so nothing saves it again", %{id: id} do
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+    assert [%Message{role: :user}, %Message{role: :assistant}] = Elia.Store.load(id)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    ref = Process.monitor(pid)
+
+    assert :ok = Agent.delete(id)
+
+    # The session process is gone, so a stale session can't save the chat again.
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2000
+    assert Registry.lookup(Elia.Agent.Registry, id) == []
+    assert Elia.Store.load(id) == []
+    refute Enum.any?(Elia.Store.list(1000), &(&1.id == id))
+
+    # A chat opened again starts from nothing: nothing came back.
+    {:ok, restarted} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, restarted) end)
+    assert Agent.snapshot(id).messages == []
+  end
+
+  # SESS-29
+  test "delete of a chat with no session simply removes it" do
+    id = Agent.new_id()
+    :ok = Elia.Store.save(id, [Message.user("hi")])
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    assert :ok = Agent.delete(id)
+    assert Elia.Store.load(id) == []
+  end
+
+  # SESS-29, SESS-8, UI-65
+  test "delete stops a running turn and the chat stays deleted" do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id)
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "thinking"})
+      Process.sleep(5000)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("late")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "hi")
+    assert_receive {:agent, ^id, {:status, :running}}, 2000
+    # The user message is saved as the turn starts.
+    assert [%Message{role: :user}] = Elia.Store.load(id)
+
+    assert :ok = Agent.delete(id)
+
+    assert Registry.lookup(Elia.Agent.Registry, id) == []
+    assert Elia.Store.load(id) == []
+    refute File.exists?(Path.join(Elia.Store.dir(), id <> ".term"))
+  end
+
+  # SESS-29, STORE-4
+  test "delete rejects an invalid id" do
+    assert {:error, :invalid_id} = Agent.delete("../bad")
+    assert {:error, :invalid_id} = Agent.delete("")
+  end
+
   # SESS-15, SESS-26
   test "a session with state from before :compaction existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)

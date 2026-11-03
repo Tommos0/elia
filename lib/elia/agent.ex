@@ -84,6 +84,45 @@ defmodule Elia.Agent do
   def stop(id), do: GenServer.call(Session.via(id), :stop)
 
   @doc """
+  Deletes a chat (SESS-29): stops its turn if one is running (SESS-8, which also
+  cancels or stops its sub-tasks, SESS-22), terminates its session process so no
+  stale session can save it again, then removes the saved chat and its worktree
+  (STORE-23). A chat with no session is simply removed. `{:error, :invalid_id}`
+  for an invalid id (STORE-4).
+  """
+  @spec delete(binary()) :: :ok | {:error, :invalid_id}
+  def delete(id) do
+    if Elia.Store.valid_id?(id) do
+      stop_if_started(id)
+      terminate_session(id)
+      Elia.Store.delete(id)
+    else
+      {:error, :invalid_id}
+    end
+  end
+
+  # SESS-29: the session may not be started (or may be gone already), so stopping
+  # its turn is best effort — SESS-8 and SESS-22 do the rest.
+  defp stop_if_started(id) do
+    stop(id)
+  catch
+    :exit, _ -> :ok
+  end
+
+  # SESS-29: terminate the session process, so a stale session can't save the
+  # chat again. Same shape as the child cleanup in `Elia.Tasks`.
+  defp terminate_session(id) do
+    for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id), do: terminate_child(pid)
+    :ok
+  end
+
+  defp terminate_child(pid) do
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @doc """
   Resumes a turn paused at a limit (SESS-27): the step count and the wall-clock
   budget start over (LOOP-19). `{:error, :not_paused}` when the chat isn't
   paused.

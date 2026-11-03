@@ -183,6 +183,148 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, time, "1 hour ago")
   end
 
+  # UI-64: every chat row — task chats too (UI-45) — has a delete button beside
+  # its link, as a sibling of it rather than nested inside it.
+  test "each sidebar chat has a delete button beside its link", %{conn: conn} do
+    parent = Agent.new_id()
+    child = Agent.new_id()
+    on_exit(fn -> Enum.each([parent, child], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(parent, [Message.user("delegate this")])
+
+    :ok =
+      Elia.Store.save(child, [Message.user("preamble")],
+        task: %{parent_id: parent, parent_call_id: "s1", title: "Task one", status: "done"}
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    for id <- [parent, child] do
+      assert has_element?(
+               view,
+               "#delete-chat-#{id}[aria-label='Delete chat'][title='Delete chat']"
+             )
+
+      assert has_element?(view, "#delete-chat-#{id} .hero-trash")
+      # A sibling of the link, and never nested in it (or in another button).
+      assert has_element?(view, "#chat-row-#{id} > #chat-link-#{id}")
+      assert has_element?(view, "#chat-row-#{id} > #delete-chat-#{id}")
+      refute has_element?(view, "#chat-link-#{id} #delete-chat-#{id}")
+      refute has_element?(view, "#chat-link-#{id} button")
+      refute has_element?(view, "#delete-chat-#{id} a")
+    end
+
+    # The link keeps the status indicator and the start time (UI-34, UI-59).
+    assert has_element?(view, "#chat-link-#{parent} #chat-status-#{parent}")
+    assert has_element?(view, "#chat-link-#{parent} #chat-time-#{parent}")
+    assert has_element?(view, "#chat-link-#{parent}.bg-base-300")
+    # UI-64: the confirmation names the chat it deletes.
+    assert has_element?(view, "#delete-chat-#{parent}[data-confirm*='delegate this']")
+    assert has_element?(view, "#delete-chat-#{child}[data-confirm*='Task one']")
+  end
+
+  # UI-64, UI-65: confirming removes the chat, flashes, and leaves the open chat
+  # where it is.
+  test "deleting another chat removes its row and flashes", %{conn: conn} do
+    open = Agent.new_id()
+    other = Agent.new_id()
+    on_exit(fn -> Enum.each([open, other], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+    :ok = Elia.Store.save(other, [Message.user("the other chat")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+    assert has_element?(view, "#chat-link-#{other}", "the other chat")
+
+    view |> element("#delete-chat-#{other}") |> render_click()
+
+    refute has_element?(view, "#chat-link-#{other}")
+    refute has_element?(view, "#delete-chat-#{other}")
+    assert render(view) =~ "Chat deleted."
+    assert Elia.Store.load(other) == []
+    # The open chat stays open and highlighted (UI-4).
+    assert has_element?(view, "#chat-link-#{open}.bg-base-300")
+  end
+
+  # UI-65: deleting the chat that is open opens a fresh one (UI-1).
+  test "deleting the open chat navigates to a fresh chat", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, [Message.user("delete me")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    view |> element("#delete-chat-#{id}") |> render_click()
+    assert_redirect(view, "/")
+
+    assert Elia.Store.load(id) == []
+  end
+
+  # UI-65: a chat whose turn is running can be deleted from any chat's sidebar:
+  # its turn is stopped first (SESS-8, SESS-22, SESS-29).
+  test "deleting a running chat from another chat's sidebar stops it", %{conn: conn} do
+    open = Agent.new_id()
+    busy = Agent.new_id()
+    on_exit(fn -> Enum.each([open, busy], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+
+    {:ok, pid} = Agent.ensure_started(busy)
+    Agent.subscribe(busy)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(fn _request, _on_event ->
+      Process.sleep(5000)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("late")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(busy, "go")
+    assert_receive {:agent, ^busy, {:status, :running}}, 2_000
+
+    # The chat is working as the sidebar renders (UI-59).
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+    assert has_element?(view, "#chat-status-#{busy}[data-status='working']")
+
+    view |> element("#delete-chat-#{busy}") |> render_click()
+
+    refute has_element?(view, "#chat-link-#{busy}")
+    assert Registry.lookup(Elia.Agent.Registry, busy) == []
+    assert Elia.Store.load(busy) == []
+  end
+
+  # UI-66: deleting a parent leaves its task chats saved and listed on their own
+  # at the top level (UI-45).
+  test "deleting a parent leaves its task chat at the top level", %{conn: conn} do
+    observer = Agent.new_id()
+    parent = Agent.new_id()
+    child = Agent.new_id()
+    on_exit(fn -> Enum.each([observer, parent, child], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(observer, [Message.user("just watching")])
+    :ok = Elia.Store.save(parent, [Message.user("delegate this")])
+
+    :ok =
+      Elia.Store.save(child, [Message.user("preamble")],
+        task: %{parent_id: parent, parent_call_id: "s1", title: "Nested task", status: "done"}
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{observer}")
+    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}")
+
+    view |> element("#delete-chat-#{parent}") |> render_click()
+
+    refute has_element?(view, "#chat-link-#{parent}")
+    refute has_element?(view, "#chat-children-#{parent}")
+    assert has_element?(view, "#chat-list #chat-link-#{child}", "Nested task")
+    assert has_element?(view, "#chat-status-#{child}[data-status='done']")
+    # The task chat is left saved, with its parent metadata (STORE-17).
+    assert [%Message{}] = Elia.Store.load(child)
+    assert %{parent_id: ^parent} = Elia.Store.load_task(child)
+  end
+
   # UI-37: header labels collapse to icons on narrow screens.
   test "header buttons hide their labels below the sm breakpoint", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")

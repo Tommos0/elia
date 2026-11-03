@@ -546,35 +546,51 @@ defmodule EliaWeb.ChatLive do
   attr :paused, :boolean, default: false
   attr :running, :boolean, default: false
 
-  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59
+  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64
   defp chat_row(assigns) do
     {status_id, status} = chat_status(assigns.chat, assigns)
     assigns = assign(assigns, status_id: status_id, status: status)
 
     ~H"""
-    <.link
-      navigate={~p"/c/#{@chat.id}"}
-      id={"chat-link-#{@chat.id}"}
-      title={@chat.description}
-      class={[
-        "block rounded-lg px-3 py-2 text-sm transition",
-        @active && "bg-base-300 font-medium",
-        !@active && "text-base-content/70 hover:bg-base-200 hover:text-base-content"
-      ]}
-    >
-      <span class="flex items-center gap-1.5">
-        <.status_icon id={@status_id} status={@status} />
-        <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
-      </span>
-      <time
-        id={"chat-time-#{@chat.id}"}
-        datetime={DateTime.to_iso8601(@chat.created_at)}
-        title={Calendar.strftime(@chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
-        class="block text-xs font-normal text-base-content/50"
+    <%!-- UI-64: the delete button sits beside the link, as its sibling, so no
+    interactive element is nested inside another. --%>
+    <div id={"chat-row-#{@chat.id}"} class="flex gap-0.5">
+      <.link
+        navigate={~p"/c/#{@chat.id}"}
+        id={"chat-link-#{@chat.id}"}
+        title={@chat.description}
+        class={[
+          "block min-w-0 flex-1 rounded-lg px-3 py-2 text-sm transition",
+          @active && "bg-base-300 font-medium",
+          !@active && "text-base-content/70 hover:bg-base-200 hover:text-base-content"
+        ]}
       >
-        {EliaWeb.TimeAgo.format(@chat.created_at, @now)}
-      </time>
-    </.link>
+        <span class="flex items-center gap-1.5">
+          <.status_icon id={@status_id} status={@status} />
+          <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
+        </span>
+        <time
+          id={"chat-time-#{@chat.id}"}
+          datetime={DateTime.to_iso8601(@chat.created_at)}
+          title={Calendar.strftime(@chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
+          class="block text-xs font-normal text-base-content/50"
+        >
+          {EliaWeb.TimeAgo.format(@chat.created_at, @now)}
+        </time>
+      </.link>
+      <button
+        type="button"
+        id={"delete-chat-#{@chat.id}"}
+        phx-click="delete_chat"
+        phx-value-id={@chat.id}
+        data-confirm={"Delete the chat #{@chat.title}? This can't be undone."}
+        aria-label="Delete chat"
+        title="Delete chat"
+        class="shrink-0 rounded-lg px-1.5 text-base-content/40 transition hover:bg-error/10 hover:text-error focus-visible:bg-error/10 focus-visible:text-error focus-visible:outline-none active:scale-95"
+      >
+        <.icon name="hero-trash" class="size-3.5" />
+      </button>
+    </div>
     """
   end
 
@@ -1507,6 +1523,27 @@ defmodule EliaWeb.ChatLive do
   def handle_event("stop", _params, socket) do
     Agent.stop(socket.assigns.session_id)
     {:noreply, socket}
+  end
+
+  # UI-64, UI-65, SESS-29: delete a chat from the sidebar — the open one or any
+  # other, running or not. Deleting the open chat opens a fresh one (UI-1).
+  def handle_event("delete_chat", %{"id" => id}, socket) do
+    case Agent.delete(id) do
+      :ok ->
+        socket =
+          socket
+          |> assign(chats: Elia.Store.list(30))
+          |> put_flash(:info, "Chat deleted.")
+
+        if id == socket.assigns.session_id do
+          {:noreply, push_navigate(socket, to: ~p"/")}
+        else
+          {:noreply, socket}
+        end
+
+      _error ->
+        {:noreply, put_flash(socket, :error, "That chat can't be deleted.")}
+    end
   end
 
   # UI-57, SESS-27: the user's decision on a turn paused at a limit.

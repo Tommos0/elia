@@ -250,5 +250,48 @@ defmodule Elia.StoreTest do
     assert Store.load_compaction("../bad") == nil
   end
 
+  # STORE-23, UI-66
+  test "deleting a chat removes its file, and only its own" do
+    parent = Elia.Agent.new_id()
+    child = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([parent, child], &Store.delete/1) end)
+
+    :ok = Store.save(parent, [Message.user("delegate this")])
+    :ok = save_task_child(child, parent)
+
+    # UI-66: deleting the task chat leaves its parent.
+    assert :ok = Store.delete(child)
+    assert Store.load(child) == []
+    refute listed(child)
+    assert [%Message{}] = Store.load(parent)
+
+    # UI-66: deleting the parent leaves its task chat saved.
+    :ok = save_task_child(child, parent)
+    assert :ok = Store.delete(parent)
+    assert Store.load(parent) == []
+    assert [%Message{}] = Store.load(child)
+    assert %{id: ^child, parent_id: ^parent} = listed(child)
+  end
+
+  defp save_task_child(child, parent) do
+    Store.save(child, [Message.user("preamble")],
+      task: %{parent_id: parent, title: "Task one", status: "done"}
+    )
+  end
+
+  # STORE-23
+  test "deleting a chat that was never saved is ok, and an invalid id removes nothing" do
+    assert :ok = Store.delete(Elia.Agent.new_id())
+
+    kept = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(kept) end)
+    :ok = Store.save(kept, [Message.user("keep me")])
+
+    assert {:error, :invalid_id} = Store.delete("../bad")
+    assert {:error, :invalid_id} = Store.delete("")
+    assert {:error, :invalid_id} = Store.delete("a b")
+    assert [%Message{}] = Store.load(kept)
+  end
+
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))
 end

@@ -226,12 +226,22 @@ defmodule Elia.Store do
 
   @doc """
   Deletes a saved chat. A chat's worktree goes with it — removed, and its branch
-  pruned (DEPLOY-10).
+  pruned (DEPLOY-10) — and a chat that has no saved file yet is deleted too
+  (STORE-23). Only that chat goes: a parent's task chats, and a task chat's
+  parent, are left saved (UI-66).
   """
+  @spec delete(binary()) :: :ok | {:error, term()}
   def delete(id) do
     if valid_id?(id) do
       Elia.Deploy.remove_worktree(id)
-      File.rm(path(id))
+
+      case File.rm(path(id)) do
+        :ok -> :ok
+        # No file yet (STORE-22 writes one only once the chat is started): the
+        # chat is deleted all the same.
+        {:error, :enoent} -> :ok
+        error -> error
+      end
     else
       {:error, :invalid_id}
     end

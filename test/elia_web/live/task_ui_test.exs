@@ -137,7 +137,9 @@ defmodule EliaWeb.TaskUITest do
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
 
-    assert has_element?(view, "#chat-list > #chat-link-#{parent}")
+    # UI-64: each row is a flex container holding the link and its delete
+    # button, so the link is a descendant of the list rather than its child.
+    assert has_element?(view, "#chat-list #chat-link-#{parent}")
     assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}", "Nested task")
     assert has_element?(view, "#chat-children-#{parent} #chat-link-#{lost}", "Lost task")
     # Oldest first.
@@ -146,7 +148,7 @@ defmodule EliaWeb.TaskUITest do
     assert before_lost =~ "id=\"chat-link-#{child}\""
 
     # An orphan stays at the top level.
-    assert has_element?(view, "#chat-list > #chat-link-#{orphan}", "Orphan task")
+    assert has_element?(view, "#chat-list #chat-link-#{orphan}", "Orphan task")
     refute has_element?(view, "#chat-children-#{parent} #chat-link-#{orphan}")
     # Ordinary chats have no status icon of their own yet: a chat that isn't a
     # task shows its activity (UI-59), not a task status.
