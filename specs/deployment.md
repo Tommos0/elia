@@ -80,7 +80,7 @@ gate.
 - **DEPLOY-6** Hot reload is the soft deploy mode (HOT-1–HOT-6): after
   DEPLOY-5 the live tree is recompiled and the changed modules are loaded into
   the running app, keeping running state. Its control is on the Settings page
-  (CONF-19); it needs the dev server (HOT-2).
+  (CONF-19); it needs the code reloader on (HOT-2, HOT-7).
 - **DEPLOY-7** Restart is the hard deploy mode: after DEPLOY-5 the server is
   restarted, so it comes up on the deployed code in a clean process
   (RESTART-3, RESTART-11). Its control is on the Settings page (CONF-19), and
@@ -89,9 +89,9 @@ gate.
 - **DEPLOY-8** The running app never recompiles or loads code on its own: a
   request does not reload code, and a merge into `live` stays inert until a
   deploy loads it (GUARD-8). Only a deploy loads code.
-- **DEPLOY-12** In development the browser's live reload watches only the live
-  tree's own static assets (`priv/static`), not the chats' worktrees. Creating
-  a chat checks out a worktree with its own `priv/static` copies (DEPLOY-1);
+- **DEPLOY-12** The browser's live reload watches only the live tree's own
+  static assets (`priv/static`), not the chats' worktrees. Creating a chat
+  checks out a worktree with its own `priv/static` copies (DEPLOY-1);
   reloading on those would reload the browser in the middle of the navigation
   to the new chat and land it back on the old one.
 

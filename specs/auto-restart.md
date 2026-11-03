@@ -34,7 +34,9 @@ crash takes the VM down instead of leaving it empty.
 - **RESTART-8** `deploy/elia.service` is a systemd **user** unit template that
   runs `bin/serve` from the project root. It contains the placeholders `@ROOT@`
   (project root) and `@PATH@` (the `PATH` that finds `elixir` and `erl`). It
-  sets `MIX_ENV=dev`, reads optional extra environment (API keys, `PORT`) from
+  sets no `MIX_ENV`: the server runs in Mix's default `dev` env either way
+  (ISOL-24), and a value here would be inherited by every command the server
+  spawns. It reads optional extra environment (API keys, `PORT`) from
   `~/.config/elia/env` (the file may be missing), uses `Restart=on-failure`
   and `KillMode=mixed` (SIGTERM goes to `bin/serve` only, RESTART-3), and is
   `WantedBy=default.target`.

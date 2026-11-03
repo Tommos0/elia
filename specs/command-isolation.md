@@ -82,6 +82,17 @@ genuinely needs the rest of the machine (ISOL-16).
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
   them. Nothing is inherited, so a key in the server's own environment (CONF-5)
   reaches no command.
+- **ISOL-24** A command never builds in the environment the server happens to
+  run in: `MIX_ENV` is absent whichever path it takes. A jailed command has
+  none (ISOL-8), and an unjailed one (ISOL-12, ISOL-16) runs in a shell that
+  unsets it — a port's environment can only add to the inherited one, so this is
+  the only way — unless the caller passes a value itself. The server's own
+  `MIX_ENV` (`bin/serve`'s, RESTART-8) is a property of the server, not of the
+  commands it runs: inherited, it would make `mix` build in the server's `dev`
+  even where the command's own project asks for another environment
+  (`preferred_envs`, which Mix only honours when `MIX_ENV` is unset — so
+  `mix precommit` would compile and test in `dev`). The harness's own steps that
+  need `MIX_ENV=test` set it themselves (VERIFY-1, ISOL-7) and are unaffected.
 - **ISOL-9** The pid namespace and its fresh `/proc` mean the server process
   isn't visible and neither is its memory. (This host runs with
   `ptrace_scope=0`, so unjailed any command could read it.)

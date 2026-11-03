@@ -4,7 +4,7 @@ Status: Implemented
 
 Hot reload is the soft deploy mode (DEPLOY-6): after DEPLOY-5 has run the full
 test suite and brought the trunk `master` to `live`, it recompiles the live tree
-and loads the result into the running dev server, keeping running state. Its
+and loads the result into the running server, keeping running state. Its
 control is the "Hot reload" button on the Settings page (CONF-19); the other
 deploy mode is a restart (DEPLOY-7). There is no `hot_reload` tool: an agent's
 own step is to merge its branch into the trunk (DEPLOY-13), and deploying is the
@@ -16,8 +16,8 @@ user's.
   a tool. The Settings page's deploy controls are the user's own click
   (DEPLOY-6).*
 - **HOT-2** Hot reload is available only when Mix is loaded and the endpoint's
-  code reloader is on (the dev server). Otherwise it returns an error saying
-  so, and nothing is merged or loaded.
+  code reloader is on (`code_reloader`, HOT-7). Otherwise it returns an error
+  saying so, and nothing is merged or loaded.
 - **HOT-3** It always runs the full test suite first (DEPLOY-5), even if the
   agent's own turn already ran it.
 - **HOT-4** If the tests fail, nothing is loaded: `live` is rolled back to
@@ -29,11 +29,23 @@ user's.
   (DEPLOY-6, DEPLOY-8). Skills are reloaded.
 - **HOT-6** A compile error is returned with the compiler output, truncated
   to 20,000 characters.
+- **HOT-7** Reloading belongs to the deployment, not to the Mix environment:
+  the endpoint's `code_reloader` and the `live_reload` wiring that points at the
+  deploy's reloader (DEPLOY-8) are on in whatever environment the server runs
+  in — not behind `config_env() == :dev` — and `phoenix_live_reload` is a normal
+  dependency, not `only: :dev`. A browser reload (DEPLOY-12) and the in-VM code
+  reloader (HOT-2, HOT-5) are therefore part of the normal deploy, as the tree's
+  undigested assets are, rather than scaffolding of `config/dev.exs`. What stays
+  there is that file's developer scaffolding: `debug_errors`, `dev_routes`, the
+  stacktrace depth, the HEEx annotations and the expensive runtime checks, its
+  `secret_key_base`, and the esbuild/tailwind watchers. A test run is not an
+  operating mode, so the suite may keep its own value.
 
 ## Implementation
 
 `Elia.Deploy.hot_reload/1` (the tests → merge → reload deploy, DEPLOY-6),
-`Elia.Deploy.hot_reload_available?/0`, `Elia.Deploy`.
+`Elia.Deploy.hot_reload_available?/0`, `Elia.Deploy`, `config/config.exs` and
+`config/runtime.exs` (HOT-7), `mix.exs` (the dependency).
 
 ## Tests
 
