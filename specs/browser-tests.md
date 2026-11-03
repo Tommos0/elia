@@ -53,11 +53,13 @@ committed.
   `mix precommit` stays browser-free (BROWSER-5).
 - Replacing `Phoenix.LiveViewTest`: browser tests are a thin layer over the
   existing suite for JS, websocket and layout questions only.
-- The Python `skills/browser/` folder skill (`ui_run`) is **retired**: it stays
-  on its unmerged branch `chat/A76mx6ao-DVo`, `skills/` stays out of the trunk,
-  and the `BROWSER` tests above replace it. Retired for checking the deployed
-  tree (no deploy, no `FakeLLM`, no worktree code) and for a Python toolchain
-  in a repo that already has Elixir tests.
+- The Python `skills/browser/` folder skill (`ui_run`) is **retired**: it was
+  never merged, `skills/` stays out of the trunk, and the `BROWSER` tests above
+  replace it. Its chat was kept but its worktree, `chat/A76mx6ao-DVo`, had been
+  removed and the branch deleted, so reopening that chat forks a fresh worktree
+  from the trunk. Retired for checking the deployed tree (no deploy, no
+  `FakeLLM`, no worktree code) and for a Python toolchain in a repo that
+  already has Elixir tests.
 
 ## Implementation
 
