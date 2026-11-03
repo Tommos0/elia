@@ -1,6 +1,6 @@
 # Testing
 
-Read this before writing or changing tests. Tests live in `test/elia/` (core) and `test/elia_web/` (web, LiveViews in `test/elia_web/live/`). Helpers are in `test/support/` (`conn_case.ex`, `llm_case.ex`, `fake_llm.ex`, `live_tree.ex`).
+Read this before writing or changing tests. Tests live in `test/elia/` (core) and `test/elia_web/` (web, LiveViews in `test/elia_web/live/`, real-browser tests in `test/elia_web/browser/`). Helpers are in `test/support/` (`conn_case.ex`, `llm_case.ex`, `fake_llm.ex`, `live_tree.ex`, `browser_case.ex`, `browser_js_logger.ex`).
 
 ## Specs
 
@@ -34,6 +34,34 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
       html = render(view)
       document = LazyHTML.from_fragment(html)
       IO.inspect(LazyHTML.filter(document, "your-selector"), label: "Matches")
+
+## Real-browser tests
+
+`Phoenix.LiveViewTest` sees the server's HTML, not a browser: JavaScript hooks,
+the websocket connecting, computed styles, geometry and focus are invisible to
+it. `test/elia_web/browser/` (BROWSER, `use EliaWeb.BrowserCase`) covers those
+with a real headless Chromium, driven from Elixir by `PhoenixTest` and
+Playwright.
+
+- They speak HTTP to the **test env server**, which is the same BEAM node, so
+  `Elia.FakeLLM` and the scratch workspace still apply: no deploy, no dev
+  server, no API keys. They see the worktree's own code.
+- They are excluded from a plain `mix test`, so `run_tests` and `mix precommit`
+  stay fast and need no Node. Run them explicitly:
+
+      mix assets.build                                 # esbuild/tailwind run in dev only
+      ELIA_BROWSER_TESTS=1 mix test --only real_browser
+
+- `assets/node_modules` is gitignored, so a fresh worktree needs `npm install`
+  in `assets/` first. Playwright is pinned in `assets/package.json` to a version
+  whose Chromium revision is already in `~/.cache/ms-playwright`, so nothing
+  large downloads; it needs Node ≥ 20.
+- Console errors and page errors fail the test that caused them
+  (`EliaWeb.BrowserJsLogger`), so a broken hook doesn't pass quietly. Lower
+  levels are logged as usual.
+- Keep them few and shallow: a browser run is seconds per test. Test outcomes
+  in the LiveView suite where you can, and reach for a browser only for what
+  JavaScript and layout do (e.g. `#chat-input`'s Enter-to-send hook).
 
 ## Running
 

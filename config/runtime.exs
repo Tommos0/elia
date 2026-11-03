@@ -20,7 +20,11 @@ if System.get_env("PHX_SERVER") do
   config :elia, EliaWeb.Endpoint, server: true
 end
 
-config :elia, EliaWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "7000"))]
+# The test env picks its own port (config/test.exs, BROWSER-3), where the dev
+# server's default 7000 is in use.
+if config_env() != :test do
+  config :elia, EliaWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "7000"))]
+end
 
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
 config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
