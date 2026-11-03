@@ -19,7 +19,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 
 ## Tests
 
-- A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run `run_tests` (or `MIX_ENV=test mix precommit`) before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5).
+- A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run `run_tests` (or plain `mix precommit` — a command never inherits the server's `MIX_ENV`, ISOL-24) before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5).
 
 ## Recovery
 

@@ -11,8 +11,9 @@ its own worktree, so a turn that breaks the suite cannot reach the running tree
 (DEPLOY-1), and the deploy gate already runs the full suite, then a compile,
 before loading anything (DEPLOY-5, HOT-4, HOT-6). Running the tests is the
 agent's own step — `AGENTS.md` and the `self-modification` skill tell it to run
-`MIX_ENV=test mix precommit` before finishing a change — and the user runs them
-again through a deploy.
+plain `mix precommit` before finishing a change (a command never inherits the
+server's `MIX_ENV`, ISOL-24, so the alias's `preferred_envs` picks `test`) — and
+the user runs them again through a deploy.
 
 ## Requirements
 

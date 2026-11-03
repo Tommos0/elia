@@ -22,7 +22,9 @@ defmodule Elia.Skills.SelfModification do
     """
     Changing Elixir code (`lib/`, `config/`, `test/`) needs the user's approval. \
     Nothing verifies a turn and nothing is rolled back, so run `run_tests` (or \
-    `MIX_ENV=test mix precommit`) yourself before finishing a change.
+    plain `mix precommit`: no command inherits the server's `MIX_ENV`, so the \
+    alias's `preferred_envs` picks `test`, ISOL-24) yourself before finishing a \
+    change.
 
     A chat in this project works in its own git worktree, not in the tree the \
     server runs from (DEPLOY-1). Running code therefore never changes while you \

@@ -56,9 +56,10 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   `_build`, `deps` and `.elia` can't be written by the file tools, and paths
   outside the workspace are refused.
 - **Tests**: nothing runs the test suite for you at the end of a turn. The agent
-  runs `run_tests` (or `MIX_ENV=test mix precommit`) itself before finishing a
-  change, and a deploy runs the full suite in the live tree before loading
-  anything.
+  runs `run_tests` (or plain `mix precommit`: no command inherits the server's
+  `MIX_ENV`, so the alias's `preferred_envs` picks `test`, ISOL-24) itself before
+  finishing a change, and a deploy runs the full suite in the live tree before
+  loading anything.
 - **Deploying**: the server runs from the *live tree*; a chat in Elia's own
   project works in its own git worktree (branch `chat/<chat id>`, forked from
   the trunk `master`), so an in-progress edit can't reach the running app. When a

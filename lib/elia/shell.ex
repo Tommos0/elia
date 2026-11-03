@@ -75,7 +75,7 @@ defmodule Elia.Shell do
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
     # Commands must not wait on stdin.
-    script = "exec </dev/null\n" <> command
+    script = "exec </dev/null\n" <> drop_mix_env(command, opts)
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
 
     # ISOL-7: a worktree's compile is a harness step, and the command that needs
@@ -85,6 +85,25 @@ defmodule Elia.Shell do
       :ok -> execute(script, cd, opts)
       {:error, reason} -> with_notice(execute(script, cd, opts), unsynced(reason))
     end
+  end
+
+  # ISOL-24: the server has its own `MIX_ENV` (`bin/serve`'s, RESTART-8), and a
+  # port's environment can only *add* to the one it inherits, so without this an
+  # unjailed command would build in the server's env whatever its own project
+  # asks for. Mix honours a project's `preferred_envs` only while `MIX_ENV` is
+  # unset, so `mix precommit` would compile and test in the server's `dev`. The
+  # unset has to be in the shell that runs the command — `env: [{"MIX_ENV",
+  # false}]` is not a port option and `nil` crashes the child — and `unset` is
+  # POSIX, so it works under either shell (SHELL-2). A caller that sets the value
+  # itself keeps it (VERIFY-1, ISOL-7), and a jailed command inherits no
+  # environment at all (ISOL-8).
+  defp drop_mix_env(command, opts) do
+    if env_set?(opts, "MIX_ENV"), do: command, else: "unset MIX_ENV\n" <> command
+  end
+
+  # A caller's `:env` keys may arrive as strings or atoms.
+  defp env_set?(opts, name) do
+    Enum.any?(Keyword.get(opts, :env, []), fn {key, _value} -> to_string(key) == name end)
   end
 
   defp execute(script, cd, opts) do

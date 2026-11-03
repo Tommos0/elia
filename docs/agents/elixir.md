@@ -39,5 +39,5 @@ Read this before writing or changing Elixir code.
 
 - Read the docs and options with `mix help task_name` before using a task.
 - `mix precommit` (compile with warnings as errors, `deps.unlock --unused`, `format`, `test`) must pass before you finish.
-- Run it as `MIX_ENV=test mix precommit`: the harness's shell inherits `MIX_ENV=dev`, and the alias's `preferred_envs: [precommit: :test]` only applies when `MIX_ENV` is unset. Plain `mix precommit` then runs the tests in the dev env, where `test/test_helper.exs` cannot fetch `config :elia, :workspace` (`config/test.exs` wasn't loaded).
+- Run it as plain `mix precommit`: since a command never inherits the server's `MIX_ENV` (ISOL-24, `Elia.Shell`), the alias's `preferred_envs: [precommit: :test]` applies and it compiles and tests in `test`. A `MIX_ENV` set explicitly on the command overrides that preference, so don't set one.
 - `mix deps.clean --all` is almost never needed. Avoid it.

@@ -48,3 +48,72 @@ defmodule Elia.ShellTest do
     assert status != 0
   end
 end
+
+defmodule Elia.ShellMixEnvTest do
+  # ISOL-24: the server's own `MIX_ENV` (`bin/serve`'s, RESTART-8) is a property
+  # of the server, not of the commands it runs. A port's environment can only add
+  # to the one it inherits, so the unset happens in the command's own shell, and
+  # Mix then honours a project's `preferred_envs` (a `mix precommit` that
+  # compiles and tests in `dev` was what went wrong).
+  #
+  # It puts a value in the *process* environment, which every test of the node
+  # shares, so this module doesn't run async (the module above does).
+  use ExUnit.Case, async: false
+
+  alias Elia.Shell
+
+  setup do
+    previous = System.get_env("MIX_ENV")
+    System.put_env("MIX_ENV", "dev")
+
+    on_exit(fn ->
+      if previous, do: System.put_env("MIX_ENV", previous), else: System.delete_env("MIX_ENV")
+    end)
+
+    :ok
+  end
+
+  # ISOL-24
+  test "an unjailed command doesn't inherit the server's MIX_ENV" do
+    assert {:ok, output, 0} =
+             Shell.run("printenv MIX_ENV; echo status=$?", shell: "sh", jail: false)
+
+    assert output == "status=1\n"
+  end
+
+  # ISOL-24: the caller's own value is what the command sees, not the server's.
+  test "a caller's MIX_ENV is passed through to the command" do
+    assert {:ok, "test\n", 0} =
+             Shell.run("printenv MIX_ENV", shell: "sh", jail: false, env: [{"MIX_ENV", "test"}])
+  end
+
+  # ISOL-24: a caller may build its `:env` keys as atoms; that counts as setting
+  # the value too, so no unset follows it.
+  test "an atom MIX_ENV key counts as the caller setting the value" do
+    assert {:ok, "test\n", 0} =
+             Shell.run("printenv MIX_ENV", shell: "sh", jail: false, env: [{:MIX_ENV, "test"}])
+  end
+
+  # ISOL-24, ISOL-8: jailed, the environment is rebuilt from the allowlist, so
+  # the server's MIX_ENV is absent there as well (the shell's unset changes
+  # nothing), and the caller's own value still reaches the command.
+  test "a jailed command has no MIX_ENV either, and keeps a caller's value" do
+    if Shell.available?() do
+      # The suite runs with the jail off (config/test.exs); a call turns it on
+      # per call, as a chat's tool call does (ISOL-1, ISOL-16).
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+      assert Shell.jailed?(jail: true)
+
+      assert {:ok, output, 0} =
+               Shell.run("printenv MIX_ENV; echo status=$?", shell: "sh", jail: true)
+
+      assert output == "status=1\n"
+
+      assert {:ok, "test\n", 0} =
+               Shell.run("printenv MIX_ENV", shell: "sh", jail: true, env: [{"MIX_ENV", "test"}])
+    end
+  end
+end
