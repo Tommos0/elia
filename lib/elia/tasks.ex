@@ -576,7 +576,11 @@ defmodule Elia.Tasks do
           model: Store.load_model(child_id),
           auto_approve: Store.load_auto_approve(child_id),
           task: Map.merge(task, changes),
-          project: Store.load_project(child_id)
+          project: Store.load_project(child_id),
+          # SUBTASK-30, STORE-25: the child's own jail setting comes back too, so
+          # this rare fallback save can't silently re-jail a child whose jail the
+          # user turned off (a `true` here writes nothing).
+          jail: Store.load_jail(child_id)
         )
       end
   end

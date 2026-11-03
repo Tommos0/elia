@@ -74,8 +74,9 @@ progress so any number of UIs can follow it.
 - **SESS-30** A session loads its saved jail setting on start (STORE-26) and
   every session it starts from (a sub-task, SUBTASK-30) carries it. `set_jail/2`
   (chat id, boolean) turns the jail for this chat's commands on or off (ISOL-16),
-  saves it (STORE-25) and broadcasts `{:jail, on?}`, so every view of the chat
-  agrees. It is allowed mid-turn (ISOL-19).
+  saves it with the history once the chat has messages (as in SESS-14,
+  STORE-25) and broadcasts `{:jail, on?}`, so every view of the chat agrees. It
+  is allowed mid-turn (ISOL-19).
 
 - **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16),
   `selection` (a model selection, MODEL-1) and `auto_approve` (a list of

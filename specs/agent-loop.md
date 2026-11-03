@@ -60,7 +60,9 @@ results back, and repeat until the model answers without calling a tool.
   `call_id` (the id of the call being run), `loop_opts` (the loop's options, so
   a tool can start a session like this one, SUBTASK-5), `workspace` (the
   workspace root the turn runs in: the chat's project folder, PROJ-12, or Elia's
-  own root when unset) and `project` (the chat's project map, PROJ-9).
+  own root when unset) and `project` (the chat's project map, PROJ-9), and `jail`
+  (whether this chat's commands run in the jail, ISOL-15; `nil` means no chat,
+  and the default, which is jailed).
 
 - **LOOP-19** With the `:pause_on_limit` option (default false), a limit pauses
   the turn instead of ending it: the loop sends the session
