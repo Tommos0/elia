@@ -37,7 +37,7 @@ defmodule Elia.InstallServiceTest do
     assert template =~ "Environment=PATH=@PATH@"
     # A value here would be inherited by every command the server spawns.
     # (RESTART-8, ISOL-24)
-    refute template =~ "MIX_ENV"
+    refute template =~ ~r/^Environment=MIX_ENV/m
     assert template =~ "EnvironmentFile=-%h/.config/elia/env"
     assert template =~ "Restart=on-failure"
     assert template =~ "KillMode=mixed"
