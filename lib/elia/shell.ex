@@ -26,6 +26,10 @@ defmodule Elia.Shell do
   # The only environment a jailed command gets from the server (ISOL-8).
   @env_allowlist ~w(PATH HOME LANG TERM)
 
+  # ISOL-12: a run that wanted a jail and didn't get one says so, so it never
+  # looks like one that was isolated.
+  @jail_skipped_notice "[jail: skipped, bubblewrap is unavailable]"
+
   @doc """
   The shell that runs commands: bash when it is installed, otherwise POSIX
   `sh` (SHELL-2). Pass `shell: <path or name>` to override the choice.
@@ -42,6 +46,15 @@ defmodule Elia.Shell do
   @doc "Whether bubblewrap is installed, so a jail can be built (ISOL-12)."
   @spec available?() :: boolean()
   def available?, do: bwrap() != nil
+
+  @doc """
+  What a run says when it wanted a jail and didn't get one (ISOL-12). It is
+  prepended to the command's own output, so a caller that reads that output
+  rather than showing it — the harness's own `git` calls (ISOL-1) — knows to
+  look below it.
+  """
+  @spec jail_skipped_notice() :: binary()
+  def jail_skipped_notice, do: @jail_skipped_notice
 
   @doc """
   Whether a command would run jailed: the host allows it (ISOL-20), the caller
@@ -64,6 +77,7 @@ defmodule Elia.Shell do
     # Commands must not wait on stdin.
     script = "exec </dev/null\n" <> command
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
+    sync_deps(cd, opts)
 
     {exe, args} =
       if jailed?(opts) do
@@ -101,6 +115,16 @@ defmodule Elia.Shell do
   end
 
   ## The jail
+
+  # ISOL-7: a chat worktree's `deps` is the live tree's, bound read-only for a
+  # command that runs there (ISOL-13), and a compile can need to write inside
+  # one. So before a command runs in a worktree whose `mix.lock` changed since it
+  # was last synced, the harness compiles the shared tree itself, under the
+  # `:deps_sync` profile. Only the `:worktree` profile: that run must never
+  # re-enter this, and the live tree's own profile has nothing to sync.
+  defp sync_deps(cd, opts) do
+    if profile(cd, opts) == :worktree, do: Elia.DepsSync.sync_worktree(cd), else: :ok
+  end
 
   defp jail_args(script, cd, opts) do
     [
@@ -152,7 +176,8 @@ defmodule Elia.Shell do
   end
 
   defp profile(cd, opts) do
-    Keyword.get(opts, :profile) || if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
+    Keyword.get(opts, :profile) ||
+      if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
   end
 
   defp bind_args(cd, profile) do
@@ -168,7 +193,7 @@ defmodule Elia.Shell do
         # the deploy's own suite run (ISOL-14). Elia's data is masked with an
         # empty tmpfs *after* the tree is bound — bubblewrap mounts in argument
         # order, so the mask wins (ISOL-6).
-        ["--bind", cd, cd] ++ mask_args(cd)
+        ["--bind", cd, cd] ++ mask_args(cd, profile)
 
       true ->
         # A chat worktree: its own tree, the repository's git directory (the
@@ -178,7 +203,13 @@ defmodule Elia.Shell do
     end
   end
 
-  defp mask_args(live) do
+  # Elia's data under the live tree is masked with an empty tmpfs (ISOL-6) — but
+  # not for the harness's own `:deps_sync` steps, whose bind list keeps the live
+  # tree reachable as it is (ISOL-13): a chat's worktree is created *inside*
+  # `.elia/worktrees`, and a masked `.elia` would swallow it.
+  defp mask_args(_live, :deps_sync), do: []
+
+  defp mask_args(live, _profile) do
     data = Path.join(live, ".elia")
     if File.exists?(data), do: ["--tmpfs", data], else: []
   end
@@ -206,14 +237,15 @@ defmodule Elia.Shell do
   end
 
   defp wanted?(opts) do
-    Keyword.get(opts, :jail) != false and Application.get_env(:elia, __MODULE__, [])[:jail] != false
+    Keyword.get(opts, :jail) != false and
+      Application.get_env(:elia, __MODULE__, [])[:jail] != false
   end
 
   # A command that wanted a jail and didn't get one says so, so a run that
   # wasn't isolated never looks like one that was (ISOL-12).
   defp skipped(result, opts) do
     if wanted?(opts) and not available?() do
-      notice = "[jail: skipped, bubblewrap is unavailable]\n"
+      notice = @jail_skipped_notice <> "\n"
 
       case result do
         {:ok, output, status} -> {:ok, notice <> output, status}

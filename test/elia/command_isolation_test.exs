@@ -53,6 +53,7 @@ defmodule Elia.CommandIsolationTest do
     # A process that is definitely running outside the jail.
     assert {:ok, output, 0} =
              Shell.run("setsid sleep 62 >/dev/null 2>&1 & echo $!", shell: "sh", jail: false)
+
     pid = String.trim(output)
     assert {:ok, _output, 0} = Shell.run("ls -d /proc/#{pid}", shell: "sh", jail: false)
 

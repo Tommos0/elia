@@ -163,6 +163,23 @@ defmodule Elia.DeploymentTest do
     on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
   end
 
+  # The host allows the jail for the duration of the test (ISOL-20). The suite
+  # runs unjailed by default (config/test.exs), so a test that needs the jail
+  # turns it on for itself, as a chat's tool call does (ISOL-1).
+  defp with_jail(opts \\ [], fun) do
+    previous = Application.get_env(:elia, Elia.Shell)
+    Application.put_env(:elia, Elia.Shell, Keyword.merge([jail: true], opts))
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+    fun.()
+  end
+
+  # A test that needs the jail's effect skips where bubblewrap is missing
+  # (ISOL-12); the ones that only build the argv don't.
+  @jail_skip if(Elia.Shell.available?(),
+               do: false,
+               else: "bubblewrap is not available (ISOL-12)"
+             )
+
   ## Requirements
 
   # DEPLOY-2
@@ -633,5 +650,101 @@ defmodule Elia.DeploymentTest do
     assert Deploy.reload(EliaWeb.Endpoint, []) == :ok
     assert Deploy.reload(EliaWeb.Endpoint) == :ok
     refute Code.ensure_loaded?(Elia.Guarded)
+  end
+
+  # ISOL-1, ISOL-6, ISOL-13: the harness's own git calls go through
+  # `Elia.Shell.run/2` too, so with the host allowing the jail they run jailed.
+  # A chat's worktree is created *inside* the live tree's data dir, which the
+  # `:live_tree` profile masks (ISOL-6), so those calls run under the profile
+  # whose bind list leaves the live tree reachable (ISOL-13) — under the masked
+  # one, git reports success and the worktree is written into the mask and lost.
+  @tag skip: @jail_skip
+  test "a chat's worktree is created and removed with the jail on", %{tree: tree} do
+    with_jail(fn ->
+      {id, path} = new_worktree()
+
+      assert path == Path.join([tree, ".elia", "worktrees", id])
+      assert File.dir?(path)
+      assert File.exists?(Path.join(path, "mix.exs"))
+      assert branch(path) == "chat/#{id}"
+      assert head(path) == trunk(tree)
+
+      assert :ok = Deploy.remove_worktree(id)
+      refute File.exists?(path)
+    end)
+  end
+
+  # ISOL-1, ISOL-12: on a host where the jail is wanted and bubblewrap is
+  # missing, every command says the jail was skipped (ISOL-12) — and the deploy's
+  # git calls read git's own output from below that notice, so the live tree
+  # isn't mistaken for a dirty one and a deploy still works.
+  test "the deploy's git calls go through Elia.Shell, so a missing jail doesn't corrupt them", %{
+    tree: tree
+  } do
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    with_jail([bwrap: "/nonexistent/bwrap"], fn ->
+      refute Elia.Shell.available?()
+
+      assert Deploy.deployable() == :ok
+      assert Deploy.status() == {:ok, 1}
+
+      before = head(tree)
+      assert {:ok, message} = Deploy.deploy()
+      assert message =~ "merged into live"
+      assert head(tree) != before
+    end)
+  end
+
+  # ISOL-14, ISOL-15, DEPLOY-5: the deploy's suite run is jailed, and no chat's
+  # setting is involved — a caller with no chat gets the default, which is on.
+  # Here the host wants the jail but has no bubblewrap, so the run says it was
+  # skipped (ISOL-12): the notice can only come from a run that asked for the
+  # jail. A failing suite still aborts the deploy and the user sees its output.
+  test "the deploy's suite run is jailed, and a failure still aborts the deploy", %{tree: tree} do
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+
+    live = head(tree)
+
+    with_jail([bwrap: "/nonexistent/bwrap"], fn ->
+      refute Elia.Shell.available?()
+      assert {:tests_failed, output} = Deploy.deploy()
+
+      assert output =~ "[jail: skipped, bubblewrap is unavailable]"
+      assert output =~ "1 failure"
+      assert head(tree) == live
+      refute File.exists?(Path.join(tree, "test/broken_test.exs"))
+    end)
+  end
+
+  # ISOL-14: with the host allowing the jail, the merged trunk's suite really
+  # runs in the live tree, jailed — the live tree is writable inside it.
+  @tag skip: @jail_skip
+  test "the merged trunk's suite runs jailed in the live tree", %{tree: tree} do
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    with_jail(fn ->
+      assert Elia.Shell.available?()
+
+      assert {:ok, message} = Deploy.deploy()
+      assert message =~ "merged into live"
+    end)
+
+    assert head(tree) == trunk(tree)
   end
 end
