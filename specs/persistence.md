@@ -84,6 +84,12 @@ reopened.
   keep. Starting a session for an id that is only opened (`/c/<id>`, UI-2)
   writes nothing until it has a message (SESS-14).
 
+- **STORE-23** `Elia.Store.delete/1` removes a valid chat's saved file and its
+  worktree (`Elia.Deploy.remove_worktree/1`, DEPLOY-10) and returns `:ok`,
+  whether or not a file exists yet; an invalid id (STORE-4) removes nothing and
+  returns `{:error, :invalid_id}`. Deleting a chat never deletes other chats: a
+  parent's task chats and a task chat's parent are left saved (UI-66).
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.

@@ -72,6 +72,19 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `{:chat_status, id, status}` (SESS-19) live. A task chat shows its task
   status under the same element (UI-46).
 
+- **UI-64** Every chat row in the sidebar, task chats included (UI-45), has a
+  delete button (`#delete-chat-<id>`, a trash icon with the accessible label
+  "Delete chat") beside its link (`#chat-link-<id>`) as a sibling of it, not
+  nested inside the link. Clicking it asks for confirmation first, with
+  `data-confirm` naming the chat, and only then deletes it.
+- **UI-65** Confirming a delete removes the chat (SESS-29): its row leaves the
+  sidebar and a "Chat deleted." flash appears. Deleting the chat that is open
+  navigates to `/` (a fresh chat, UI-1); deleting any other chat leaves the open
+  one in place. Deleting a chat whose turn is running stops that turn first
+  (SESS-29), so a running chat can be deleted from any chat's sidebar.
+- **UI-66** Deleting a parent chat leaves its task chats saved and listed on
+  their own at the top level (UI-45); deleting a task chat leaves its parent.
+
 ### Transcript
 
 - **UI-7** An empty chat shows an empty state that tells the user Elia can run

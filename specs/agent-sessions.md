@@ -140,10 +140,16 @@ progress so any number of UIs can follow it.
   without calling the sessions, like `awaiting_approval/0` and `paused/0`
   (SESS-19), so a chat list can show which chats are working on first render.
 
+- **SESS-29** `Elia.Agent.delete/1` deletes a chat: it stops the chat's turn if
+  one is running (SESS-8, which also cancels or stops its sub-tasks, SESS-22),
+  terminates its session process so no stale session can later save it again,
+  then removes the saved chat (STORE-23). A chat with no session is simply
+  removed. It returns `:ok`, and `{:error, :invalid_id}` for an invalid id
+  (STORE-4).
+
 ## Out of scope
 
 - Several turns running at once in one session.
-- Deleting chats from the UI (`Elia.Store.delete/1` exists but isn't exposed).
 
 ## Implementation
 
