@@ -1,7 +1,7 @@
 defmodule Elia.TasksTest do
   use ExUnit.Case, async: false
 
-  alias Elia.{Agent, Checkpoint, FakeLLM, Store, Tasks}
+  alias Elia.{Agent, FakeLLM, Store, Tasks}
   alias Elia.LLM.Message
 
   @moduletag timeout: 120_000
@@ -227,13 +227,6 @@ defmodule Elia.TasksTest do
     request |> results("spawn_task") |> List.first() |> Jason.decode!() |> Map.fetch!("task_id")
   end
 
-  # The checkpoints this chat's turns took.
-  defp checkpoints_of(parent) do
-    for checkpoint <- Checkpoint.list(100),
-        String.contains?(checkpoint.label, parent),
-        do: checkpoint
-  end
-
   ## Tools
 
   # SUBTASK-1
@@ -244,7 +237,6 @@ defmodule Elia.TasksTest do
     assert "spawn_task" in parent
     assert "list_tasks" in parent
     assert "await_task" in parent
-    assert "reset_task" in parent
     refute "finish_task" in parent
 
     assert "finish_task" in child
@@ -254,13 +246,12 @@ defmodule Elia.TasksTest do
     assert "shell" in child
   end
 
-  # SUBTASK-2, 22, 26, 27
-  test "spawn and reset need approval; listing and awaiting never do" do
+  # SUBTASK-2, 26, 27
+  test "spawn needs approval; listing and awaiting never do" do
     assert [
              %Elia.Tool{name: "spawn_task", approval: :required},
              %Elia.Tool{name: "list_tasks", approval: :never},
-             %Elia.Tool{name: "await_task", approval: :never},
-             %Elia.Tool{name: "reset_task", approval: :required}
+             %Elia.Tool{name: "await_task", approval: :never}
            ] = Elia.Skills.Tasks.tools()
   end
 
@@ -687,70 +678,6 @@ defmodule Elia.TasksTest do
     assert Tasks.active() == []
   end
 
-  # SUBTASK-2, SUBTASK-14 (retired)
-  test "a spawn leaves the parent's turn checkpoint alone", %{parent: parent} do
-    parent_turn = fn request ->
-      if results(request, "write_file") == [] do
-        reply([
-          FakeLLM.tool_call("w1", "write_file", %{"path" => "skills/note.txt", "content" => "hi"})
-        ])
-      else
-        spawn_and_await(request, %{"title" => "T", "brief" => "B"})
-      end
-    end
-
-    push_turns(router(parent_turn, &reporting_child/1))
-
-    :ok = Agent.send_message(parent, "write a note and delegate")
-    await_status(parent, :awaiting_approval)
-    before = checkpoints_of(parent)
-    assert before != []
-
-    :ok = Agent.approve(parent, "s1")
-    await_status(parent, :idle)
-
-    # SUBTASK-14 is retired: the child leaves the parent's workspace alone
-    # (SUBTASK-23), so the parent's checkpoint is simply left where it is.
-    assert checkpoints_of(parent) == before
-    refute Enum.any?(before, &String.contains?(&1.label, "(after sub-task)"))
-  end
-
-  # CKPT-10
-  test "rebase replaces a turn's checkpoint and leaves other turns alone" do
-    :ok = Checkpoint.ensure("rebase-turn")
-    before = Checkpoint.for_turn("rebase-turn")
-    File.write!(Path.join(Elia.Workspace.root(), "note.txt"), "x")
-    assert {:ok, files} = Checkpoint.changed_files(before)
-    assert Enum.any?(files, &String.ends_with?(&1, "note.txt"))
-
-    assert :ok = Checkpoint.rebase("rebase-turn")
-    rebased = Checkpoint.for_turn("rebase-turn")
-    assert rebased != before
-    assert {:ok, files} = Checkpoint.changed_files(rebased)
-    refute Enum.any?(files, &String.ends_with?(&1, "note.txt"))
-
-    assert :ok = Checkpoint.rebase("turn-without-checkpoint")
-    assert Checkpoint.for_turn("turn-without-checkpoint") == nil
-    assert :ok = Checkpoint.rebase(nil)
-  end
-
-  # VERIFY-7
-  test "core_elixir_changed? looks at Elixir files since the turn's checkpoint" do
-    root = Elia.Workspace.root()
-    assert Elia.Harness.core_elixir_changed?("turn-without-checkpoint") == false
-
-    :ok = Checkpoint.ensure("verify-turn")
-    assert Elia.Harness.core_elixir_changed?("verify-turn") == false
-
-    File.mkdir_p!(Path.join(root, "skills"))
-    File.write!(Path.join(root, "skills/note.txt"), "x")
-    assert Elia.Harness.core_elixir_changed?("verify-turn") == false
-
-    File.mkdir_p!(Path.join(root, "lib"))
-    File.write!(Path.join(root, "lib/broken.ex"), "oops")
-    assert Elia.Harness.core_elixir_changed?("verify-turn") == true
-  end
-
   # SUBTASK-16
   test "stopping the child cancels it and the parent gets that as a result", %{parent: parent} do
     child = spawn_blocked_child(parent, self())
@@ -874,10 +801,8 @@ defmodule Elia.TasksTest do
     assert %{"status" => "done", "reason" => nil} = session_json(parent, "await_task", 0)
   end
 
-  # SUBTASK-21, SUBTASK-22
-  test "a blocked child reports the tree state and the parent can reset the workspace", %{
-    parent: parent
-  } do
+  # SUBTASK-21
+  test "a blocked child reports the tree state", %{parent: parent} do
     {start, 0} = git(["rev-parse", "HEAD"])
     start = String.trim(start)
 
@@ -889,11 +814,8 @@ defmodule Elia.TasksTest do
         results(request, "await_task") == [] ->
           reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => task_id(request)})])
 
-        results(request, "reset_task") == [] ->
-          reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => task_id(request)})])
-
         true ->
-          reply([Message.text("Reset.")])
+          reply([Message.text("Checked.")])
       end
     end
 
@@ -912,10 +834,7 @@ defmodule Elia.TasksTest do
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
     :ok = Agent.approve(parent, "s1")
-    await_status(parent, :awaiting_approval)
-
-    # Not automatic: the reset waits for approval, and nothing changed yet.
-    assert File.exists?(Path.join(Elia.Workspace.root(), "dirty.txt"))
+    await_status(parent, :idle)
 
     assert %{
              "status" => "blocked",
@@ -926,95 +845,6 @@ defmodule Elia.TasksTest do
            } = session_json(parent, "await_task", 0)
 
     assert files == ["child.txt", "dirty.txt"]
-
-    :ok = Agent.approve(parent, "r1")
-    await_status(parent, :idle)
-
-    root = Elia.Workspace.root()
-    refute File.exists?(Path.join(root, "child.txt"))
-    refute File.exists?(Path.join(root, "dirty.txt"))
-    assert {head, 0} = git(["rev-parse", "HEAD"])
-    assert String.trim(head) == start
-    assert {"", 0} = git(["status", "--porcelain"])
-
-    {content, false} = session_result(parent)
-    assert content =~ "Workspace reset to #{String.slice(start, 0, 8)}"
-    assert content =~ "child work"
-  end
-
-  # SUBTASK-22
-  test "reset_task refuses what it shouldn't touch and resets an interrupted task", %{
-    parent: parent
-  } do
-    root = Elia.Workspace.root()
-    {start, 0} = git(["rev-parse", "HEAD"])
-    start = String.trim(start)
-    ctx = %{session_id: parent, turn_id: nil}
-
-    save = fn changes ->
-      id = Agent.new_id()
-
-      task =
-        Map.merge(
-          %{parent_id: parent, title: "T", brief: "B", status: "failed", start_commit: start},
-          changes
-        )
-
-      :ok = Store.save(id, [Message.user("x")], task: task)
-      id
-    end
-
-    dirty = fn -> File.write!(Path.join(root, "dirty.txt"), "wip") end
-
-    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{"task_id" => "nope"}, ctx)
-    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{}, ctx)
-
-    other = save.(%{parent_id: "someone-else"})
-    assert {:error, "Not reset: " <> _} = Tasks.reset_task(%{"task_id" => other}, ctx)
-
-    done = save.(%{status: "done"})
-
-    assert {:error, "Not reset: that sub-task finished as done" <> _} =
-             Tasks.reset_task(%{"task_id" => done}, ctx)
-
-    no_start = save.(%{start_commit: nil})
-
-    assert {:error, "Not reset: that sub-task has no start commit." <> _} =
-             Tasks.reset_task(%{"task_id" => no_start}, ctx)
-
-    failed = save.(%{})
-
-    # SUBTASK-22: another child running in another workspace doesn't stop a reset
-    # of this task.
-    assert :ok = Tasks.acquire(parent, "another-child", "/other-workspace")
-    dirty.()
-    assert {:ok, "Workspace reset" <> _} = Tasks.reset_task(%{"task_id" => failed}, ctx)
-    refute File.exists?(Path.join(root, "dirty.txt"))
-    assert :ok = Tasks.release("another-child")
-
-    # SUBTASK-22: the task being reset running does stop it.
-    assert :ok = Tasks.acquire(parent, failed, "/other-workspace")
-    dirty.()
-
-    assert {:error, "Not reset: sub-task " <> _} =
-             Tasks.reset_task(%{"task_id" => failed}, ctx)
-
-    assert File.exists?(Path.join(root, "dirty.txt"))
-    assert :ok = Tasks.release(failed)
-
-    # Saved as running with no entry: interrupted, so it can be reset (SUBTASK-20).
-    interrupted = save.(%{status: "running"})
-    assert {:ok, "Workspace reset" <> _} = Tasks.reset_task(%{"task_id" => interrupted}, ctx)
-    refute File.exists?(Path.join(root, "dirty.txt"))
-
-    # The history was rewritten since the task started.
-    {_, 0} = git(["commit", "-q", "--amend", "--allow-empty", "-m", "rewritten"])
-    dirty.()
-
-    assert {:error, "Not reset: the task's start commit is not an ancestor" <> _} =
-             Tasks.reset_task(%{"task_id" => failed}, ctx)
-
-    assert File.exists?(Path.join(root, "dirty.txt"))
   end
 
   # SUBTASK-11

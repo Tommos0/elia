@@ -17,7 +17,7 @@ defmodule Elia.Tasks do
 
   use GenServer
 
-  alias Elia.{Checkpoint, Deploy, Store, Workspace}
+  alias Elia.{Deploy, Store, Workspace}
   alias Elia.LLM.Message
 
   @default_steps 100
@@ -690,7 +690,7 @@ defmodule Elia.Tasks do
       _ ->
         {:error,
          "That sub-task has no result: it was interrupted by a restart (SUBTASK-20). " <>
-           "`list_tasks` shows its status; `reset_task` discards its work."}
+           "`list_tasks` shows its status."}
     end
   end
 
@@ -700,93 +700,6 @@ defmodule Elia.Tasks do
     if is_map(task) and task.parent_id == parent_id,
       do: {:ok, task},
       else: {:error, "#{inspect(task_id)} is not a sub-task started from this chat."}
-  end
-
-  ## Reset
-
-  @doc """
-  The `reset_task` tool (SUBTASK-22): resets the workspace to the start commit
-  of a task of the caller that didn't finish as `done`. For a sub-task in
-  Elia's own project that is the sub-task's own worktree (SUBTASK-23), since a
-  non-`done` sub-task is never merged (SUBTASK-25); the parent's workspace has
-  nothing to undo. `ctx` is the tool context (LOOP-18).
-  """
-  @spec reset_task(map(), map()) :: {:ok, binary()} | {:error, binary()}
-  def reset_task(input, ctx) do
-    parent_root = repo_root(ctx)
-    task_id = input["task_id"]
-    root = reset_root(task_id, parent_root)
-
-    with {:ok, task} <- reset_target(ctx[:session_id], task_id),
-         :ok <- check_not_running(task_id),
-         {:ok, head} <- head(root),
-         :ok <- check_ancestor(task.start_commit, head, root) do
-      commits = git_out(["log", "--oneline", "#{task.start_commit}..HEAD"], root) || ""
-      files = changed_files(task.start_commit, root)
-
-      with {_, 0} <- git(["reset", "--hard", "--quiet", task.start_commit], root),
-           {_, 0} <- git(["clean", "-fdq"], root) do
-        # SUBTASK-22: only a reset in the caller's own workspace needs the
-        # caller's turn checkpoint replaced (CKPT-10). A sub-task's worktree is
-        # a different root: the caller's checkpoint never held its work.
-        if root == parent_root, do: Checkpoint.rebase(ctx[:turn_id], parent_root)
-
-        {:ok,
-         "Workspace reset to #{String.slice(task.start_commit, 0, 8)}.\n" <>
-           "Discarded commits:\n#{if commits == "", do: "(none)", else: commits}\n" <>
-           "Files that differed:\n#{if files == [], do: "(none)", else: Enum.join(files, "\n")}"}
-      else
-        {out, _} -> {:error, "git could not reset the workspace: #{String.trim(out)}"}
-      end
-    end
-  end
-
-  # SUBTASK-22, SUBTASK-23: the sub-task's own worktree when it has one (Elia's
-  # own project), the caller's workspace otherwise, as before.
-  defp reset_root(task_id, parent_root) do
-    path = if is_binary(task_id), do: Deploy.worktree_path(task_id)
-
-    if path != nil and File.dir?(path) and Deploy.worktree_chat(path) == task_id,
-      do: path,
-      else: parent_root
-  end
-
-  defp reset_target(parent_id, task_id) do
-    task = if is_binary(task_id), do: Store.load_task(task_id)
-
-    cond do
-      task == nil or task.parent_id != parent_id ->
-        {:error, "Not reset: #{inspect(task_id)} is not a sub-task started from this chat."}
-
-      task.status == "done" ->
-        {:error, "Not reset: that sub-task finished as done; there is nothing to undo."}
-
-      not (is_binary(task[:start_commit]) and task.start_commit != "") ->
-        {:error, "Not reset: that sub-task has no start commit."}
-
-      true ->
-        {:ok, task}
-    end
-  end
-
-  # SUBTASK-22: only the task being reset matters, not the caller's other
-  # children, which are in workspaces of their own.
-  defp check_not_running(task_id) do
-    if running?(task_id),
-      do: {:error, "Not reset: sub-task #{task_id} is still running."},
-      else: :ok
-  end
-
-  defp check_ancestor(start_commit, head, root) do
-    case git(["merge-base", "--is-ancestor", start_commit, head], root) do
-      {_, 0} ->
-        :ok
-
-      _ ->
-        {:error,
-         "Not reset: the task's start commit is not an ancestor of HEAD, so the history " <>
-           "was changed since. Reset by hand if you are sure."}
-    end
   end
 
   ## Cleanup when a watcher dies (SUBTASK-19)

@@ -1,7 +1,7 @@
 defmodule Elia.SelfModificationTest do
   use ExUnit.Case, async: false
 
-  alias Elia.{Checkpoint, Harness, Workspace}
+  alias Elia.{Harness, Workspace}
   alias Elia.Skills.{Files, Folder}
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
@@ -87,38 +87,6 @@ defmodule Elia.SelfModificationTest do
     end
   end
 
-  describe "checkpoints" do
-    test "rollback restores changed files and removes new ones, and can be undone" do
-      File.write!(in_root("kept.txt"), "original")
-      {:ok, sha} = Checkpoint.create("test")
-
-      File.write!(in_root("kept.txt"), "changed")
-      File.write!(in_root("new.txt"), "new")
-      assert {:ok, changed} = Checkpoint.changed_files(sha)
-      assert Enum.sort(changed) == Enum.sort([in_root("kept.txt"), in_root("new.txt")])
-
-      assert {:ok, undo} = Checkpoint.rollback(sha)
-      assert File.read!(in_root("kept.txt")) == "original"
-      refute File.exists?(in_root("new.txt"))
-
-      assert {:ok, _} = Checkpoint.rollback(undo)
-      assert File.read!(in_root("kept.txt")) == "changed"
-      assert File.read!(in_root("new.txt")) == "new"
-      assert Enum.any?(Checkpoint.list(), &(&1.sha == sha))
-    after
-      File.rm(in_root("kept.txt"))
-      File.rm(in_root("new.txt"))
-    end
-
-    test "ensure takes one checkpoint per turn" do
-      assert :ok = Checkpoint.ensure("turn-a")
-      sha = Checkpoint.for_turn("turn-a")
-      assert :ok = Checkpoint.ensure("turn-a")
-      assert Checkpoint.for_turn("turn-a") == sha
-      assert Checkpoint.for_turn("turn-b") == nil
-    end
-  end
-
   describe "folder skills" do
     setup do
       dir = in_root("skills/tmp-skill")
@@ -153,12 +121,10 @@ defmodule Elia.SelfModificationTest do
 
   describe "self-modification" do
     # SKILL-7, PROJ-17
-    test "is a built-in skill with the guardrail tools" do
+    test "is a built-in skill with no tools of its own" do
       assert Elia.Skills.SelfModification in Elia.Skills.builtin()
       assert Elia.Skills.SelfModification.name() == "self-modification"
-
-      assert Elia.Skills.SelfModification.tools() |> Enum.map(& &1.name) |> Enum.sort() ==
-               ~w(list_checkpoints rollback)
+      assert Elia.Skills.SelfModification.tools() == []
     end
 
     # SKILL-9, PROJ-17
@@ -166,7 +132,7 @@ defmodule Elia.SelfModificationTest do
       instructions = Elia.Skills.SelfModification.instructions()
 
       assert instructions =~ "approval"
-      assert instructions =~ "checkpoint"
+      assert instructions =~ "Nothing verifies a turn"
       assert instructions =~ "rolled back"
       # DEPLOY-13: merging its own branch into the trunk is where the agent's
       # part ends; deploying is the user's step, from Settings (SKILL-9).

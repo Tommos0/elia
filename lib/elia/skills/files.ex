@@ -5,8 +5,8 @@ defmodule Elia.Skills.Files do
   Approval follows `Elia.Workspace` classes: changes under `skills/` run
   without asking, other workspace files need approval, protected paths and
   paths outside the workspace are refused (reading outside needs approval).
-  Paths are resolved against the chat's project folder (PROJ-12) and every
-  change to Elia's own project checkpoints the workspace first (PROJ-14).
+  Paths are resolved against the chat's project folder (PROJ-12), or the
+  chat's own git worktree in Elia's own project (DEPLOY-1).
   """
 
   @behaviour Elia.Skill
@@ -145,8 +145,7 @@ defmodule Elia.Skills.Files do
     {abs, _} = Workspace.resolve(path, root(ctx))
 
     with_file_lock(abs, fn ->
-      with :ok <- ensure_checkpoint(ctx),
-           :ok <- File.mkdir_p(Path.dirname(abs)),
+      with :ok <- File.mkdir_p(Path.dirname(abs)),
            :ok <- File.write(abs, content) do
         {:ok, "Wrote #{Workspace.relative(abs, root(ctx))} (#{byte_size(content)} bytes)"}
       else
@@ -167,7 +166,6 @@ defmodule Elia.Skills.Files do
     with_file_lock(abs, fn ->
       with {:ok, text} <- File.read(abs) |> file_error(path),
            {:ok, updated, count} <- replace(text, old, new, input["replace_all"] == true),
-           :ok <- ensure_checkpoint(ctx),
            :ok <- File.write(abs, updated) |> file_error(path) do
         {:ok,
          "Edited #{Workspace.relative(abs, root(ctx))} (#{count} replacement#{if count != 1, do: "s"})"}
@@ -201,14 +199,6 @@ defmodule Elia.Skills.Files do
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
   # in Elia's own project (DEPLOY-1), Elia's own root when unset.
   defp root(ctx), do: ctx[:workspace] || Workspace.root()
-
-  # PROJ-14: only Elia's own project is checkpointed — in the workspace the
-  # chat works in, its own worktree (DEPLOY-1).
-  defp ensure_checkpoint(ctx) do
-    if Elia.Projects.harness_ctx?(ctx),
-      do: Elia.Checkpoint.ensure(ctx[:turn_id], root(ctx)),
-      else: :ok
-  end
 
   defp file_error({:error, reason}, path) when is_atom(reason),
     do: {:error, "#{path}: #{:file.format_error(reason)}"}

@@ -39,9 +39,6 @@ defmodule EliaWeb.Endpoint do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket,
       websocket: [code_reloader: false]
 
-    # Recovery must answer even when the project doesn't compile, so it sits
-    # before both reloaders (see EliaWeb.Recovery).
-    plug EliaWeb.Recovery
     plug Phoenix.LiveReloader
     # Never reloads on a request; only a deploy loads code (DEPLOY-8).
     plug Phoenix.CodeReloader, reloader: &Elia.Deploy.reload/2

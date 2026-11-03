@@ -1,4 +1,4 @@
-# Scratch workspace for file, checkpoint and session tests (see config/test.exs).
+# Scratch workspace for file and session tests (see config/test.exs).
 root = Application.fetch_env!(:elia, :workspace)
 File.rm_rf!(root)
 File.mkdir_p!(root)

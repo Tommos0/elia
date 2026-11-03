@@ -1,7 +1,7 @@
 defmodule Elia.Skills.Tasks do
   @moduledoc """
   Sub-tasks (spec: `specs/subtasks.md`). The built-in skill `tasks` gives a
-  chat `spawn_task`, `list_tasks`, `await_task` and `reset_task`; sessions
+  chat `spawn_task`, `list_tasks` and `await_task`; sessions
   started by it get `child_skills/0` instead, which swaps `tasks` for the skill
   `task` with `finish_task` (SUBTASK-1).
   """
@@ -53,10 +53,10 @@ defmodule Elia.Skills.Tasks do
 
     A sub-task that isn't `done` also reports `start_commit` and `tree_clean` \
     (false when it left uncommitted changes). The harness never undoes its work \
-    by itself. To discard it, call `reset_task` with the `task_id`: it resets the \
-    workspace to `start_commit` (the user approves it first). Offer this to the \
-    user rather than doing it by default, since the sub-task's partial work may \
-    be worth keeping or finishing.
+    by itself. To discard it, don't merge its branch; when the user wants the \
+    worktree and branch gone as well, deleting the sub-task's chat removes them. \
+    Offer that rather than doing it by default, since the sub-task's partial work \
+    may be worth keeping or finishing.
     """
   end
 
@@ -131,24 +131,6 @@ defmodule Elia.Skills.Tasks do
         },
         approval: :never,
         run: fn input, ctx -> Elia.Tasks.await_task(input, ctx) end
-      },
-      %Elia.Tool{
-        name: "reset_task",
-        description:
-          "Reset the workspace to the commit a sub-task started from, discarding its commits " <>
-            "and uncommitted changes. Only for a sub-task that didn't finish as done.",
-        input_schema: %{
-          "type" => "object",
-          "properties" => %{
-            "task_id" => %{
-              "type" => "string",
-              "description" => "The `task_id` from the sub-task's result"
-            }
-          },
-          "required" => ["task_id"]
-        },
-        approval: :required,
-        run: fn input, ctx -> Elia.Tasks.reset_task(input, ctx) end
       }
     ]
   end

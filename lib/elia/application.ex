@@ -19,7 +19,6 @@ defmodule Elia.Application do
       Elia.Settings,
       Elia.LLM.Catalog,
       Elia.Skills,
-      Elia.Checkpoint,
       # Start to serve requests, typically the last entry
       EliaWeb.Endpoint
     ]

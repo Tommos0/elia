@@ -63,25 +63,13 @@ defmodule Elia.Skills.Shell do
   end
 
   def run(input, ctx \\ %{}) do
-    # The command may change files, so snapshot the workspace first (PROJ-14:
-    # only Elia's own project is checkpointed).
-    with :ok <- ensure_checkpoint(ctx) do
-      timeout = :timer.seconds(input["timeout_seconds"] || config(:default_timeout))
-      result(Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout), timeout)
-    end
+    timeout = :timer.seconds(input["timeout_seconds"] || config(:default_timeout))
+    result(Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout), timeout)
   end
 
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
   # in Elia's own project (DEPLOY-1), Elia's own root when unset.
   defp root(ctx), do: ctx[:workspace] || Elia.Workspace.root()
-
-  # PROJ-14: only Elia's own project is checkpointed — in the workspace the
-  # chat works in, its own worktree (DEPLOY-1).
-  defp ensure_checkpoint(ctx) do
-    if Elia.Projects.harness_ctx?(ctx),
-      do: Elia.Checkpoint.ensure(ctx[:turn_id], root(ctx)),
-      else: :ok
-  end
 
   @doc false
   def result(run_result, timeout) do

@@ -114,8 +114,8 @@ defmodule Elia.Projects do
 
   @doc """
   Whether a tool context belongs to Elia's own project. Its workspaces are the
-  only ones that are checkpointed, verified and tested (PROJ-14); a chat in it
-  works in its own worktree (DEPLOY-1).
+  only ones a chat works in as its own worktree, and the only ones the deploy
+  workflow applies to (PROJ-14, DEPLOY-1).
   """
   @spec harness_ctx?(map()) :: boolean()
   def harness_ctx?(ctx) do

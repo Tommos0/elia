@@ -1,9 +1,9 @@
 defmodule Elia.Agent.Loop do
   @moduledoc """
   The agentic loop: call the model, run requested tools, feed results back,
-  repeat until the model stops asking for tools. When it stops, verify the
-  turn's changes (`Elia.Harness.verify/1`) and, if they were rolled back,
-  tell the model and keep going.
+  repeat until the model stops asking for tools. When it stops, the turn is
+  done: nothing is verified and nothing is rolled back
+  (`specs/verification.md`).
 
   Runs inside a task owned by `Elia.Agent.Session` and reports to it with
   plain messages:
@@ -24,8 +24,8 @@ defmodule Elia.Agent.Loop do
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
   function returning one, instead of the project's), `:max_steps` (default 100),
   `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
-  LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:verify` (default
-  `true`), `:llm` (extra request fields), `:project` (the chat's project),
+  LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:llm` (extra request
+  fields), `:project` (the chat's project),
   `:workspace` (the chat's workspace root: its own git
   worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12)
   and, for the mid-turn pass, `:compaction` (the chat's
@@ -37,7 +37,6 @@ defmodule Elia.Agent.Loop do
   alias Elia.Tool
 
   @max_steps 100
-  @max_verify_failures 2
 
   @type result :: :done | :refused | {:error, term()}
 
@@ -56,8 +55,6 @@ defmodule Elia.Agent.Loop do
       budget_ms: Keyword.get(opts, :budget_ms),
       started_ms: now_ms(),
       approved_ms: 0,
-      verify: Keyword.get(opts, :verify, true),
-      verify_failures: 0,
       # COMPACT-29: the chat's compaction state and the trigger, target and
       # overhead of the mid-turn pass (COMPACT-6, COMPACT-8, CTX-1).
       compaction: Keyword.get(opts, :compaction),
@@ -165,7 +162,7 @@ defmodule Elia.Agent.Loop do
             {:error, "The response hit the output token limit"}
 
           [] ->
-            finish(ctx, history, step)
+            :done
 
           calls ->
             {results, waited} = run_tools(ctx, tools, calls, stop_reason)
@@ -214,35 +211,6 @@ defmodule Elia.Agent.Loop do
 
   defp request_messages(ctx, history),
     do: Compaction.view(history, ctx.compaction).messages
-
-  defp finish(%{verify: false}, _history, _step), do: :done
-
-  defp finish(ctx, history, step) do
-    case Elia.Harness.verify(ctx.tool_ctx.turn_id, ctx.workspace) do
-      result when result in [:ok, :unchanged] ->
-        :done
-
-      {:error, reason} ->
-        {:error, reason}
-
-      {:rolled_back, _output} when ctx.verify_failures + 1 >= @max_verify_failures ->
-        {:error,
-         "Tests kept failing after changes to Elixir code; the workspace was rolled back."}
-
-      {:rolled_back, output} ->
-        message =
-          Message.harness("""
-          `mix test` failed after your changes to Elixir files, so the workspace was \
-          rolled back to the checkpoint taken at the start of this turn. Fix the \
-          problem and redo the change, or explain the failure to the user.
-
-          #{Elia.Shell.truncate(output, 20_000)}
-          """)
-
-        append(ctx, message)
-        step(%{ctx | verify_failures: ctx.verify_failures + 1}, history ++ [message], step + 1)
-    end
-  end
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
 

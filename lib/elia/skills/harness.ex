@@ -2,7 +2,7 @@ defmodule Elia.Skills.Harness do
   @moduledoc """
   Extending Elia with folder skills, in every project (PROJ-16, SKILL-8).
 
-  What only applies to Elia's own code — approval, checkpoints, merging into
+  What only applies to Elia's own code — approval, merging into
   the trunk `master` and deploying — is `Elia.Skills.SelfModification`
   (PROJ-17).
   """

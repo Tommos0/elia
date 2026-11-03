@@ -47,11 +47,11 @@ defmodule EliaWeb.AutoApproveTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
     open_popover(view)
 
-    for tool <- ~w(shell read_file write_file edit_file rollback) do
+    for tool <- ~w(shell read_file write_file edit_file) do
       assert has_element?(view, "#auto-approve-#{tool}[role='switch'][aria-checked='false']")
     end
 
-    for tool <- ~w(run_tests reload_skills list_checkpoints) do
+    for tool <- ~w(run_tests reload_skills) do
       refute has_element?(view, "#auto-approve-#{tool}")
     end
 

@@ -32,7 +32,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(await_task edit_file list_checkpoints list_tasks read_file reload_skills reset_task rollback run_tests shell spawn_task update_ledger write_file)
+             ~w(await_task edit_file list_tasks read_file reload_skills run_tests shell spawn_task update_ledger write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -266,34 +266,8 @@ defmodule Elia.AgentTest do
     Elia.Skills.reload()
   end
 
-  test "failing tests after an Elixir change roll the turn back", %{id: id} do
-    path = Path.join(Elia.Workspace.root(), "lib/broken.ex")
-
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => "lib/broken.ex", "content" => "oops"})
-      ])
-    )
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("Wrote it.")]))
-
-    FakeLLM.push(
-      FakeLLM.assistant([Message.text("Tests fail because this is not a mix project.")])
-    )
-
-    :ok = Agent.send_message(id, "add a module")
-    await_status(id, :awaiting_approval)
-    :ok = Agent.approve(id, "w1")
-    await_status(id, :idle)
-
-    refute File.exists?(path)
-    [_, _, third] = FakeLLM.requests()
-    assert %Message{meta: %{harness: true}} = notice = List.last(third.messages)
-    assert Message.text_content(notice) =~ "rolled back"
-  end
-
-  # CTX-6: the rolled-back request's usage is cleared with it.
-  test "a refusal rolls the turn back", %{id: id} do
+  # CTX-6: a refused request's usage is cleared with it.
+  test "a refusal clears the usage and the turn's messages", %{id: id} do
     FakeLLM.push(fn _request, _on_event ->
       {:ok,
        %{
@@ -657,8 +631,6 @@ defmodule Elia.AgentTest do
     assert request.system =~ "Skill: proj-skill"
     assert request.system =~ "Skill: harness"
     refute request.system =~ "self-modification"
-    refute "rollback" in Enum.map(request.tools, & &1.name)
-    refute "list_checkpoints" in Enum.map(request.tools, & &1.name)
   end
 
   # PROJ-9, STORE-19
@@ -689,33 +661,6 @@ defmodule Elia.AgentTest do
     :sys.replace_state(pid, &Map.delete(&1, :project))
 
     assert %{project: %{id: "harness"}} = Agent.snapshot(id)
-  end
-
-  # PROJ-14
-  test "a write in another project's folder doesn't checkpoint Elia's workspace" do
-    dir = tmp_dir("ckpt")
-    turn = "proj-#{System.unique_integer([:positive])}"
-
-    assert {:ok, _} =
-             Elia.Skills.Files.write_file(
-               %{"path" => "a.txt", "content" => "x"},
-               %{turn_id: turn, workspace: dir}
-             )
-
-    assert File.read!(Path.join(dir, "a.txt")) == "x"
-    # No checkpoint, so verification (and `mix test`) never runs for the turn.
-    assert Elia.Checkpoint.for_turn(turn) == nil
-
-    # In Elia's own root, the same call checkpoints (PROJ-14, CKPT-2).
-    own = "own-#{System.unique_integer([:positive])}"
-    path = "skills/tmp-proj14/a.txt"
-
-    assert {:ok, _} =
-             Elia.Skills.Files.write_file(%{"path" => path, "content" => "y"}, %{turn_id: own})
-
-    assert Elia.Checkpoint.for_turn(own) != nil
-  after
-    File.rm_rf!(Path.join(Elia.Workspace.skills_dir(), "tmp-proj14"))
   end
 
   ## Compaction (COMPACT)

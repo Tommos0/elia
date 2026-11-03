@@ -42,7 +42,7 @@ files, skills, tool definitions and more — each with an estimated token count.
   prompt-cache reads and writes (`cache_read_input_tokens`,
   `cache_creation_input_tokens`), since cached tokens are still in the
   context; otherwise `prompt_tokens`. A reset of the conversation (e.g. a
-  refused turn rolled back) clears the figure.
+  refused turn, whose messages are discarded) clears the figure.
 - **CTX-7** The context window size comes from the model catalog when cached
   (never triggering a network fetch, nor waiting on one in flight); otherwise
   the context length stored with the chat's selection (MODEL-1); otherwise a built-in

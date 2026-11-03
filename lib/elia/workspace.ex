@@ -38,8 +38,7 @@ defmodule Elia.Workspace do
 
   @doc """
   Elia's own data dir (PROJ-13). It sits directly under the live tree, so chats
-  and checkpoints are the same across a chat's worktrees and across a deploy
-  (DEPLOY-2).
+  are the same across a chat's worktrees and across a deploy (DEPLOY-2).
   """
   def data_dir(root \\ runtime_root()), do: Path.join(root, ".elia")
 

@@ -128,11 +128,9 @@ defmodule Elia.SkillsTest do
 
     {own, _errors} = Skills.for_project(nil)
     assert "self-modification" in names(own)
-    assert "rollback" in Enum.map(Skills.tools(own), & &1.name)
 
     {other, _errors} = Skills.for_project(project(dir))
     refute "self-modification" in names(other)
-    refute "rollback" in Enum.map(Skills.tools(other), & &1.name)
   end
 
   # PROJ-16, PROJ-18

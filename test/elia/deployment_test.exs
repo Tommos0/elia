@@ -51,8 +51,8 @@ defmodule Elia.DeploymentTest do
     {id, path}
   end
 
-  # DEPLOY-1: the file tools, checkpoints and verification of a chat in Elia's
-  # own project work in its own worktree, not in the tree the server runs from.
+  # DEPLOY-1: the file tools and `mix test` for a chat in Elia's own project run
+  # in its own worktree, not in the tree the server runs from.
   defp chat do
     id = Agent.new_id()
 
@@ -562,7 +562,7 @@ defmodule Elia.DeploymentTest do
     stop_session(child)
   end
 
-  # DEPLOY-9, SUBTASK-25, SUBTASK-22
+  # DEPLOY-9, SUBTASK-25
   test "a sub-task that doesn't finish as done keeps its work on its own branch" do
     parent = chat()
     path = Deploy.worktree_path(parent)
@@ -578,11 +578,8 @@ defmodule Elia.DeploymentTest do
         counts(request, "await_task") == 0 ->
           reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => spawned(request)})])
 
-        counts(request, "reset_task") == 0 ->
-          reply([FakeLLM.tool_call("r1", "reset_task", %{"task_id" => spawned(request)})])
-
         true ->
-          reply([Message.text("Reset.")])
+          reply([Message.text("Checked.")])
       end
     end
 
@@ -608,7 +605,7 @@ defmodule Elia.DeploymentTest do
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
     :ok = Agent.approve(parent, "s1")
-    await_status(parent, :awaiting_approval)
+    await_status(parent, :idle)
 
     assert_receive {:child, child}
     child_path = Deploy.worktree_path(child)
@@ -618,16 +615,7 @@ defmodule Elia.DeploymentTest do
     assert File.read!(Path.join(child_path, "child-note.txt")) == "child"
     refute File.exists?(Path.join(path, "child-note.txt"))
     assert head(path) != head(child_path)
-
-    :ok = Agent.approve(parent, "r1")
-    await_status(parent, :idle)
-
-    # SUBTASK-22: the reset discards the work in the sub-task's own worktree,
-    # and leaves the parent's worktree alone.
-    refute File.exists?(Path.join(child_path, "child-note.txt"))
-    refute File.exists?(Path.join(child_path, "wip.txt"))
     assert branch(child_path) == "chat/#{child}"
-    refute File.exists?(Path.join(path, "child-note.txt"))
 
     stop_session(child)
   end

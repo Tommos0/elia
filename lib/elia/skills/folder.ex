@@ -149,34 +149,24 @@ defmodule Elia.Skills.Folder do
   defp build_tool(_spec, _dir), do: {:error, "must be an object"}
 
   defp run_script(command, dir, input, timeout, ctx) do
-    with :ok <- ensure_checkpoint(ctx) do
-      args =
-        for {key, value} <- input, is_binary(value) or is_number(value) or is_boolean(value) do
-          {"ELIA_ARG_" <> String.upcase(String.replace(key, ~r/[^A-Za-z0-9]/, "_")),
-           to_string(value)}
-        end
+    args =
+      for {key, value} <- input, is_binary(value) or is_number(value) or is_boolean(value) do
+        {"ELIA_ARG_" <> String.upcase(String.replace(key, ~r/[^A-Za-z0-9]/, "_")),
+         to_string(value)}
+      end
 
-      env = [
-        {"ELIA_INPUT", Jason.encode!(input)},
-        {"ELIA_WORKSPACE", workspace(ctx)} | args
-      ]
+    env = [
+      {"ELIA_INPUT", Jason.encode!(input)},
+      {"ELIA_WORKSPACE", workspace(ctx)} | args
+    ]
 
-      Elia.Skills.Shell.result(
-        Elia.Shell.run(command, cd: dir, env: env, timeout: timeout),
-        timeout
-      )
-    end
+    Elia.Skills.Shell.result(
+      Elia.Shell.run(command, cd: dir, env: env, timeout: timeout),
+      timeout
+    )
   end
 
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
   # in Elia's own project (DEPLOY-1), Elia's own root when unset.
   defp workspace(ctx), do: ctx[:workspace] || Elia.Workspace.root()
-
-  # PROJ-14: only Elia's own project is checkpointed — in the workspace the
-  # chat works in, its own worktree (DEPLOY-1).
-  defp ensure_checkpoint(ctx) do
-    if Elia.Projects.harness_ctx?(ctx),
-      do: Elia.Checkpoint.ensure(ctx[:turn_id], workspace(ctx)),
-      else: :ok
-  end
 end
