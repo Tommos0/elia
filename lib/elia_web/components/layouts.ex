@@ -31,6 +31,15 @@ defmodule EliaWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  # UI-32: on the chat page the header's Chats control is the chat list's
+  # drawer toggle (`#chats-toggle`, UI-36) instead of a link to "/", so it
+  # shows the list rather than leaving the open chat.
+  attr :chats_drawer, :boolean,
+    default: false,
+    doc: "render the Chats control as the chat list's drawer toggle (UI-32, UI-36)"
+
+  attr :chats_open, :boolean, default: false, doc: "whether that drawer is open (UI-36)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -44,7 +53,28 @@ defmodule EliaWeb.Layouts do
           Elia
         </.link>
         <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
-          <.nav_link to={~p"/"} id="chats-link" icon="hero-chat-bubble-left-right" label="Chats" />
+          <%!-- UI-32, UI-36: the drawer's toggle, which only exists where the
+          drawer does (`lg:hidden`); from `lg` up the list is always visible. --%>
+          <button
+            :if={@chats_drawer}
+            type="button"
+            id="chats-toggle"
+            phx-click="toggle_chats"
+            aria-expanded={to_string(@chats_open)}
+            aria-controls="sidebar"
+            title="Chats"
+            class="flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 active:scale-95 sm:px-3 sm:py-1.5 lg:hidden"
+          >
+            <.icon name="hero-chat-bubble-left-right" class="size-4" />
+            <span class="sr-only sm:not-sr-only">Chats</span>
+          </button>
+          <.nav_link
+            :if={!@chats_drawer}
+            to={~p"/"}
+            id="chats-link"
+            icon="hero-chat-bubble-left-right"
+            label="Chats"
+          />
           <.nav_link
             to={~p"/projects"}
             id="projects-link"

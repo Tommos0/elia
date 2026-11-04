@@ -13,8 +13,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   isn't a task chat (UI-71), or a freshly generated chat id when there is none
   (saved at once, STORE-22).
 - **UI-71** Opening the chat list's entry point — `GET /`, which is the app's
-  start URL (PWA-1) and the target of the header logo and "Chats" button
-  (UI-32) — resumes work rather than starting over: it opens the most recently
+  start URL (PWA-1) and the target of the header logo and of the Chats link on
+  the pages that have no chat list of their own (UI-32) — resumes work rather
+  than starting over: it opens the most recently
   started chat (STORE-12 order, the first one the sidebar lists) that isn't a
   task chat (STORE-17, UI-45), since a sub-task chat is reached from its
   parent's card (UI-44) and not where the user left off. Only when there is no
@@ -62,17 +63,24 @@ stream in, approves or denies tool calls, and switches between saved chats.
   double-clicking it restores the default (16rem). The width is clamped between
   12rem and 40rem (and at most half the window), is kept in the browser's
   `localStorage`, and survives LiveView patches and navigation between chats.
-- **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
-  the left of "Sessions". It goes where the logo at the top left goes: `/`,
-  which opens the most recent chat (UI-1, UI-71).
-- **UI-36** On small screens the chat list is a drawer: the header toggle
-  button (`#chats-toggle`) opens and closes it, its `aria-expanded` follows,
-  the drawer starts closed, and a backdrop (`#chats-backdrop`) or the Escape
-  key closes it. Neither the toggle nor the backdrop exists from the `lg`
-  breakpoint up, where the list (and the UI-35 drag handle) is always visible.
+- **UI-32** The header on every page carries a "Chats" control first, to the
+  left of Projects, Files, Sessions, System and Settings. On the chat page it
+  shows the chat list rather than leaving the chat: it is the chat list's
+  drawer toggle (`#chats-toggle`, UI-36), which opens and closes the list below
+  the `lg` breakpoint, and it never navigates — pressing it never opens another
+  chat. On the other pages, which have no chat list to show, it is a link
+  (`#chats-link`) that goes where the logo at the top left goes: `/`, which
+  opens the most recent chat (UI-1, UI-71).
+- **UI-36** On small screens the chat list is a drawer: the header's "Chats"
+  button (`#chats-toggle`, UI-32) opens and closes it, its `aria-expanded`
+  follows, the drawer starts closed, and a backdrop (`#chats-backdrop`) or the
+  Escape key closes it. Neither the toggle nor the backdrop exists from the
+  `lg` breakpoint up, where the list (and the UI-35 drag handle) is always
+  visible — so the chat page's header shows no "Chats" control there, and
+  nothing in the header leaves the open chat.
 - **UI-37** The header never overflows horizontally on narrow screens. Below
   the `sm` breakpoint the header buttons show only their icon (the label stays
-  in the DOM for screen readers and as the link's `title`), with tighter
+  in the DOM for screen readers and as the control's `title`), with tighter
   spacing; from `sm` up they show icon and label.
 - **UI-59** Every chat in the sidebar shows one status indicator
   (`#chat-status-<id>`, with `data-status` and a `title`). A chat that isn't a

@@ -15,10 +15,10 @@ defmodule EliaWeb.ChatLive do
   end
 
   # UI-1, UI-71: `/` — the app's start URL (PWA-1), the header logo and the
-  # "Chats" button (UI-32) — resumes the most recent chat, and only starts a
-  # chat in the default project (PROJ-8) when there is nothing to resume. The
-  # sidebar's "New chat" (UI-31) instead goes to the open chat's project,
-  # `/p/<id>/new` above.
+  # Chats link on the pages without a chat list (UI-32) — resumes the most
+  # recent chat, and only starts a chat in the default project (PROJ-8) when
+  # there is nothing to resume. The sidebar's "New chat" (UI-31) instead goes to
+  # the open chat's project, `/p/<id>/new` above.
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket) do
     case Elia.Store.latest() do
       %{id: id} -> {:ok, push_navigate(socket, to: ~p"/c/#{id}")}
@@ -126,7 +126,7 @@ defmodule EliaWeb.ChatLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} chats_drawer chats_open={@chats_open}>
       <div class="relative flex h-full">
         <%!-- UI-36: backdrop for the small-screen chat drawer --%>
         <button
@@ -220,18 +220,6 @@ defmodule EliaWeb.ChatLive do
           </nav>
         </aside>
         <div class="flex min-w-0 flex-1 flex-col">
-          <div class="border-b border-base-300 px-4 py-1.5 sm:px-6 lg:hidden">
-            <button
-              type="button"
-              id="chats-toggle"
-              phx-click="toggle_chats"
-              aria-expanded={to_string(@chats_open)}
-              aria-controls="sidebar"
-              class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition hover:bg-base-200 active:scale-95"
-            >
-              <.icon name="hero-bars-3" class="size-4" /> Chats
-            </button>
-          </div>
           <.task_header
             :if={@task}
             task={@task}

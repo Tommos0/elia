@@ -12,9 +12,9 @@ defmodule EliaWeb.ChatLiveTest do
   end
 
   # UI-1, UI-71: `/` is where the app opens (its start URL, PWA-1), where the
-  # header logo and the "Chats" button lead (UI-32) and where deleting the open
-  # chat lands (UI-65), so it resumes the chat the user left off in instead of
-  # leaving another empty one behind on every visit.
+  # header logo and the Chats link of the pages without a chat list lead (UI-32)
+  # and where deleting the open chat lands (UI-65), so it resumes the chat the
+  # user left off in instead of leaving another empty one behind on every visit.
   test "/ resumes the most recent chat, and looking at it saves nothing", %{conn: conn} do
     with_empty_store(fn ->
       older = saved_chat()
@@ -138,11 +138,15 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "var(--sidebar-width,16rem)"
   end
 
-  # UI-36: on small screens the chat list opens as a drawer from a toggle button.
-  test "chats toggle opens and closes the drawer", %{conn: conn} do
+  # UI-32, UI-36: on small screens the chat list opens as a drawer from the
+  # header's Chats button, which shows the list instead of leaving the chat.
+  test "the header's Chats button opens and closes the drawer", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    assert has_element?(view, "#chats-toggle[aria-expanded='false']")
+    assert has_element?(view, "header #chats-toggle[aria-expanded='false']")
+    assert has_element?(view, "header #chats-toggle[aria-controls='sidebar'][title='Chats']")
+    # UI-32: it is not a link, so it never opens another chat.
+    refute has_element?(view, "header #chats-link")
     refute has_element?(view, "#chats-backdrop")
     assert has_element?(view, "#sidebar.hidden")
 
@@ -172,11 +176,13 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#chats-backdrop")
   end
 
-  # UI-36: the toggle and backdrop only exist for small screens.
+  # UI-32, UI-36: the toggle and the backdrop only exist where the drawer does,
+  # so the chat page's header has no Chats control from `lg` up — the list is
+  # always visible there, and nothing in the header leaves the open chat.
   test "chats toggle and backdrop are hidden on large screens", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    assert has_element?(view, "div.lg\\:hidden #chats-toggle")
+    assert has_element?(view, "header #chats-toggle.lg\\:hidden")
     view |> element("#chats-toggle") |> render_click()
     assert has_element?(view, "#chats-backdrop.lg\\:hidden")
   end
@@ -414,25 +420,35 @@ defmodule EliaWeb.ChatLiveTest do
   test "header buttons hide their labels below the sm breakpoint", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    for id <- ~w(chats-link files-link sessions-link system-link settings-link) do
+    # UI-32: on the chat page the first control is the chat list's toggle.
+    for id <- ~w(chats-toggle projects-link files-link sessions-link system-link settings-link) do
       assert has_element?(view, "header ##{id}[title]")
       assert has_element?(view, "header ##{id} span.sr-only.sm\\:not-sr-only")
     end
   end
 
-  # UI-32: the header's Chats button goes to "/" and precedes Sessions. What
-  # "/" then opens is UI-1, UI-71.
-  test "header has a Chats button left of Sessions that goes to /", %{conn: conn} do
-    id = Agent.new_id()
+  # UI-32: the header's Chats control comes before the other pages' links. On
+  # the chat page it is the chat list's drawer toggle (UI-36), which shows the
+  # list and never navigates; a page without a chat list keeps the link to "/",
+  # which resumes the most recent chat (UI-1, UI-71).
+  test "the header's Chats control shows the chat list, or goes to /", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+    assert has_element?(view, "header #chats-toggle")
+    assert before?(html, "id=\"chats-toggle\"", "id=\"sessions-link\"")
+    assert before?(html, "id=\"chats-toggle\"", "id=\"projects-link\"")
 
-    assert has_element?(view, "header #chats-link[href='/']", "Chats")
-    [before_sessions | _] = String.split(html, "id=\"sessions-link\"")
-    assert before_sessions =~ "id=\"chats-link\""
+    # Clicking it opens the drawer. The view is still mounted afterwards, so
+    # the click did not navigate anywhere.
+    view |> element("#chats-toggle") |> render_click()
+    assert has_element?(view, "#chats-backdrop")
+    assert has_element?(view, "#chat-form")
 
-    view |> element("#chats-link") |> render_click()
-    assert_redirect(view, "/")
+    {:ok, files, _html} = live(conn, ~p"/files")
+    assert has_element?(files, "header #chats-link[href='/']", "Chats")
+    refute has_element?(files, "header #chats-toggle")
+    files |> element("#chats-link") |> render_click()
+    assert_redirect(files, "/")
   end
 
   test "chatting with an approval round-trip", %{conn: conn} do
@@ -733,7 +749,7 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "header #projects-link[href='/projects'][title='Projects']")
     assert has_element?(view, "header #projects-link span.sr-only.sm\\:not-sr-only")
 
-    assert before?(html, "id=\"chats-link\"", "id=\"projects-link\"")
+    assert before?(html, "id=\"chats-toggle\"", "id=\"projects-link\"")
   end
 
   # PROJ-24: the sidebar groups chats under a header per project, with a
