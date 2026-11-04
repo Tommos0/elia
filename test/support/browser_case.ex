@@ -63,6 +63,13 @@ defmodule EliaWeb.BrowserCase do
   end
 
   defp check_assets! do
+    # BROWSER-10: one message for a missing Playwright CLI, shared with
+    # `test/test_helper.exs`, which runs it before the driver starts.
+    EliaWeb.BrowserAssets.check!()
+    check_built!()
+  end
+
+  defp check_built! do
     case Enum.reject(@assets, &File.exists?/1) do
       [] ->
         :ok

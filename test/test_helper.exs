@@ -14,6 +14,11 @@ File.mkdir_p!(root)
 ExUnit.start(exclude: [:real_browser, :preview])
 
 if System.get_env("ELIA_BROWSER_TESTS") == "1" do
+  # BROWSER-10: the driver validates the Playwright CLI in `assets/node_modules`
+  # as it starts and a fresh chat worktree has none, so say what to install
+  # before that error can read as a broken config.
+  EliaWeb.BrowserAssets.check!()
+
   # The Playwright driver, and the URL of the test server it drives
   # (BROWSER-3, BROWSER-4).
   {:ok, _} = PhoenixTest.Playwright.Supervisor.start_link()

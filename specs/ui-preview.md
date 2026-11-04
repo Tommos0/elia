@@ -59,8 +59,18 @@ have something to render.
   browser tests (BROWSER-5): `bin/preview` runs it through the browser layer's
   case, tagged `:preview`, so `mix test`, `run_tests`, `mix precommit` and a
   deploy's suite never start a browser. Failures say what to fix instead of
-  reading as assertions: a missing `assets/node_modules` names `npm install`
-  (BROWSER-2) and a missing asset says to build it (BROWSER-6).
+  reading as assertions: a missing `assets/node_modules` is installed first
+  (PREVIEW-14) and, if that is not possible, names `npm install` (BROWSER-10,
+  BROWSER-2), and a missing asset says to build it (BROWSER-6).
+- **PREVIEW-14** `bin/preview` installs what the browser layer needs before it
+  builds the assets: when the workspace has no `assets/node_modules/playwright`
+  — which a fresh chat worktree never has, since `assets/node_modules` is
+  gitignored (BROWSER-2) — it runs the package install for *that* workspace's
+  own `assets/package.json` (`npm install`, Node ≥ 20), so a new chat previews
+  with no separate setup step. It installs only when it is missing and needs
+  the network to do so, like the asset toolchain a fresh worktree downloads
+  (PREVIEW-1); an install that fails ends the run with the command it ran and
+  the workspace it ran in.
 
 ### The sample chat the preview seeds
 
@@ -134,7 +144,9 @@ ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 | `ELIA_PREVIEW_THEME` | *(browser default)* | colour scheme to emulate: `dark` or `light` |
 
 `tmp/preview/` is gitignored, so a preview is never committed and never reaches
-a deploy.
+a deploy. `assets/node_modules` is gitignored too, so a fresh chat worktree has
+none: `bin/preview` installs it on the first run (PREVIEW-14), which needs the
+network and takes a second or two.
 
 ## Out of scope
 
@@ -153,10 +165,10 @@ a deploy.
 - `Elia.Preview` (naming, path safety, the URLs and the sample chat, no
   browser), `EliaWeb.PreviewController` + a router entry (PREVIEW-7),
   `test/elia_web/browser/preview_test.exs` with `use EliaWeb.BrowserCase`
-  (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12), `bin/preview` (PREVIEW-1),
-  the transcript's image styling in `EliaWeb.ChatLive` (PREVIEW-8),
-  `AGENTS.md`, `docs/agents/harness.md` and the `self-modification` skill
-  (PREVIEW-9).
+  (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12), `bin/preview` (PREVIEW-1,
+  PREVIEW-14), the transcript's image styling in `EliaWeb.ChatLive`
+  (PREVIEW-8), `AGENTS.md`, `docs/agents/harness.md` and the
+  `self-modification` skill (PREVIEW-9).
 
 ## Tests
 
@@ -168,5 +180,6 @@ a deploy.
 - `test/elia/skills_test.exs` (the preview instruction the agent follows names
   the dark, mobile default, in the `self-modification` skill and `AGENTS.md`,
   PREVIEW-9).
-- The preview run itself is checked by hand, since it needs a browser:
+- `bin/preview`'s install when `assets/node_modules` is missing (PREVIEW-14) is
+  checked by hand, like the preview run itself, which needs a browser:
   `bin/preview`, from a chat in Elia's own project.

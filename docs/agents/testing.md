@@ -52,10 +52,12 @@ Playwright.
       mix assets.build                                 # esbuild/tailwind run in dev only
       ELIA_BROWSER_TESTS=1 mix test --only real_browser
 
-- `assets/node_modules` is gitignored, so a fresh worktree needs `npm install`
-  in `assets/` first. Playwright is pinned in `assets/package.json` to a version
-  whose Chromium revision is already in `~/.cache/ms-playwright`, so nothing
-  large downloads; it needs Node ≥ 20.
+- `assets/node_modules` is gitignored, so a fresh worktree has none: install it
+  once with `npm install` in `assets/`. Playwright is pinned in
+  `assets/package.json` to a version whose Chromium revision is already in
+  `~/.cache/ms-playwright`, so nothing large downloads; it needs Node ≥ 20. A
+  browser run that finds it missing says exactly that instead of failing inside
+  the driver (BROWSER-10), and `bin/preview` installs it for you (PREVIEW-14).
 - Console errors and page errors fail the test that caused them
   (`EliaWeb.BrowserJsLogger`), so a broken hook doesn't pass quietly. Lower
   levels are logged as usual.

@@ -26,6 +26,7 @@ A browser test therefore sees the chat's own worktree code.
 - **BROWSER-7** The app under test is the test env server in-process: `Elia.FakeLLM` answers model calls and the scratch workspace applies, so the tests need no running dev server, no deploy and no API keys. Browser cases do not run concurrently (`async: false`), since the workspace and the server are shared.
 - **BROWSER-8** A smoke file `test/elia_web/browser/chat_browser_test.exs` covers, through the real browser: `/` loads the dashboard (DASH-1) and `/chats` opens a chat (UI-77); the LiveView websocket connects and the page produces no JavaScript console or page errors; and a message submitted through `#chat-form` is answered by `Elia.FakeLLM` and appears in `#transcript`.
 - **BROWSER-9** `docs/agents/testing.md` documents the browser layer: the Node/Playwright pin, the `ELIA_BROWSER_TESTS=1` command, the assets precondition and when a browser test is the right tool instead of `Phoenix.LiveViewTest`.
+- **BROWSER-10** A browser run in a workspace with no Playwright CLI — `assets/node_modules/playwright` is missing, which a fresh chat worktree always is, since `assets/node_modules` is gitignored (BROWSER-2) — fails **before** the Playwright driver starts, with a message naming the install in *that* workspace's `assets/` (`npm install`, Node ≥ 20), instead of the driver's own `:assets_dir` validation error. The check runs where the driver is started, in `test/test_helper.exs` before `PhoenixTest.Playwright.Supervisor` (BROWSER-4), so it precedes any test module, and the browser case's own checks reuse it (BROWSER-6). It lifts nothing for the Node-free runs: `mix test`, `run_tests` and `mix precommit` start no driver and check nothing (BROWSER-5).
 
 ## Configuration
 
@@ -40,8 +41,10 @@ ELIA_BROWSER_TESTS=1 mix test --only real_browser
 ```
 
 `assets/node_modules` is gitignored, so a fresh worktree needs `npm install` in
-its `assets/` before a browser run. `ELIA_TEST_PORT` moves the test server off
-`4002` when two browser runs would otherwise meet.
+its `assets/` before a browser run. A run that finds it missing says so, naming
+that install, instead of failing inside the Playwright driver (BROWSER-10);
+`bin/preview` runs the install itself (PREVIEW-14). `ELIA_TEST_PORT` moves the
+test server off `4002` when two browser runs would otherwise meet.
 
 Screenshots and Playwright traces go to `tmp/` (gitignored) and are never
 committed.
@@ -64,12 +67,15 @@ committed.
 ## Implementation
 
 - `mix.exs` (dep), `config/test.exs` (BROWSER-3), `test/test_helper.exs`
-  (BROWSER-4), a browser case helper in `test/support/` (BROWSER-6),
-  `assets/package.json` (BROWSER-2).
+  (BROWSER-4, BROWSER-10), a browser case helper in `test/support/` (BROWSER-6,
+  BROWSER-10), `assets/package.json` (BROWSER-2).
 
 ## Tests
 
 - `test/elia_web/browser/chat_browser_test.exs` (BROWSER-5, BROWSER-7, BROWSER-8).
+- `test/elia_web/browser_assets_test.exs` (BROWSER-10): the check's message
+  names `npm install` in the workspace's `assets/`, and it passes where
+  Playwright is installed.
 
 Run with `ELIA_BROWSER_TESTS=1 mix test --only real_browser`, after
 `mix assets.build`.

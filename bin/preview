@@ -20,6 +20,18 @@
 
 cd "$(dirname "$0")/.." || exit 1
 
+# The browser layer's Node packages (PREVIEW-14, BROWSER-2): assets/node_modules
+# is gitignored, so a fresh chat worktree has none, and the Playwright driver
+# refuses to start without it. Install them once per worktree, skipping it when
+# they are already there, so a preview never pays for this twice.
+if [ ! -f assets/node_modules/playwright/package.json ]; then
+  echo "preview: installing the browser layer's packages (npm install)"
+  npm install --prefix assets --no-audit --no-fund || {
+    echo "preview: npm install failed in $PWD/assets — run it yourself (Node >= 20, network)" >&2
+    exit 1
+  }
+fi
+
 # A preview must not show a stale bundle: build the assets the browser loads
 # (PREVIEW-1, PREVIEW-6). Both steps are no-ops once they have been run. They
 # run in the test env — the preview's own env, and the one the harness keeps a
