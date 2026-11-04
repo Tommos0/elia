@@ -117,7 +117,7 @@ defmodule EliaWeb.SettingsLive do
                     value="check"
                     id={"check-#{info.key}"}
                     disabled={@pending[info.key] != nil}
-                    class="flex h-11 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 active:scale-95 disabled:opacity-50"
+                    class="flex h-11 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
                   >
                     <.spinner :if={@pending[info.key] == :check} />
                     <.icon :if={@pending[info.key] != :check} name="hero-shield-check" class="size-4" />
@@ -129,7 +129,7 @@ defmodule EliaWeb.SettingsLive do
                     value="save"
                     id={"save-#{info.key}"}
                     disabled={@pending[info.key] != nil}
-                    class="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+                    class="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
                   >
                     <.spinner :if={@pending[info.key] == :save} /> Save
                   </button>
@@ -267,7 +267,7 @@ defmodule EliaWeb.SettingsLive do
                 phx-value-mode="reload"
                 disabled={@deploying != nil}
                 title="Run the tests, merge master into live and reload the running app, keeping its state"
-                class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 active:scale-95 disabled:opacity-50"
+                class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
               >
                 <.spinner :if={@deploying == "reload"} />
                 <.icon :if={@deploying != "reload"} name="hero-arrow-path" class="size-4" />
@@ -280,7 +280,7 @@ defmodule EliaWeb.SettingsLive do
                 phx-value-mode="restart"
                 disabled={@deploying != nil}
                 title="Run the tests, merge master into live and restart the server on the deployed code"
-                class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+                class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
               >
                 <.spinner :if={@deploying == "restart"} />
                 <.icon

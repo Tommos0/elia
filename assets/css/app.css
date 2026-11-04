@@ -104,6 +104,152 @@
 
 /* This file is for your main application CSS */
 
+/* Interaction feedback (FEED-1 - FEED-9 in specs/interaction-feedback.md).
+
+   A control is a LiveView event: the tap goes over the websocket and the page
+   answers when the reply comes back. Two states bridge that wait for every
+   control on every page. LiveView itself says when a wait is open: it marks the
+   element whose event it pushed with `.phx-click-loading`, and a submitted
+   form's controls with `.phx-submit-loading`, for exactly as long as the reply
+   is outstanding. A click that only runs client-side commands (the theme
+   toggle's `JS.dispatch`) compiles to commands with no push and never gets the
+   class, so a control only reads as working when the server really is being
+   waited on.
+
+   These rules are unlayered on purpose: they are the app's own answer to every
+   control, so no template has to add a class for it and a control added later
+   has it too, while a utility a template does add cannot soften it by accident. */
+
+/* FEED-1, FEED-2: a button-like control presses at once, and comes back up a
+   moment after release, so a tap of a few milliseconds is seen rather than
+   flickering. An element that is all backdrop and no control at all opts out
+   with `data-press="none"`. */
+:where(button, .btn, [role="button"], [role="switch"]):not([data-press="none"]) {
+  touch-action: manipulation;
+  transition:
+    scale 80ms ease-out 90ms,
+    opacity 150ms ease-out,
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    filter 150ms;
+}
+
+:where(button, .btn, [role="button"], [role="switch"]):not([data-press="none"]):active:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
+  scale: 0.96;
+  transition:
+    scale 60ms ease-out,
+    opacity 150ms ease-out,
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    filter 150ms;
+}
+
+/* A navigation link is a control too — the header's nav, the sidebar's "New
+   chat" and its chat rows all render as `a[data-phx-link]` — but it is as wide
+   as the list it sits in, so it tints instead of shrinking, and the tint fades
+   back out over the shared 150ms rather than snapping away. */
+:where(a[data-phx-link]):not([data-press="none"]) {
+  touch-action: manipulation;
+  transition:
+    background-color 150ms,
+    color 150ms,
+    opacity 150ms ease-out,
+    filter 150ms;
+}
+
+:where(a[data-phx-link]):not([data-press="none"]):active:not([aria-disabled="true"]) {
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  transition:
+    background-color 60ms,
+    color 150ms,
+    opacity 150ms ease-out,
+    filter 150ms;
+}
+
+/* FEED-6: a disabled control takes no press and no hover. It comes *before*
+   FEED-3 below on purpose: `:disabled` and `.phx-submit-loading` have the same
+   weight, so the later rule wins, and a control disabled *because* its round
+   trip is in flight (LiveView disables the buttons of a form it is submitting)
+   is not "disabled" here — the wait state is what it shows. */
+:where(button, .btn, [role="button"], [role="switch"]):disabled,
+:where(a[data-phx-link])[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* FEED-3 - FEED-5: waiting for the server. The control pulses in place instead
+   of going flat grey, so one the user is waiting on is not read as a disabled
+   one, and the pulse starts only after FEED-4's moment, so a reply that comes
+   straight back (the common case) never shows it at all. A submitted form's
+   other elements are marked as well, so this is written for controls: the input
+   beside the button, and the form itself, keep their look. */
+:where(button, .btn, [role="button"], [role="switch"], a[data-phx-link]):is(
+    .phx-click-loading,
+    .phx-submit-loading
+  ) {
+  cursor: progress;
+  animation: elia-pending 1.2s ease-in-out 150ms infinite;
+}
+
+@keyframes elia-pending {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* FEED-7: keyboard focus, which is the browser's `:focus-visible`, so a pointer
+   click leaves no ring behind. */
+:where(button, .btn, [role="button"], [role="switch"], a[data-phx-link], summary):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* FEED-8: with the system's reduced-motion setting the same two states are
+   shown, in colour instead of movement. */
+@media (prefers-reduced-motion: reduce) {
+  :where(button, .btn, [role="button"], [role="switch"]):not([data-press="none"]) {
+    transition:
+      opacity 120ms linear,
+      background-color 120ms,
+      border-color 120ms,
+      color 120ms,
+      filter 120ms;
+  }
+
+  :where(button, .btn, [role="button"], [role="switch"]):not([data-press="none"]):active:not(
+      :disabled,
+      [aria-disabled="true"]
+    ) {
+    scale: none;
+    filter: brightness(0.88);
+  }
+
+  :where(a[data-phx-link]):not([data-press="none"]):active:not([aria-disabled="true"]) {
+    transition:
+      background-color 60ms,
+      color 120ms,
+      opacity 120ms,
+      filter 120ms;
+  }
+
+  :where(button, .btn, [role="button"], [role="switch"], a[data-phx-link]):is(
+      .phx-click-loading,
+      .phx-submit-loading
+    ) {
+    animation: none;
+    opacity: 0.6;
+    transition: opacity 120ms linear 150ms;
+  }
+}
+
 /* Model picker popover entrance */
 @keyframes picker-in {
   from { opacity: 0; transform: translateY(4px) scale(0.98); }

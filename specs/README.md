@@ -85,3 +85,4 @@ deleting it.
 | [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart |
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
+| [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |

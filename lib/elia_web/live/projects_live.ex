@@ -119,7 +119,7 @@ defmodule EliaWeb.ProjectsLive do
               <button
                 type="submit"
                 id="create-project"
-                class="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                class="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110"
               >
                 <.icon name="hero-plus" class="size-4" /> Create
               </button>

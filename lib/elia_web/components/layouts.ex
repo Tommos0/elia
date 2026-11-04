@@ -63,7 +63,7 @@ defmodule EliaWeb.Layouts do
             aria-expanded={to_string(@chats_open)}
             aria-controls="sidebar"
             title="Chats"
-            class="flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 active:scale-95 sm:px-3 sm:py-1.5 lg:hidden"
+            class="flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 sm:px-3 sm:py-1.5 lg:hidden"
           >
             <.icon name="hero-chat-bubble-left-right" class="size-4" />
             <span class="sr-only sm:not-sr-only">Chats</span>

@@ -136,7 +136,9 @@ defmodule EliaWeb.ChatLive do
     ~H"""
     <Layouts.app flash={@flash} chats_drawer chats_open={@chats_open}>
       <div class="relative flex h-full">
-        <%!-- UI-36: backdrop for the small-screen chat drawer --%>
+        <%!-- UI-36: backdrop for the small-screen chat drawer. FEED-1: a
+        backdrop is not a control, so it does not press — shrinking it would
+        show the page's edges through it. --%>
         <button
           :if={@chats_open}
           type="button"
@@ -144,6 +146,7 @@ defmodule EliaWeb.ChatLive do
           phx-click="toggle_chats"
           aria-label="Close chats"
           class="absolute inset-0 z-20 bg-black/40 lg:hidden"
+          data-press="none"
         ></button>
         <aside
           id="sidebar"
@@ -267,7 +270,7 @@ defmodule EliaWeb.ChatLive do
                 id="resume-button"
                 phx-click="resume"
                 title="Continue with a fresh budget"
-                class="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                class="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110"
               >
                 Continue
               </button>
@@ -320,7 +323,7 @@ defmodule EliaWeb.ChatLive do
                   phx-click="set_compact_view"
                   phx-value-on="false"
                   title="Show the tool call so you can approve it"
-                  class="rounded-lg border border-warning/50 px-2 py-0.5 text-xs font-medium text-warning transition hover:bg-warning/10 active:scale-95"
+                  class="rounded-lg border border-warning/50 px-2 py-0.5 text-xs font-medium text-warning transition hover:bg-warning/10"
                 >
                   Review
                 </button>
@@ -349,7 +352,7 @@ defmodule EliaWeb.ChatLive do
                 navigate={~p"/c/#{@session_id}/settings"}
                 id="chat-settings-link"
                 title="This chat's model, auto-approval, jail, limits and context"
-                class="group flex max-w-full items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
+                class="group flex max-w-full items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
               >
                 <.icon name="hero-cog-6-tooth" class="size-3.5 shrink-0 opacity-70" />
                 <.provider_badge provider={@selection.provider} size="xs" />
@@ -381,7 +384,7 @@ defmodule EliaWeb.ChatLive do
                     else: "Hide tool calls and reasoning, keeping only the messages"
                 }
                 class={[
-                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
                   @compact_view && "border-primary/50 bg-primary/5 text-primary",
                   !@compact_view &&
                     "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
@@ -421,7 +424,7 @@ defmodule EliaWeb.ChatLive do
                 :if={@status == :idle}
                 type="submit"
                 id="send-button"
-                class="grid size-11 place-items-center rounded-xl bg-primary text-primary-content transition hover:brightness-110 active:scale-95"
+                class="grid size-11 place-items-center rounded-xl bg-primary text-primary-content transition hover:brightness-110"
               >
                 <.icon name="hero-arrow-up" class="size-5" />
               </button>
@@ -430,7 +433,7 @@ defmodule EliaWeb.ChatLive do
                 type="button"
                 id="stop-button"
                 phx-click="stop"
-                class="grid size-11 place-items-center rounded-xl bg-base-300 transition hover:bg-error hover:text-error-content active:scale-95"
+                class="grid size-11 place-items-center rounded-xl bg-base-300 transition hover:bg-error hover:text-error-content"
                 title="Stop"
               >
                 <.icon name="hero-stop-solid" class="size-5" />
@@ -464,7 +467,7 @@ defmodule EliaWeb.ChatLive do
             id="image-lightbox-close"
             title="Close (Esc)"
             aria-label="Close image"
-            class="absolute top-3 right-3 grid size-11 place-items-center rounded-full bg-base-100/90 text-base-content shadow-lg transition hover:bg-base-100 active:scale-95"
+            class="absolute top-3 right-3 grid size-11 place-items-center rounded-full bg-base-100/90 text-base-content shadow-lg transition hover:bg-base-100"
           >
             <.icon name="hero-x-mark" class="size-6" />
           </button>
@@ -736,7 +739,7 @@ defmodule EliaWeb.ChatLive do
         data-confirm={"Delete the chat #{@chat.title}? This can't be undone."}
         aria-label="Delete chat"
         title="Delete chat"
-        class="shrink-0 rounded-lg px-1.5 text-base-content/40 transition hover:bg-error/10 hover:text-error focus-visible:bg-error/10 focus-visible:text-error focus-visible:outline-none active:scale-95"
+        class="shrink-0 rounded-lg px-1.5 text-base-content/40 transition hover:bg-error/10 hover:text-error focus-visible:bg-error/10 focus-visible:text-error focus-visible:outline-none"
       >
         <.icon name="hero-trash" class="size-3.5" />
       </button>
@@ -1203,7 +1206,7 @@ defmodule EliaWeb.ChatLive do
           id={"approve-#{@item.call_id}"}
           phx-click="approve"
           phx-value-id={@item.call_id}
-          class="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+          class="rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110"
         >
           Approve
         </button>

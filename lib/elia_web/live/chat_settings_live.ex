@@ -332,7 +332,7 @@ defmodule EliaWeb.ChatSettingsLive do
                     id="compact-button"
                     phx-click="compact"
                     title="Elide the older turns of this chat's context now"
-                    class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
+                    class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
                   >
                     <.icon
                       name="hero-archive-box-arrow-down"
@@ -355,7 +355,7 @@ defmodule EliaWeb.ChatSettingsLive do
                 <button
                   type="submit"
                   id="save-settings"
-                  class="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                  class="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110"
                 >
                   Save
                 </button>
@@ -385,7 +385,7 @@ defmodule EliaWeb.ChatSettingsLive do
         role="switch"
         aria-checked={to_string(@on)}
         class={[
-          "group inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+          "group inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
           @on && "border-primary/50 bg-primary/5 text-primary",
           !@on && "border-base-300 text-base-content/70 hover:border-base-content/20"
         ]}
@@ -417,7 +417,7 @@ defmodule EliaWeb.ChatSettingsLive do
         disabled={!@available}
         title={jail_title(@jailed, @available)}
         class={[
-          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100",
+          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition disabled:cursor-not-allowed",
           @jailed && "border-primary/50 bg-primary/5 text-primary",
           !@jailed && @available &&
             "border-warning/50 bg-warning/5 text-warning hover:border-warning/70",
@@ -465,7 +465,7 @@ defmodule EliaWeb.ChatSettingsLive do
         aria-haspopup="true"
         aria-expanded={to_string(@open)}
         class={[
-          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+          "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
           @open && "border-primary/50 bg-primary/5",
           !@open &&
             "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
@@ -558,7 +558,7 @@ defmodule EliaWeb.ChatSettingsLive do
         aria-haspopup="listbox"
         aria-expanded={to_string(@open)}
         class={[
-          "group flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[0.98]",
+          "group flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
           @open && "border-primary/50 bg-primary/5",
           !@open &&
             "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
