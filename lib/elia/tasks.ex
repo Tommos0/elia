@@ -298,6 +298,7 @@ defmodule Elia.Tasks do
         :skills,
         :max_steps,
         :budget_ms,
+        :token_budget,
         :pause_on_limit,
         :session_id,
         :turn_id,
@@ -311,7 +312,9 @@ defmodule Elia.Tasks do
 
     # LIMIT-5: the child's budget becomes its own turn limits, so its settings
     # page shows the budget it runs with and the user can give it more of it
-    # while it is paused. The parent's own limits are not inherited.
+    # while it is paused. The parent's own limits are not inherited, and the
+    # spawn sets no token budget: the child's token spend is unlimited
+    # (LIMIT-12) until the user sets one on its own settings page.
     limits = %{max_steps: steps, max_minutes: minutes(input), pause_on_limit: true}
 
     parent_snapshot = Elia.Agent.snapshot(parent_id)
@@ -480,7 +483,8 @@ defmodule Elia.Tasks do
 
   # Waits for the child's turn to end: its session goes idle (SUBTASK-8). A
   # child paused at a limit (SUBTASK-24) keeps this waiting, with no deadline of
-  # its own; the child's own loop enforces the budget (LOOP-20).
+  # its own; the child's own loop enforces the step limit and the time budget
+  # (LOOP-3, LOOP-20).
   defp await(child_id, monitor, error) do
     receive do
       {:agent, ^child_id, {:status, :idle}} ->

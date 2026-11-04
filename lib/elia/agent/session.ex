@@ -59,9 +59,10 @@ defmodule Elia.Agent.Session do
     # Whether this chat's commands run in the jail (ISOL-16): on by default,
     # and the host's own switch can only turn it off (ISOL-20).
     jail: true,
-    # This chat's turn limits (LIMIT-1, LIMIT-2): a step limit, a time budget
-    # and whether a limit pauses the turn. Empty means the loop's own default.
-    limits: %{max_steps: nil, max_minutes: nil, pause_on_limit: false},
+    # This chat's turn limits (LIMIT-1, LIMIT-2): a step limit, a time budget, a
+    # token budget and whether a limit pauses the turn. Empty means the loop's
+    # own default.
+    limits: %{max_steps: nil, max_minutes: nil, max_tokens: nil, pause_on_limit: false},
     # call_id => :awaiting_approval | :awaiting_input | :answered | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
@@ -982,11 +983,17 @@ defmodule Elia.Agent.Session do
   defp pause_message({:time, ms}),
     do: "Time limit reached (#{Elia.Agent.Loop.minutes(ms)})."
 
-  # STOP-2, LOOP-3, LOOP-20: what a turn that a limit ended says it was.
+  defp pause_message({:tokens, tokens}),
+    do: "Token limit reached (#{Elia.LLM.Tokens.format(tokens)} tokens)."
+
+  # STOP-2, LOOP-3, LOOP-20, LOOP-22: what a turn that a limit ended says it was.
   defp limit_message({:steps, max}), do: "Stopped after #{max} steps without finishing"
 
   defp limit_message({:time, ms}),
     do: "Stopped after #{Elia.Agent.Loop.minutes(ms)}: the time budget ran out"
+
+  defp limit_message({:tokens, tokens}),
+    do: "Stopped after #{Elia.LLM.Tokens.format(tokens)} tokens: the token budget ran out"
 
   # STOP-1, SESS-38: a turn that didn't finish says so in the transcript, marked
   # with the kind of stop it was (STOP-2), saved as any appended message is and
@@ -1031,6 +1038,11 @@ defmodule Elia.Agent.Session do
     do:
       pause_message({:time, ms}) <>
         " The turn is paused: Continue starts the clock over, Fail ends it."
+
+  defp pause_notice_text({:tokens, tokens}),
+    do:
+      pause_message({:tokens, tokens}) <>
+        " The turn is paused: Continue starts the count over, Fail ends it."
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})

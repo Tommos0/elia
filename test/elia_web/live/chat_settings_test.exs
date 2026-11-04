@@ -35,8 +35,8 @@ defmodule EliaWeb.ChatSettingsTest do
   defp settings(conn, id), do: live(conn, ~p"/c/#{id}/settings")
 
   # Every limit field, so a submit doesn't carry a leftover value from the form.
-  defp limits(max_steps \\ "", max_minutes \\ "") do
-    %{max_steps: max_steps, max_minutes: max_minutes}
+  defp limits(max_steps \\ "", max_minutes \\ "", max_tokens \\ "") do
+    %{max_steps: max_steps, max_minutes: max_minutes, max_tokens: max_tokens}
   end
 
   # Every compaction field, for the same reason.
@@ -97,6 +97,7 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#settings-auto-approve #auto-approve-button")
     assert has_element?(view, "#settings-jail #jail-toggle")
     assert has_element?(view, "#settings-form #settings-limits #limit-steps")
+    assert has_element?(view, "#settings-form #settings-limits #limit-tokens")
     assert has_element?(view, "#settings-limits #limit-pause[role='switch']")
     assert has_element?(view, "#settings-form #settings-context #compaction-budget")
     assert has_element?(view, "#settings-context #compaction-auto[role='switch']")
@@ -115,6 +116,7 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert has_element?(view, "#settings-form #limit-steps")
     assert has_element?(view, "#settings-form #limit-minutes")
+    assert has_element?(view, "#settings-form #limit-tokens")
     assert has_element?(view, "#settings-form #compaction-budget")
     assert has_element?(view, "#settings-form #compaction-fraction")
     assert has_element?(view, "#settings-form #compaction-target")
@@ -156,9 +158,10 @@ defmodule EliaWeb.ChatSettingsTest do
     view |> element("#limit-pause") |> render_click()
     assert Agent.snapshot(id).limits.pause_on_limit == false
 
-    assert_saved(view, %{limits: limits("12", "5"), compaction: compaction("20000", "70")}, id)
+    saved = %{limits: limits("12", "5", "500000"), compaction: compaction("20000", "70")}
+    assert_saved(view, saved, id)
 
-    assert %{max_steps: 12, max_minutes: 5} = Agent.snapshot(id).limits
+    assert %{max_steps: 12, max_minutes: 5, max_tokens: 500_000} = Agent.snapshot(id).limits
     assert %{budget: 20_000, fraction: 0.7} = Agent.snapshot(id).compaction.options
 
     assert Agent.snapshot(id).status == :idle
@@ -176,12 +179,12 @@ defmodule EliaWeb.ChatSettingsTest do
 
     view |> element("#jail-toggle") |> render_click()
     view |> element("#limit-pause") |> render_click()
-    assert_saved(view, %{limits: limits("5"), compaction: compaction()}, id)
+    assert_saved(view, %{limits: limits("5", "", "900"), compaction: compaction()}, id)
 
     # LIMIT-9: pausing is on by default, so what the click set is the off value
     # — a value that isn't the default, and so the one the file carries
     # (STORE-27).
-    assert %{max_steps: 5, pause_on_limit: false} = Agent.snapshot(id).limits
+    assert %{max_steps: 5, max_tokens: 900, pause_on_limit: false} = Agent.snapshot(id).limits
     refute Store.exists?(id)
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
@@ -191,7 +194,10 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert Store.exists?(id)
     assert Store.load_jail(id) == false
-    assert %{max_steps: 5, pause_on_limit: false} = Store.load_limits(id)
+
+    # STORE-27, STORE-28, LIMIT-2: the token budget is saved and loaded like the
+    # others.
+    assert %{max_steps: 5, max_tokens: 900, pause_on_limit: false} = Store.load_limits(id)
   end
 
   # LIMIT-6: the section shows what the chat runs with and what a limit does.
@@ -201,18 +207,21 @@ defmodule EliaWeb.ChatSettingsTest do
   } do
     {:ok, view, _html} = settings(conn, id)
 
-    # LIMIT-1, LIMIT-9: nothing set yet, so the loop's own default applies and
-    # pausing is on.
+    # LIMIT-1, LIMIT-9, LIMIT-12: nothing set yet, so the loop's own default
+    # applies — 100 steps, no time budget, no token budget — and pausing is on.
     assert has_element?(view, "#limit-steps[value='']")
     assert has_element?(view, "#limit-minutes[value='']")
+    assert has_element?(view, "#limit-tokens[value='']")
     assert has_element?(view, "#limit-pause[aria-checked='true']")
     assert has_element?(view, "#limit-pause-state", "On")
     assert has_element?(view, "#settings-limits", "On (the default)")
+    assert has_element?(view, "#settings-limits", "no token budget")
     assert has_element?(view, "#limits-state", "the default 100 steps")
     assert has_element?(view, "#limits-state", "no time budget")
+    assert has_element?(view, "#limits-state", "no token budget")
     assert has_element?(view, "#limits-state", "pauses the turn")
 
-    assert_saved(view, %{limits: limits("25", "10")}, id)
+    assert_saved(view, %{limits: limits("25", "10", "500000")}, id)
     # CSET-11: the save went back to the chat, so the page is opened again.
     {:ok, view, _html} = settings(conn, id)
 
@@ -228,10 +237,13 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert has_element?(view, "#limit-steps[value='25']")
     assert has_element?(view, "#limit-minutes[value='10']")
+    assert has_element?(view, "#limit-tokens[value='500000']")
     assert has_element?(view, "#limit-pause[aria-checked='true']")
     assert has_element?(view, "#limit-pause-state", "On")
     assert has_element?(view, "#limits-state", "25 steps")
     assert has_element?(view, "#limits-state", "10 minutes")
+    # LIMIT-12: a count the page says the way the context indicator does.
+    assert has_element?(view, "#limits-state", "500K tokens")
     assert has_element?(view, "#limits-state", "pauses the turn")
     refute has_element?(view, "#settings-error")
   end
@@ -239,7 +251,7 @@ defmodule EliaWeb.ChatSettingsTest do
   # LIMIT-6, LIMIT-7: clearing a field goes back to the default.
   test "an empty field clears a limit", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
-    :ok = Agent.set_limits(id, %{max_steps: 25})
+    :ok = Agent.set_limits(id, %{max_steps: 25, max_tokens: 900})
     render(view)
 
     assert_saved(view, %{limits: limits()}, id)
@@ -247,11 +259,13 @@ defmodule EliaWeb.ChatSettingsTest do
     assert Agent.snapshot(id).limits == %{
              max_steps: nil,
              max_minutes: nil,
+             max_tokens: nil,
              pause_on_limit: true
            }
 
     {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#limits-state", "the default 100 steps")
+    assert has_element?(view, "#limits-state", "no token budget")
   end
 
   # CSET-7, LIMIT-7
@@ -271,9 +285,24 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#settings-error")
     assert Agent.snapshot(id).limits.max_minutes == nil
 
+    # LIMIT-7, LIMIT-12: the token budget must be a whole number above 0 too ...
+    for bad <- ~w(abc 0 -3 2.5) do
+      submit_settings(view, %{limits: limits("", "", bad)})
+
+      assert has_element?(view, "#settings-error")
+      assert Agent.snapshot(id).limits.max_tokens == nil
+      assert has_element?(view, "#limit-tokens[value='#{bad}']")
+    end
+
     # CSET-11: a good value is accepted, and the save goes back to the chat.
     assert_saved(view, %{limits: limits("3")}, id)
     assert Agent.snapshot(id).limits.max_steps == 3
+
+    # ... and, unlike the other two, it has no upper bound: a count far above
+    # the step limit's cap is taken as it is.
+    {:ok, view, _html} = settings(conn, id)
+    assert_saved(view, %{limits: limits("", "", "1000000000")}, id)
+    assert Agent.snapshot(id).limits.max_tokens == 1_000_000_000
   end
 
   # COMPACT-30: the section shows this chat's compaction options, as percentages,

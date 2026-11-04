@@ -11,6 +11,22 @@ defmodule Elia.LLM.Tokens do
 
   alias Elia.LLM.Message
 
+  @doc """
+  A token count written short: `1.5M`, `500K`, and a plain count below 10,000 —
+  a limit is easier to read as "1100" than as "1K" (LIMIT-12).
+  """
+  @spec format(non_neg_integer()) :: binary()
+  def format(tokens) when is_integer(tokens) and tokens >= 1_000_000,
+    do: "#{trim(tokens / 1_000_000)}M"
+
+  def format(tokens) when is_integer(tokens) and tokens >= 10_000, do: "#{div(tokens, 1_000)}K"
+  def format(tokens) when is_integer(tokens), do: Integer.to_string(tokens)
+
+  defp trim(number) do
+    rounded = Float.round(number, 1)
+    if rounded == Float.round(rounded), do: trunc(rounded), else: rounded
+  end
+
   @spec estimate(binary() | nil) :: non_neg_integer()
   def estimate(text) when is_binary(text), do: div(String.length(text) + 3, 4)
   def estimate(nil), do: 0

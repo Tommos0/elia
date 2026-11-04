@@ -69,4 +69,17 @@ defmodule Elia.LLM.TokensTest do
     assert Tokens.result_text([%{"type" => "text", "text" => "a"}, %{type: :text, text: "b"}]) ==
              "a\nb"
   end
+
+  # LIMIT-12: a token count written short, with a small one staying as it was
+  # typed.
+  test "format writes a count short" do
+    assert Tokens.format(0) == "0"
+    assert Tokens.format(900) == "900"
+    assert Tokens.format(1100) == "1100"
+    assert Tokens.format(9999) == "9999"
+    assert Tokens.format(10_000) == "10K"
+    assert Tokens.format(500_000) == "500K"
+    assert Tokens.format(1_000_000) == "1M"
+    assert Tokens.format(1_500_000) == "1.5M"
+  end
 end

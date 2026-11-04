@@ -1,21 +1,23 @@
 defmodule Elia.Limits do
   @moduledoc """
   The per-chat turn limits (LIMIT-1): a step limit, a wall-clock budget in
-  minutes, and whether reaching either one pauses the turn for the user
-  (LOOP-19) instead of ending it with an error (LOOP-3).
+  minutes, a token budget, and whether reaching any of them pauses the turn for
+  the user (LOOP-19) instead of ending it with an error (LOOP-3).
 
   An empty value (`nil`) means "no limit of this chat's own", so the loop's own
-  default applies. `pause_on_limit` is on by default (LIMIT-9), so a chat that
-  sets no limits of its own pauses at the loop's step limit rather than ending
-  its turn with an error (LOOP-3); a chat that turns it off keeps the old
-  ending. This module is the one place that knows the shape, the defaults,
-  what may be set (LIMIT-7) and the loop options a set of limits gives
-  (LIMIT-3).
+  default applies — for the token budget that is no budget at all (LIMIT-12), so
+  a turn's token spend is unlimited until the chat sets one. `pause_on_limit` is
+  on by default (LIMIT-9), so a chat that sets no limits of its own pauses at the
+  loop's step limit rather than ending its turn with an error (LOOP-3); a chat
+  that turns it off keeps the old ending. This module is the one place that knows
+  the shape, the defaults, what may be set (LIMIT-7) and the loop options a set
+  of limits gives (LIMIT-3).
   """
 
-  @keys [:max_steps, :max_minutes, :pause_on_limit]
-  # LIMIT-1, LIMIT-9: no step limit of this chat's own, no budget, and pausing.
-  @defaults %{max_steps: nil, max_minutes: nil, pause_on_limit: true}
+  @keys [:max_steps, :max_minutes, :max_tokens, :pause_on_limit]
+  # LIMIT-1, LIMIT-9: no step limit of this chat's own, no time budget, no token
+  # budget, and pausing.
+  @defaults %{max_steps: nil, max_minutes: nil, max_tokens: nil, pause_on_limit: true}
 
   # LIMIT-7: what the chat settings page may set. A sub-task's own budget comes
   # from `spawn_task` instead (SUBTASK-12, SUBTASK-18) and is capped there.
@@ -26,6 +28,7 @@ defmodule Elia.Limits do
   @type t :: %{
           max_steps: pos_integer() | nil,
           max_minutes: number() | nil,
+          max_tokens: pos_integer() | nil,
           pause_on_limit: boolean()
         }
 
@@ -50,6 +53,8 @@ defmodule Elia.Limits do
 
   defp valid?(:max_steps, value), do: is_nil(value) or (is_integer(value) and value >= 1)
   defp valid?(:max_minutes, value), do: is_nil(value) or (is_number(value) and value > 0)
+  # LIMIT-12: no upper bound — any whole number of tokens above 0 will do.
+  defp valid?(:max_tokens, value), do: is_nil(value) or (is_integer(value) and value >= 1)
   defp valid?(:pause_on_limit, value), do: is_boolean(value)
 
   @doc """
@@ -75,6 +80,7 @@ defmodule Elia.Limits do
 
     with :ok <- check_steps(Map.get(changes, :max_steps)),
          :ok <- check_minutes(Map.get(changes, :max_minutes)),
+         :ok <- check_tokens(Map.get(changes, :max_tokens)),
          :ok <- check_pause(Map.get(changes, :pause_on_limit)) do
       {:ok, Map.take(changes, @keys)}
     end
@@ -101,9 +107,17 @@ defmodule Elia.Limits do
   defp check_pause(pause) when is_boolean(pause), do: :ok
   defp check_pause(_), do: {:error, "pause at a limit must be on or off"}
 
+  # LIMIT-7, LIMIT-12: a token budget has no upper bound.
+  defp check_tokens(nil), do: :ok
+  defp check_tokens(tokens) when is_integer(tokens) and tokens >= 1, do: :ok
+
+  defp check_tokens(_),
+    do: {:error, "the token budget must be a whole number of tokens above 0"}
+
   @doc """
   The limits as loop options (LIMIT-3): `:max_steps` (LOOP-16), `:budget_ms`
-  (LOOP-20) and `:pause_on_limit` (LOOP-19), with only the ones this chat sets.
+  (LOOP-20), `:token_budget` (LOOP-22) and `:pause_on_limit` (LOOP-19), with
+  only the ones this chat sets.
   """
   @spec loop_opts(t() | map()) :: keyword()
   def loop_opts(limits) do
@@ -112,6 +126,7 @@ defmodule Elia.Limits do
     []
     |> maybe_put(:max_steps, limits.max_steps)
     |> maybe_put(:budget_ms, budget_ms(limits.max_minutes))
+    |> maybe_put(:token_budget, limits.max_tokens)
     |> maybe_put(:pause_on_limit, if(limits.pause_on_limit, do: true))
   end
 

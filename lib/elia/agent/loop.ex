@@ -26,7 +26,8 @@ defmodule Elia.Agent.Loop do
   Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
   function returning one, instead of the project's), `:max_steps` (default 100),
   `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
-  LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:llm` (extra request
+  LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:token_budget` (a
+  token budget for the turn, LOOP-22, LIMIT-12), `:llm` (extra request
   fields), `:project` (the chat's project),
   `:workspace` (the chat's workspace root: its own git
   worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12),
@@ -36,12 +37,13 @@ defmodule Elia.Agent.Loop do
   `:compaction_trigger`, `:compaction_target` and `:compaction_overhead`.
   """
 
-  alias Elia.LLM.{Compaction, Message}
+  alias Elia.LLM.{Compaction, Context, Message}
   alias Elia.Tool
 
   @max_steps 100
 
-  @type limit :: {:steps, pos_integer()} | {:time, non_neg_integer()}
+  @type limit ::
+          {:steps, pos_integer()} | {:time, non_neg_integer()} | {:tokens, non_neg_integer()}
 
   @type result :: :done | :refused | {:limit, limit()} | {:error, term()}
 
@@ -54,12 +56,16 @@ defmodule Elia.Agent.Loop do
       session: session,
       skills: Keyword.get(opts, :skills),
       max_steps: Keyword.get(opts, :max_steps, @max_steps),
-      # LOOP-19, LOOP-20: whether a limit pauses the turn, and the wall-clock
-      # budget it is measured against.
+      # LOOP-19, LOOP-20, LOOP-22: whether a limit pauses the turn, the
+      # wall-clock budget it is measured against, and the token budget.
       pause_on_limit: Keyword.get(opts, :pause_on_limit, false),
       budget_ms: Keyword.get(opts, :budget_ms),
+      token_budget: Keyword.get(opts, :token_budget),
       started_ms: now_ms(),
       approved_ms: 0,
+      # LOOP-22, LIMIT-12: the tokens the provider has reported for this turn so
+      # far — what its steps cost, input and output together.
+      tokens: 0,
       # COMPACT-29: the chat's compaction state and the trigger, target and
       # overhead of the mid-turn pass (COMPACT-6, COMPACT-8, CTX-1).
       compaction: Keyword.get(opts, :compaction),
@@ -84,11 +90,13 @@ defmodule Elia.Agent.Loop do
     step(ctx, history, 1)
   end
 
-  # LOOP-3, LOOP-19, LOOP-20: the limits are checked at the start of every step.
+  # LOOP-3, LOOP-19, LOOP-20, LOOP-22: the limits are checked at the start of
+  # every step.
   defp step(ctx, history, step) do
     cond do
       step > ctx.max_steps -> limit(ctx, history, {:steps, ctx.max_steps})
       over_budget?(ctx) -> limit(ctx, history, {:time, ctx.budget_ms})
+      over_tokens?(ctx) -> limit(ctx, history, {:tokens, ctx.token_budget})
       true -> run_step(ctx, history, step)
     end
   end
@@ -99,13 +107,14 @@ defmodule Elia.Agent.Loop do
   defp limit(_ctx, _history, limit), do: {:limit, limit}
 
   # LOOP-19: ask the session to pause the turn and wait for the user's decision.
-  # A resume starts the step count and the wall-clock budget over (LOOP-20).
+  # A resume starts the step count, the wall-clock budget and the token total
+  # over (LOOP-20, LOOP-22).
   defp pause(ctx, history, limit) do
     send(ctx.session, {:loop_pause, self(), limit})
 
     receive do
       {:pause_decision, :continue} ->
-        step(%{ctx | started_ms: now_ms(), approved_ms: 0}, history, 1)
+        step(%{ctx | started_ms: now_ms(), approved_ms: 0, tokens: 0}, history, 1)
 
       {:pause_decision, :fail} ->
         {:limit, limit}
@@ -115,6 +124,11 @@ defmodule Elia.Agent.Loop do
   # LOOP-20: the wall-clock budget, less the time spent waiting for approvals.
   defp over_budget?(%{budget_ms: nil}), do: false
   defp over_budget?(ctx), do: now_ms() - ctx.started_ms - ctx.approved_ms > ctx.budget_ms
+
+  # LOOP-22, LIMIT-12: the turn's token budget, against what the provider has
+  # reported for its steps so far. Without a budget the total is not a limit.
+  defp over_tokens?(%{token_budget: nil}), do: false
+  defp over_tokens?(ctx), do: ctx.tokens > ctx.token_budget
 
   defp now_ms, do: System.monotonic_time(:millisecond)
 
@@ -160,6 +174,9 @@ defmodule Elia.Agent.Loop do
         # The provider's real input count for this request; the session keeps
         # the latest so the context indicator can show it (CTX-6).
         send(ctx.session, {:loop_usage, usage})
+        # LOOP-22, LIMIT-12: what this request cost — input and output together —
+        # added to the turn's total, which the next step's check is against.
+        ctx = %{ctx | tokens: ctx.tokens + (Context.provider_tokens(usage) || 0)}
         append(ctx, message)
         history = history ++ [message]
 

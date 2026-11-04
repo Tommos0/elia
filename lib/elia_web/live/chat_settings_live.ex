@@ -175,8 +175,8 @@ defmodule EliaWeb.ChatSettingsLive do
               >
                 <h2 class="font-medium">Limits</h2>
                 <p class="mt-0.5 text-xs text-base-content/50">
-                  How far one turn may go before Elia stops. Leave a field empty for the
-                  default: limits apply from the next turn.
+                  How far one turn may go — steps, time and tokens — before Elia stops.
+                  Leave a field empty for the default: limits apply from the next turn.
                 </p>
 
                 <div class="mt-4 space-y-3">
@@ -212,6 +212,25 @@ defmodule EliaWeb.ChatSettingsLive do
                       <span class="mt-1 block text-[11px] text-base-content/40">
                         Empty: no time budget. Time spent waiting for your approval doesn't
                         count.
+                      </span>
+                    </label>
+                    <%!-- LIMIT-6, LIMIT-12: the turn's token budget. --%>
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">
+                        Token budget
+                      </span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="limit-tokens"
+                        name="limits[max_tokens]"
+                        value={@limits_form["max_tokens"]}
+                        placeholder="none"
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                      <span class="mt-1 block text-[11px] text-base-content/40">
+                        Empty: no token budget. Counts what the model reports for every step
+                        of the turn, input and output together.
                       </span>
                     </label>
                   </div>
@@ -727,7 +746,8 @@ defmodule EliaWeb.ChatSettingsLive do
     if float == Float.round(float), do: trunc(float), else: float
   end
 
-  # LIMIT-6: the settings as they stand, and what reaching a limit does.
+  # LIMIT-6, LIMIT-12: the settings as they stand, and what reaching a limit
+  # does.
   defp limits_state(limits) do
     steps = if limits.max_steps, do: "#{limits.max_steps} steps", else: "the default 100 steps"
 
@@ -736,6 +756,11 @@ defmodule EliaWeb.ChatSettingsLive do
         do: "a budget of #{limits.max_minutes} minutes",
         else: "no time budget"
 
+    tokens =
+      if limits.max_tokens,
+        do: "a budget of #{Elia.LLM.Tokens.format(limits.max_tokens)} tokens",
+        else: "no token budget"
+
     at_limit =
       if limits.pause_on_limit do
         "reaching either pauses the turn for you to continue or fail"
@@ -743,7 +768,7 @@ defmodule EliaWeb.ChatSettingsLive do
         "reaching either ends the turn with an error"
       end
 
-    "This chat runs at most #{steps} per turn, with #{time}; #{at_limit}."
+    "This chat runs at most #{steps} per turn, with #{time} and #{tokens}; #{at_limit}."
   end
 
   # COMPACT-30: the trigger these values give for the chat's model window, or
@@ -769,7 +794,8 @@ defmodule EliaWeb.ChatSettingsLive do
   defp limits_form(limits) do
     %{
       "max_steps" => blank_to_empty(limits.max_steps),
-      "max_minutes" => blank_to_empty(limits.max_minutes)
+      "max_minutes" => blank_to_empty(limits.max_minutes),
+      "max_tokens" => blank_to_empty(limits.max_tokens)
     }
   end
 
@@ -825,7 +851,8 @@ defmodule EliaWeb.ChatSettingsLive do
   defp submitted_limits_form(params) do
     %{
       "max_steps" => to_string(params["max_steps"] || ""),
-      "max_minutes" => to_string(params["max_minutes"] || "")
+      "max_minutes" => to_string(params["max_minutes"] || ""),
+      "max_tokens" => to_string(params["max_tokens"] || "")
     }
   end
 
@@ -910,7 +937,8 @@ defmodule EliaWeb.ChatSettingsLive do
 
     limits = %{
       max_steps: parse_number(limit_params["max_steps"]),
-      max_minutes: parse_number(limit_params["max_minutes"])
+      max_minutes: parse_number(limit_params["max_minutes"]),
+      max_tokens: parse_number(limit_params["max_tokens"])
     }
 
     with {:ok, limits} <- Elia.Limits.validate(limits),

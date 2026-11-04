@@ -596,6 +596,12 @@ defmodule Elia.TasksTest do
 
     assert Agent.snapshot(child).pause == "Step limit reached (1 steps)."
 
+    # LIMIT-5, LIMIT-12: a sub-task's limits come from its spawn, which sets no
+    # token budget — so the child's token spend is unlimited until the user sets
+    # one on its own settings page.
+    assert %{max_steps: 1, max_tokens: nil, pause_on_limit: true} =
+             Agent.snapshot(child).limits
+
     # SUBTASK-24: the entry is still held and the parent is still waiting, with
     # no deadline of its own.
     assert Tasks.active() == [%{child_id: child, parent_id: parent}]

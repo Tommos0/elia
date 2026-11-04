@@ -261,6 +261,26 @@ defmodule Elia.LLM.ContextTest do
     assert Context.provider_input_tokens(nil) == nil
   end
 
+  # LOOP-22, LIMIT-12: what a request cost the turn, both halves together.
+  test "provider_tokens adds output to input, whichever counts the provider sends" do
+    assert Context.provider_tokens(%{"input_tokens" => 300, "output_tokens" => 200}) == 500
+
+    assert Context.provider_tokens(%{
+             "input_tokens" => 100,
+             "cache_read_input_tokens" => 50,
+             "cache_creation_input_tokens" => 25,
+             "output_tokens" => 200
+           }) == 375
+
+    assert Context.provider_tokens(%{"prompt_tokens" => 12, "completion_tokens" => 5}) == 17
+
+    # A report with only one of the two counts what it does carry; one with
+    # neither adds nothing.
+    assert Context.provider_tokens(%{"output_tokens" => 7}) == 7
+    assert Context.provider_tokens(%{}) == nil
+    assert Context.provider_tokens(nil) == nil
+  end
+
   # CTX-10: the gap to the provider's figure becomes a bucket of the total.
   test "calibrate anchors the total to the provider's figure" do
     context = Context.new([Message.user("hello")], skills())

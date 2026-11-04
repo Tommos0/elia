@@ -3,64 +3,80 @@
 Status: Draft
 
 A turn can run long: many steps, and — with a slow provider, or a shell command
-that hangs — a lot of wall-clock time. The loop has known both limits since
-LOOP-3, LOOP-16, LOOP-19 and LOOP-20, but nothing in the UI ever set them: only
-a sub-task got a budget, and it got it from `spawn_task` (SUBTASK-12,
-SUBTASK-18). A chat can now set its own step limit and time budget, and whether
-reaching one pauses the turn for the user's decision (UI-57) instead of failing
-it, from its settings page (CSET-5). The defaults are the loop's — a step limit
-of 100, no time budget — and a chat that sets nothing pauses when it reaches
-that step limit rather than ending with an error (LIMIT-9); the pause is written
-into the transcript (LIMIT-10), so a turn that stopped for the user says so
-however much later the chat is opened.
+that hangs — a lot of wall-clock time. It also spends tokens, request after
+request, which neither a step limit nor a clock says anything about: a hundred
+steps over a long context cost far more than a hundred over a short one, and a
+turn paused at one of the other two limits has already spent what it spent. A
+token budget sits beside them (LIMIT-12), counting what the provider reports for
+the turn's steps, with none set by default (LIMIT-1), so a chat's token spend is
+unlimited until the user gives it a budget. The loop has known the other two
+limits since LOOP-3, LOOP-16, LOOP-19 and LOOP-20, but nothing in the UI ever
+set them: only a sub-task got a budget, and it got it from `spawn_task`
+(SUBTASK-12, SUBTASK-18). A chat can now set its own step limit, time budget and
+token budget, and whether reaching one pauses the turn for the user's decision
+(UI-57) instead of failing it, from its settings page (CSET-5). The defaults are
+the loop's — a step limit of 100, no time budget, no token budget — and a chat
+that sets nothing pauses when it reaches that step limit rather than ending with
+an error (LIMIT-9); the pause is written into the transcript (LIMIT-10), so a
+turn that stopped for the user says so however much later the chat is opened.
 
 ## Requirements
 
-- **LIMIT-1** A chat has three limits, each empty by default:
+- **LIMIT-1** A chat has four limits, each empty by default:
   - `max_steps`, a positive integer: the turn's step limit (LOOP-16, LOOP-3,
     whose default is 100);
   - `max_minutes`, a positive number of minutes: the turn's wall-clock budget
     (LOOP-20, no budget by default);
-  - `pause_on_limit`, a boolean: whether reaching either one pauses the turn
+  - `max_tokens`, a positive integer: the turn's token budget (LIMIT-12,
+    LOOP-22, no budget by default, so a turn may spend any number of tokens);
+  - `pause_on_limit`, a boolean: whether reaching any of them pauses the turn
     for the user (LOOP-19, SESS-27) rather than ending it with an error
     (LOOP-3), on by default (LIMIT-9).
 - **LIMIT-2** The session holds them as `%{max_steps: nil | pos_integer,
-  max_minutes: nil | number, pause_on_limit: boolean}`, where `nil` is "no limit
-  of this chat's own", like the chat's jail setting (SESS-30):
+  max_minutes: nil | number, max_tokens: nil | pos_integer, pause_on_limit:
+  boolean}`, where `nil` is "no limit of this chat's own", like the chat's jail
+  setting (SESS-30):
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets them for one chat,
   `set_limits/2` is allowed mid-turn, a change is broadcast as
   `{:limits, limits}` (SESS-6) so every view of the chat agrees, and
   `snapshot/1` carries them (SESS-7). They are saved with the chat (STORE-27,
   STORE-28) and loaded on start.
-- **LIMIT-3** A turn runs with them: the session passes `max_steps` and
-  `budget_ms` (from `max_minutes`) to the loop when they are set, and
-  `pause_on_limit` when it is on, without overriding an option the caller passed
-  explicitly (LOOP-16, LOOP-19, LOOP-20), which is how tests drive a limit
-  directly. A change applies from the next turn; a turn already running keeps
-  the limits it started with.
+- **LIMIT-3** A turn runs with them: the session passes `max_steps`, `budget_ms`
+  (from `max_minutes`) and `token_budget` (from `max_tokens`) to the loop when
+  they are set, and `pause_on_limit` when it is on, without overriding an option
+  the caller passed explicitly (LOOP-16, LOOP-19, LOOP-20, LOOP-22), which is how
+  tests drive a limit directly. A change applies from the next turn; a turn
+  already running keeps the limits it started with.
 - **LIMIT-4** With `pause_on_limit` on, a turn that reaches a limit pauses: its
   status becomes `:paused` (SESS-4), the chat shows the pause banner (UI-57,
-  SESS-27) and the user continues it — starting the step count and the budget
-  over (LOOP-19) — or fails it, which ends the turn with the limit's error.
+  SESS-27) and the user continues it — starting the step count, the clock and
+  the token count over (LOOP-19) — or fails it, which ends the turn with the
+  limit's error.
 - **LIMIT-5** A sub-task's limits are set at its spawn instead of in its file:
   `spawn_task`'s `max_steps` (SUBTASK-12) and `max_minutes` (SUBTASK-18) become
   the child chat's limits (LIMIT-2), with `pause_on_limit` on (SUBTASK-24), so
   the child's settings page shows the budget it actually runs with and the child
-  can be given more of it while it is paused. The child's limits are its own
+  can be given more of it while it is paused. The spawn sets no token budget, so
+  a sub-task's token use is unlimited (LIMIT-1, LIMIT-12) until the user sets
+  one in the child's own settings page. The child's limits are its own
   from then on, like its jail setting and auto-approvals (ISOL-18, APPR-12): a
   later change in either chat never affects the other, and the parent's own
   limits are not inherited.
 - **LIMIT-6** The chat settings page's **Limits** section (CSET-5) shows the
-  three settings — the two numbers in the page's single form
-  (`#limit-steps`, `#limit-minutes`, CSET-7) and `pause_on_limit` as a switch
+  four settings — the three numbers in the page's single form (`#limit-steps`,
+  `#limit-minutes`, `#limit-tokens`, CSET-7) and `pause_on_limit` as a switch
   (`#limit-pause`, CSET-7) — marks a value that isn't the chat's own as the
   default it falls back to (LIMIT-1), says that pausing is the default, so the
   switch reads as on for a chat that never touched it (LIMIT-9), says what
   reaching a limit does with it on and off (LIMIT-4, LOOP-3), and sets them
-  (CSET-4).
+  (CSET-4). The token budget's own hint under its field says what it counts —
+  every step's input and output together — and that an empty field leaves the
+  turn's token use unlimited (LIMIT-12), as the time budget's says its wait isn't
+  counted (LOOP-20).
 - **LIMIT-7** A value that isn't a positive number, a step limit above 1,000, or
   a time budget above 1,440 minutes is rejected and leaves the chat's limits as
-  they were.
+  they were. A token budget has no upper bound: any whole number of tokens above
+  0 is accepted (LIMIT-12).
 - ~~**LIMIT-8** A chat with no limits is unchanged (LOOP-3): a runaway turn
   still ends with an error after 100 steps, and a turn that ends at a limit the
   user failed, or with no `pause_on_limit`, stores nothing.~~ Superseded by
@@ -70,10 +86,11 @@ however much later the chat is opened.
 
 - **LIMIT-9** `pause_on_limit` is on by default: a chat that sets no limits of
   its own **pauses** when its turn reaches a limit — the loop's 100 steps
-  (LOOP-16), or the step limit or time budget the chat does set (LIMIT-1,
-  LOOP-20) — instead of ending with an error (LOOP-3), where it used to end: the
-  status becomes `:paused` (SESS-4), the chat shows the pause banner (UI-57) and
-  the chat list shows it paused (UI-58), and the user continues the turn —
+  (LOOP-16), or the step limit, time budget or token budget the chat does set
+  (LIMIT-1, LOOP-20, LIMIT-12) — instead of ending with an error (LOOP-3), where
+  it used to end: the status becomes `:paused` (SESS-4), the chat shows the
+  pause banner (UI-57) and the chat list shows it paused (UI-58), and the user
+  continues the turn —
   starting the count over — or fails it (LIMIT-4). It is still the chat's own
   switch (LIMIT-1, LIMIT-6, CSET-5, `#limit-pause`), stored like the others
   (LIMIT-2, STORE-27, STORE-28): on is the default, so only a chat that turns it
@@ -84,8 +101,9 @@ however much later the chat is opened.
   session appends a harness message (UI-9) that names the limit and what the
   decision does — "Step limit reached (100 steps). The turn is paused: Continue
   starts the count over, Fail ends it." (and the time budget's own wording,
-  LOOP-20) — marked as the pause it is (`meta.limit`, SESS-37),
-  saved with the chat (STORE-1, STORE-2) so the transcript keeps it however long
+  LOOP-20, and the token budget's, LIMIT-12) — marked as the pause it is
+  (`meta.limit`, SESS-37), saved with the chat (STORE-1, STORE-2) so the
+  transcript keeps it however long
   afterwards the chat is opened, and rendered as an error row (UI-81, UI-12)
   rather than as a plain harness notice (UI-9), so a turn waiting on the user
   never reads as if it had finished. It is written once per pause: a resumed
@@ -102,9 +120,28 @@ however much later the chat is opened.
   (LIMIT-10) sits above it — so the transcript says both that the turn waited
   and that it was ended (UI-82).
 
+- **LIMIT-12** `max_tokens` is the turn's **token budget** (LIMIT-1): the tokens
+  the provider reported for every step of the turn, input and output added up
+  (LOOP-22). Input is counted as CTX-6 counts it, so prompt-cache reads and
+  writes are in it too, and each step counts the whole request it sent — a long
+  conversation therefore spends more per step than a short one. Empty means no
+  budget at all: a turn may spend any number of tokens, which is the default
+  (LIMIT-1) and what a sub-task gets (LIMIT-5). It is a limit like the other
+  three: when the turn's total exceeds it, the turn pauses with the message
+  "Token limit reached (500K tokens). The turn is paused: Continue starts the
+  count over, Fail ends it." (LIMIT-10), and a resume starts the token count
+  over with the step count and the clock (LOOP-19, LOOP-20); failing the pause,
+  or a chat with `pause_on_limit` off (LIMIT-9), ends the turn with "Stopped
+  after 500K tokens: the token budget ran out" (LOOP-22, STOP-1, STOP-2). A
+  count is written short — `900`, `10K`, `500K`, `1.5M`; below 10,000 it is the
+  plain count, so a small budget reads as it was typed. What the turn has spent
+  so far is not shown anywhere while it runs; the context indicator reports the
+  last request alone (CTX-6).
+
 ## Implementation
 
 `Elia.Limits` (the defaults, LIMIT-9), `Elia.Agent` (`set_limits/2`),
+`Elia.Agent.Loop` (the turn's token total, LIMIT-12),
 `Elia.Agent.Session` (the limits, the event, the pause's message, the save, the
 turn's options), `Elia.Store` (`save/3`'s `limits:`, `load_limits/1`),
 `Elia.Tasks` (a spawn sets the child's limits), `EliaWeb.ChatSettingsLive` (the
@@ -112,12 +149,13 @@ Limits section), `EliaWeb.ChatLive` (the pause's row, UI-81).
 
 ## Tests
 
-`test/elia/agent_test.exs` (the limits in a turn: a step limit and a budget
-pausing a turn, the defaults — a chat with no limits pauses at 100 steps
-(LIMIT-9) — the pause's message and what the transcript keeps of it (LIMIT-10),
-and the stop a limit ends in (STOP-1, STOP-2), persistence across a restart,
-LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10), `test/elia/store_test.exs` (STORE-27,
-STORE-28), `test/elia/tasks_test.exs` (a child's limits come from its spawn,
+`test/elia/agent_test.exs` (the limits in a turn: a step limit, a budget and a
+token budget pausing a turn, the defaults — a chat with no limits pauses at 100
+steps (LIMIT-9) — the pause's message and what the transcript keeps of it
+(LIMIT-10), and the stop a limit ends in (STOP-1, STOP-2), persistence across a
+restart, LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10, LIMIT-12),
+`test/elia/store_test.exs` (STORE-27, STORE-28),
+`test/elia/tasks_test.exs` (a child's limits come from its spawn,
 LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
 LIMIT-6, LIMIT-7), `test/elia_web/live/chat_live_test.exs` (the pause's row,
 UI-81).

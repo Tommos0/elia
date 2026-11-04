@@ -401,6 +401,73 @@ defmodule Elia.AgentTest do
     await_status(id, :idle)
   end
 
+  # LOOP-22, LIMIT-12, SESS-27
+  test "the token_budget option pauses the turn when the turn's tokens run out", %{} do
+    id = start_fake_skill_session(max_steps: 100, pause_on_limit: true, token_budget: 1100)
+
+    # Every step reports 300 input, 100 of it prompt-cache reads, and 200
+    # output: 600 tokens a step, so the turn is over 1100 after two of them —
+    # and the model's next step is never sent.
+    push_token_step(300, 100, 200, 2)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+    assert_receive {:agent, ^id, {:paused, "Token limit reached (1100 tokens)."}}, 10_000
+
+    # LIMIT-12: prompt-cache reads count as input (CTX-6), so each step cost 600
+    # and the two steps it took to pass 1100 are the ones the model saw.
+    assert length(FakeLLM.requests()) == 2
+
+    # LIMIT-10: the pause is in the transcript, marked with the limit it names,
+    # with the token budget's own wording.
+    last = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, limit: {:tokens, 1100}}} = last
+
+    assert Message.text_content(last) =~
+             "Token limit reached (1100 tokens). The turn is paused: Continue " <>
+               "starts the count over, Fail ends it."
+
+    # Continue: the count starts over, so a step that reports nothing finishes.
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    :ok = Agent.resume(id)
+
+    await_status(id, :idle)
+    refute id in Agent.paused()
+  end
+
+  # LIMIT-1, LIMIT-2, LIMIT-3, LIMIT-12, STOP-1, STOP-2
+  test "a chat's own token budget is what its turn runs with, and failing the pause ends it",
+       %{} do
+    id = start_fake_skill_session([])
+    push_token_step(300, 100, 200, 2)
+
+    # A change applies from the next turn (LIMIT-3).
+    :ok = Agent.set_limits(id, %{max_tokens: 600})
+    assert Agent.snapshot(id).limits.max_tokens == 600
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+    assert_receive {:agent, ^id, {:paused, "Token limit reached (600 tokens)."}}, 10_000
+
+    :ok = Agent.fail_task(id)
+
+    # STOP-1, STOP-2: the turn ended at the limit, which is written under the
+    # pause's own message, with the token budget's wording.
+    assert_receive {:agent, ^id, {:error, "Stopped after 600 tokens: the token budget ran out"}},
+                   10_000
+
+    await_status(id, :idle)
+
+    messages = Elia.Store.load(id)
+    assert %Message{role: :user, meta: %{limit: {:tokens, 600}}} = Enum.at(messages, -2)
+
+    stopped = List.last(messages)
+    assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
+    assert Message.text_content(stopped) =~ "Stopped after 600 tokens: the token budget ran out"
+  end
+
   # Starts a session whose only skill is `fake_skill/1`, plus the given loop
   # options, subscribed like the setup's (LOOP-3, LOOP-16).
   defp start_fake_skill_session(loop_opts) do
@@ -418,6 +485,25 @@ defmodule Elia.AgentTest do
     fun = fn _request, _on_event ->
       message = FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})])
       {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
+    end
+
+    for _ <- 1..times, do: FakeLLM.push(fun)
+  end
+
+  # LOOP-22, LIMIT-12: scripts the model to ask for the fake skill's tool `times`
+  # times, each request reporting what it cost: `input` tokens in, `cached` of
+  # them prompt-cache reads, and `output` tokens back.
+  defp push_token_step(input, cached, output, times) do
+    fun = fn _request, _on_event ->
+      message = FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})])
+
+      usage = %{
+        "input_tokens" => input,
+        "cache_read_input_tokens" => cached,
+        "output_tokens" => output
+      }
+
+      {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: usage}}
     end
 
     for _ <- 1..times, do: FakeLLM.push(fun)

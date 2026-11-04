@@ -28,12 +28,12 @@ and saved, so the chat says why it stopped whenever it is opened again.
 
 - **STOP-2** The message is marked `meta.stopped` with the kind of stop
   (STOP-4's event carries the same text), and says what happened:
-  - `:limit` — the limit's own error (LOOP-3, LOOP-20): "Stopped after 100 steps
-    without finishing", or the time budget's wording. It is written when the
-    turn *ends* at a limit: the user failed a paused turn (LIMIT-4, LOOP-19), or
-    the chat turned pausing off (LIMIT-9). A pause before it wrote a message of
-    its own (LIMIT-10), so the transcript holds both: that the turn waited, and
-    that it was ended.
+  - `:limit` — the limit's own error (LOOP-3, LOOP-20, LOOP-22): "Stopped after
+    100 steps without finishing", or the time budget's or the token budget's
+    wording. It is written when the turn *ends* at a limit: the user failed a
+    paused turn (LIMIT-4, LOOP-19), or the chat turned pausing off (LIMIT-9). A
+    pause before it wrote a message of its own (LIMIT-10), so the transcript
+    holds both: that the turn waited, and that it was ended.
   - `:error` — the loop's reason, as the text the loop returned, e.g. "OpenRouter
     stream failed: socket closed" (LOOP-5's output limit, a provider that failed
     after its retries, LLM-13).

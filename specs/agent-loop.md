@@ -69,11 +69,12 @@ results back, and repeat until the model answers without calling a tool.
 
 - **LOOP-19** With the `:pause_on_limit` option (default false), a limit pauses
   the turn instead of ending it: the loop sends the session
-  `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}` or `{:time, ms}`) and
-  blocks. `{:pause_decision, :continue}` resumes it with the step count and the
-  wall-clock budget started over; `{:pause_decision, :fail}` ends the turn,
-  reporting the limit the turn was paused at (LOOP-3, LOOP-20), so the session
-  says the turn stopped there (STOP-1, STOP-2).
+  `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}`, `{:time, ms}` or
+  `{:tokens, n}`, LOOP-22) and blocks. `{:pause_decision, :continue}` resumes it
+  with the step count, the wall-clock budget and the token total started over;
+  `{:pause_decision, :fail}` ends the turn, reporting the limit the turn was
+  paused at (LOOP-3, LOOP-20, LOOP-22), so the session says the turn stopped
+  there (STOP-1, STOP-2).
 - **LOOP-20** The `:budget_ms` option (default nil) is a wall-clock budget for
   the turn. The loop checks it at the start of each step: when the time spent
   exceeds it, it is a limit like LOOP-3. Time spent waiting for the user's
@@ -88,6 +89,15 @@ results back, and repeat until the model answers without calling a tool.
   answer into the call's result (ASK-5). The step's approvals are resolved first
   (LOOP-9), then its questions, then the step's tools run (LOOP-10); a denied
   call (APPR-6) is not put to the user.
+
+- **LOOP-22** The `:token_budget` option (default nil) is a token budget for the
+  turn (LIMIT-12). The loop adds up what the provider reported for each step it
+  has run — input counted as CTX-6 counts it, prompt-cache reads and writes
+  included, plus output — and checks the total at the start of every step, as it
+  checks the wall-clock budget (LOOP-20): when the total exceeds the budget, it
+  is a limit like LOOP-3, reported as `{:tokens, n}` (LOOP-19) and ended with
+  the same option's choice of pause or stop. A usage report that carries no
+  counts adds nothing to the total. A resume starts the total over (LOOP-19).
 
 ## Implementation
 

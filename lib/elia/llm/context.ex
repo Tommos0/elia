@@ -194,6 +194,29 @@ defmodule Elia.LLM.Context do
   def provider_input_tokens(%{"prompt_tokens" => prompt}) when is_integer(prompt), do: prompt
   def provider_input_tokens(_usage), do: nil
 
+  @doc """
+  Output tokens the provider reported for the last request: Anthropic's
+  `output_tokens`, OpenRouter's `completion_tokens`.
+  """
+  @spec provider_output_tokens(map() | nil) :: non_neg_integer() | nil
+  def provider_output_tokens(%{"output_tokens" => output}) when is_integer(output), do: output
+  def provider_output_tokens(%{"completion_tokens" => output}) when is_integer(output), do: output
+  def provider_output_tokens(_usage), do: nil
+
+  @doc """
+  What the provider reported this request cost in tokens: input
+  (`provider_input_tokens/1`) and output (`provider_output_tokens/1`) together.
+  `nil` when it reported neither, so nothing is added to a turn's total by a
+  report that carries no counts — and a report with only one of the two counts
+  what it does carry (LOOP-22, LIMIT-12).
+  """
+  @spec provider_tokens(map() | nil) :: non_neg_integer() | nil
+  def provider_tokens(usage) do
+    values = [provider_input_tokens(usage), provider_output_tokens(usage)]
+
+    if Enum.any?(values, &is_integer/1), do: Enum.sum(Enum.filter(values, &is_integer/1))
+  end
+
   ## Tally
 
   defp tool_tokens(tool) do
