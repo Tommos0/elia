@@ -28,8 +28,10 @@ system prompt from them. It can be reloaded while the app runs.
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
   `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
   `await_task`, [Sub-tasks](subtasks.md)), `titles` (`set_title`,
-  [Chat titles](chat-titles.md)) and `self-modification` (instructions
-  only). The last one is a chat's only when its project is Elia's own (PROJ-17);
+  [Chat titles](chat-titles.md)), `user-input` (`ask_user`,
+  [Structured user input](user-input.md), ASK-1) and `self-modification`
+  (instructions only). The last one is a chat's only when its project is Elia's
+  own (PROJ-17);
   a sub-task session, and only it, also gets the built-in `task` skill, which
   carries `finish_task` (SUBTASK-1).
 - **SKILL-8** The `harness` skill's instructions apply in every project: they
@@ -86,6 +88,7 @@ config :elia, Elia.Skills,
     Elia.Skills.Files,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
+    Elia.Skills.UserInput,
     Elia.Skills.SelfModification
   ]
 ```

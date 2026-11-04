@@ -16,7 +16,8 @@ progress so any number of UIs can follow it.
   with a new turn id. Sending while a turn is in progress returns
   `{:error, :busy}` and changes nothing.
 - **SESS-4** Session status is one of `:idle`, `:running`,
-  `:awaiting_approval` or `:paused` (SESS-27). Every change is broadcast.
+  `:awaiting_approval`, `:awaiting_input` (SESS-34) or `:paused` (SESS-27).
+  Every change is broadcast.
 - **SESS-5** Every message the loop produces is appended to the history,
   saved (STORE-1) and broadcast. Messages with empty content are dropped.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
@@ -73,7 +74,9 @@ progress so any number of UIs can follow it.
   setting (SESS-30) and turn limits (SESS-31) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept. The turn record (INTR-1) is not loaded from disk: it belongs to the
-  process that is running the turn, so a missing one defaults to `nil`.
+  process that is running the turn, so a missing one defaults to `nil`; the
+  pending question (SESS-34) has nothing saved to load either, and takes its
+  default, which is none.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15),
   or, for a chat that is new, starts with every tool that can need approval
   (APPR-14, APPR-13).
@@ -103,7 +106,8 @@ progress so any number of UIs can follow it.
   follow every chat without subscribing to each. A session also keeps its
   status as its value in `Elia.Agent.Registry`,
   `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
-  is `:awaiting_approval`, and `Elia.Agent.paused/0` those whose status is
+  is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
+  status is `:awaiting_input`, and `Elia.Agent.paused/0` those whose status is
   `:paused`, without calling them.
 - **SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
   merged metadata on the chat's topic.
@@ -182,6 +186,24 @@ progress so any number of UIs can follow it.
   `false` for a chat with no session, for an invalid or unknown id, and when the
   registry isn't running. A chat list uses it to tell the record a restart left
   behind (INTR-2, STORE-31) from a turn that is running right now.
+- **SESS-34** A question from the loop (LOOP-21) is held by the session: each
+  call in `{:loop_await_input, pid, calls}` gets the tool status
+  `:awaiting_input`, the status becomes `:awaiting_input` (SESS-4), and the
+  session waits for `Elia.Agent.answer/3` (chat id, call id, the answer text) on
+  every one of them. Answering sets that call's status to `:answered`; when the
+  last pending call is answered the loop is sent
+  `{:input_answers, %{call_id => answer}}` and the status returns to `:running`,
+  so none of the step's tools runs before then (ASK-6). `answer/3` returns
+  `{:error, :blank}` for an answer that is blank once trimmed and
+  `{:error, :not_pending}` for a call that isn't awaiting an answer, changing
+  nothing either way (ASK-4). Ending the turn (SESS-8, SESS-11, SESS-12) clears
+  the pending questions, so a late answer is `{:error, :not_pending}` (ASK-7),
+  and messages from a stopped loop (SESS-9) are ignored as before.
+  `Elia.Agent.awaiting_input/0` returns the ids of the sessions waiting for an
+  answer without calling them (SESS-19). No event is added for the question: the
+  card follows the status changes (SESS-6), and a UI that connects mid-question
+  renders it from the snapshot's `tool_status` and the history (SESS-7). Nothing
+  is saved for a question beyond the tool call and its result (ASK-2).
 
 - **SESS-33** `Elia.Agent.set_title/2` (chat id, text) sets the chat's own title
   (TITLE-1, TITLE-4): the session shapes the text (trimmed, whitespace collapsed,

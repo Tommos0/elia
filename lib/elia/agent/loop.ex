@@ -13,6 +13,8 @@ defmodule Elia.Agent.Loop do
     * `{:loop_tool_status, call_id, status}` - `:running` or `:done`
     * `{:loop_await_approval, task_pid, calls}` - reply with
       `{:approval_decisions, %{call_id => :approve | :deny}}`
+    * `{:loop_await_input, task_pid, calls}` - a tool that asks the user
+      (LOOP-21); reply with `{:input_answers, %{call_id => answer}}
     * `{:loop_compaction, state}` - the compaction state advanced mid-turn,
       after the ladder elided more of the cold prefix (COMPACT-29)
 
@@ -218,14 +220,25 @@ defmodule Elia.Agent.Loop do
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
 
-  # LOOP-10, LOOP-20: returns the step's tool results and how long the loop
-  # waited for the user's approval decisions (which doesn't count against the
-  # wall-clock budget).
+  # LOOP-10, LOOP-20, LOOP-21: returns the step's tool results and how long the
+  # loop waited for the user — for their approval decisions and for an answer to
+  # a question — which doesn't count against the wall-clock budget.
   defp run_tools(ctx, tools, calls, stop_reason) do
     checked = Enum.map(calls, &{&1, check(ctx, tools, &1, stop_reason)})
 
     needs_approval = for {call, {:ok, _tool, :required}} <- checked, do: call
-    {decisions, waited} = await_approval(ctx, needs_approval)
+    {decisions, approved_ms} = await_approval(ctx, needs_approval)
+
+    # LOOP-21: a tool that asks the user is put to them before the step's tools
+    # run, so the answer reaches it as `ctx[:answer]`. A call the user denied
+    # (APPR-6) is not put to them.
+    asking =
+      for {call, {:ok, tool, _approval}} <- checked,
+          tool.asks_user,
+          Map.get(decisions, call.id, :approve) == :approve,
+          do: call
+
+    {answers, asked_ms} = await_input(ctx, asking)
 
     results =
       checked
@@ -233,7 +246,7 @@ defmodule Elia.Agent.Loop do
         fn
           {call, {:ok, tool, _approval}} ->
             if Map.get(decisions, call.id, :approve) == :approve do
-              execute(ctx, call, tool)
+              execute(ctx, call, tool, Map.get(answers, call.id))
             else
               Message.tool_result(call.id, "The user denied this tool call.", true)
             end
@@ -246,7 +259,7 @@ defmodule Elia.Agent.Loop do
       )
       |> Enum.map(fn {:ok, result} -> result end)
 
-    {results, waited}
+    {results, approved_ms + asked_ms}
   end
 
   defp check(_ctx, _tools, _call, :max_tokens) do
@@ -281,12 +294,27 @@ defmodule Elia.Agent.Loop do
     end
   end
 
-  defp execute(ctx, call, tool) do
+  # LOOP-21, ASK-6: the step's questions, all put to the user at once (APPR-3);
+  # the session releases the loop once every one of them has an answer.
+  defp await_input(_ctx, []), do: {%{}, 0}
+
+  defp await_input(ctx, calls) do
+    send(ctx.session, {:loop_await_input, self(), calls})
+    started = now_ms()
+
+    receive do
+      {:input_answers, answers} -> {answers, now_ms() - started}
+    end
+  end
+
+  defp execute(ctx, call, tool, answer) do
     send(ctx.session, {:loop_tool_status, call.id, :running})
+
+    context = ctx.tool_ctx |> Map.put(:call_id, call.id) |> Map.put(:answer, answer)
 
     {output, is_error} =
       try do
-        case Tool.call(tool, call.input, Map.put(ctx.tool_ctx, :call_id, call.id)) do
+        case Tool.call(tool, call.input, context) do
           {:ok, output} -> {output, false}
           {:error, output} -> {output, true}
         end

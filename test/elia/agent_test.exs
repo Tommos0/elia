@@ -34,7 +34,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(await_task edit_file list_tasks read_file reload_skills run_tests set_title shell spawn_task update_ledger write_file)
+             ~w(ask_user await_task edit_file list_tasks read_file reload_skills run_tests set_title shell spawn_task update_ledger write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
@@ -88,6 +88,155 @@ defmodule Elia.AgentTest do
 
     assert %Message{content: [%{is_error: true, content: "Invalid input: command is required"}]} =
              List.last(second.messages)
+  end
+
+  # ASK-2, ASK-3, ASK-5, ASK-6
+  test "a question waits for the user's answer, which the turn goes on with", %{id: id} do
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("q1", "ask_user", %{
+          "question" => "Which jail?",
+          "options" => ["Jailed", "Not jailed"]
+        })
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Jailed, then.")]))
+
+    :ok = Agent.send_message(id, "ask me")
+    await_status(id, :awaiting_input)
+
+    # ASK-3, SESS-34: the call and the session are both awaiting the answer, and
+    # the turn is not idle while it waits.
+    assert_receive {:agent, ^id, {:tool_status, "q1", :awaiting_input}}
+    assert id in Agent.awaiting_input()
+    assert {:error, :busy} = Agent.send_message(id, "again")
+
+    # ASK-4, ASK-6: a blank answer, and one for a call that isn't waiting,
+    # change nothing.
+    assert {:error, :blank} = Agent.answer(id, "q1", "   ")
+    assert {:error, :not_pending} = Agent.answer(id, "other", "Jailed")
+
+    :ok = Agent.answer(id, "q1", "Jailed")
+    assert_receive {:agent, ^id, {:tool_status, "q1", :answered}}
+    await_status(id, :idle)
+    refute id in Agent.awaiting_input()
+
+    # ASK-2, ASK-5: the answer is the call's result, in the same turn.
+    [_, second] = FakeLLM.requests()
+    [_user, _call, %Message{role: :tool, content: [result]}] = second.messages
+    assert %{tool_call_id: "q1", is_error: false} = result
+    assert result.content == ~s(The user answered: "Jailed")
+
+    # The turn ended in the reply after the answer, not in a new one.
+    last = List.last(Agent.snapshot(id).messages)
+    assert Message.text_content(last) == "Jailed, then."
+  end
+
+  # ASK-6, APPR-3, APPR-4
+  test "several questions in a step are all answered before its tools run", %{id: id} do
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("q1", "ask_user", %{"question" => "First?"}),
+        FakeLLM.tool_call("q2", "ask_user", %{"question" => "Second?"})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Both, thanks.")]))
+
+    :ok = Agent.send_message(id, "ask twice")
+    assert_receive {:agent, ^id, {:status, :running}}
+    await_status(id, :awaiting_input)
+    assert_receive {:agent, ^id, {:tool_status, "q1", :awaiting_input}}
+    assert_receive {:agent, ^id, {:tool_status, "q2", :awaiting_input}}
+
+    # The session stays awaiting input until the last of them is answered.
+    :ok = Agent.answer(id, "q1", "one")
+    assert_receive {:agent, ^id, {:tool_status, "q1", :answered}}
+    refute_receive {:agent, ^id, {:status, :running}}, 100
+
+    :ok = Agent.answer(id, "q2", "two")
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    [_user, _call, %Message{role: :tool, content: results}] = second.messages
+
+    assert Enum.map(results, & &1.content) == [
+             ~s(The user answered: "one"),
+             ~s(The user answered: "two")
+           ]
+  end
+
+  # ASK-7, SESS-34
+  test "stopping the turn closes the question, and the answer is too late", %{id: id} do
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("q1", "ask_user", %{"question" => "Well?"})])
+    )
+
+    :ok = Agent.send_message(id, "ask me")
+    await_status(id, :awaiting_input)
+
+    :ok = Agent.stop(id)
+    await_status(id, :idle)
+    refute id in Agent.awaiting_input()
+
+    assert {:error, :not_pending} = Agent.answer(id, "q1", "too late")
+
+    assert %Message{role: :tool, content: [%{tool_call_id: "q1", is_error: true}]} =
+             List.last(Agent.snapshot(id).messages)
+  end
+
+  # ASK-8, LOOP-20
+  test "time spent waiting for an answer doesn't count against the budget", %{} do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, loop_opts: [budget_ms: 300])
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("q1", "ask_user", %{"question" => "Well?"})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Thanks.")]))
+
+    :ok = Agent.send_message(id, "ask me")
+    await_status(id, :awaiting_input)
+
+    # The user takes longer to answer than the whole budget allows for a turn.
+    Process.sleep(400)
+    :ok = Agent.answer(id, "q1", "yes")
+
+    await_status(id, :idle)
+
+    # The turn carried on instead of stopping at the limit: the model's second
+    # request has the answer (a budget that counted the wait would have ended
+    # the turn before it).
+    assert [_, %{messages: messages}] = FakeLLM.requests()
+    assert %Message{content: [%{content: ~s(The user answered: "yes")}]} = List.last(messages)
+  end
+
+  # ASK-12, LOOP-8
+  test "a question that doesn't match the schema never reaches the user", %{id: id} do
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("q1", "ask_user", %{
+          "question" => "Which?",
+          "options" => ~w(a b c d e f g)
+        })
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Never mind.")]))
+
+    :ok = Agent.send_message(id, "ask")
+    assert_receive {:agent, ^id, {:status, :running}}, 1000
+    refute_receive {:agent, ^id, {:status, :awaiting_input}}, 200
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    [_user, _call, %Message{role: :tool, content: [result]}] = second.messages
+    assert result.is_error
+    assert result.content =~ "options must have at most 6 items"
   end
 
   # LOOP-3

@@ -28,6 +28,13 @@ defmodule Elia.Agent do
   def awaiting_approval, do: with_status(:awaiting_approval)
 
   @doc """
+  Ids of the sessions waiting for an answer to a question (SESS-34), read from
+  the registry without calling the sessions, like `awaiting_approval/0`.
+  """
+  @spec awaiting_input() :: [binary()]
+  def awaiting_input, do: with_status(:awaiting_input)
+
+  @doc """
   Ids of the sessions whose turn is paused at a limit (SESS-19, SESS-27), read
   from the registry without calling the sessions.
   """
@@ -74,6 +81,18 @@ defmodule Elia.Agent do
   def approve(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :approve})
 
   def deny(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :deny})
+
+  @doc """
+  Answers a question the turn is waiting on (ASK-4, ASK-6, SESS-34): `answer` is
+  what the user gave, an option's text or words of their own. Returns
+  `{:error, :blank}` for an answer that is blank once trimmed, and
+  `{:error, :not_pending}` for a call that isn't awaiting an answer, changing
+  nothing either way.
+  """
+  @spec answer(binary(), binary(), binary()) ::
+          :ok | {:error, :blank} | {:error, :not_pending}
+  def answer(id, call_id, answer) when is_binary(answer),
+    do: GenServer.call(Session.via(id), {:answer, call_id, answer})
 
   @doc """
   Turns auto-approval of `tool_name` on or off for the chat (APPR-8). Turning

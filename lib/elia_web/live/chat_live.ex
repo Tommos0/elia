@@ -92,6 +92,8 @@ defmodule EliaWeb.ChatLive do
         projects: Elia.Projects.list(),
         # UI-47: chats with a tool call awaiting approval, kept live.
         awaiting: Agent.awaiting_approval(),
+        # UI-76: chats waiting for an answer to a question, kept live.
+        input: Agent.awaiting_input(),
         # UI-58: chats whose turn is paused at a limit, kept live.
         paused: Agent.paused(),
         # UI-59: chats whose turn is running (working), kept live.
@@ -209,6 +211,7 @@ defmodule EliaWeb.ChatLive do
                   active={chat.id == @session_id}
                   now={@now}
                   awaiting={chat.id in @awaiting}
+                  input={chat.id in @input}
                   paused={chat.id in @paused}
                   running={chat.id in @running}
                   interrupted={chat.id in @interrupted}
@@ -224,6 +227,7 @@ defmodule EliaWeb.ChatLive do
                     active={child.id == @session_id}
                     now={@now}
                     awaiting={child.id in @awaiting}
+                    input={child.id in @input}
                     paused={child.id in @paused}
                     running={child.id in @running}
                     interrupted={child.id in @interrupted}
@@ -319,13 +323,17 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-arrow-path" class="size-3.5 shrink-0 motion-safe:animate-spin" />
                 <span>{@work_summary}</span>
                 <button
-                  :if={@status == :awaiting_approval}
+                  :if={@status in [:awaiting_approval, :awaiting_input]}
                   type="button"
                   id="work-summary-review"
                   phx-click="set_compact_view"
                   phx-value-on="false"
-                  title="Show the tool call so you can approve it"
-                  class="rounded-lg border border-warning/50 px-2 py-0.5 text-xs font-medium text-warning transition hover:bg-warning/10"
+                  title={
+                    if @status == :awaiting_approval,
+                      do: "Show the tool call so you can approve it",
+                      else: "Show the question so you can answer it"
+                  }
+                  class="rounded-lg border border-warning/50 px-2 py-0.5 text-xs font-medium text-warning transition hover:bg-warning/10 active:scale-95"
                 >
                   Review
                 </button>
@@ -696,12 +704,13 @@ defmodule EliaWeb.ChatLive do
   attr :active, :boolean, required: true
   attr :now, :any, required: true
   attr :awaiting, :boolean, default: false
+  attr :input, :boolean, default: false
   attr :paused, :boolean, default: false
   attr :running, :boolean, default: false
   # UI-72: the chat's saved turn was cut short by a restart (STORE-31, INTR-2).
   attr :interrupted, :boolean, default: false
 
-  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64, UI-72
+  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64, UI-72, UI-76
   defp chat_row(assigns) do
     {status_id, status} = chat_status(assigns.chat, assigns)
     assigns = assign(assigns, status_id: status_id, status: status)
@@ -752,9 +761,10 @@ defmodule EliaWeb.ChatLive do
   attr :id, :string, required: true
   attr :status, :string, required: true
 
-  # UI-44, UI-46, UI-47, UI-58, UI-59: a chat's status as an icon — waiting for
-  # approval or paused first (UI-47, UI-58), then a task's own status (UI-46),
-  # then an ordinary chat's loop activity (`working`/`idle`, UI-59).
+  # UI-44, UI-46, UI-47, UI-58, UI-59, UI-76: a chat's status as an icon — waiting
+  # for approval, waiting for an answer, or paused first (UI-47, UI-58, UI-76),
+  # then a task's own status (UI-46), then an ordinary chat's loop activity
+  # (`working`/`idle`, UI-59).
   defp status_icon(assigns) do
     {icon, class} = status_icon_spec(assigns.status)
     assigns = assign(assigns, icon: icon, class: class)
@@ -775,6 +785,7 @@ defmodule EliaWeb.ChatLive do
   defp status_icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
   defp status_icon_spec("running"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
   defp status_icon_spec("awaiting_approval"), do: {"hero-hand-raised", "text-warning"}
+  defp status_icon_spec("awaiting_input"), do: {"hero-chat-bubble-left-right", "text-warning"}
   defp status_icon_spec("paused"), do: {"hero-pause-circle", "text-warning"}
   defp status_icon_spec("done"), do: {"hero-check-circle", "text-success"}
   defp status_icon_spec("blocked"), do: {"hero-pause-circle", "text-warning"}
@@ -790,13 +801,18 @@ defmodule EliaWeb.ChatLive do
   defp status_title("working"), do: "Working"
   defp status_title("idle"), do: "Idle"
   defp status_title("awaiting_approval"), do: "Needs approval"
+  defp status_title("awaiting_input"), do: "Needs your answer"
   defp status_title("paused"), do: "Paused"
   defp status_title("interrupted"), do: "Interrupted: the app restarted during the turn"
   defp status_title(status), do: "Task #{status}"
 
-  # UI-46, UI-47, UI-58, UI-59, UI-72: the one status indicator a sidebar chat
-  # shows.
+  # UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: the one status indicator a sidebar
+  # chat shows.
   defp chat_status(chat, %{awaiting: true}), do: {"chat-status-#{chat.id}", "awaiting_approval"}
+
+  defp chat_status(chat, %{input: true}),
+    do: {"chat-status-#{chat.id}", "awaiting_input"}
+
   defp chat_status(chat, %{paused: true}), do: {"chat-status-#{chat.id}", "paused"}
   defp chat_status(%{task_status: status} = chat, _state), do: {"chat-status-#{chat.id}", status}
 
@@ -1101,8 +1117,9 @@ defmodule EliaWeb.ChatLive do
     ~H"""
     <div class={[
       "overflow-hidden rounded-xl border text-sm transition",
-      @item.status == :awaiting_approval && "border-warning/60 shadow-sm shadow-warning/10",
-      @item.status != :awaiting_approval && "border-base-300"
+      @item.status in [:awaiting_approval, :awaiting_input] &&
+        "border-warning/60 shadow-sm shadow-warning/10",
+      @item.status not in [:awaiting_approval, :awaiting_input] && "border-base-300"
     ]}>
       <div class="flex items-center justify-between gap-3 bg-base-200/60 px-3 py-2">
         <div class="flex min-w-0 items-center gap-2">
@@ -1112,6 +1129,51 @@ defmodule EliaWeb.ChatLive do
         <.tool_badge status={@item.status} is_error={@item.is_error} />
       </div>
       <pre class="overflow-x-auto px-3 py-2 font-mono text-xs leading-relaxed"><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span>{tool_summary(@item)}</pre>
+      <%!-- UI-75, ASK-4, ASK-6: a question, answered with one click or in the
+      user's own words. It goes when the answer does. --%>
+      <div
+        :if={@item.name == "ask_user" && @item.status == :awaiting_input}
+        id={"answer-#{@item.call_id}"}
+        class="border-t border-base-300 px-3 py-2"
+      >
+        <div :if={answer_options(@item) != []} class="flex flex-wrap gap-2">
+          <button
+            :for={{option, index} <- Enum.with_index(answer_options(@item))}
+            type="button"
+            id={"answer-#{@item.call_id}-#{index}"}
+            phx-click="answer"
+            phx-value-id={@item.call_id}
+            phx-value-answer={option}
+            class="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/20 active:scale-95"
+          >
+            {option}
+          </button>
+        </div>
+        <form
+          id={"answer-form-#{@item.call_id}"}
+          phx-submit="answer"
+          phx-value-id={@item.call_id}
+          class={[
+            "flex items-center gap-2",
+            answer_options(@item) != [] && "mt-2"
+          ]}
+        >
+          <input
+            type="text"
+            name="answer"
+            id={"answer-text-#{@item.call_id}"}
+            autocomplete="off"
+            placeholder="Or answer in your own words"
+            class="w-full rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-xs focus:border-primary focus:outline-none"
+          />
+          <button
+            type="submit"
+            class="shrink-0 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+          >
+            Answer
+          </button>
+        </form>
+      </div>
       <%!-- UI-43: task card --%>
       <details
         :if={@item.name == "spawn_task" && is_binary(@item.input["brief"])}
@@ -1140,6 +1202,14 @@ defmodule EliaWeb.ChatLive do
           class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
         >
           <.icon name="hero-hand-raised" class="size-3" /> Waiting for approval in the task chat
+        </span>
+        <span
+          :if={@item.task.input}
+          id={"task-input-#{@item.call_id}"}
+          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
+        >
+          <.icon name="hero-chat-bubble-left-right" class="size-3" /> Waiting for your answer in the
+          task chat
         </span>
         <span
           :if={@item.task.paused}
@@ -1213,7 +1283,12 @@ defmodule EliaWeb.ChatLive do
           Approve
         </button>
       </div>
-      <details :if={@item.output} class="group border-t border-base-300">
+      <details
+        :if={@item.output}
+        id={"output-#{@item.call_id}"}
+        open={@item.name == "ask_user"}
+        class="group border-t border-base-300"
+      >
         <summary class="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs text-base-content/60 hover:text-base-content">
           <.icon name="hero-chevron-right" class="size-3 transition group-open:rotate-90" /> Output
         </summary>
@@ -1321,6 +1396,8 @@ defmodule EliaWeb.ChatLive do
     {label, class} =
       case {assigns.status, assigns.is_error} do
         {:awaiting_approval, _} -> {"Needs approval", "bg-warning/15 text-warning"}
+        {:awaiting_input, _} -> {"Needs your answer", "bg-warning/15 text-warning"}
+        {:answered, _} -> {"Answered", "bg-info/15 text-info"}
         {:approved, _} -> {"Approved", "bg-info/15 text-info"}
         {:running, _} -> {"Running", "bg-info/15 text-info animate-pulse"}
         {:done, true} -> {"Failed", "bg-error/15 text-error"}
@@ -1338,6 +1415,7 @@ defmodule EliaWeb.ChatLive do
   defp tool_icon("shell"), do: "hero-command-line"
   defp tool_icon(name) when name in ~w(read_file write_file edit_file), do: "hero-document-text"
   defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
+  defp tool_icon("ask_user"), do: "hero-chat-bubble-left-right"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
 
   defp tool_summary(%{name: "shell", input: %{"command" => command}}), do: command
@@ -1350,6 +1428,11 @@ defmodule EliaWeb.ChatLive do
   defp tool_summary(%{name: "set_title", input: %{"title" => title}}) when is_binary(title),
     do: title
 
+  # UI-76: a question card is its question, not its JSON.
+  defp tool_summary(%{name: "ask_user", input: %{"question" => question}})
+       when is_binary(question),
+       do: question
+
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
   defp tool_summary(%{input: input}), do: Jason.encode!(input, pretty: true)
@@ -1361,6 +1444,13 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp tool_detail(_item), do: nil
+
+  # UI-75: the choices of a question, in the order given, without an empty one
+  # (which would be a button with no label).
+  defp answer_options(%{input: %{"options" => options}}) when is_list(options),
+    do: Enum.filter(options, &(is_binary(&1) and String.trim(&1) != ""))
+
+  defp answer_options(_item), do: []
 
   ## Events
 
@@ -1421,6 +1511,18 @@ defmodule EliaWeb.ChatLive do
 
   def handle_event("deny", %{"id" => call_id}, socket) do
     Agent.deny(socket.assigns.session_id, call_id)
+    {:noreply, socket}
+  end
+
+  # UI-75, ASK-4, ASK-6: the user's answer to a question — an option's button
+  # (its text is the value) or the text field. A blank one is not sent.
+  def handle_event("answer", %{"id" => call_id} = params, socket) do
+    answer = params["answer"] || ""
+
+    if String.trim(answer) != "" do
+      Agent.answer(socket.assigns.session_id, call_id, answer)
+    end
+
     {:noreply, socket}
   end
 
@@ -1493,23 +1595,26 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
-  # UI-47, UI-58, UI-59, UI-72: follows every chat's status, to flag those
-  # awaiting approval, those paused at a limit, those working, and to drop the
-  # marker of a chat whose session has started — which is what clears the record
-  # the restart left behind (INTR-3).
+  # UI-47, UI-58, UI-59, UI-72, UI-76: follows every chat's status, to flag
+  # those awaiting approval, those waiting for an answer, those paused at a
+  # limit and those working, and to drop the marker of a chat whose session has
+  # started — which is what clears the record the restart left behind (INTR-3).
   def handle_info({:chat_status, id, status}, socket) do
     awaiting = put_member(socket.assigns.awaiting, id, status == :awaiting_approval)
+    input = put_member(socket.assigns.input, id, status == :awaiting_input)
     paused = put_member(socket.assigns.paused, id, status == :paused)
     running = put_member(socket.assigns.running, id, status == :running)
     interrupted = List.delete(socket.assigns.interrupted, id)
 
-    if awaiting == socket.assigns.awaiting and paused == socket.assigns.paused and
-         running == socket.assigns.running and interrupted == socket.assigns.interrupted do
+    if awaiting == socket.assigns.awaiting and input == socket.assigns.input and
+         paused == socket.assigns.paused and running == socket.assigns.running and
+         interrupted == socket.assigns.interrupted do
       {:noreply, socket}
     else
       socket =
         assign(socket,
           awaiting: awaiting,
+          input: input,
           paused: paused,
           running: running,
           interrupted: interrupted
@@ -1776,6 +1881,8 @@ defmodule EliaWeb.ChatLive do
           child_id: child_id,
           status: status,
           awaiting: child_id in socket.assigns.awaiting,
+          # UI-44, ASK-9: the child is waiting for an answer to a question.
+          input: child_id in socket.assigns.input,
           # UI-58: the child is paused at a limit (SESS-27).
           paused: child_id in socket.assigns.paused
         }
@@ -1828,13 +1935,14 @@ defmodule EliaWeb.ChatLive do
 
   ## Transcript items
 
-  # UI-62: the current step of the turn — the tool that is running, a reply being
-  # written, or the model thinking — kept as the turn's events arrive, so the
-  # compact view's summary can name it.
-  defp track_activity(socket, call_id, status) when status in [:running, :awaiting_approval] do
+  # UI-62: the current step of the turn — the tool that is running, the one
+  # waiting for the user, a reply being written, or the model thinking — kept as
+  # the turn's events arrive, so the compact view's summary can name it.
+  defp track_activity(socket, call_id, status)
+       when status in [:running, :awaiting_approval, :awaiting_input] do
     case socket.assigns.calls do
       %{^call_id => call} ->
-        kind = if status == :awaiting_approval, do: :awaiting, else: :tool
+        kind = if status in [:awaiting_approval, :awaiting_input], do: :awaiting, else: :tool
         assign(socket, activity: {kind, call})
 
       _ ->
@@ -1847,12 +1955,17 @@ defmodule EliaWeb.ChatLive do
   defp current_activity(socket), do: socket.assigns.activity || running_call(socket)
 
   # A fallback for a page that connects mid-turn (SESS-7): the call that is
-  # running or already waiting for approval names the step.
+  # running or already waiting for the user names the step.
   defp running_call(socket) do
     Enum.find_value(socket.assigns.calls, fn
-      {_id, %{status: :awaiting_approval} = call} -> {:awaiting, call}
-      {_id, %{status: :running} = call} -> {:tool, call}
-      _ -> nil
+      {_id, %{status: status} = call} when status in [:awaiting_approval, :awaiting_input] ->
+        {:awaiting, call}
+
+      {_id, %{status: :running} = call} ->
+        {:tool, call}
+
+      _ ->
+        nil
     end)
   end
 
@@ -1876,8 +1989,9 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  defp work_summary_for(status, socket) when status in [:running, :awaiting_approval],
-    do: work_summary(current_activity(socket))
+  defp work_summary_for(status, socket)
+       when status in [:running, :awaiting_approval, :awaiting_input],
+       do: work_summary(current_activity(socket))
 
   defp work_summary_for(_status, _socket), do: nil
 
@@ -1890,6 +2004,10 @@ defmodule EliaWeb.ChatLive do
     {ing, _verb, object} = step(call)
     "#{ing} #{object}."
   end
+
+  # ASK-10: a question is not something the agent is doing, it is something it
+  # wants from the user.
+  defp work_summary({:awaiting, %{name: "ask_user"}}), do: "Waiting for your answer."
 
   defp work_summary({:awaiting, call}) do
     {_ing, verb, object} = step(call)
@@ -2065,7 +2183,7 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp stream_item(socket, item, status, block \\ nil) do
-    if visible?(socket.assigns.compact_view, item.kind) do
+    if visible?(socket.assigns.compact_view, item) do
       stream_insert(socket, :items, annotate(item, status, block))
     else
       socket
@@ -2073,9 +2191,12 @@ defmodule EliaWeb.ChatLive do
   end
 
   # UI-61: the compact view keeps the direct messages and hides tool calls and
-  # reasoning, both when the transcript loads and as items arrive.
-  defp visible?(_compact, kind) when kind not in [:tool, :reasoning], do: true
-  defp visible?(compact, _kind), do: not compact
+  # reasoning, both when the transcript loads and as items arrive. A question
+  # card stays: it is addressed to the user, not a detail of the agent's work
+  # (UI-75, ASK-10).
+  defp visible?(_compact, %{kind: :tool, name: "ask_user"}), do: true
+  defp visible?(compact, %{kind: kind}) when kind in [:tool, :reasoning], do: not compact
+  defp visible?(_compact, _item), do: true
 
   # COMPACT-25: every item carries its request-view status, so the UI never
   # implies the model saw something it did not.
@@ -2094,7 +2215,7 @@ defmodule EliaWeb.ChatLive do
     socket = assign(socket, calls: Map.put(socket.assigns.calls, call.call_id, call))
     # UI-61: the card is still tracked in `calls`, but a compact view doesn't
     # render it.
-    if visible?(socket.assigns.compact_view, call.kind),
+    if visible?(socket.assigns.compact_view, call),
       do: stream_insert(socket, :items, call),
       else: socket
   end

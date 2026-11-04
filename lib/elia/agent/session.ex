@@ -61,11 +61,14 @@ defmodule Elia.Agent.Session do
     # This chat's turn limits (LIMIT-1, LIMIT-2): a step limit, a time budget
     # and whether a limit pauses the turn. Empty means the loop's own default.
     limits: %{max_steps: nil, max_minutes: nil, pause_on_limit: false},
-    # call_id => :awaiting_approval | :running | :done
+    # call_id => :awaiting_approval | :awaiting_input | :answered | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
     last_usage: nil,
     approval: nil,
+    # The questions the turn is waiting on (SESS-34, ASK-6): {loop pid,
+    # %{call_id => answer | nil}}. nil when none is open.
+    input: nil,
     # The message of a turn paused at a limit (SESS-27), nil when not paused.
     pause: nil,
     loop_opts: [],
@@ -115,17 +118,17 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`, `:turn`
-  # or `:title` existed (a session that outlived a hot reload). Fields it already
-  # has are kept; `:turn` (INTR-1) is not loaded from disk, since it belongs to
-  # the process that is running the turn.
+  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`,
+  # `:turn` (INTR-1), `:title` or `:input` (ASK) existed (a session that outlived
+  # a hot reload). Fields it already has are kept; `:turn` is not loaded from
+  # disk, since it belongs to the process that is running the turn.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
              not is_map_key(state, :pause) or not is_map_key(state, :jail) or
              not is_map_key(state, :limits) or not is_map_key(state, :turn) or
-             not is_map_key(state, :title) do
+             not is_map_key(state, :title) or not is_map_key(state, :input) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -359,6 +362,27 @@ defmodule Elia.Agent.Session do
     {:reply, {:error, :not_pending}, state}
   end
 
+  # ASK-4, ASK-6, SESS-34: the user's answer to a question the loop is waiting
+  # on. A blank answer is refused, and the loop only hears back once every
+  # pending question has an answer.
+  def handle_call({:answer, call_id, answer}, _from, %{input: {pid, answers}} = state)
+      when is_map_key(answers, call_id) and is_binary(answer) do
+    case String.trim(answer) do
+      "" ->
+        {:reply, {:error, :blank}, state}
+
+      answer ->
+        state = put_tool_status(state, call_id, :answered)
+        {:reply, :ok, settle_input(state, pid, Map.put(answers, call_id, answer))}
+    end
+  end
+
+  # ASK-7, SESS-34: no question is open, or not this one (an answer that arrives
+  # after the turn ended lands here).
+  def handle_call({:answer, _call_id, _answer}, _from, state) do
+    {:reply, {:error, :not_pending}, state}
+  end
+
   def handle_call({:set_auto_approve, name, on?}, _from, state) do
     if on? and not approvable?(state, name) do
       {:reply, {:error, :not_approvable}, state}
@@ -469,7 +493,7 @@ defmodule Elia.Agent.Session do
   end
 
   def handle_info({tag, _, _}, %{task: nil} = state)
-      when tag in [:loop_tool_status, :loop_await_approval] do
+      when tag in [:loop_tool_status, :loop_await_approval, :loop_await_input] do
     {:noreply, state}
   end
 
@@ -526,6 +550,15 @@ defmodule Elia.Agent.Session do
       end)
 
     {:noreply, settle(state, pid, decisions)}
+  end
+
+  # ASK-3, ASK-6, SESS-34: the loop put this step's questions to the user and
+  # waits. Every one of them is shown at once, as approvals are (APPR-3), and
+  # the loop is released once all of them have an answer.
+  def handle_info({:loop_await_input, pid, calls}, state) do
+    pending = Map.new(calls, &{&1.id, nil})
+    state = Enum.reduce(calls, state, &put_tool_status(&2, &1.id, :awaiting_input))
+    {:noreply, set_status_if_changed(%{state | input: {pid, pending}}, :awaiting_input)}
   end
 
   # SESS-27: the loop paused at a limit (LOOP-19) and waits for the user.
@@ -594,6 +627,17 @@ defmodule Elia.Agent.Session do
 
   defp set_status_if_changed(%{status: status} = state, status), do: state
   defp set_status_if_changed(state, status), do: set_status(state, status)
+
+  # ASK-6, SESS-34: waits for the remaining answers, or releases the loop once
+  # every question has one.
+  defp settle_input(state, pid, answers) do
+    if Enum.any?(answers, fn {_call_id, answer} -> answer == nil end) do
+      set_status_if_changed(%{state | input: {pid, answers}}, :awaiting_input)
+    else
+      send(pid, {:input_answers, answers})
+      set_status_if_changed(%{state | input: nil}, :running)
+    end
+  end
 
   # APPR-11: approve this tool's calls that are waiting right now.
   defp approve_pending(%{approval: {pid, decisions}} = state, name) do
@@ -851,8 +895,9 @@ defmodule Elia.Agent.Session do
   # INTR-1: the turn is over, so the record it wrote goes with it. Saving is
   # needed only when there was one: everything else the turn changed was saved
   # as it happened.
+  # ASK-7: ending the turn also clears the session's pending question.
   defp finish_turn(state) do
-    state = %{state | task: nil, approval: nil, pause: nil}
+    state = %{state | task: nil, approval: nil, pause: nil, input: nil}
 
     state = if Map.get(state, :turn), do: save(%{state | turn: nil}), else: state
 

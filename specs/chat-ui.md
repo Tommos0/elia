@@ -88,12 +88,20 @@ stream in, approves or denies tool calls, and switches between saved chats.
   task chat (UI-46) shows `working` — an animated spinner — while its turn is
   running, that is while its session status is `:running` (SESS-4), and `idle`
   — a dim dot — when it has no turn, unless a restart cut that turn short, which
-  shows `interrupted` instead (UI-72). Waiting for approval (`awaiting_approval`)
-  and paused come first (UI-47, UI-58), so a chat that needs the user is never
-  shown as idle. The indicator is right on first render, from
+  shows `interrupted` instead (UI-72). Waiting for approval (`awaiting_approval`),
+  waiting for an answer (`awaiting_input`, UI-76) and paused come first (UI-47,
+  UI-58, UI-76), so a chat that needs the user is never shown as idle. The
+  indicator is right on first render, from
   `Elia.Agent.running/0` and the registry (SESS-19, SESS-28), and follows
   `{:chat_status, id, status}` (SESS-19) live. A task chat shows its task
   status under the same element (UI-46).
+- **UI-76** A chat whose session is waiting for an answer (SESS-4, ASK-3) shows
+  it in its status indicator (`#chat-status-<id>`, with
+  `data-status="awaiting_input"`, a speech-bubble icon and the `title` "Needs
+  your answer"), so a question waiting in another chat — a parent, or any chat
+  in the list — is not missed. It follows `{:chat_status, id, :awaiting_input}`
+  (SESS-19) and is right on first render, from
+  `Elia.Agent.awaiting_input/0`.
 
 - **UI-64** Every chat row in the sidebar, task chats included (UI-45), has a
   delete button (`#delete-chat-<id>`, a trash icon with the accessible label
@@ -161,8 +169,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   status badge and a summary of its input: `$ <command>` for `shell`, the path
   for tools with a `path` input, "(no input)" for empty input, pretty JSON
   otherwise.
-- **UI-16** Status badges: Needs approval, Approved, Running, Done, Failed (done
-  with an error), Pending (anything else).
+- **UI-16** Status badges: Needs approval, Needs your answer (a call awaiting
+  an answer, ASK-3), Answered, Approved, Running, Done, Failed (done with an
+  error), Pending (anything else).
 - **UI-17** `write_file` and `edit_file` cards have a collapsible "Changes"
   section (new content, or removed/added strings). It is expanded while the
   call awaits approval.
@@ -175,6 +184,22 @@ stream in, approves or denies tool calls, and switches between saved chats.
   tracking (DEPLOY-11).
 - **UI-20** Once a result arrives, the card has a collapsible "Output"
   section, styled as an error when the result is an error.
+
+- **UI-75** An `ask_user` call (ASK-1) renders as a question card: the card's
+  summary is its `question` (as UI-43 does for a task's title), and while the
+  call awaits an answer (`:awaiting_input`, ASK-3) the card shows each option as
+  a button (`#answer-<call_id>-<n>`, in the order given, skipping an empty one)
+  and, always, a text field with its button (`#answer-form-<call_id>`,
+  `#answer-text-<call_id>`), so the user can answer with one click or in their
+  own words (ASK-4). Its badge reads "Needs your answer" (UI-16) and the card is
+  highlighted like one awaiting approval (UI-18). Clicking a button or
+  submitting the text answers the call with that text (`Elia.Agent.answer/3`,
+  ASK-6); a blank text is not sent. Once answered the buttons and the field are
+  gone and the badge reads "Answered"; the answer the model got is the call's
+  result, shown in the card's Output section (UI-20), which for this card is
+  open rather than collapsed so the answer stays visible. A question answered in
+  an earlier turn renders the same way from the saved history, without the
+  buttons. The card is shown in the compact view too (UI-61, ASK-10).
 
 ### Composer
 
@@ -303,7 +328,8 @@ so it opens at `/c/<child id>` like any chat.
   when the chat is opened later, from the children's saved metadata
   (`parent_call_id`, STORE-18). While the child waits for the user to approve a
   tool call in its own chat (SESS-19), the card says so
-  (`#task-awaiting-<call_id>`).
+  (`#task-awaiting-<call_id>`), and so does a child waiting for an answer to a
+  question (ASK-9, `#task-input-<call_id>`).
 - **UI-45** The sidebar nests a task chat under its parent chat, indented and
   ordered by start time (oldest first). A task chat whose parent isn't in the
   list is shown on its own at the top level. The row (`#chat-link-<id>`) uses
@@ -360,19 +386,24 @@ the hidden tool calls leave with a one-line summary of the current step.
 - **UI-61** In the compact view the transcript shows only the direct messages:
   user messages, assistant text (saved and streaming) and notices (including
   the folded summary, UI-53). Tool calls, reasoning (saved and streaming, UI-8,
-  UI-29) and the per-item request-view notes (UI-51) are not rendered. A task chat's header (UI-48) and the pause banner (UI-57) stay
+  UI-29) and the per-item request-view notes (UI-51) are not rendered. A
+  question card is the exception: it is addressed to the user, not a detail of
+  the agent's work, so it stays visible (UI-75, ASK-10). A task chat's header
+  (UI-48) and the pause banner (UI-57) stay
   visible.
-- **UI-62** While the compact view is on and the turn is working (`:running` or
-  `:awaiting_approval`, SESS-4), a one-sentence "working on" summary
+- **UI-62** While the compact view is on and the turn is working (`:running`,
+  `:awaiting_approval` or `:awaiting_input`, SESS-4), a one-sentence "working
+  on" summary
   (`#work-summary`) names the current step: the tool that is running or awaiting
   approval ("Running `mix test`.", "Waiting for your approval to run
-  `git commit`."), writing a reply, or thinking, and "Working." before the step
+  `git commit`."), a question waiting for an answer ("Waiting for your answer.",
+  ASK-10), writing a reply, or thinking, and "Working." before the step
   is known. It is set when the turn's status changes and, while the turn runs,
   refreshed about once a second, so it lags the step by no more than a second
   (the one-second timer only runs while a turn is running, so an idle chat is
-  left alone). It is cleared when the turn ends. While it waits for approval it
-  offers a "Review" button (`#work-summary-review`) that switches to the full
-  view.
+  left alone). It is cleared when the turn ends. While it waits for approval or
+  for an answer it offers a "Review" button (`#work-summary-review`) that
+  switches to the full view.
 
 ## Implementation
 
@@ -392,5 +423,8 @@ UI-38, UI-39, UI-67, UI-68).
 `test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/chat_title_test.exs`
-(UI-74, the stored title and `{:title, title}`), `test/elia_web/live/task_ui_test.exs`,
+(UI-74, the stored title and `{:title, title}`),
+`test/elia_web/live/task_ui_test.exs`,
+`test/elia_web/live/user_input_test.exs` (the question card and the indicators,
+UI-75, UI-76),
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

@@ -33,6 +33,7 @@ refused.
   | `read_file` | only outside the workspace |
   | `write_file`, `edit_file` | see FILE-5 |
   | `reload_skills`, `run_tests`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
+  | `ask_user` | never (ASK-1) |
 
 ### Auto-approval
 

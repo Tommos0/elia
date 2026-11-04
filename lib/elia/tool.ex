@@ -9,6 +9,10 @@ defmodule Elia.Tool do
   `approval` is `:required`, `:never`, or a function of `(input, ctx)`
   returning one of those or `{:deny, reason}`. Calls that need approval
   pause the agent until the user decides.
+
+  `asks_user` marks a tool whose call is put to the user instead of running
+  straight away: the loop waits for their answer and hands it to the tool as
+  `ctx[:answer]` when it runs (LOOP-21, ASK-1).
   """
 
   @type result :: {:ok, binary()} | {:error, binary()}
@@ -19,11 +23,12 @@ defmodule Elia.Tool do
           description: binary(),
           input_schema: map(),
           run: (map() -> result()) | (map(), map() -> result()),
-          approval: :required | :never | (map(), map() -> decision())
+          approval: :required | :never | (map(), map() -> decision()),
+          asks_user: boolean()
         }
 
   @enforce_keys [:name, :description, :input_schema, :run]
-  defstruct [:name, :description, :input_schema, :run, approval: :never]
+  defstruct [:name, :description, :input_schema, :run, approval: :never, asks_user: false]
 
   @spec approval(t(), map(), map()) :: decision()
   def approval(%__MODULE__{approval: fun}, input, ctx) when is_function(fun, 2),
@@ -35,24 +40,55 @@ defmodule Elia.Tool do
   def call(%__MODULE__{run: run}, input, _ctx) when is_function(run, 1), do: run.(input)
   def call(%__MODULE__{run: run}, input, ctx), do: run.(input, ctx)
 
-  @doc "Checks required keys and primitive types from a flat JSON schema."
+  @doc """
+  Checks required keys and primitive types from a flat JSON schema, and, for an
+  array, the type of its items and any `maxItems` (LOOP-8).
+  """
   @spec validate(t(), map()) :: :ok | {:error, binary()}
   def validate(%__MODULE__{input_schema: schema}, input) when is_map(input) do
     properties = schema["properties"] || %{}
 
-    missing = Enum.reject(schema["required"] || [], &Map.has_key?(input, &1))
+    missing =
+      for key <- schema["required"] || [], not Map.has_key?(input, key), do: "#{key} is required"
 
-    wrong_type =
-      for {key, value} <- input,
-          type = get_in(properties, [key, "type"]),
-          not type_matches?(type, value),
-          do: "#{key} must be a #{type}"
+    wrong =
+      Enum.flat_map(input, fn {key, value} ->
+        property = properties[key] || %{}
+        type = property["type"]
 
-    case Enum.map(missing, &"#{&1} is required") ++ wrong_type do
+        if type_matches?(type, value),
+          do: array_errors(key, value, property),
+          else: ["#{key} must be a #{type}"]
+      end)
+
+    case missing ++ wrong do
       [] -> :ok
       errors -> {:error, "Invalid input: " <> Enum.join(errors, ", ")}
     end
   end
+
+  # LOOP-8: an array's items have a type of their own, and a schema can cap how
+  # many there are (ASK-1 asks for at most six options).
+  defp array_errors(key, value, property) when is_list(value) do
+    bad_items =
+      case property["items"] do
+        %{"type" => type} ->
+          Enum.any?(value, &(not type_matches?(type, &1))) &&
+            "every item of #{key} must be a #{type}"
+
+        _ ->
+          false
+      end
+
+    max = property["maxItems"]
+
+    too_many =
+      (is_integer(max) and length(value) > max) && "#{key} must have at most #{max} items"
+
+    Enum.filter([bad_items, too_many], &is_binary/1)
+  end
+
+  defp array_errors(_key, _value, _property), do: []
 
   defp type_matches?("string", v), do: is_binary(v)
   defp type_matches?("integer", v), do: is_integer(v)

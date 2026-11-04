@@ -28,9 +28,10 @@ results back, and repeat until the model answers without calling a tool.
   containing the raw input as `{"INVALID_JSON": "<raw>"}`.
 - **LOOP-7** A call to an unknown tool gets the error result
   "Unknown tool: <name>".
-- **LOOP-8** Input is checked against the tool's schema: required keys and
-  top-level primitive types. Invalid input gets an error result and the tool
-  doesn't run.
+- **LOOP-8** Input is checked against the tool's schema: required keys,
+  top-level primitive types and, for an array, the type of its items and any
+  `maxItems` (ASK-12). Invalid input gets an error result and the tool doesn't
+  run.
 - **LOOP-9** Approval is resolved as described in [Tool approval](tool-approval.md)
   before any tool in the step runs.
 - **LOOP-10** The step's tools run concurrently. Results go back in the
@@ -60,9 +61,10 @@ results back, and repeat until the model answers without calling a tool.
   `call_id` (the id of the call being run), `loop_opts` (the loop's options, so
   a tool can start a session like this one, SUBTASK-5), `workspace` (the
   workspace root the turn runs in: the chat's project folder, PROJ-12, or Elia's
-  own root when unset) and `project` (the chat's project map, PROJ-9), and `jail`
+  own root when unset) and `project` (the chat's project map, PROJ-9), `jail`
   (whether this chat's commands run in the jail, ISOL-15; `nil` means no chat,
-  and the default, which is jailed).
+  and the default, which is jailed) and `answer` (the user's answer, for a tool
+  that asks one, LOOP-21; `nil` for every other call).
 
 - **LOOP-19** With the `:pause_on_limit` option (default false), a limit pauses
   the turn instead of ending it: the loop sends the session
@@ -73,7 +75,17 @@ results back, and repeat until the model answers without calling a tool.
 - **LOOP-20** The `:budget_ms` option (default nil) is a wall-clock budget for
   the turn. The loop checks it at the start of each step: when the time spent
   exceeds it, it is a limit like LOOP-3. Time spent waiting for the user's
-  approval decisions (LOOP-9) and time spent paused (LOOP-19) don't count.
+  approval decisions (LOOP-9), for an answer to a question (LOOP-21) and time
+  spent paused (LOOP-19) don't count.
+
+- **LOOP-21** A call to a tool that asks the user (`asks_user`, ASK-1) is put to
+  the user instead of being run: the loop sends the session
+  `{:loop_await_input, pid, calls}` and blocks until it replies
+  `{:input_answers, %{call_id => answer}}` (SESS-34). The answers are handed to
+  those tools as `ctx[:answer]` when they run (LOOP-18), so the tool turns the
+  answer into the call's result (ASK-5). The step's approvals are resolved first
+  (LOOP-9), then its questions, then the step's tools run (LOOP-10); a denied
+  call (APPR-6) is not put to the user.
 
 ## Implementation
 
