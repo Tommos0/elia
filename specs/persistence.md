@@ -48,7 +48,9 @@ reopened.
   stores it only when the list isn't empty, so turning the last tool off
   removes it from the file.
 - **STORE-15** Loading a chat's auto-approved tools returns `[]` when the chat
-  is missing, unreadable, corrupt or has none.
+  is missing, unreadable, corrupt or has none. The set a new chat starts with
+  (APPR-14) is the session's, not the store's: it reaches the file when the chat
+  is saved with it (STORE-14).
 
 - **STORE-25** `save/3` takes `jail:` (a boolean) and stores it only when it is
   `false`, so a chat that keeps the default (`true`, ISOL-16) carries no entry

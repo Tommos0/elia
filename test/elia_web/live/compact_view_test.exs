@@ -123,6 +123,11 @@ defmodule EliaWeb.CompactViewTest do
   # a way into the full view, where the buttons are.
   test "the summary points at the waiting approval and offers Review", %{conn: conn} do
     id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # APPR-14: a new chat auto-approves the shell, so this one is started with
+    # an empty set — the call below has to wait for approval.
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
 
     FakeLLM.push(
       FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo from-shell"})])

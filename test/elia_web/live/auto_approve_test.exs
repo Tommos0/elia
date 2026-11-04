@@ -17,11 +17,33 @@ defmodule EliaWeb.AutoApproveTest do
 
   defp settings(conn, id), do: live(conn, ~p"/c/#{id}/settings")
 
+  # APPR-14: a new chat auto-approves every tool. These tests are about the
+  # switches and the prompts, so their chat is started with an empty set
+  # instead; the default itself is covered in test/elia/auto_approve_test.exs.
+  defp chat_that_asks(id) do
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
+    id
+  end
+
+  # UI-38, UI-39, APPR-14
+  test "a new chat shows every switch on and the count", %{conn: conn, id: id} do
+    {:ok, view, _html} = settings(conn, id)
+
+    assert has_element?(view, "#auto-approve-count", "5")
+
+    open_popover(view)
+
+    for tool <- ~w(shell read_file write_file edit_file spawn_task) do
+      assert has_element?(view, "#auto-approve-#{tool}[aria-checked='true']")
+    end
+  end
+
   # UI-38, CSET-5
   test "the chat settings page has an auto-approve button that opens and closes a popover", %{
     conn: conn,
     id: id
   } do
+    chat_that_asks(id)
     {:ok, view, _html} = settings(conn, id)
 
     assert has_element?(
@@ -50,6 +72,7 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-39, APPR-13
   test "the popover lists only tools that can need approval", %{conn: conn, id: id} do
+    chat_that_asks(id)
     {:ok, view, _html} = settings(conn, id)
     open_popover(view)
 
@@ -66,6 +89,7 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-38, UI-39, APPR-8
   test "switching a tool on and off updates the switch and the count", %{conn: conn, id: id} do
+    chat_that_asks(id)
     {:ok, view, _html} = settings(conn, id)
     open_popover(view)
 
@@ -88,6 +112,7 @@ defmodule EliaWeb.AutoApproveTest do
   # UI-39, SESS-16, CSET-3: a switch moved on one view of the chat (its settings
   # page, here in two tabs) shows up on the other.
   test "every view of the chat follows the switch", %{conn: conn, id: id} do
+    chat_that_asks(id)
     {:ok, first, _} = settings(conn, id)
     {:ok, second, _} = settings(conn, id)
     open_popover(first)
@@ -119,6 +144,7 @@ defmodule EliaWeb.AutoApproveTest do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
     FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
+    chat_that_asks(id)
     {:ok, chat, _html} = live(conn, ~p"/c/#{id}")
     {:ok, view, _html} = settings(conn, id)
     Agent.subscribe(id)
@@ -137,6 +163,7 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-42
   test "each switch says On or Off in text", %{conn: conn, id: id} do
+    chat_that_asks(id)
     {:ok, view, _html} = settings(conn, id)
     open_popover(view)
     assert has_element?(view, "#auto-approve-state-shell", "Off")
@@ -161,6 +188,7 @@ defmodule EliaWeb.AutoApproveTest do
 
     FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
+    chat_that_asks(id)
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
     {:ok, settings, _html} = settings(conn, id)
     Agent.subscribe(id)

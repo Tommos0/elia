@@ -4,10 +4,15 @@ defmodule Elia.AutoApproveTest do
   alias Elia.{Agent, FakeLLM, Store}
   alias Elia.LLM.Message
 
+  # APPR-13, APPR-14: every tool that can need approval in Elia's own project.
+  @approvable ~w(edit_file read_file shell spawn_task write_file)
+
   setup do
     start_supervised!(FakeLLM)
     id = Agent.new_id()
-    {:ok, pid} = Agent.ensure_started(id)
+    # APPR-14: a new chat auto-approves everything, so this chat is started with
+    # an empty set — it is the one that asks.
+    {:ok, pid} = Agent.ensure_started(id, auto_approve: [])
     Agent.subscribe(id)
 
     on_exit(fn ->
@@ -16,6 +21,81 @@ defmodule Elia.AutoApproveTest do
     end)
 
     %{id: id}
+  end
+
+  # APPR-14, APPR-8, APPR-10, STORE-14
+  test "a new chat starts with every tool that can need approval auto-approved" do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id)
+
+    on_exit(fn ->
+      DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+      Store.delete(id)
+    end)
+
+    Agent.subscribe(id)
+    assert %{auto_approve: @approvable, messages: []} = Agent.snapshot(id)
+
+    FakeLLM.push(FakeLLM.assistant([shell_call("c1", "echo default")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "run it")
+    assert_receive {:agent, ^id, {:tool_status, "c1", :approved}}, 5000
+    await_status(id, :idle)
+
+    refute_received {:agent, ^id, {:status, :awaiting_approval}}
+    refute_received {:agent, ^id, {:tool_status, "c1", :awaiting_approval}}
+
+    # The set the chat started with is saved with its first message (APPR-12).
+    assert Store.load_auto_approve(id) == @approvable
+  end
+
+  # APPR-14, STORE-15: a chat that already has messages is not loosened.
+  test "a chat that has messages keeps the set its file holds" do
+    plain = Agent.new_id()
+    :ok = Store.save(plain, [Message.user("hi")])
+    {:ok, plain_pid} = Agent.ensure_started(plain)
+
+    saved = Agent.new_id()
+    :ok = Store.save(saved, [Message.user("hi")], auto_approve: ["shell"])
+    {:ok, saved_pid} = Agent.ensure_started(saved)
+
+    on_exit(fn ->
+      for {pid, id} <- [{plain_pid, plain}, {saved_pid, saved}] do
+        DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+        Store.delete(id)
+      end
+    end)
+
+    assert %{auto_approve: []} = Agent.snapshot(plain)
+    assert %{auto_approve: ["shell"]} = Agent.snapshot(saved)
+  end
+
+  # APPR-14: the default set is worked out from the project's skills, so a
+  # folder skill's script tool is in it (FOLDER).
+  test "the default set includes a folder skill's script tools" do
+    dir = Path.join(Elia.Workspace.skills_dir(), "defaulter")
+    File.mkdir_p!(dir)
+
+    File.write!(
+      Path.join(dir, "SKILL.md"),
+      "---\nname: defaulter\ndescription: Defaults\n---\nUse it.\n"
+    )
+
+    File.write!(
+      Path.join(dir, "tools.json"),
+      ~s([{"name": "default_greet", "description": "Say hi", "command": "echo hi",
+      "input_schema": {"type": "object", "properties": {}}}])
+    )
+
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert "default_greet" in Agent.snapshot(id).auto_approve
+  after
+    File.rm_rf!(Path.join(Elia.Workspace.skills_dir(), "defaulter"))
+    Elia.Skills.reload()
   end
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 5000)
@@ -194,7 +274,8 @@ defmodule Elia.AutoApproveTest do
   # APPR-12, SESS-16, STORE-14, STORE-15
   test "the set is per chat and survives a restart", %{id: id} do
     other = Agent.new_id()
-    {:ok, other_pid} = Agent.ensure_started(other)
+    # APPR-14: the other chat is started with its own (empty) set.
+    {:ok, other_pid} = Agent.ensure_started(other, auto_approve: [])
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, other_pid) end)
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
@@ -229,7 +310,8 @@ defmodule Elia.AutoApproveTest do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     :sys.replace_state(pid, &Map.delete(&1, :auto_approve))
 
-    assert %{auto_approve: [], messages: []} = Agent.snapshot(id)
+    # APPR-14: the upgrade works out the default for a chat that is still new.
+    assert %{auto_approve: @approvable, messages: []} = Agent.snapshot(id)
   end
 
   # SESS-15
@@ -241,6 +323,6 @@ defmodule Elia.AutoApproveTest do
       state |> Map.delete(:auto_approve) |> Map.put(:selection, selection)
     end)
 
-    assert %{selection: ^selection, auto_approve: []} = Agent.snapshot(id)
+    assert %{selection: ^selection, auto_approve: @approvable} = Agent.snapshot(id)
   end
 end

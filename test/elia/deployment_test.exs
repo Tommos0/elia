@@ -59,7 +59,10 @@ defmodule Elia.DeploymentTest do
     {:ok, pid} =
       Agent.ensure_started(id,
         project: Projects.harness(),
-        loop_opts: [llm: %{provider: FakeLLM}]
+        loop_opts: [llm: %{provider: FakeLLM}],
+        # APPR-14: a new chat auto-approves every tool; these chats ask, since
+        # the tests approve each spawn.
+        auto_approve: []
       )
 
     Agent.subscribe(id)

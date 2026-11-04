@@ -71,7 +71,9 @@ progress so any number of UIs can follow it.
   setting (SESS-30) and turn limits (SESS-31) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept.
-- **SESS-16** A session loads its saved auto-approved tools on start (STORE-15).
+- **SESS-16** A session loads its saved auto-approved tools on start (STORE-15),
+  or, for a chat that is new, starts with every tool that can need approval
+  (APPR-14, APPR-13).
   `set_auto_approve/3` (chat id, tool name, boolean) turns auto-approval for a
   tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
   messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the

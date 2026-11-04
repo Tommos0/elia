@@ -89,10 +89,13 @@ defmodule Elia.Agent.Session do
       selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
-      auto_approve: initial_auto_approve(opts[:id], persist, opts[:auto_approve]),
       jail: initial_jail(opts[:id], persist, opts[:jail]),
       limits: initial_limits(opts[:id], persist, opts[:limits])
     }
+
+    # APPR-14: whether the chat is new is only known once its messages are
+    # loaded, so the default set is worked out here.
+    state = %{state | auto_approve: initial_auto_approve(state, opts[:auto_approve])}
 
     # SESS-21: tool calls the app stopped in the middle of never got a result.
     {:ok, close_dangling_tool_calls(state, "The app restarted while this tool was running.")}
@@ -140,7 +143,7 @@ defmodule Elia.Agent.Session do
     upgraded =
       if is_map_key(state, :auto_approve),
         do: upgraded,
-        else: %{upgraded | auto_approve: initial_auto_approve(upgraded.id, upgraded.persist)}
+        else: %{upgraded | auto_approve: initial_auto_approve(upgraded, nil)}
 
     upgraded =
       if is_map_key(state, :compaction),
@@ -560,9 +563,17 @@ defmodule Elia.Agent.Session do
   defp approve_pending(state, _name), do: state
 
   # APPR-13: only tools that can need approval.
-  defp approvable?(state, name) do
+  defp approvable?(state, name), do: name in approvable_names(state)
+
+  # APPR-13, APPR-14: the names of the tools that can need approval in this
+  # chat, which is also what a new chat auto-approves.
+  defp approvable_names(state) do
     skills = Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))
-    Enum.any?(Elia.Skills.tools(skills), &(&1.name == name and &1.approval != :never))
+
+    skills
+    |> Elia.Skills.tools()
+    |> Enum.filter(&(&1.approval != :never))
+    |> Enum.map(& &1.name)
   end
 
   # `auto_approve` is missing from state that predates it (see SESS-15).
@@ -573,11 +584,20 @@ defmodule Elia.Agent.Session do
 
   # SESS-17: a caller may set the new session's auto-approved tools (APPR-8,
   # SUBTASK-6) instead of loading the chat's saved ones.
-  defp initial_auto_approve(id, persist, nil), do: initial_auto_approve(id, persist)
-  defp initial_auto_approve(_id, _persist, names) when is_list(names), do: MapSet.new(names)
+  defp initial_auto_approve(_state, names) when is_list(names), do: MapSet.new(names)
 
-  defp initial_auto_approve(id, true), do: MapSet.new(Elia.Store.load_auto_approve(id))
-  defp initial_auto_approve(_id, false), do: MapSet.new()
+  # APPR-8, APPR-14: a new chat — no messages and nothing saved (STORE-15) —
+  # starts with every tool that can need approval (APPR-13) in its set, which
+  # the jail (ISOL-1) is what makes safe. Any other chat starts from its file.
+  defp initial_auto_approve(state, nil) do
+    saved = if state.persist, do: Elia.Store.load_auto_approve(state.id), else: []
+
+    cond do
+      saved != [] -> MapSet.new(saved)
+      state.messages == [] -> MapSet.new(approvable_names(state))
+      true -> MapSet.new()
+    end
+  end
 
   # SESS-30, SUBTASK-30: a caller may set the new session's jail setting (the
   # child's copy of its parent's) instead of loading the chat's saved one.

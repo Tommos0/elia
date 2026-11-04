@@ -36,7 +36,13 @@ defmodule Elia.TasksTest do
 
   defp new_session do
     id = Agent.new_id()
-    {:ok, _pid} = Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM}])
+
+    # APPR-14: a new chat auto-approves every tool, so this parent starts with
+    # an empty set — what these tests exercise is the approval flow, and a child
+    # copies its parent's set (SUBTASK-6).
+    {:ok, _pid} =
+      Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM}], auto_approve: [])
+
     Agent.subscribe(id)
     on_exit(fn -> stop_session(id) end)
     id
@@ -511,8 +517,13 @@ defmodule Elia.TasksTest do
 
     parent = Agent.new_id()
 
+    # APPR-14: an empty set, so the spawn below still asks.
     {:ok, _pid} =
-      Agent.ensure_started(parent, loop_opts: [llm: %{provider: FakeLLM}], project: project)
+      Agent.ensure_started(parent,
+        loop_opts: [llm: %{provider: FakeLLM}],
+        project: project,
+        auto_approve: []
+      )
 
     Agent.subscribe(parent)
     on_exit(fn -> stop_session(parent) end)

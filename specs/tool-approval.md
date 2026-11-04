@@ -39,7 +39,9 @@ refused.
 The user can let a chat run a tool without asking each time. This is a per-chat,
 per-tool switch; it never loosens what a tool's own policy refuses.
 
-- **APPR-8** Each chat has a set of auto-approved tool names, empty by default.
+- **APPR-8** Each chat has a set of auto-approved tool names. A new chat starts
+  with every tool that can need approval in it (APPR-14); any other chat starts
+  from its file, empty when it has none (STORE-15).
   When a call that needs approval (APPR-1) is for a tool in the set, it skips
   the user: its status goes straight to `:approved` and it never shows as
   `:awaiting_approval`.
@@ -59,8 +61,28 @@ per-tool switch; it never loosens what a tool's own policy refuses.
   is rejected with `{:error, :not_approvable}`. A name already in the set can
   always be turned off, e.g. after its skill was removed.
 
+- **APPR-14** A chat that has no messages and no saved set is new (STORE-22),
+  and its session starts with every tool that can need approval (APPR-13) in
+  the auto-approved set, so the chat runs those tools without asking. The set is
+  worked out from the project's skills when the session starts (PROJ-15), so a
+  folder skill's script tools (FOLDER) are in it too. A chat that has messages
+  keeps the set its file holds, empty when it has none (APPR-8, STORE-15), so a
+  chat that existed before this change is not loosened; a caller that starts a
+  session with its own list overrides the default (SESS-17), as a sub-task does
+  with its parent's set (SUBTASK-6). The default is not a switch of its own:
+  turning a tool off (UI-39) removes it from the set like any other (APPR-11),
+  and the set is saved with the chat's first message (APPR-12, STORE-14).
+
 Auto-approving `shell`, `write_file`/`edit_file` or a script tool lets the
 model act in that chat without review. The UI says so next to the switch
+(UI-39).
+
+A new chat starts with every approvable tool auto-approved (APPR-14), because
+the jail (ISOL-1) is what made the prompt the only safeguard for the tools that
+run processes. The jail doesn't cover the file tools, which run in the server,
+so in a new chat `write_file`/`edit_file` on the workspace's core files
+(FILE-5, WS-1) and `read_file` outside the workspace (FILE-4) are approved
+without review as well; a chat that needs that review turns those switches off
 (UI-39).
 
 ## Implementation

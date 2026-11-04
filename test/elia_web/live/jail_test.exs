@@ -158,6 +158,10 @@ defmodule EliaWeb.JailTest do
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
 
+    # APPR-14: a new chat auto-approves every tool, so this chat is started with
+    # an empty set — the command below has to wait for approval.
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
+
     {:ok, settings, _html} = settings(conn, id)
     settings |> element("#jail-toggle") |> render_click()
     assert has_element?(settings, "#jail-state", "Not jailed")
@@ -182,6 +186,10 @@ defmodule EliaWeb.JailTest do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    # APPR-14: a new chat auto-approves every tool, so this chat is started with
+    # an empty set — the command below has to wait for approval.
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
     Agent.subscribe(id)

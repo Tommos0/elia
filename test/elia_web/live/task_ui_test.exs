@@ -197,7 +197,12 @@ defmodule EliaWeb.TaskUITest do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
-    {:ok, _pid} = Agent.ensure_started(child, loop_opts: [llm: %{provider: FakeLLM}])
+
+    # APPR-14: a new chat auto-approves every tool, so this chat is started with
+    # an empty set — the command below has to wait for approval.
+    {:ok, _pid} =
+      Agent.ensure_started(child, loop_opts: [llm: %{provider: FakeLLM}], auto_approve: [])
+
     :ok = Agent.send_message(child, "run it")
     assert_receive {:agent, ^child, {:status, :awaiting_approval}}, 5000
 

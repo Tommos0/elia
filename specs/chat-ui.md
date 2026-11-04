@@ -156,7 +156,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (`#auto-approve`) that Escape or a click outside closes.
 - **UI-39** The popover lists each tool that can need approval (APPR-13) with a
   switch (`#auto-approve-<tool name>`) that reflects and toggles APPR-8 for
-  this chat, and a note that auto-approved tools run without review. Tools
+  this chat, and a note that auto-approved tools run without review. A new chat
+  starts with every switch on (APPR-14). Tools
   from folder skills appear after a skill
   reload. The switch state follows `{:auto_approve, names}` events (SESS-16),
   so every view of the chat stays in sync.

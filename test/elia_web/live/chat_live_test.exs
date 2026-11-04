@@ -444,6 +444,10 @@ defmodule EliaWeb.ChatLiveTest do
 
     FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
+    # APPR-14: a new chat auto-approves every tool, so this chat is started with
+    # an empty set — the command below has to wait for approval.
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
+
     {:ok, view, html} = live(conn, ~p"/c/#{id}")
     assert html =~ "What should we work on?"
     Agent.subscribe(id)

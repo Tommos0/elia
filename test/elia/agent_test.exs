@@ -7,7 +7,9 @@ defmodule Elia.AgentTest do
   setup do
     start_supervised!(FakeLLM)
     id = Agent.new_id()
-    {:ok, pid} = Agent.ensure_started(id)
+    # APPR-14: a new chat auto-approves everything, so these chats are started
+    # with an empty set: what they test is the approval flow.
+    {:ok, pid} = Agent.ensure_started(id, auto_approve: [])
     Agent.subscribe(id)
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
     %{id: id}
@@ -555,7 +557,12 @@ defmodule Elia.AgentTest do
   # PROJ-12, FILE-1, FILE-4
   test "a chat's project folder is its workspace for the file tools" do
     dir = tmp_dir("files")
-    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+    # APPR-14: an empty set, so the writes below still ask (this test approves one).
+    id =
+      start_project_session(other_project(dir),
+        loop_opts: [llm: %{provider: FakeLLM}],
+        auto_approve: []
+      )
 
     FakeLLM.push(
       FakeLLM.assistant([
@@ -589,7 +596,13 @@ defmodule Elia.AgentTest do
   test "the shell runs in the chat's project folder" do
     dir = tmp_dir("shell")
     File.write!(Path.join(dir, "marker.txt"), "here")
-    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+
+    # APPR-14: an empty set, so the command still asks (this test approves it).
+    id =
+      start_project_session(other_project(dir),
+        loop_opts: [llm: %{provider: FakeLLM}],
+        auto_approve: []
+      )
 
     FakeLLM.push(
       FakeLLM.assistant([FakeLLM.tool_call("s1", "shell", %{"command" => "cat marker.txt"})])
@@ -986,7 +999,8 @@ defmodule Elia.AgentTest do
   test "compact now refuses while a turn is running" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
-    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
+    # APPR-14: an empty set, so the command below waits for approval.
+    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}], auto_approve: [])
 
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
     :ok = Agent.send_message(id, "run it")
