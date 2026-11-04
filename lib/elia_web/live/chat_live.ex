@@ -83,7 +83,9 @@ defmodule EliaWeb.ChatLive do
         draft: "",
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
-        page_title: Elia.Store.title(snapshot.messages),
+        # TITLE-1: the chat's own title when it has one, else the derivation
+        # from its first user message (STORE-7).
+        page_title: chat_title(snapshot),
         chats: chats,
         # UI-72: chats whose turn a restart cut short, kept live.
         interrupted: interrupted_ids(chats),
@@ -1343,6 +1345,11 @@ defmodule EliaWeb.ChatLive do
   defp tool_summary(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
     do: title
 
+  # TITLE-5, UI-74: naming the chat reads as its own one-line summary rather
+  # than as raw JSON (UI-15), as `spawn_task` does (UI-43).
+  defp tool_summary(%{name: "set_title", input: %{"title" => title}}) when is_binary(title),
+    do: title
+
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
   defp tool_summary(%{input: input}), do: Jason.encode!(input, pretty: true)
@@ -1592,9 +1599,17 @@ defmodule EliaWeb.ChatLive do
     assign(socket,
       chats: chats,
       interrupted: interrupted_ids(chats),
-      page_title: Elia.Store.title(Elia.Store.load(socket.assigns.session_id))
+      # STORE-33, TITLE-1: the chat's own title when it has one, else the
+      # derivation from its first user message (STORE-7).
+      page_title: Elia.Store.chat_title(socket.assigns.session_id)
     )
   end
+
+  # TITLE-1: the title a snapshot carries (SESS-7) when the chat has one of its
+  # own, else the derivation from its first user message (STORE-7).
+  defp chat_title(%{title: title}) when is_binary(title) and title != "", do: title
+
+  defp chat_title(%{messages: messages}), do: Elia.Store.title(messages)
 
   defp apply_event({:message, %Message{} = message}, socket) do
     socket =
@@ -1648,6 +1663,13 @@ defmodule EliaWeb.ChatLive do
       task_status: task_status(socket.assigns.session_id, task),
       chats: Elia.Store.list(30)
     )
+  end
+
+  # TITLE-4, UI-74: the model named this chat. Its page title and its row in the
+  # list follow at once, without waiting for the turn to end (UI-6); every other
+  # row follows the list, which is read again here.
+  defp apply_event({:title, title}, socket) do
+    assign(socket, page_title: title, chats: Elia.Store.list(30))
   end
 
   defp apply_event({:usage, usage}, socket) do
@@ -1781,8 +1803,7 @@ defmodule EliaWeb.ChatLive do
 
   defp task_status(_id, %{status: status}), do: status
 
-  defp parent_title(%{parent_id: parent_id}),
-    do: parent_id |> Elia.Store.load() |> Elia.Store.title()
+  defp parent_title(%{parent_id: parent_id}), do: Elia.Store.chat_title(parent_id)
 
   defp parent_title(_task), do: nil
 
@@ -1889,6 +1910,9 @@ defmodule EliaWeb.ChatLive do
 
   defp step(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
     do: {"Starting", "start", "the sub-task “#{short(title)}”"}
+
+  defp step(%{name: "set_title", input: %{"title" => title}}) when is_binary(title),
+    do: {"Naming", "name", "the chat “#{short(title)}”"}
 
   defp step(%{name: name}), do: {"Using", "use", name}
 

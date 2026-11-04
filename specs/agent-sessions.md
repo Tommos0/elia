@@ -28,6 +28,7 @@ progress so any number of UIs can follow it.
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
   `{:jail, on?}` (the chat's jail setting changed, SESS-30),
   `{:limits, limits}` (the chat's turn limits changed, SESS-31, LIMIT-2),
+  `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
@@ -41,7 +42,8 @@ progress so any number of UIs can follow it.
   limits (SESS-31, LIMIT-1), its task
   metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
-  compaction state (`compaction`, COMPACT-24) and its pause message (`pause`,
+  compaction state (`compaction`, COMPACT-24), its own title (`title`, `nil`
+  when it has none, SESS-33, TITLE-1) and its pause message (`pause`,
   `nil` unless the turn is paused, SESS-27), so a UI that connects mid-turn
   can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
@@ -181,6 +183,16 @@ progress so any number of UIs can follow it.
   registry isn't running. A chat list uses it to tell the record a restart left
   behind (INTR-2, STORE-31) from a turn that is running right now.
 
+- **SESS-33** `Elia.Agent.set_title/2` (chat id, text) sets the chat's own title
+  (TITLE-1, TITLE-4): the session shapes the text (trimmed, whitespace collapsed,
+  cut to 60 characters, TITLE-2), saves it with the chat once the chat has
+  messages (as SESS-14, STORE-32) and broadcasts `{:title, title}` (SESS-6), so
+  every view of the chat agrees; the shaped title is returned. It returns
+  `{:error, message}` and changes nothing for a blank title (TITLE-2) and for a
+  chat whose session has task metadata (TITLE-3, STORE-16), and the session
+  loads the saved title on start (STORE-32), upgrading a state that predates the
+  field as in SESS-15.
+
 ## Out of scope
 
 - Several turns running at once in one session.
@@ -191,4 +203,5 @@ progress so any number of UIs can follow it.
 
 ## Tests
 
-`test/elia/agent_test.exs`.
+`test/elia/agent_test.exs`, `test/elia/chat_titles_test.exs` (SESS-33, the
+title's event and its refusals).

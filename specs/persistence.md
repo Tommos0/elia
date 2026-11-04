@@ -131,6 +131,19 @@ reopened.
   it skips an entry whose id isn't valid (STORE-4), so `/` never sends the
   browser to a chat its own route rejects (UI-2).
 
+- **STORE-32** `save/3` takes `title:` (the chat's own title, TITLE-1) and
+  stores it as `title` only when it isn't blank, so an empty one drops the
+  entry from the file; `load_title/1` returns it, or `nil` when the chat is
+  missing, unreadable, corrupt or has none.
+- **STORE-33** A listed chat's `title` is its stored title (STORE-32) when it
+  has one and the STORE-7 derivation otherwise, so a title that isn't a prefix
+  of the first user message is listed like any other and a chat that never got
+  one is unchanged; its `description` is still the derivation (STORE-10), and a
+  task chat is still listed under its task title (STORE-17).
+  `Elia.Store.chat_title/1` (chat id) answers the same way for a view that has
+  an id and not a listing: the stored title, else the derivation from its saved
+  history, else "New chat".
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.
@@ -139,6 +152,8 @@ reopened.
 
 `test/elia/agent_test.exs` (history survives a restart),
 `test/elia/store_test.exs` (STORE-29, the chat to resume),
+`test/elia/chat_titles_test.exs` (the stored title and the listing's
+precedence, STORE-32, STORE-33),
 `test/elia_web/live/page_title_test.exs`,
 `test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
 STORE-22; `/` resumes the most recent chat, UI-1, UI-71).

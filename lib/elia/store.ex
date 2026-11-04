@@ -21,9 +21,10 @@ defmodule Elia.Store do
   `opts[:project]` the id of the project it belongs to (STORE-19) and
   `opts[:compaction]` its compaction state (COMPACT-24); each is kept alongside
   the messages when given. `opts[:jail]` (a boolean) is the chat's jail setting
-  (STORE-25) and is stored only when it is `false`, and `opts[:limits]` the
+  (STORE-25) and is stored only when it is `false`, `opts[:limits]` the
   chat's turn limits (STORE-27), of which only the values that aren't the
-  default (LIMIT-1) are stored.
+  default (LIMIT-1) are stored, and `opts[:title]` the chat's own title
+  (STORE-32), which is stored only when it isn't blank (TITLE-2).
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -41,6 +42,14 @@ defmodule Elia.Store do
     # STORE-30: the turn the chat's session is running. A save that doesn't give
     # one writes no entry, so the turn's end takes the key off the file (INTR-1).
     chat = if turn = opts[:turn], do: Map.put(chat, :turn, turn), else: chat
+
+    # STORE-32, TITLE-2: a chat with no title (or a blank one) carries no entry,
+    # and the chat list derives its title from the first user message (STORE-7).
+    chat =
+      case shape_title(opts[:title]) do
+        nil -> chat
+        title -> Map.put(chat, :title, title)
+      end
 
     chat =
       case opts[:compaction] do
@@ -90,6 +99,56 @@ defmodule Elia.Store do
       model
     else
       _ -> nil
+    end
+  end
+
+  @doc """
+  The chat's own title, or `nil` (STORE-32): `nil` when the chat is missing,
+  unreadable, corrupt or has no title of its own, in which case its title is
+  the first user message (STORE-7, TITLE-1).
+  """
+  @spec load_title(binary()) :: binary() | nil
+  def load_title(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{} = chat <- decode(data) do
+      shape_title(Map.get(chat, :title))
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The shape a title has (TITLE-2): trimmed, its runs of whitespace collapsed to
+  single spaces and cut to 60 characters — the same cut the derivation uses
+  (STORE-7) — since a title is one line in a chat list. `nil` for anything that
+  isn't a title at all (not a string, or blank once trimmed), so a chat is never
+  listed under an empty title.
+  """
+  @spec shape_title(term()) :: binary() | nil
+  def shape_title(text) when is_binary(text) do
+    case text |> String.replace(~r/\s+/u, " ") |> String.trim() do
+      "" -> nil
+      title -> String.slice(title, 0, 60)
+    end
+  end
+
+  def shape_title(_text), do: nil
+
+  @doc """
+  The chat's title (STORE-33, TITLE-1): the one saved with it (STORE-32) when it
+  has one, else the first user message cut to 60 characters (STORE-7), else
+  "New chat" — the same answer the chat list gives, for a view that has an id
+  and not a listed entry.
+  """
+  @spec chat_title(binary()) :: binary()
+  def chat_title(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{messages: messages} = chat <- decode(data) do
+      shape_title(Map.get(chat, :title)) || title(messages)
+    else
+      _ -> "New chat"
     end
   end
 
@@ -237,7 +296,14 @@ defmodule Elia.Store do
           {task, entry} = Map.pop(entry, :task)
 
           entry
-          |> Map.merge(%{title: title(messages), description: title(messages, 1000)})
+          |> Map.merge(%{
+            # STORE-33, TITLE-1: the chat's own title when it has one, else the
+            # derivation from its first user message (STORE-7). The description
+            # is that derivation either way (STORE-10), so hovering a row still
+            # shows what was asked.
+            title: Map.get(entry, :title) || title(messages),
+            description: title(messages, 1000)
+          })
           |> put_task(task)
         end)
 
@@ -289,6 +355,8 @@ defmodule Elia.Store do
       # STORE-31: a chat that still holds a turn record (STORE-30) while no
       # session for it runs was interrupted by a restart (INTR-2).
       interrupted: not is_nil(Map.get(chat, :turn)) and not Elia.Agent.live?(id),
+      # The chat's own title (STORE-32), nil when it has none (STORE-33).
+      title: shape_title(Map.get(chat, :title)),
       created_at: Map.get(chat, :created_at) || mtime,
       updated_at: Map.get(chat, :updated_at) || mtime
     }

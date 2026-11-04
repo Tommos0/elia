@@ -22,6 +22,11 @@ defmodule Elia.Preview do
   # from one run to the next.
   @sample_id "preview"
 
+  # PREVIEW-10: the sample chat is a named chat (TITLE-1), so its row and page
+  # title show a title of its own, and its transcript shows the `set_title` call
+  # that named it (TITLE-5).
+  @sample_title "Sample chat"
+
   @extensions ~w(.png .jpg .jpeg .webp)
 
   @doc "The dir a workspace's previews are written to, under `root` (PREVIEW-4)."
@@ -133,12 +138,13 @@ defmodule Elia.Preview do
   the preview runs in (PREVIEW-2), so no other data is touched.
   """
   @spec seed() :: :ok | {:error, term()}
-  def seed, do: Store.save(@sample_id, sample_messages())
+  def seed, do: Store.save(@sample_id, sample_messages(), title: @sample_title)
 
   @doc """
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply
-  with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), a
-  `shell` call with its output and a failed one (UI-15, UI-16, UI-20).
+  with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), the
+  `set_title` call that named the chat (TITLE-5, UI-74), a `shell` call with its
+  output and a failed one (UI-15, UI-16, UI-20).
   """
   @spec sample_messages() :: [Message.t()]
   def sample_messages do
@@ -157,6 +163,12 @@ defmodule Elia.Preview do
           Message.text(markdown()),
           %{
             type: :tool_call,
+            id: "call-preview-3",
+            name: "set_title",
+            input: %{"title" => @sample_title}
+          },
+          %{
+            type: :tool_call,
             id: "call-preview-1",
             name: "shell",
             input: %{"command" => "mix test"}
@@ -172,6 +184,7 @@ defmodule Elia.Preview do
       %Message{
         role: :tool,
         content: [
+          Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
           Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]"),
           Message.tool_result(
             "call-preview-2",

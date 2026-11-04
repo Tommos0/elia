@@ -16,7 +16,8 @@ defmodule Elia.Agent.Session do
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:jail, on?}`, `{:limits, limits}`, `{:paused, message}`, `{:task, metadata}`.
+  `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:paused, message}`,
+  `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -38,6 +39,9 @@ defmodule Elia.Agent.Session do
     # can see that a restart cut the turn short (INTR-1, STORE-30).
     :turn,
     :turn_start,
+    # The chat's own title (TITLE-1, STORE-32), nil when it has none and its
+    # title is the first user message (STORE-7).
+    :title,
     # The chat's own model selection (MODEL-1); nil until chosen or pinned.
     :selection,
     # Sub-task metadata when the chat was started by `spawn_task` (STORE-16).
@@ -94,7 +98,8 @@ defmodule Elia.Agent.Session do
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       jail: initial_jail(opts[:id], persist, opts[:jail]),
-      limits: initial_limits(opts[:id], persist, opts[:limits])
+      limits: initial_limits(opts[:id], persist, opts[:limits]),
+      title: if(persist, do: Elia.Store.load_title(opts[:id]))
     }
 
     # APPR-14: whether the chat is new is only known once its messages are
@@ -110,8 +115,8 @@ defmodule Elia.Agent.Session do
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits` or
-  # `:turn` existed (a session that outlived a hot reload). Fields it already
+  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`, `:turn`
+  # or `:title` existed (a session that outlived a hot reload). Fields it already
   # has are kept; `:turn` (INTR-1) is not loaded from disk, since it belongs to
   # the process that is running the turn.
   def handle_call(msg, from, state)
@@ -119,7 +124,8 @@ defmodule Elia.Agent.Session do
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
              not is_map_key(state, :pause) or not is_map_key(state, :jail) or
-             not is_map_key(state, :limits) or not is_map_key(state, :turn) do
+             not is_map_key(state, :limits) or not is_map_key(state, :turn) or
+             not is_map_key(state, :title) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -168,6 +174,11 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | limits: initial_limits(upgraded.id, upgraded.persist, nil)}
 
+    upgraded =
+      if is_map_key(state, :title),
+        do: upgraded,
+        else: %{upgraded | title: if(upgraded.persist, do: Elia.Store.load_title(upgraded.id))}
+
     handle_call(msg, from, upgraded)
   end
 
@@ -184,7 +195,8 @@ defmodule Elia.Agent.Session do
         :compaction,
         :pause,
         :jail,
-        :limits
+        :limits,
+        :title
       ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
@@ -389,6 +401,29 @@ defmodule Elia.Agent.Session do
 
       {:error, message} ->
         {:reply, {:error, message}, state}
+    end
+  end
+
+  # SESS-33, TITLE-4: the chat's own title, set by the model's `set_title` tool
+  # (TITLE-5). A sub-task is named by its parent's `spawn_task` title (TITLE-3),
+  # and a blank title is no title at all (TITLE-2, TITLE-6).
+  def handle_call({:set_title, _text}, _from, %{task_meta: task_meta} = state)
+      when task_meta != nil do
+    {:reply, {:error, "This chat is a sub-task: it is named by its task title."}, state}
+  end
+
+  def handle_call({:set_title, text}, _from, state) do
+    case Elia.Store.shape_title(text) do
+      nil ->
+        {:reply, {:error, "The title must not be blank."}, state}
+
+      title ->
+        state = %{state | title: title}
+        # As with the model selection, an empty chat is saved with its first
+        # message.
+        state = if state.messages == [], do: state, else: save(state)
+        broadcast(state, {:title, title})
+        {:reply, {:ok, title}, state}
     end
   end
 
@@ -782,7 +817,8 @@ defmodule Elia.Agent.Session do
              limits: Map.get(state, :limits, Elia.Limits.defaults()),
              # STORE-30, INTR-1: the turn in flight, or nothing when there is
              # none (which takes the entry off the file).
-             turn: Map.get(state, :turn)
+             turn: Map.get(state, :turn),
+             title: Map.get(state, :title)
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end

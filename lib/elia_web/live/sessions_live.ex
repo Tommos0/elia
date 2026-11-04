@@ -143,7 +143,7 @@ defmodule EliaWeb.SessionsLive do
   end
 
   defp page("/c/" <> id) do
-    if Elia.Store.valid_id?(id), do: Elia.Store.title(Elia.Store.load(id)), else: "/c/" <> id
+    if Elia.Store.valid_id?(id), do: Elia.Store.chat_title(id), else: "/c/" <> id
   end
 
   defp page("/sessions"), do: "Sessions"

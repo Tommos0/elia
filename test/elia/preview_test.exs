@@ -121,7 +121,8 @@ defmodule Elia.PreviewTest do
 
       assistant = Enum.find(messages, &(&1.role == :assistant))
       assert Enum.any?(assistant.content, &(&1.type == :reasoning))
-      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 2
+      # TITLE-5, UI-74: the set_title call is one of them.
+      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 3
 
       text = Enum.find_value(assistant.content, &(&1.type == :text && &1.text))
       assert text =~ "## "
@@ -132,16 +133,27 @@ defmodule Elia.PreviewTest do
 
       results = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.flat_map(& &1.content)
       assert Enum.count(results, & &1.is_error) == 1
-      assert Enum.count(results, &(not &1.is_error)) == 1
+      assert Enum.count(results, &(not &1.is_error)) == 2
     end
 
-    test "is listed under its first message" do
+    # PREVIEW-10, TITLE-1: it is a named chat, so a preview shows the title a
+    # chat the agent named shows.
+    test "carries a title of its own, set by its own set_title call" do
       assert Preview.seed() == :ok
 
-      assert %{title: title} =
+      title = Elia.Store.load_title(Preview.sample_id())
+      assert is_binary(title)
+
+      assert %{title: ^title} =
                Enum.find(Elia.Store.list(100), &(&1.id == Preview.sample_id()))
 
-      assert title =~ "What does a chat look like"
+      call =
+        Preview.sample_messages()
+        |> Enum.find(&(&1.role == :assistant))
+        |> Map.fetch!(:content)
+        |> Enum.find(&(Map.get(&1, :name) == "set_title"))
+
+      assert call.input["title"] == title
     end
   end
 

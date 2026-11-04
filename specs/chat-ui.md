@@ -26,8 +26,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (PROJ-26) always start a fresh chat, and `/` does while no chat exists.
 - **UI-2** `/c/<id>` opens that chat, starting its session if needed. An id
   that fails `Elia.Store.valid_id?/1` redirects to `/`.
-- **UI-3** The page title is the chat's title (see STORE-7) and follows the
-  chat when the user navigates between chats.
+- **UI-3** The page title is the chat's title (STORE-7, or the chat's own
+  stored title when it has one, TITLE-1) and follows the chat when the user
+  navigates between chats.
 
 ### Chat list
 
@@ -118,6 +119,16 @@ stream in, approves or denies tool calls, and switches between saved chats.
   on the activity topic (SESS-19). A task chat still shows its task status
   (UI-46); `interrupted` is also the status STORE-17 gives a task chat whose
   session was lost, and the two read the same.
+
+- **UI-74** A chat's own stored title (TITLE-1) is what its sidebar row
+  (`#chat-link-<id>`) and its page title (UI-3) show, in place of the STORE-7
+  derivation, and the open chat follows `{:title, title}` (SESS-33) as soon as
+  it arrives — during the turn, without waiting for it to end (UI-6) — while
+  other rows pick a title up at the next refresh (UI-6) or page load. The
+  `set_title` call renders as a card whose summary is the new title, as UI-43
+  does for `spawn_task` (UI-15), not as raw JSON, and the row's hover text
+  (UI-33) stays the chat's description (STORE-10). A chat without a stored
+  title is unchanged.
 
 ### Transcript
 
@@ -366,7 +377,8 @@ the hidden tool calls leave with a one-line summary of the current step.
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`,
-`Elia.Store` (the chat `/` resumes, STORE-29, UI-71),
+`Elia.Store` (the chat `/` resumes, STORE-29, UI-71; the title a row and the
+page show, STORE-33, UI-74),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
@@ -379,5 +391,6 @@ UI-38, UI-39, UI-67, UI-68).
 `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),
 `test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
-`test/elia_web/live/page_title_test.exs`, `test/elia_web/live/task_ui_test.exs`,
+`test/elia_web/live/page_title_test.exs`, `test/elia_web/live/chat_title_test.exs`
+(UI-74, the stored title and `{:title, title}`), `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

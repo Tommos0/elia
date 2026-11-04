@@ -27,7 +27,8 @@ system prompt from them. It can be reloaded while the app runs.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
   `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
-  `await_task`, [Sub-tasks](subtasks.md)) and `self-modification` (instructions
+  `await_task`, [Sub-tasks](subtasks.md)), `titles` (`set_title`,
+  [Chat titles](chat-titles.md)) and `self-modification` (instructions
   only). The last one is a chat's only when its project is Elia's own (PROJ-17);
   a sub-task session, and only it, also gets the built-in `task` skill, which
   carries `finish_task` (SUBTASK-1).

@@ -92,6 +92,7 @@ config :elia, Elia.Skills,
     Elia.Skills.Files,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
+    Elia.Skills.Titles,
     Elia.Skills.SelfModification
   ]
 

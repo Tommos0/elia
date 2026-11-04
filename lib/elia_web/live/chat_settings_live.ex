@@ -30,7 +30,9 @@ defmodule EliaWeb.ChatSettingsLive do
       socket
       |> assign(
         session_id: id,
-        page_title: Elia.Store.title(snapshot.messages),
+        # TITLE-1: the chat's own title when it has one, else the derivation
+        # from its first user message (STORE-7).
+        page_title: Elia.Store.chat_title(id),
         project: snapshot.project,
         selection: LLM.selection(snapshot.selection),
         context_window: LLM.context_window(snapshot.selection),

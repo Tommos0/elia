@@ -104,6 +104,17 @@ defmodule Elia.Agent do
   def set_limits(id, changes), do: GenServer.call(Session.via(id), {:set_limits, changes})
 
   @doc """
+  Gives the chat its own title (SESS-33, TITLE-4), the name its chat list row,
+  its page title and the chat settings header show in place of the first user
+  message (TITLE-1). The text is trimmed, its whitespace collapsed and cut to 60
+  characters (TITLE-2), and the accepted title is returned. A blank title, and a
+  sub-task chat (which is named by its task, TITLE-3), return
+  `{:error, message}`, as the `set_title` tool reports to the model (TITLE-6).
+  """
+  @spec set_title(binary(), term()) :: {:ok, binary()} | {:error, binary()}
+  def set_title(id, text), do: GenServer.call(Session.via(id), {:set_title, text})
+
+  @doc """
   Sets the chat's model (MODEL-1). Also remembers it as the default for new
   chats (MODEL-15).
   """
