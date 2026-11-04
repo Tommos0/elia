@@ -11,38 +11,39 @@ defmodule EliaWeb.ChatLiveTest do
     :ok
   end
 
-  # UI-1, UI-71: `/` is where the app opens (its start URL, PWA-1), where the
-  # header logo and the Chats link of the pages without a chat list lead (UI-32)
-  # and where deleting the open chat lands (UI-65), so it resumes the chat the
-  # user left off in instead of leaving another empty one behind on every visit.
-  test "/ resumes the most recent chat, and looking at it saves nothing", %{conn: conn} do
+  # UI-77: `/chats` is the chat list's entry point — where the header's Chats
+  # link of the pages without a chat list leads (UI-32) and where deleting the
+  # open chat lands (UI-65) — so it resumes the chat the user left off in
+  # instead of leaving another empty one behind on every visit. `/` is the
+  # dashboard instead (DASH-1), which opens no chat at all.
+  test "/chats resumes the most recent chat, and looking at it saves nothing", %{conn: conn} do
     with_empty_store(fn ->
       older = saved_chat()
-      # A sub-task chat started after it: not where the user left off (UI-71).
+      # A sub-task chat started after it: not where the user left off (UI-77).
       task = saved_task_chat(older)
       newest = saved_chat()
       listed = Enum.map(Elia.Store.list(1000), & &1.id)
 
-      assert {:error, {:live_redirect, %{to: "/c/" <> ^newest}}} = live(conn, ~p"/")
-      # UI-71, STORE-22: resuming writes nothing, so no empty chat piles up.
+      assert {:error, {:live_redirect, %{to: "/c/" <> ^newest}}} = live(conn, ~p"/chats")
+      # UI-77, STORE-22: resuming writes nothing, so no empty chat piles up.
       assert Enum.map(Elia.Store.list(1000), & &1.id) == listed
       assert task in listed
 
       # With the newest chat gone, the next one is resumed rather than the
-      # task chat (UI-71, STORE-29).
+      # task chat (UI-77, STORE-29).
       :ok = Elia.Store.delete(newest)
-      assert {:error, {:live_redirect, %{to: "/c/" <> ^older}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: "/c/" <> ^older}}} = live(conn, ~p"/chats")
     end)
   end
 
-  # UI-1, UI-71, STORE-22: with nothing saved there is no chat to resume, so
-  # `/` starts one in the default project (PROJ-8) and saves it at once.
-  test "/ starts a chat when there is nothing to resume", %{conn: conn} do
+  # UI-77, STORE-22: with nothing saved there is no chat to resume, so `/chats`
+  # starts one in the default project (PROJ-8) and saves it at once.
+  test "/chats starts a chat when there is nothing to resume", %{conn: conn} do
     with_empty_store(fn ->
       # No stored default project, so it is Elia's own (PROJ-8).
       Elia.Settings.delete(:default_project)
 
-      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/chats")
 
       assert [%{id: ^id, title: "New chat", project_id: "harness"}] = Elia.Store.list(30)
       assert Elia.Store.load(id) == []
@@ -52,9 +53,10 @@ defmodule EliaWeb.ChatLiveTest do
   # STORE-22, UI-63: a chat started from the UI is saved as it opens, so the
   # sidebar lists it, as the open chat, before the user has sent anything.
   test "a started chat is saved and in the sidebar at once", %{conn: conn} do
-    # Its own store: with a chat saved there, `/` would resume that one (UI-71).
+    # Its own store: with a chat saved there, `/chats` would resume that one
+    # (UI-77).
     with_empty_store(fn ->
-      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/chats")
 
       # STORE-22: on disk with no messages, its project and its start time.
       assert %{id: ^id, title: "New chat", description: "New chat", project_id: "harness"} =
@@ -335,8 +337,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chat-link-#{open}.bg-base-300")
   end
 
-  # UI-65: deleting the chat that is open opens a fresh one (UI-1).
-  test "deleting the open chat navigates to a fresh chat", %{conn: conn} do
+  # UI-65: deleting the chat that is open leaves for `/chats`, which resumes the
+  # next chat or starts a fresh one (UI-77).
+  test "deleting the open chat navigates to the chat list entry point", %{conn: conn} do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
     :ok = Elia.Store.save(id, [Message.user("delete me")])
@@ -344,7 +347,7 @@ defmodule EliaWeb.ChatLiveTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
     view |> element("#delete-chat-#{id}") |> render_click()
-    assert_redirect(view, "/")
+    assert_redirect(view, "/chats")
 
     assert Elia.Store.load(id) == []
   end
@@ -429,9 +432,10 @@ defmodule EliaWeb.ChatLiveTest do
 
   # UI-32: the header's Chats control comes before the other pages' links. On
   # the chat page it is the chat list's drawer toggle (UI-36), which shows the
-  # list and never navigates; a page without a chat list keeps the link to "/",
-  # which resumes the most recent chat (UI-1, UI-71).
-  test "the header's Chats control shows the chat list, or goes to /", %{conn: conn} do
+  # list and never navigates; a page without a chat list — the dashboard
+  # included (DASH-2) — keeps the link to `/chats`, the chat list's entry point,
+  # which resumes the most recent chat (UI-77).
+  test "the header's Chats control shows the chat list, or goes to /chats", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
     assert has_element?(view, "header #chats-toggle")
@@ -445,10 +449,10 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chat-form")
 
     {:ok, files, _html} = live(conn, ~p"/files")
-    assert has_element?(files, "header #chats-link[href='/']", "Chats")
+    assert has_element?(files, "header #chats-link[href='/chats']", "Chats")
     refute has_element?(files, "header #chats-toggle")
     files |> element("#chats-link") |> render_click()
-    assert_redirect(files, "/")
+    assert_redirect(files, "/chats")
   end
 
   test "chatting with an approval round-trip", %{conn: conn} do
@@ -812,13 +816,13 @@ defmodule EliaWeb.ChatLiveTest do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/p/nope/new")
   end
 
-  # PROJ-8, PROJ-26, UI-1: with nothing to resume, "/" starts a chat in the
+  # PROJ-8, PROJ-26, UI-77: with nothing to resume, "/chats" starts a chat in the
   # default project.
   test "a new chat starts in the default project", %{conn: conn} do
     root = Path.join(Workspace.root(), "chat-live-default")
     File.mkdir_p!(root)
 
-    # A store with no chat to resume (UI-71): this is the starting-over path.
+    # A store with no chat to resume (UI-77): this is the starting-over path.
     with_empty_store(fn ->
       {:ok, project} = Projects.create("Default one", root)
 
@@ -830,7 +834,7 @@ defmodule EliaWeb.ChatLiveTest do
 
       Elia.Projects.set_default(project.id)
 
-      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/chats")
       assert Agent.snapshot(id).project.id == project.id
     end)
   end
@@ -908,7 +912,7 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#items-m1 [data-kind='error']")
   end
 
-  # UI-71: a store of its own — a throwaway runtime root, where Elia's data and
+  # UI-77: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
   # the chats other tests leave behind.
   defp with_empty_store(fun) do
@@ -936,7 +940,7 @@ defmodule EliaWeb.ChatLiveTest do
     id
   end
 
-  # A sub-task chat started after it (STORE-16, UI-71).
+  # A sub-task chat started after it (STORE-16, UI-77).
   defp saved_task_chat(parent) do
     id = Agent.new_id()
 

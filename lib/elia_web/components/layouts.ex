@@ -32,8 +32,11 @@ defmodule EliaWeb.Layouts do
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
   # UI-32: on the chat page the header's Chats control is the chat list's
-  # drawer toggle (`#chats-toggle`, UI-36) instead of a link to "/", so it
-  # shows the list rather than leaving the open chat.
+  # drawer toggle (`#chats-toggle`, UI-36) instead of navigating, so it shows
+  # the list rather than leaving the open chat. On every other page — the
+  # dashboard included (DASH-2) — it is the link (`#chats-link`) to `/chats`,
+  # the chat list's entry point, which resumes the chat the user left off in
+  # (UI-77). The logo at the top left goes home, `/`, the dashboard (DASH-1).
   attr :chats_drawer, :boolean,
     default: false,
     doc: "render the Chats control as the chat list's drawer toggle (UI-32, UI-36)"
@@ -46,7 +49,11 @@ defmodule EliaWeb.Layouts do
     ~H"""
     <div class="flex h-dvh flex-col bg-base-100">
       <header class="flex items-center justify-between border-b border-base-300 px-4 py-3 sm:px-6">
-        <.link navigate={~p"/"} class="flex items-center gap-2 font-semibold tracking-tight">
+        <.link
+          navigate={~p"/"}
+          title="Home"
+          class="flex items-center gap-2 font-semibold tracking-tight"
+        >
           <span class="grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-content">
             E
           </span>
@@ -70,7 +77,7 @@ defmodule EliaWeb.Layouts do
           </button>
           <.nav_link
             :if={!@chats_drawer}
-            to={~p"/"}
+            to={~p"/chats"}
             id="chats-link"
             icon="hero-chat-bubble-left-right"
             label="Chats"

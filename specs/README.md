@@ -49,6 +49,7 @@ deleting it.
 | Spec | Prefix | Summary |
 | --- | --- | --- |
 | [Projects](projects.md) | `PROJ` | Project folders; chats belong to a project, which supplies its own `AGENTS.md` and skills |
+| [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Chat titles](chat-titles.md) | `TITLE` | A chat's own title, set by the agent's `set_title` tool; the first-message derivation stays as the fallback |
 | [Image viewer](image-viewer.md) | `IMG` | An image in the transcript opens over the chat, closable by its own button or the back button, never in a new tab |

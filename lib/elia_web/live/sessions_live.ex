@@ -146,6 +146,8 @@ defmodule EliaWeb.SessionsLive do
     if Elia.Store.valid_id?(id), do: Elia.Store.chat_title(id), else: "/c/" <> id
   end
 
+  # CLIENT-6: the page a tab is on, by name. "/" is the dashboard (DASH-1).
+  defp page("/"), do: "Home"
   defp page("/sessions"), do: "Sessions"
   defp page("/system"), do: "System"
   defp page("/settings"), do: "Settings"

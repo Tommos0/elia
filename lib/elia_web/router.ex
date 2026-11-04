@@ -25,7 +25,13 @@ defmodule EliaWeb.Router do
     pipe_through :browser
 
     live_session :default, on_mount: EliaWeb.ClientTracker do
-      live "/", ChatLive, :new
+      # DASH-1: `/` is the dashboard, the app's start URL (PWA-1) and the
+      # header logo's target; it starts no chat.
+      live "/", DashboardLive, :index
+      # UI-77: the chat list's entry point, where the header's Chats link leads
+      # on the pages without a chat list (UI-32) and where deleting the open
+      # chat lands (UI-65): it resumes the most recent chat, or starts one.
+      live "/chats", ChatLive, :new
       live "/c/:id", ChatLive, :show
       # CSET-1: this chat's own settings — model, auto-approval, jail, limits
       # and context — on their own page instead of in the composer.

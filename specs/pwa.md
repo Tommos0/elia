@@ -12,7 +12,8 @@ offline mode.
 ## Requirements
 
 - **PWA-1** `/manifest.webmanifest` is served as a static file with a JSON
-  manifest whose `name` is "Elia", `start_url` and `scope` are `/`, `display`
+  manifest whose `name` is "Elia", `start_url` and `scope` are `/` (the
+  dashboard, DASH-1), `display`
   is `standalone`, and which has `background_color` and `theme_color`.
 - **PWA-2** The manifest lists PNG icons of 192×192 and 512×512 for purpose
   `any` and for purpose `maskable`. Every icon file it references is served.

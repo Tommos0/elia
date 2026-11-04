@@ -401,8 +401,8 @@ defmodule Elia.StoreTest do
     assert [%Message{}] = Store.load(kept)
   end
 
-  # STORE-29, UI-71: the chat `/` resumes — the most recently started chat that
-  # isn't a task chat.
+  # STORE-29, UI-77: the chat `/chats` resumes — the most recently started chat
+  # that isn't a task chat.
   test "latest/0 is the newest chat that isn't a task chat" do
     parent = Elia.Agent.new_id()
     task = Elia.Agent.new_id()
@@ -411,7 +411,7 @@ defmodule Elia.StoreTest do
     :ok = Store.save(parent, [Message.user("where I left off")])
 
     # Started after it, but a sub-task chat is reached from its parent's card,
-    # not from the app (UI-71).
+    # not from the chat list's entry point (UI-77).
     :ok =
       Store.save(task, [Message.user("preamble")],
         task: %{parent_id: parent, title: "A task", brief: "Brief", status: "running"}
@@ -421,7 +421,7 @@ defmodule Elia.StoreTest do
     assert Store.latest().title == "where I left off"
   end
 
-  # STORE-29, UI-1: with nothing saved there is no chat to resume.
+  # STORE-29, UI-77: with nothing saved there is no chat to resume.
   test "latest/0 is nil when no chat is saved" do
     with_empty_store(fn ->
       assert Store.list(1000) == []

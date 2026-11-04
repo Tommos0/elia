@@ -86,8 +86,9 @@ reopened.
   outlive a restart. `load_compaction/1` returns it, or `nil` when the chat is
   missing, unreadable, corrupt or has none.
 
-- **STORE-22** Starting a chat from the UI (`/` when it has no chat to resume
-  (UI-71), or `/p/<id>/new`, UI-1, PROJ-26) saves it at once, with no messages
+- **STORE-22** Starting a chat from the UI (`/chats` when it has no chat to
+  resume (UI-77), `/p/<id>/new`, PROJ-26, or the dashboard's "New chat"
+  button, DASH-4) saves it at once, with no messages
   and its project (STORE-19), so it
   is listed while it is still empty: its title is "New chat" (STORE-7) and its
   `created_at` is the moment it was started (STORE-11), which its later saves
@@ -127,9 +128,10 @@ reopened.
 - **STORE-29** `latest/0` returns the most recently started listed chat
   (STORE-12) that isn't a task chat (STORE-17), as a listed entry, or `nil`
   when there is none. It looks at every saved chat, not only the first page of
-  `list/1`, so a run of task chats doesn't hide the chat to resume (UI-71), and
-  it skips an entry whose id isn't valid (STORE-4), so `/` never sends the
-  browser to a chat its own route rejects (UI-2).
+  `list/1`, so a run of task chats doesn't hide the chat to resume (UI-77), and
+  it skips an entry whose id isn't valid (STORE-4), so `/chats` never sends the
+  browser to a chat its own route rejects (UI-2). The dashboard uses it for its
+  "Continue" card (DASH-3).
 
 - **STORE-32** `save/3` takes `title:` (the chat's own title, TITLE-1) and
   stores it as `title` only when it isn't blank, so an empty one drops the
@@ -156,4 +158,5 @@ reopened.
 precedence, STORE-32, STORE-33),
 `test/elia_web/live/page_title_test.exs`,
 `test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
-STORE-22; `/` resumes the most recent chat, UI-1, UI-71).
+STORE-22; `/chats` resumes the most recent chat, UI-77),
+`test/elia_web/live/dashboard_test.exs` (the "Continue" card, DASH-3).

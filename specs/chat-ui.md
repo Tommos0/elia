@@ -9,10 +9,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ### Routing
 
-- **UI-1** `GET /` navigates to `/c/<id>`: the most recently started chat that
+- ~~**UI-1** `GET /` navigates to `/c/<id>`: the most recently started chat that
   isn't a task chat (UI-71), or a freshly generated chat id when there is none
-  (saved at once, STORE-22).
-- **UI-71** Opening the chat list's entry point — `GET /`, which is the app's
+  (saved at once, STORE-22).~~ Retired: `/` is the dashboard now (DASH-1); what
+  this described is the chat list's entry point `/chats` (UI-77).
+- ~~**UI-71** Opening the chat list's entry point — `GET /`, which is the app's
   start URL (PWA-1) and the target of the header logo and of the Chats link on
   the pages that have no chat list of their own (UI-32) — resumes work rather
   than starting over: it opens the most recently
@@ -23,9 +24,26 @@ stream in, approves or denies tool calls, and switches between saved chats.
   browsing to `/` never leaves another empty "New chat" behind while a chat
   exists, and resuming writes nothing (STORE-22). Starting a chat stays
   explicit: the sidebar's "New chat" button (UI-31) and `/p/<id>/new`
-  (PROJ-26) always start a fresh chat, and `/` does while no chat exists.
+  (PROJ-26) always start a fresh chat, and `/` does while no chat exists.~~
+  Retired: `/` is the dashboard (DASH-1); the entry point that resumes work is
+  `/chats` (UI-77), and the app's start URL (PWA-1) and the header logo open the
+  dashboard.
+- **UI-77** `/chats` is the chat list's entry point and resumes work rather than
+  starting over: it opens the most recently started chat (STORE-12 order, the
+  first one the sidebar lists) that isn't a task chat (STORE-17, UI-45), since a
+  sub-task chat is reached from its parent's card (UI-44) and not where the user
+  left off. Only when there is no such chat does it start a fresh one in the
+  default project (PROJ-8), saved at once (STORE-22) — so browsing to it never
+  leaves another empty "New chat" behind while a chat exists, and resuming
+  writes nothing (STORE-22, STORE-29). It is what the header's "Chats" control
+  opens on the pages that have no chat list of their own (UI-32) and where
+  deleting the open chat lands (UI-65). Starting a chat stays explicit: the
+  sidebar's "New chat" button (UI-31), `/p/<id>/new` (PROJ-26) and the
+  dashboard's (DASH-4) always start a fresh chat, and `/chats` does while no
+  chat exists.
 - **UI-2** `/c/<id>` opens that chat, starting its session if needed. An id
-  that fails `Elia.Store.valid_id?/1` redirects to `/`.
+  that fails `Elia.Store.valid_id?/1` redirects to `/`, the dashboard
+  (DASH-1).
 - **UI-3** The page title is the chat's title (STORE-7, or the chat's own
   stored title when it has one, TITLE-1) and follows the chat when the user
   navigates between chats.
@@ -46,8 +64,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   becomes idle), the sidebar and page title refresh, so a chat that was just
   started shows its first message as its title without waiting for the turn to
   end.
-- **UI-63** A chat started from `/` or from a "New chat" button (UI-1, UI-31,
-  PROJ-26) is in the sidebar list as soon as it opens: under its project
+- **UI-63** A chat started from `/chats` or from a "New chat" button (UI-77,
+  UI-31, PROJ-26) is in the sidebar list as soon as it opens: under its project
   (PROJ-24), newest first (STORE-12), highlighted as the open chat (UI-4), with
   the title "New chat" (STORE-7) and the start time "just now" (UI-34), before
   the user has sent anything. It stays listed when the user never writes to it
@@ -70,8 +88,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
   drawer toggle (`#chats-toggle`, UI-36), which opens and closes the list below
   the `lg` breakpoint, and it never navigates — pressing it never opens another
   chat. On the other pages, which have no chat list to show, it is a link
-  (`#chats-link`) that goes where the logo at the top left goes: `/`, which
-  opens the most recent chat (UI-1, UI-71).
+  (`#chats-link`) to `/chats`, the chat list's entry point, which resumes the
+  chat the user left off in (UI-77; the dashboard shows it there too, DASH-2),
+  so it never navigates to the dashboard and never opens another chat than that
+  one.
 - **UI-36** On small screens the chat list is a drawer: the header's "Chats"
   button (`#chats-toggle`, UI-32) opens and closes it, its `aria-expanded`
   follows, the drawer starts closed, and a backdrop (`#chats-backdrop`) or the
@@ -110,8 +130,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `data-confirm` naming the chat, and only then deletes it.
 - **UI-65** Confirming a delete removes the chat (SESS-29): its row leaves the
   sidebar and a "Chat deleted." flash appears. Deleting the chat that is open
-  navigates to `/` (the most recent chat, or a fresh chat when there is none —
-  UI-1, UI-71); deleting any other chat leaves the open
+  navigates to `/chats` (the most recent chat, or a fresh chat when there is
+  none — UI-77); deleting any other chat leaves the open
   one in place. Deleting a chat whose turn is running stops that turn first
   (SESS-29), so a running chat can be deleted from any chat's sidebar.
 - **UI-66** Deleting a parent chat leaves its task chats saved and listed on
@@ -408,7 +428,7 @@ the hidden tool calls leave with a one-line summary of the current step.
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`,
-`Elia.Store` (the chat `/` resumes, STORE-29, UI-71; the title a row and the
+`Elia.Store` (the chat `/chats` resumes, STORE-29, UI-77; the title a row and the
 page show, STORE-33, UI-74),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
 CSET; the model picker, the auto-approve switches and the jail switch,
@@ -416,7 +436,7 @@ UI-38, UI-39, UI-67, UI-68).
 
 ## Tests
 
-`test/elia_web/live/chat_live_test.exs` (including what `/` opens, UI-1, UI-71),
+`test/elia_web/live/chat_live_test.exs` (including what `/chats` opens, UI-77),
 `test/elia_web/live/auto_approve_test.exs`,
 `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
 `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),

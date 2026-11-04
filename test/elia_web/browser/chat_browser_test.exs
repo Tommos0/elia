@@ -19,16 +19,27 @@ defmodule EliaWeb.ChatBrowserTest do
     :ok
   end
 
-  # BROWSER-8: `/` reaches a chat page. That redirect is a `push_navigate` from
-  # the mounted LiveView, so a chat form being there means the socket connected
-  # and the page's scripts ran. `/` resumes the latest chat (UI-1, UI-71), and
+  # BROWSER-8: `/` loads the dashboard (DASH-1) without starting a chat, and
+  # `/chats` reaches a chat page. That redirect is a `push_navigate` from the
+  # mounted LiveView, so a chat form being there means the socket connected and
+  # the page's scripts ran. `/chats` resumes the latest chat (UI-77), and
   # starts one only when there is none (STORE-22).
-  test "the chat page loads in the browser and moves on to a chat", %{conn: conn} do
+  test "the home page and the chat list entry point load in the browser", %{conn: conn} do
     opened = session_ids()
+
+    # DASH-1: the dashboard renders in place — a page of cards, no chat form.
+    conn
+    |> visit("/")
+    |> assert_has("#continue")
+    |> assert_has("#recent-chats")
+    |> refute_has("#chat-form")
+
+    # Nothing was started by looking at it.
+    assert session_ids() == opened
 
     conn =
       conn
-      |> visit("/")
+      |> visit("/chats")
       |> assert_has("#sidebar")
       |> assert_has("#chat-form")
 
@@ -36,7 +47,7 @@ defmodule EliaWeb.ChatBrowserTest do
       assert path =~ ~r{^/c/[\w-]+$}
     end)
 
-    # Opening `/` made a chat: leave the workspace as we found it.
+    # Opening `/chats` made a chat: leave the workspace as we found it.
     on_exit(fn -> for id <- session_ids() -- opened, do: Store.delete(id) end)
   end
 

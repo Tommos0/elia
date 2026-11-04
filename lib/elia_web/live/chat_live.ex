@@ -4,6 +4,7 @@ defmodule EliaWeb.ChatLive do
   alias Elia.Agent
   alias Elia.LLM
   alias Elia.LLM.{Compaction, Context, Message}
+  alias EliaWeb.ChatStatus
 
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
@@ -14,11 +15,13 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # UI-1, UI-71: `/` — the app's start URL (PWA-1), the header logo and the
-  # Chats link on the pages without a chat list (UI-32) — resumes the most
-  # recent chat, and only starts a chat in the default project (PROJ-8) when
-  # there is nothing to resume. The sidebar's "New chat" (UI-31) instead goes to
-  # the open chat's project, `/p/<id>/new` above.
+  # UI-77: `/chats` — the chat list's entry point, where the header's Chats
+  # link leads on the pages without a chat list (UI-32) and where deleting the
+  # open chat lands (UI-65) — resumes the most recent chat, and only starts a
+  # chat in the default project (PROJ-8) when there is nothing to resume. The
+  # app's start URL and the header logo open the dashboard instead (`/`,
+  # DASH-1), and the sidebar's "New chat" (UI-31) goes to the open chat's
+  # project, `/p/<id>/new` above.
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket) do
     case Elia.Store.latest() do
       %{id: id} -> {:ok, push_navigate(socket, to: ~p"/c/#{id}")}
@@ -712,8 +715,11 @@ defmodule EliaWeb.ChatLive do
 
   # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64, UI-72, UI-76
   defp chat_row(assigns) do
-    {status_id, status} = chat_status(assigns.chat, assigns)
-    assigns = assign(assigns, status_id: status_id, status: status)
+    assigns =
+      assign(assigns,
+        status_id: "chat-status-#{assigns.chat.id}",
+        status: ChatStatus.status(assigns.chat, assigns)
+      )
 
     ~H"""
     <%!-- UI-64: the delete button sits beside the link, as its sibling, so no
@@ -730,7 +736,7 @@ defmodule EliaWeb.ChatLive do
         ]}
       >
         <span class="flex items-center gap-1.5">
-          <.status_icon id={@status_id} status={@status} />
+          <ChatStatus.status_icon id={@status_id} status={@status} />
           <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
         </span>
         <time
@@ -758,70 +764,6 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
-  attr :id, :string, required: true
-  attr :status, :string, required: true
-
-  # UI-44, UI-46, UI-47, UI-58, UI-59, UI-76: a chat's status as an icon — waiting
-  # for approval, waiting for an answer, or paused first (UI-47, UI-58, UI-76),
-  # then a task's own status (UI-46), then an ordinary chat's loop activity
-  # (`working`/`idle`, UI-59).
-  defp status_icon(assigns) do
-    {icon, class} = status_icon_spec(assigns.status)
-    assigns = assign(assigns, icon: icon, class: class)
-
-    ~H"""
-    <span
-      id={@id}
-      data-status={@status}
-      title={status_title(@status)}
-      class="inline-flex shrink-0 items-center"
-    >
-      <.icon :if={@icon} name={@icon} class={["size-3.5", @class]} />
-      <span :if={!@icon} class={["block size-1.5 rounded-full bg-current", @class]}></span>
-    </span>
-    """
-  end
-
-  defp status_icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
-  defp status_icon_spec("running"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
-  defp status_icon_spec("awaiting_approval"), do: {"hero-hand-raised", "text-warning"}
-  defp status_icon_spec("awaiting_input"), do: {"hero-chat-bubble-left-right", "text-warning"}
-  defp status_icon_spec("paused"), do: {"hero-pause-circle", "text-warning"}
-  defp status_icon_spec("done"), do: {"hero-check-circle", "text-success"}
-  defp status_icon_spec("blocked"), do: {"hero-pause-circle", "text-warning"}
-  defp status_icon_spec("failed"), do: {"hero-x-circle", "text-error"}
-  defp status_icon_spec("unfinished"), do: {"hero-question-mark-circle", "text-warning"}
-  defp status_icon_spec("cancelled"), do: {"hero-stop-circle", "text-base-content/60"}
-  # UI-72: a turn a restart cut short (INTR-2), and the task status STORE-17
-  # gives a child whose session was lost.
-  defp status_icon_spec("interrupted"), do: {"hero-exclamation-triangle", "text-warning"}
-  defp status_icon_spec("idle"), do: {nil, "text-base-content/30"}
-  defp status_icon_spec(_other), do: {"hero-exclamation-triangle", "text-base-content/50"}
-
-  defp status_title("working"), do: "Working"
-  defp status_title("idle"), do: "Idle"
-  defp status_title("awaiting_approval"), do: "Needs approval"
-  defp status_title("awaiting_input"), do: "Needs your answer"
-  defp status_title("paused"), do: "Paused"
-  defp status_title("interrupted"), do: "Interrupted: the app restarted during the turn"
-  defp status_title(status), do: "Task #{status}"
-
-  # UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: the one status indicator a sidebar
-  # chat shows.
-  defp chat_status(chat, %{awaiting: true}), do: {"chat-status-#{chat.id}", "awaiting_approval"}
-
-  defp chat_status(chat, %{input: true}),
-    do: {"chat-status-#{chat.id}", "awaiting_input"}
-
-  defp chat_status(chat, %{paused: true}), do: {"chat-status-#{chat.id}", "paused"}
-  defp chat_status(%{task_status: status} = chat, _state), do: {"chat-status-#{chat.id}", status}
-
-  defp chat_status(chat, %{interrupted: true}),
-    do: {"chat-status-#{chat.id}", "interrupted"}
-
-  defp chat_status(chat, %{running: true}), do: {"chat-status-#{chat.id}", "working"}
-  defp chat_status(chat, _state), do: {"chat-status-#{chat.id}", "idle"}
-
   # UI-72, STORE-31: the chats in the sidebar whose saved turn a restart cut
   # short, so the list is right on first render and every page shows the same.
   defp interrupted_ids(chats), do: for(%{interrupted: true} = chat <- chats, do: chat.id)
@@ -838,7 +780,7 @@ defmodule EliaWeb.ChatLive do
     <div id="task-header" class="border-b border-base-300 bg-base-200/40">
       <div class="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-xs sm:px-6">
         <div class="flex items-center gap-2">
-          <.status_icon id="task-header-status" status={@status} />
+          <ChatStatus.status_icon id="task-header-status" status={@status} />
           <span class="text-base-content/60">Task of</span>
           <.link
             navigate={~p"/c/#{@task.parent_id}"}
@@ -1194,7 +1136,7 @@ defmodule EliaWeb.ChatLive do
         id={"task-card-#{@item.call_id}"}
         class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-2 text-xs"
       >
-        <.status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
+        <ChatStatus.status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
         <span class="capitalize text-base-content/70">{@item.task.status}</span>
         <span
           :if={@item.task.awaiting}
@@ -1538,7 +1480,9 @@ defmodule EliaWeb.ChatLive do
   end
 
   # UI-64, UI-65, SESS-29: delete a chat from the sidebar — the open one or any
-  # other, running or not. Deleting the open chat opens a fresh one (UI-1).
+  # other, running or not. Deleting the open chat leaves for `/chats`, the chat
+  # list's entry point (UI-77), which resumes the next chat or starts a fresh
+  # one when there is none.
   def handle_event("delete_chat", %{"id" => id}, socket) do
     case Agent.delete(id) do
       :ok ->
@@ -1548,7 +1492,7 @@ defmodule EliaWeb.ChatLive do
           |> put_flash(:info, "Chat deleted.")
 
         if id == socket.assigns.session_id do
-          {:noreply, push_navigate(socket, to: ~p"/")}
+          {:noreply, push_navigate(socket, to: ~p"/chats")}
         else
           {:noreply, socket}
         end
