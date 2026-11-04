@@ -137,6 +137,23 @@ defmodule EliaWeb.DashboardTest do
     end)
   end
 
+  # DASH-3, DONE-10, DONE-2: a done chat is not where the user left off, though
+  # the dashboard still lists it (DASH-7) with its done status (UI-59).
+  test "a done chat is not the chat to continue", %{conn: conn} do
+    with_empty_store(fn ->
+      older = saved_chat("where I left off")
+      done = Agent.new_id()
+      :ok = Store.save(done, [Message.user("finished")], done: true)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#continue-link[href='/c/#{older}']")
+      refute has_element?(view, "#continue-link[href='/c/#{done}']")
+      assert has_element?(view, "#recent-#{done}")
+      assert has_element?(view, "#recent-status-#{done}[data-status='done']")
+    end)
+  end
+
   # DASH-4
   test "the New chat button starts a chat in the default project", %{conn: conn} do
     with_empty_store(fn ->

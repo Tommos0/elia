@@ -106,9 +106,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-59** Every chat in the sidebar shows one status indicator
   (`#chat-status-<id>`, with `data-status` and a `title`). A chat that isn't a
   task chat (UI-46) shows `working` — an animated spinner — while its turn is
-  running, that is while its session status is `:running` (SESS-4), and `idle`
-  — a dim dot — when it has no turn, unless a restart cut that turn short, which
-  shows `interrupted` instead (UI-72). Waiting for approval (`awaiting_approval`),
+  running, that is while its session status is `:running` (SESS-4), `done` — a
+  check, with the `title` "Done" — when the chat is marked done (DONE-2, UI-80),
+  and `idle` — a dim dot — when it has no turn, unless a restart cut that turn
+  short, which shows `interrupted` instead (UI-72). Waiting for approval
+  (`awaiting_approval`),
   waiting for an answer (`awaiting_input`, UI-76) and paused come first (UI-47,
   UI-58, UI-76), so a chat that needs the user is never shown as idle. The
   indicator is right on first render, from
@@ -157,6 +159,16 @@ stream in, approves or denies tool calls, and switches between saved chats.
   does for `spawn_task` (UI-15), not as raw JSON, and the row's hover text
   (UI-33) stays the chat's description (STORE-10). A chat without a stored
   title is unchanged.
+
+- **UI-80** A chat marked done (DONE-1) shows it in its sidebar row's status
+  indicator (`#chat-status-<id>`, UI-59): `data-status="done"`, a check icon and
+  the `title` "Done" in place of `idle`, so a finished chat reads at a glance
+  next to one that was abandoned. It is right on first render, from the listed
+  chats (STORE-35), and the chat this page has open follows `{:done, on?}`
+  (SESS-35) as soon as it arrives, without a reload (UI-6), while other rows
+  pick the flag up at the next refresh (UI-6) or page load, exactly as a title
+  does (UI-74). Anything that needs the user or is running now still wins
+  (UI-59), and a task chat still shows its task status (UI-46, DONE-3).
 
 ### Transcript
 
@@ -269,6 +281,18 @@ stream in, approves or denies tool calls, and switches between saved chats.
   sync ends whether it succeeded or failed. It covers both a sync the chat
   started in the background and one a command is waiting for, and it never
   blocks the composer or the transcript.
+
+- **UI-79** The composer toolbar (UI-60's "Focus" toggle, the settings link) has
+  a done control (`#done-toggle`) for an ordinary chat: a button whose
+  `aria-pressed` is `true` while the chat is done (DONE-1) and whose label says
+  what clicking it does — "Mark done" while the chat isn't done, "Reopen" while
+  it is — with a matching `title`. Clicking it marks the chat done or reopens it
+  (`Elia.Agent.set_done/2`, SESS-35) right away, with no confirmation, and the
+  control's state follows `{:done, on?}` (SESS-35), so every view of the chat
+  agrees; the sidebar's icon for the chat (UI-80) changes with it. It is there
+  while a turn runs too (DONE-5). A task chat has no such control: its status is
+  its task's (UI-46, DONE-3), so the button is not rendered, with nothing in its
+  place.
 
 ### Fitting the screen
 
@@ -455,8 +479,13 @@ the hidden tool calls leave with a one-line summary of the current step.
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`
 (the app shell the chat fills, `#app-shell`, UI-78),
+`EliaWeb.ChatStatus` (a chat's status and its icon, including a done chat's,
+UI-59, UI-80),
+`Elia.Agent` and `Elia.Agent.Session` (the chat's done flag: `set_done/2`, the
+`{:done, on?}` event, and clearing it when a message continues the chat, UI-79,
+DONE-9),
 `Elia.Store` (the chat `/chats` resumes, STORE-29, UI-77; the title a row and the
-page show, STORE-33, UI-74),
+page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
@@ -474,6 +503,8 @@ UI-38, UI-39, UI-67, UI-68).
 `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/live/user_input_test.exs` (the question card and the indicators,
 UI-75, UI-76),
+`test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
+UI-79, UI-80),
 `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
 a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

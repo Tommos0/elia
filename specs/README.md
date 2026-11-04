@@ -52,6 +52,7 @@ deleting it.
 | [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Chat titles](chat-titles.md) | `TITLE` | A chat's own title, set by the agent's `set_title` tool; the first-message derivation stays as the fallback |
+| [Chat done](chat-done.md) | `DONE` | A chat can be marked done (with it in the saved chat), shown as its status and skipped by the chat list's resume; a message reopens it |
 | [Image viewer](image-viewer.md) | `IMG` | An image in the transcript opens over the chat, closable by its own button or the back button, never in a new tab |
 | [Chat settings](chat-settings.md) | `CSET` | The per-chat settings page: model, auto-approval, jail, limits and compaction options |
 | [Turn limits](turn-limits.md) | `LIMIT` | Per-chat step limit, time budget and whether a limit pauses the turn |

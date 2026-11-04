@@ -93,6 +93,7 @@ config :elia, Elia.Skills,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
     Elia.Skills.Titles,
+    Elia.Skills.Done,
     Elia.Skills.UserInput,
     Elia.Skills.SelfModification
   ]

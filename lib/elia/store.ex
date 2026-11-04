@@ -23,8 +23,10 @@ defmodule Elia.Store do
   the messages when given. `opts[:jail]` (a boolean) is the chat's jail setting
   (STORE-25) and is stored only when it is `false`, `opts[:limits]` the
   chat's turn limits (STORE-27), of which only the values that aren't the
-  default (LIMIT-1) are stored, and `opts[:title]` the chat's own title
-  (STORE-32), which is stored only when it isn't blank (TITLE-2).
+  default (LIMIT-1) are stored, `opts[:title]` the chat's own title
+  (STORE-32), which is stored only when it isn't blank (TITLE-2), and
+  `opts[:done]` (a boolean) whether the chat is marked done (STORE-34), which is
+  stored only when it is `true`.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -65,6 +67,10 @@ defmodule Elia.Store do
 
     # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
     chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
+
+    # STORE-34, DONE-1: a chat is open by default, so only "done" is written and
+    # reopening it takes the entry off the file.
+    chat = if opts[:done] == true, do: Map.put(chat, :done, true), else: chat
 
     # STORE-27: only the limits that aren't the default (LIMIT-1) are written,
     # so a chat that sets none carries no entry at all.
@@ -149,6 +155,22 @@ defmodule Elia.Store do
       shape_title(Map.get(chat, :title)) || title(messages)
     else
       _ -> "New chat"
+    end
+  end
+
+  @doc """
+  Whether the chat is marked done, or `false` (STORE-34, DONE-1): `false` when
+  the chat is missing, unreadable, corrupt or has no value, since a chat is open
+  until it is marked done.
+  """
+  @spec load_done(binary()) :: boolean()
+  def load_done(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{} = chat <- decode(data) do
+      Map.get(chat, :done) == true
+    else
+      _ -> false
     end
   end
 
@@ -263,14 +285,17 @@ defmodule Elia.Store do
 
   @doc """
   The chat to resume when the user opens the chat list (STORE-29, UI-77): the most
-  recently started chat (STORE-12) that isn't a task chat (STORE-17), as a
-  listed entry, or `nil` when there is none. Every saved chat is considered,
-  not only the first page of `list/1`.
+  recently started chat (STORE-12) that isn't a task chat (STORE-17) and isn't
+  done (STORE-35, DONE-10), as a listed entry, or `nil` when there is none.
+  Every saved chat is considered, not only the first page of `list/1`.
   """
   @spec latest() :: map() | nil
   def latest do
     all_entries()
-    |> Enum.find(&(valid_id?(&1.id) and Map.get(&1, :task_status) == nil))
+    |> Enum.find(fn entry ->
+      valid_id?(entry.id) and Map.get(entry, :task_status) == nil and
+        Map.get(entry, :done) != true
+    end)
   end
 
   @doc """
@@ -357,6 +382,9 @@ defmodule Elia.Store do
       interrupted: not is_nil(Map.get(chat, :turn)) and not Elia.Agent.live?(id),
       # The chat's own title (STORE-32), nil when it has none (STORE-33).
       title: shape_title(Map.get(chat, :title)),
+      # STORE-35, DONE-1: whether the chat is marked done, a boolean like
+      # STORE-31's `interrupted`, so a chat nobody marked reads as open.
+      done: Map.get(chat, :done) == true,
       created_at: Map.get(chat, :created_at) || mtime,
       updated_at: Map.get(chat, :updated_at) || mtime
     }

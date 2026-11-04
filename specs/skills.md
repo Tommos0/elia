@@ -28,7 +28,8 @@ system prompt from them. It can be reloaded while the app runs.
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
   `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
   `await_task`, [Sub-tasks](subtasks.md)), `titles` (`set_title`,
-  [Chat titles](chat-titles.md)), `user-input` (`ask_user`,
+  [Chat titles](chat-titles.md)), `done` (`mark_done`,
+  [Marking a chat done](chat-done.md), DONE-6), `user-input` (`ask_user`,
   [Structured user input](user-input.md), ASK-1) and `self-modification`
   (instructions only). The last one is a chat's only when its project is Elia's
   own (PROJ-17);

@@ -34,8 +34,9 @@ left off in exactly as `/` used to (UI-1, UI-71).
 
 - **DASH-3** A "Continue" card (`#continue`) shows the chat the user left off
   in — `Elia.Store.latest/0` (STORE-29), the most recently started chat that
-  isn't a task chat (STORE-17) — with its title (`#continue-title`), its
-  project's name (`#continue-project`), when it was started in relative form
+  isn't a task chat (STORE-17) and isn't done (STORE-35, DONE-10) — with its
+  title (`#continue-title`), its project's name (`#continue-project`), when it
+  was started in relative form
   (UI-34: a `<time>` whose `datetime` is the start time and whose `title` is the
   exact date and time, refreshed every minute) and its status indicator
   (`#continue-status`, following the same rules as the sidebar's, UI-59),
@@ -138,6 +139,7 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
 
 ## Tests
 
-`test/elia_web/live/dashboard_test.exs`,
+`test/elia_web/live/dashboard_test.exs` (the "Continue" card, DASH-3, including
+a done chat being skipped),
 `test/elia_web/live/chat_live_test.exs` (what `/chats` opens, UI-77),
 `test/elia_web/browser/small_screen_layout_test.exs` (DASH-12 at a phone width).

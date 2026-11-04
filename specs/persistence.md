@@ -126,7 +126,8 @@ reopened.
   (STORE-17) as well.
 
 - **STORE-29** `latest/0` returns the most recently started listed chat
-  (STORE-12) that isn't a task chat (STORE-17), as a listed entry, or `nil`
+  (STORE-12) that isn't a task chat (STORE-17) and isn't done (STORE-35,
+  DONE-10), as a listed entry, or `nil`
   when there is none. It looks at every saved chat, not only the first page of
   `list/1`, so a run of task chats doesn't hide the chat to resume (UI-77), and
   it skips an entry whose id isn't valid (STORE-4), so `/chats` never sends the
@@ -146,6 +147,16 @@ reopened.
   an id and not a listing: the stored title, else the derivation from its saved
   history, else "New chat".
 
+- **STORE-34** `save/3` takes `done:` (a boolean) and stores it as `done: true`
+  only when it is `true`, so reopening a chat drops the entry from the file
+  (DONE-1, DONE-9); `load_done/1` returns `false` when the chat is missing,
+  unreadable, corrupt or has no value, since a chat is open by default.
+- **STORE-35** Each listed chat carries `done`, a boolean like `interrupted`
+  (STORE-31): `true` when the chat is marked done (DONE-1) and `false`
+  otherwise, so a chat nobody marked is listed as open. A task chat still
+  carries it, but its own listed status is its task's (STORE-17) and that is
+  what is shown (DONE-3).
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.
@@ -153,7 +164,10 @@ reopened.
 ## Tests
 
 `test/elia/agent_test.exs` (history survives a restart),
-`test/elia/store_test.exs` (STORE-29, the chat to resume),
+`test/elia/store_test.exs` (STORE-29, the chat to resume, including one that is
+done),
+`test/elia/chat_done_test.exs` (the saved flag and the listing, STORE-34,
+STORE-35),
 `test/elia/chat_titles_test.exs` (the stored title and the listing's
 precedence, STORE-32, STORE-33),
 `test/elia_web/live/page_title_test.exs`,

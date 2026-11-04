@@ -89,6 +89,9 @@ defmodule EliaWeb.ChatLive do
         # TITLE-1: the chat's own title when it has one, else the derivation
         # from its first user message (STORE-7).
         page_title: chat_title(snapshot),
+        # DONE-1, DONE-4: whether this chat is marked done, so its control is
+        # right on first render (SESS-7).
+        done: snapshot.done,
         chats: chats,
         # UI-72: chats whose turn a restart cut short, kept live.
         interrupted: interrupted_ids(chats),
@@ -408,6 +411,29 @@ defmodule EliaWeb.ChatLive do
               >
                 <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
+              </button>
+              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. A task chat's
+              status is its task's (DONE-3), so it has no control here. --%>
+              <button
+                :if={@task == nil}
+                type="button"
+                id="done-toggle"
+                phx-click="toggle_done"
+                aria-pressed={to_string(@done)}
+                title={
+                  if @done,
+                    do: "Reopen this chat: a message continues it as before",
+                    else: "Mark this chat done: its work has landed and it needs nothing more"
+                }
+                class={[
+                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
+                  @done && "border-success/50 bg-success/5 text-success",
+                  !@done &&
+                    "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+                ]}
+              >
+                <.icon name="hero-check-circle" class="size-3.5 shrink-0 opacity-70" />
+                <span class="font-medium">{if @done, do: "Reopen", else: "Mark done"}</span>
               </button>
               <%!-- UI-70, ISOL-23: the worktree's dependency sync, while it runs.
               Text beside the controls, so it never blocks the composer or the
@@ -1422,6 +1448,16 @@ defmodule EliaWeb.ChatLive do
     {:noreply, assign(socket, show_context: !socket.assigns.show_context)}
   end
 
+  # DONE-4, DONE-5, UI-79: mark this chat done, or reopen it. Neither needs a
+  # confirmation: a done chat is continued by the next message anyway (DONE-9).
+  # The flag itself arrives back through `{:done, on?}` (SESS-35).
+  def handle_event("toggle_done", _params, socket) do
+    case Agent.set_done(socket.assigns.session_id, !socket.assigns.done) do
+      {:ok, done} -> {:noreply, socket |> assign(done: done) |> refresh_listed()}
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
   # UI-60: switch the transcript between the full and the compact view, and ask
   # the browser to remember the choice.
   def handle_event("toggle_view", _params, socket) do
@@ -1722,6 +1758,15 @@ defmodule EliaWeb.ChatLive do
   # row follows the list, which is read again here.
   defp apply_event({:title, title}, socket) do
     assign(socket, page_title: title, chats: Elia.Store.list(30))
+  end
+
+  # DONE-5, DONE-9, UI-79, UI-80: the chat's done flag changed — this page's
+  # control, another tab, or the model's `mark_done` (DONE-6), and a message that
+  # continues a done chat reopens it (SESS-36). The control and the sidebar's
+  # icon for this chat follow at once; the row's own status comes from the list,
+  # which is read again here.
+  defp apply_event({:done, on?}, socket) do
+    socket |> assign(done: on?) |> refresh_listed()
   end
 
   defp apply_event({:usage, usage}, socket) do

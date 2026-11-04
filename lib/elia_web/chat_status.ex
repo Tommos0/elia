@@ -6,7 +6,8 @@ defmodule EliaWeb.ChatStatus do
 
   `status/2` answers for a listed chat (`Elia.Store.list/1`) together with what
   the registry says about it (`Elia.Agent.awaiting_approval/0`, `paused/0`,
-  `running/0`, SESS-19) and the record a restart left behind (STORE-31).
+  `running/0`, SESS-19) and the record a restart left behind (STORE-31). A chat
+  marked done (DONE-2, STORE-35) reads `done` in place of `idle`.
   """
   use EliaWeb, :html
 
@@ -30,6 +31,8 @@ defmodule EliaWeb.ChatStatus do
       Map.get(state, :interrupted, false) -> "interrupted"
       # UI-59: an ordinary chat's loop activity.
       Map.get(state, :running, false) -> "working"
+      # DONE-2, UI-80: a chat marked done shows it in place of idle.
+      Map.get(chat, :done, false) -> "done"
       true -> "idle"
     end
   end
@@ -79,5 +82,6 @@ defmodule EliaWeb.ChatStatus do
   def title("awaiting_input"), do: "Needs your answer"
   def title("paused"), do: "Paused"
   def title("interrupted"), do: "Interrupted: the app restarted during the turn"
+  def title("done"), do: "Done"
   def title(status), do: "Task #{status}"
 end

@@ -401,12 +401,13 @@ defmodule Elia.StoreTest do
     assert [%Message{}] = Store.load(kept)
   end
 
-  # STORE-29, UI-77: the chat `/chats` resumes — the most recently started chat
-  # that isn't a task chat.
-  test "latest/0 is the newest chat that isn't a task chat" do
+  # STORE-29, UI-77, DONE-10: the chat `/chats` resumes — the most recently
+  # started chat that is neither a task chat nor done.
+  test "latest/0 is the newest chat that isn't a task chat or done" do
     parent = Elia.Agent.new_id()
     task = Elia.Agent.new_id()
-    on_exit(fn -> Enum.each([parent, task], &Store.delete/1) end)
+    done = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([parent, task, done], &Store.delete/1) end)
 
     :ok = Store.save(parent, [Message.user("where I left off")])
 
@@ -416,6 +417,9 @@ defmodule Elia.StoreTest do
       Store.save(task, [Message.user("preamble")],
         task: %{parent_id: parent, title: "A task", brief: "Brief", status: "running"}
       )
+
+    # And a done chat is finished work, not where the user left off (DONE-10).
+    :ok = Store.save(done, [Message.user("finished")], done: true)
 
     assert Store.latest().id == parent
     assert Store.latest().title == "where I left off"

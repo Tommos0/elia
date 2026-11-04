@@ -16,8 +16,8 @@ defmodule Elia.Agent.Session do
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
   `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:paused, message}`,
-  `{:task, metadata}`.
+  `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:done, on?}`,
+  `{:paused, message}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
@@ -72,7 +72,10 @@ defmodule Elia.Agent.Session do
     # The message of a turn paused at a limit (SESS-27), nil when not paused.
     pause: nil,
     loop_opts: [],
-    persist: true
+    persist: true,
+    # Whether the chat is marked done (DONE-1, STORE-34): its work has landed
+    # and it needs nothing more, though a message still continues it (DONE-8).
+    done: false
   ]
 
   def start_link(opts) do
@@ -102,7 +105,8 @@ defmodule Elia.Agent.Session do
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       jail: initial_jail(opts[:id], persist, opts[:jail]),
       limits: initial_limits(opts[:id], persist, opts[:limits]),
-      title: if(persist, do: Elia.Store.load_title(opts[:id]))
+      title: if(persist, do: Elia.Store.load_title(opts[:id])),
+      done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
     }
 
     # APPR-14: whether the chat is new is only known once its messages are
@@ -119,16 +123,18 @@ defmodule Elia.Agent.Session do
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
   # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`,
-  # `:turn` (INTR-1), `:title` or `:input` (ASK) existed (a session that outlived
-  # a hot reload). Fields it already has are kept; `:turn` is not loaded from
-  # disk, since it belongs to the process that is running the turn.
+  # `:turn` (INTR-1), `:title`, `:input` (ASK) or `:done` (DONE-1) existed (a
+  # session that outlived a hot reload). Fields it already has are kept; `:turn`
+  # is not loaded from disk, since it belongs to the process that is running the
+  # turn.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
              not is_map_key(state, :pause) or not is_map_key(state, :jail) or
              not is_map_key(state, :limits) or not is_map_key(state, :turn) or
-             not is_map_key(state, :title) or not is_map_key(state, :input) do
+             not is_map_key(state, :title) or not is_map_key(state, :input) or
+             not is_map_key(state, :done) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -182,6 +188,14 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | title: if(upgraded.persist, do: Elia.Store.load_title(upgraded.id))}
 
+    upgraded =
+      if is_map_key(state, :done),
+        do: upgraded,
+        else: %{
+          upgraded
+          | done: if(upgraded.persist, do: Elia.Store.load_done(upgraded.id), else: false)
+        }
+
     handle_call(msg, from, upgraded)
   end
 
@@ -199,7 +213,8 @@ defmodule Elia.Agent.Session do
         :pause,
         :jail,
         :limits,
-        :title
+        :title,
+        :done
       ])
       |> Map.put(:task, Map.get(state, :task_meta))
 
@@ -236,6 +251,16 @@ defmodule Elia.Agent.Session do
       | turn_start: length(state.messages),
         turn: %{id: turn_id, started_at: DateTime.utc_now()}
     }
+
+    # SESS-36, DONE-9: a message continues a done chat, so starting the turn
+    # takes the flag with it — the save the user message triggers writes it away.
+    state =
+      if state.done do
+        broadcast(state, {:done, false})
+        %{state | done: false}
+      else
+        state
+      end
 
     state = append(state, message)
     # The chat's model selected now is used for the whole turn. An explicit
@@ -449,6 +474,22 @@ defmodule Elia.Agent.Session do
         broadcast(state, {:title, title})
         {:reply, {:ok, title}, state}
     end
+  end
+
+  # SESS-35, DONE-1, DONE-6: the chat's done flag, set by the model's
+  # `mark_done` tool (DONE-6) or the page's control (DONE-4). A sub-task is
+  # finished by its task status, so it has no flag of its own (DONE-3).
+  def handle_call({:set_done, _on?}, _from, %{task_meta: task_meta} = state)
+      when task_meta != nil do
+    {:reply, {:error, "This chat is a sub-task: its status is its task's."}, state}
+  end
+
+  def handle_call({:set_done, on?}, _from, state) do
+    state = %{state | done: on?}
+    # As with the model selection, an empty chat is saved with its first message.
+    state = if state.messages == [], do: state, else: save(state)
+    broadcast(state, {:done, on?})
+    {:reply, {:ok, on?}, state}
   end
 
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
@@ -862,7 +903,8 @@ defmodule Elia.Agent.Session do
              # STORE-30, INTR-1: the turn in flight, or nothing when there is
              # none (which takes the entry off the file).
              turn: Map.get(state, :turn),
-             title: Map.get(state, :title)
+             title: Map.get(state, :title),
+             done: Map.get(state, :done, false)
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end

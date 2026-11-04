@@ -30,6 +30,7 @@ progress so any number of UIs can follow it.
   `{:jail, on?}` (the chat's jail setting changed, SESS-30),
   `{:limits, limits}` (the chat's turn limits changed, SESS-31, LIMIT-2),
   `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
+  `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
@@ -44,7 +45,8 @@ progress so any number of UIs can follow it.
   metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
   compaction state (`compaction`, COMPACT-24), its own title (`title`, `nil`
-  when it has none, SESS-33, TITLE-1) and its pause message (`pause`,
+  when it has none, SESS-33, TITLE-1), its done flag (`done`, a boolean,
+  false when it isn't done, SESS-35, DONE-1) and its pause message (`pause`,
   `nil` unless the turn is paused, SESS-27), so a UI that connects mid-turn
   can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
@@ -71,7 +73,7 @@ progress so any number of UIs can follow it.
   that outlived a hot reload) is upgraded on its next call: missing fields get
   their defaults and the saved model selection (SESS-14), auto-approved
   tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24), jail
-  setting (SESS-30) and turn limits (SESS-31) are
+  setting (SESS-30), turn limits (SESS-31) and the done flag (SESS-35) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept. The turn record (INTR-1) is not loaded from disk: it belongs to the
   process that is running the turn, so a missing one defaults to `nil`; the
@@ -215,6 +217,22 @@ progress so any number of UIs can follow it.
   loads the saved title on start (STORE-32), upgrading a state that predates the
   field as in SESS-15.
 
+- **SESS-35** `Elia.Agent.set_done/2` (chat id, boolean) marks the chat done or
+  reopens it (DONE-1, DONE-6): the session saves the flag with the chat once the
+  chat has messages (as SESS-14, STORE-34), broadcasts `{:done, on?}` (SESS-6)
+  and returns `{:ok, on?}`, so every view of the chat agrees. It returns
+  `{:error, message}` and changes nothing for a chat whose session has task
+  metadata (DONE-3, STORE-16), and it is allowed mid-turn, like the chat's other
+  settings (SESS-16, SESS-30): marking a chat done changes nothing about the turn
+  it is running. The session loads the saved flag on start (STORE-34), upgrading
+  a state that predates the field as in SESS-15.
+- **SESS-36** A done chat is continued like any other: `send_message` (SESS-3)
+  works on it unchanged, and starting the turn clears the chat's done flag
+  (DONE-9) — the save the user message triggers writes it away (STORE-34) and,
+  when the chat was done, `{:done, false}` is broadcast (SESS-6). Nothing about
+  the message, the turn or the composer is different, and no confirmation is
+  asked (DONE-8).
+
 ## Out of scope
 
 - Several turns running at once in one session.
@@ -226,4 +244,5 @@ progress so any number of UIs can follow it.
 ## Tests
 
 `test/elia/agent_test.exs`, `test/elia/chat_titles_test.exs` (SESS-33, the
-title's event and its refusals).
+title's event and its refusals), `test/elia/chat_done_test.exs` (SESS-35,
+SESS-36).
