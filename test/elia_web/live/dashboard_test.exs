@@ -311,6 +311,38 @@ defmodule EliaWeb.DashboardTest do
     end)
   end
 
+  # DASH-13: the title has the row to itself — the project and the relative
+  # time sit on a muted line below it.
+  test "a Recent chats row puts the project and the time below the title", %{conn: conn} do
+    with_empty_store(fn ->
+      id = saved_chat("a fairly long title")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # The row's first line is the title alone (so it can use the full width)…
+      assert has_element?(
+               view,
+               "#recent-#{id} a > span:nth-child(2) > span:first-child",
+               "a fairly long title"
+             )
+
+      # …and the second line carries the project and the time, which are no
+      # longer beside the title (DASH-7, UI-34).
+      assert has_element?(
+               view,
+               "#recent-#{id} a > span:nth-child(2) > span:nth-child(2)",
+               "Elia"
+             )
+
+      assert has_element?(
+               view,
+               "#recent-#{id} a > span:nth-child(2) > span:nth-child(2) > #recent-time-#{id}[datetime][title]"
+             )
+
+      refute has_element?(view, "#recent-#{id} a > #recent-time-#{id}")
+    end)
+  end
+
   # DASH-7, UI-45, UI-46: a sub-task chat is listed under its task title, with
   # its task status.
   test "a task chat in the Recent chats card shows its task", %{conn: conn} do

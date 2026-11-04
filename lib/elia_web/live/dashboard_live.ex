@@ -330,7 +330,7 @@ defmodule EliaWeb.DashboardLive do
     """
   end
 
-  # DASH-7, DASH-8: the most recently started chats, newest first.
+  # DASH-7, DASH-8, DASH-13: the most recently started chats, newest first.
   attr :rows, :list, required: true
   attr :now, :any, required: true
 
@@ -358,16 +358,20 @@ defmodule EliaWeb.DashboardLive do
             class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-base-200"
           >
             <ChatStatus.status_icon id={"recent-status-#{row.chat.id}"} status={row.status} />
-            <span class="min-w-0 flex-1 truncate text-sm">{row.chat.title}</span>
-            <span class="hidden shrink-0 text-xs text-base-content/50 sm:block">{row.project}</span>
-            <time
-              id={"recent-time-#{row.chat.id}"}
-              datetime={DateTime.to_iso8601(row.chat.created_at)}
-              title={Calendar.strftime(row.chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
-              class="shrink-0 text-xs text-base-content/50"
-            >
-              {TimeAgo.format(row.chat.created_at, @now)}
-            </time>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm">{row.chat.title}</span>
+              <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/50">
+                <span>{row.project}</span>
+                <span aria-hidden="true">·</span>
+                <time
+                  id={"recent-time-#{row.chat.id}"}
+                  datetime={DateTime.to_iso8601(row.chat.created_at)}
+                  title={Calendar.strftime(row.chat.created_at, "%Y-%m-%d %H:%M:%S UTC")}
+                >
+                  {TimeAgo.format(row.chat.created_at, @now)}
+                </time>
+              </span>
+            </span>
           </.link>
         </li>
       </ul>

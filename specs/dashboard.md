@@ -78,6 +78,12 @@ left off in exactly as `/` used to (UI-1, UI-71).
   which include the task statuses of UI-46). With no chat saved it says "No
   chats yet" (`#recent-empty`). An "All chats" link (`#all-chats`) goes to
   `/chats` (UI-77).
+- **DASH-13** In a "Recent chats" row (DASH-7) the chat's title gets the row's
+  width: the relative start time (UI-34) and the project's name move to a
+  second, muted line *below* the title instead of sitting beside it, as the
+  "Continue" card already shows them (DASH-3), so neither squeezes a long title
+  (DASH-12, TITLE-2). The time keeps its `#recent-time-<id>` id, its `datetime`
+  and its `title` (the exact date and time).
 - **DASH-8** The card's rows and status indicators are refreshed when a
   `{:chat_status, id, status}` event arrives (SESS-19), so a turn that starts or
   ends, a task chat that appears and a chat that starts waiting for approval all
