@@ -560,7 +560,10 @@ defmodule EliaWeb.ChatSettingsLive do
   end
 
   defp tool_icon("shell"), do: "hero-command-line"
-  defp tool_icon(name) when name in ~w(read_file write_file edit_file), do: "hero-document-text"
+
+  defp tool_icon(name) when name in ~w(read_file write_file edit_file list_files delete_file),
+    do: "hero-document-text"
+
   defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
 

@@ -33,9 +33,9 @@ files, skills, tool definitions and more — each with an estimated token count.
   and Reasoning children), Files, Shell and Other tools. When the chat is
   compacted it also shows an "Elided by compaction (not sent)" row
   (`#context-elided`) with the tokens that were not sent (CTX-11).
-- **CTX-5** `read_file`, `write_file` and `edit_file` tool calls and results
-  count under Files; `shell` calls and results under Shell; any other tool
-  under Other tools.
+- **CTX-5** `read_file`, `write_file`, `edit_file`, `list_files` and
+  `delete_file` tool calls and results count under Files; `shell` calls and
+  results under Shell; any other tool under Other tools.
 - **CTX-6** After each model request, the session records the provider's
   reported input usage and broadcasts it; the breakdown panel shows it as the
   provider-reported figure. For Anthropic this is `input_tokens` plus the

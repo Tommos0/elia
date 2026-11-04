@@ -53,7 +53,8 @@ defmodule Elia.Skills.Shell do
             "Prefer POSIX constructs: bash-only `${PIPESTATUS[0]}`, `[[ ... ]]`, " <>
             "arrays and `set -o pipefail` fail under `sh`. Long output is " <>
             "truncated in the middle. Do not use this to read or edit files " <>
-            "(cat, sed, echo >, scripts): use read_file, write_file and edit_file. " <>
+            "(cat, sed, echo >, scripts): use read_file, list_files, write_file, " <>
+            "edit_file and delete_file. " <>
             "The command runs in a jail by default, which holds the workspace and " <>
             "the toolchain and nothing else: the settings database, the saved " <>
             "conversations and the user's credentials are not in it, so a command " <>

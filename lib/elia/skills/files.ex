@@ -1,6 +1,6 @@
 defmodule Elia.Skills.Files do
   @moduledoc """
-  Read, write and edit files in the workspace.
+  Read, write, edit, list and delete files in the workspace.
 
   Approval follows `Elia.Workspace` classes: changes under `skills/` run
   without asking, other workspace files need approval, protected paths and
@@ -20,12 +20,14 @@ defmodule Elia.Skills.Files do
   alias Elia.Workspace
 
   @max_read_lines 2000
+  # FILE-16
+  @max_list_entries 200
 
   @impl true
   def name, do: "files"
 
   @impl true
-  def description, do: "Read, create and edit files in the workspace."
+  def description, do: "Read, create, edit, list and delete files in the workspace."
 
   @impl true
   def instructions do
@@ -38,6 +40,12 @@ defmodule Elia.Skills.Files do
     once unless `replace_all` is set; include enough surrounding lines to make \
     it unique. Changes under `skills/` apply without asking; other files need \
     the user's approval.
+
+    `list_files` names one level of a directory — directories first, a file with \
+    its size, a symlink with where it points — and `delete_file` removes a file, \
+    a symlink or an empty directory, with the same approvals as a write (other \
+    files in the workspace need the user's approval, `skills/` doesn't, and \
+    protected or outside paths are refused).
 
     With the jail on — the default — these tools reach this chat's workspace and \
     nothing else (FILE-12): a path outside it is refused, not offered for the \
@@ -100,14 +108,50 @@ defmodule Elia.Skills.Files do
         },
         approval: &write_policy/2,
         run: &edit_file/2
+      },
+      %Elia.Tool{
+        name: "list_files",
+        description:
+          "List one level of a directory (the workspace root by default): directories first, " <>
+            "a file with its size in bytes, a symlink with its target. At most " <>
+            "#{@max_list_entries} entries.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "path" => %{
+              "type" => "string",
+              "description" => "Directory (default the workspace root)"
+            },
+            "limit" => %{
+              "type" => "integer",
+              "description" => "Number of entries (default #{@max_list_entries})"
+            }
+          },
+          "required" => []
+        },
+        approval: &read_policy/2,
+        run: &list_files/2
+      },
+      %Elia.Tool{
+        name: "delete_file",
+        description: "Delete a file, a symlink or an empty directory.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{"path" => %{"type" => "string"}},
+          "required" => ["path"]
+        },
+        approval: &delete_policy/2,
+        run: &delete_file/2
       }
     ]
   end
 
   ## Policies
 
-  def read_policy(%{"path" => path}, ctx) do
-    {abs, class} = Workspace.resolve(path, root(ctx))
+  # FILE-4, FILE-18: `list_files` with no path means the workspace root, which
+  # is inside the workspace like any other.
+  def read_policy(input, ctx) do
+    {abs, class} = Workspace.resolve(input["path"] || ".", root(ctx))
 
     cond do
       unreachable?(abs, ctx) -> {:deny, refusal(abs)}
@@ -137,6 +181,11 @@ defmodule Elia.Skills.Files do
         {:deny, "#{abs} is outside the workspace."}
     end
   end
+
+  # FILE-21: deleting is a change to the workspace, so it follows the write
+  # policy (FILE-5) exactly: extension → no approval, core → approval, and a
+  # protected or outside path refused.
+  def delete_policy(input, ctx), do: write_policy(input, ctx)
 
   # FILE-12, FILE-13: with the jail on, the tools reach what a jailed command in
   # this workspace reaches and nothing else (ISOL-25). It follows the jail
@@ -226,6 +275,114 @@ defmodule Elia.Skills.Files do
            "Edited #{Workspace.relative(abs, root(ctx))} (#{count} replacement#{if count != 1, do: "s"})"}
         end
       end)
+    end
+  end
+
+  # FILE-15, FILE-16, FILE-17: one level of a directory, directories first, at
+  # most @max_list_entries entries.
+  def list_files(input, ctx \\ %{}) do
+    path = input["path"] || "."
+    {abs, _} = Workspace.resolve(path, root(ctx))
+
+    with :ok <- allowed(abs, ctx),
+         {:ok, names} <- ls(abs, path) do
+      entries = names |> Enum.map(&entry(abs, root(ctx), &1)) |> order()
+      limit = min(input["limit"] || @max_list_entries, @max_list_entries)
+      {shown, rest} = Enum.split(entries, max(limit, 0))
+
+      more = if rest == [], do: [], else: ["[+#{length(rest)} more entries]"]
+      label = Workspace.relative(abs, root(ctx))
+
+      lines = ["[#{label} (#{length(entries)} entries)]" | Enum.map(shown, & &1.line)] ++ more
+
+      {:ok, Enum.join(lines, "\n")}
+    end
+  end
+
+  # FILE-19, FILE-20, FILE-22: delete a file, a symlink or an empty directory,
+  # under the same lock as a write (FILE-11) so the two can't race.
+  def delete_file(%{"path" => path}, ctx \\ %{}) do
+    {abs, _} = Workspace.resolve(path, root(ctx))
+
+    with :ok <- allowed(abs, ctx) do
+      with_file_lock(abs, fn ->
+        with {:ok, type} <- type_of(abs, path),
+             :ok <- remove(abs, type, path) do
+          {:ok, "Deleted #{Workspace.relative(abs, root(ctx))}"}
+        end
+      end)
+    end
+  end
+
+  defp ls(abs, path) do
+    case File.ls(abs) do
+      {:ok, names} -> {:ok, names}
+      {:error, reason} -> {:error, "Cannot list #{path}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # FILE-15: an entry is named by its path relative to the workspace root, a
+  # directory with a trailing slash, a file with its size, a symlink with the
+  # target it points at and anything else by name alone.
+  defp entry(dir, root, name) do
+    abs = Path.join(dir, name)
+    rel = Workspace.relative(abs, root)
+
+    case File.lstat(abs) do
+      {:ok, %File.Stat{type: :directory}} ->
+        %{name: name, type: :dir, line: rel <> "/"}
+
+      {:ok, %File.Stat{type: :regular, size: size}} ->
+        %{name: name, type: :file, line: "#{rel} (#{size} bytes)"}
+
+      {:ok, %File.Stat{type: :symlink}} ->
+        %{name: name, type: :symlink, line: "#{rel} -> #{target(abs)}"}
+
+      _ ->
+        %{name: name, type: :other, line: rel}
+    end
+  end
+
+  defp target(abs) do
+    case File.read_link(abs) do
+      {:ok, target} -> target
+      {:error, _} -> "?"
+    end
+  end
+
+  # FILE-15: directories before the rest, each group by name, case-insensitively
+  # (the name itself breaks a tie between names differing in case only).
+  defp order(entries),
+    do: Enum.sort_by(entries, &{&1.type != :dir, String.downcase(&1.name), &1.name})
+
+  defp type_of(abs, path) do
+    case File.lstat(abs) do
+      {:ok, %File.Stat{type: type}} -> {:ok, type}
+      {:error, reason} -> {:error, "Cannot delete #{path}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # FILE-19: only an empty directory goes; FILE-20: a symlink is removed as a
+  # link, so `File.rm` never touches what it points at.
+  defp remove(abs, :directory, path) do
+    case File.rmdir(abs) do
+      :ok ->
+        :ok
+
+      # OTP reports a directory that isn't empty as :eexist on Linux
+      # (ENOTEMPTY on some hosts).
+      {:error, reason} when reason in [:eexist, :enotempty] ->
+        {:error, "#{path} is not empty"}
+
+      {:error, reason} ->
+        {:error, "Cannot delete #{path}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp remove(abs, _type, path) do
+    case File.rm(abs) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "Cannot delete #{path}: #{:file.format_error(reason)}"}
     end
   end
 

@@ -33,6 +33,16 @@ defmodule Elia.SelfModificationTest do
       assert {:deny, _} = Files.write_policy(%{"path" => "/tmp/x"}, %{})
       assert Files.read_policy(%{"path" => "lib/x.ex"}, %{}) == :never
       assert Files.read_policy(%{"path" => "/etc/hostname"}, %{}) == :required
+
+      # FILE-18: listing with no path means the workspace root, inside like any
+      # other workspace path.
+      assert Files.read_policy(%{}, %{}) == :never
+
+      # FILE-21: deleting follows the write policy.
+      assert Files.delete_policy(%{"path" => "skills/x/SKILL.md"}, %{}) == :never
+      assert Files.delete_policy(%{"path" => "lib/x.ex"}, %{}) == :required
+      assert {:deny, _} = Files.delete_policy(%{"path" => ".git/hooks/pre-commit"}, %{})
+      assert {:deny, _} = Files.delete_policy(%{"path" => "/tmp/x"}, %{})
     end
 
     # WS-5: the classes are decided on the path as written, so a caller that
@@ -147,6 +157,38 @@ defmodule Elia.SelfModificationTest do
       assert Files.write_policy(%{"path" => "link-dir/evil.txt"}, %{jail: false}) == :required
     end
 
+    # FILE-18: listing follows the read policy, so under the jail a path
+    # outside the workspace is refused, not offered for approval (FILE-12).
+    test "listing outside the workspace is refused" do
+      assert {:deny, reason} = Files.read_policy(%{"path" => "/etc"}, %{jail: true})
+      assert reason =~ "outside the workspace"
+
+      assert {:error, reason} = Files.list_files(%{"path" => "/etc"}, %{jail: true})
+      assert reason =~ "outside the workspace"
+
+      # Unjailed it is the user's to approve (FILE-4); the workspace itself is
+      # always listed.
+      assert Files.read_policy(%{"path" => "/etc"}, %{jail: false}) == :required
+      assert {:ok, "[. (" <> _} = Files.list_files(%{}, %{jail: true})
+    end
+
+    # FILE-20, FILE-13: deleting a link that resolves out of the workspace is
+    # refused under the jail, as reading or writing it would be.
+    test "deleting a link out of the workspace is refused" do
+      outside = Path.join(System.tmp_dir!(), "elia-del-#{System.unique_integer([:positive])}")
+      File.write!(outside, "keep me")
+      File.ln_s!(outside, in_root("link-del"))
+
+      on_exit(fn ->
+        File.rm(in_root("link-del"))
+        File.rm(outside)
+      end)
+
+      assert {:error, reason} = Files.delete_file(%{"path" => "link-del"}, %{jail: true})
+      assert reason =~ "resolves to #{outside}"
+      assert File.read!(outside) == "keep me"
+    end
+
     # FILE-13, ISOL-13: a chat worktree reaches the trees its jail profile also
     # binds — the shared deps and the repository's git directory.
     test "a worktree reaches the shared deps and the repo's git dir" do
@@ -240,6 +282,132 @@ defmodule Elia.SelfModificationTest do
       assert File.read!(in_root(path)) == Enum.map_join(lines, "", &(&1 <> "!\n"))
     after
       File.rm_rf!(in_root("skills/notes"))
+    end
+
+    # FILE-15, FILE-16, FILE-17
+    test "lists a directory, directories first and sorted" do
+      dir = "skills/notes/list"
+      File.mkdir_p!(in_root(Path.join(dir, "sub")))
+      File.write!(in_root(Path.join(dir, "b.txt")), "b")
+      File.write!(in_root(Path.join(dir, "A.txt")), "abc")
+      File.ln_s!("/tmp", in_root(Path.join(dir, "link")))
+
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+
+      assert {:ok, out} = Files.list_files(%{"path" => dir}, %{})
+
+      assert String.split(out, "\n") == [
+               "[skills/notes/list (4 entries)]",
+               "skills/notes/list/sub/",
+               "skills/notes/list/A.txt (3 bytes)",
+               "skills/notes/list/b.txt (1 bytes)",
+               "skills/notes/list/link -> /tmp"
+             ]
+
+      # No path means the workspace root, named `.`.
+      assert {:ok, "[. (" <> _} = Files.list_files(%{}, %{})
+
+      # FILE-16: `limit` lowers the count and says what was left out.
+      assert {:ok, out} = Files.list_files(%{"path" => dir, "limit" => 2}, %{})
+      assert out |> String.split("\n") |> List.last() == "[+2 more entries]"
+
+      many = "skills/notes/many"
+      File.mkdir_p!(in_root(many))
+      Enum.each(1..205, &File.write!(in_root("#{many}/f#{&1}"), "x"))
+
+      # `limit` can never raise the cap: 205 entries still show 200.
+      assert {:ok, out} = Files.list_files(%{"path" => many, "limit" => 500}, %{})
+      lines = String.split(out, "\n")
+      assert length(lines) == 202
+      assert List.last(lines) == "[+5 more entries]"
+
+      # FILE-17: an empty directory is the header alone; a file or a missing
+      # path fails, naming it.
+      File.mkdir_p!(in_root("skills/notes/empty"))
+
+      assert {:ok, "[skills/notes/empty (0 entries)]"} =
+               Files.list_files(%{"path" => "skills/notes/empty"}, %{})
+
+      assert {:error, reason} = Files.list_files(%{"path" => "#{dir}/A.txt"}, %{})
+      assert reason =~ "Cannot list #{dir}/A.txt"
+
+      assert {:error, reason} = Files.list_files(%{"path" => "skills/notes/gone"}, %{})
+      assert reason =~ "Cannot list skills/notes/gone"
+    end
+
+    # FILE-19, FILE-20
+    test "deletes a file and an empty directory, and refuses the rest" do
+      dir = "skills/notes/del"
+      File.mkdir_p!(in_root(Path.join(dir, "sub")))
+      File.write!(in_root(Path.join(dir, "a.txt")), "x")
+      File.write!(in_root(Path.join(dir, "sub/b.txt")), "y")
+
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+
+      assert {:ok, "Deleted skills/notes/del/a.txt"} =
+               Files.delete_file(%{"path" => "#{dir}/a.txt"}, %{})
+
+      refute File.exists?(in_root("#{dir}/a.txt"))
+
+      assert {:error, "skills/notes/del/sub is not empty"} =
+               Files.delete_file(%{"path" => "#{dir}/sub"}, %{})
+
+      assert File.read!(in_root("#{dir}/sub/b.txt")) == "y"
+
+      File.mkdir_p!(in_root("#{dir}/empty"))
+
+      assert {:ok, "Deleted skills/notes/del/empty"} =
+               Files.delete_file(%{"path" => "#{dir}/empty"}, %{})
+
+      refute File.exists?(in_root("#{dir}/empty"))
+
+      assert {:error, reason} = Files.delete_file(%{"path" => "#{dir}/a.txt"}, %{})
+      assert reason =~ "Cannot delete skills/notes/del/a.txt"
+
+      # FILE-20: the link goes, what it points at stays.
+      File.ln_s!(in_root("#{dir}/sub/b.txt"), in_root("#{dir}/link"))
+
+      assert {:ok, "Deleted skills/notes/del/link"} =
+               Files.delete_file(%{"path" => "#{dir}/link"}, %{})
+
+      refute File.exists?(in_root("#{dir}/link"))
+      assert File.read!(in_root("#{dir}/sub/b.txt")) == "y"
+    end
+
+    # FILE-22: a delete waits for the lock the writers use (FILE-11).
+    test "a delete takes the same per-file lock as a write" do
+      path = "skills/notes/locked.txt"
+      abs = in_root(path)
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(abs, "x")
+      parent = self()
+
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+
+      holder =
+        Task.async(fn ->
+          :global.trans(
+            {{Files, abs}, self()},
+            fn ->
+              send(parent, :held)
+
+              receive do
+                :release -> :ok
+              end
+            end,
+            [node()]
+          )
+        end)
+
+      assert_receive :held, 500
+      deleter = Task.async(fn -> Files.delete_file(%{"path" => path}, %{}) end)
+
+      # Still waiting while the lock is held, and done once it is free.
+      assert Task.yield(deleter, 100) == nil
+      send(holder.pid, :release)
+      assert {:ok, "Deleted skills/notes/locked.txt"} = Task.await(deleter, 5_000)
+      assert Task.await(holder, 5_000) == :ok
+      refute File.exists?(abs)
     end
   end
 

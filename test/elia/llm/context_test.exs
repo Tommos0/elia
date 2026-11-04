@@ -172,14 +172,18 @@ defmodule Elia.LLM.ContextTest do
             name: "write_file",
             input: %{"path" => "a", "content" => "x"}
           },
-          %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "echo x"}}
+          %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "echo x"}},
+          %{type: :tool_call, id: "l1", name: "list_files", input: %{"path" => "lib"}},
+          %{type: :tool_call, id: "d1", name: "delete_file", input: %{"path" => "a"}}
         ]
       },
       %Message{
         role: :tool,
         content: [
           %{type: :tool_result, tool_call_id: "w1", content: "wrote a", is_error: false},
-          %{type: :tool_result, tool_call_id: "s1", content: "x", is_error: false}
+          %{type: :tool_result, tool_call_id: "s1", content: "x", is_error: false},
+          %{type: :tool_result, tool_call_id: "l1", content: "lib/", is_error: false},
+          %{type: :tool_result, tool_call_id: "d1", content: "Deleted a", is_error: false}
         ]
       }
     ]
@@ -187,7 +191,7 @@ defmodule Elia.LLM.ContextTest do
     breakdown = Context.build(messages, skills())
     by_id = Map.new(breakdown.buckets, &{&1.id, &1})
 
-    assert %{count: 2, label: "Files"} = by_id.files
+    assert %{count: 6, label: "Files"} = by_id.files
     assert %{count: 2, label: "Shell"} = by_id.shell
     assert by_id.files.tokens > 0
     assert by_id.shell.tokens > 0

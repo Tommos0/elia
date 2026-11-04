@@ -11,4 +11,21 @@ defmodule Elia.Skills.FilesTest do
     refute instructions =~ Elia.Workspace.root()
     assert instructions =~ "project folder"
   end
+
+  # FILE-23: everywhere the file tools are named, all five are.
+  test "the five file tools are named together" do
+    names = Elia.Skills.Files.tools() |> Enum.map(& &1.name)
+
+    assert names == ~w(read_file write_file edit_file list_files delete_file)
+    assert Elia.Skills.Files.description() =~ "list"
+    assert Elia.Skills.Files.description() =~ "delete"
+
+    instructions = Elia.Skills.Files.instructions()
+    assert instructions =~ "`list_files`"
+    assert instructions =~ "`delete_file`"
+
+    assert [shell] = Enum.filter(Elia.Skills.Shell.tools(), &(&1.name == "shell"))
+    assert shell.description =~ "list_files"
+    assert shell.description =~ "delete_file"
+  end
 end

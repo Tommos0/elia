@@ -19,7 +19,9 @@ defmodule Elia.Skills.ShellTest do
 
     assert Shell.instructions() =~ "file tools"
     assert [%{description: description}] = Shell.tools()
-    assert description =~ "use read_file, write_file and edit_file"
+
+    assert description =~
+             "use read_file, list_files, write_file, edit_file and delete_file"
   end
 
   # SHELL-9

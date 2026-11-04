@@ -17,7 +17,8 @@ defmodule Elia.LLM.Context do
       per skill
     * `:tools` "Tool definitions"
     * `:messages` "Messages" - children "User", "Assistant", "Reasoning"
-    * `:files` "Files" - `read_file`/`write_file`/`edit_file` calls & results
+    * `:files` "Files" - `read_file`/`write_file`/`edit_file`/`list_files`/
+      `delete_file` calls & results
     * `:shell` "Shell" - `shell` calls & results
     * `:other_tools` "Other tools" - any other tool calls & results
     * `:adjustment` "Provider adjustment" - the gap to the provider's last
@@ -27,7 +28,7 @@ defmodule Elia.LLM.Context do
   alias Elia.LLM.{Message, Tokens}
   alias Elia.Skills
 
-  @file_tools ~w(read_file write_file edit_file)
+  @file_tools ~w(read_file write_file edit_file list_files delete_file)
   @message_parts [user: "User", assistant: "Assistant", reasoning: "Reasoning"]
   @tool_parts [files: "Files", shell: "Shell", other_tools: "Other tools"]
 

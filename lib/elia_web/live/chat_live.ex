@@ -1384,7 +1384,10 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp tool_icon("shell"), do: "hero-command-line"
-  defp tool_icon(name) when name in ~w(read_file write_file edit_file), do: "hero-document-text"
+
+  defp tool_icon(name) when name in ~w(read_file write_file edit_file list_files delete_file),
+    do: "hero-document-text"
+
   defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
   defp tool_icon("ask_user"), do: "hero-chat-bubble-left-right"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
@@ -2022,6 +2025,12 @@ defmodule EliaWeb.ChatLive do
 
   defp step(%{name: "edit_file", input: %{"path" => path}}),
     do: {"Editing", "edit", short(path)}
+
+  defp step(%{name: "list_files", input: %{"path" => path}}),
+    do: {"Listing", "list", short(path)}
+
+  defp step(%{name: "delete_file", input: %{"path" => path}}),
+    do: {"Deleting", "delete", short(path)}
 
   defp step(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
     do: {"Starting", "start", "the sub-task “#{short(title)}”"}

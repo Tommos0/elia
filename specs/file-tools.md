@@ -2,10 +2,12 @@
 
 Status: Implemented
 
-`read_file`, `write_file` and `edit_file` let the agent work with files
-without the shell. Whether a call needs approval depends on the path's
-workspace class, and a chat whose jail is on can only reach its own workspace —
-so the file tools reach no further than a jailed command does (ISOL-25).
+`read_file`, `write_file`, `edit_file`, `list_files` and `delete_file` let the
+agent work with files without the shell: read, create and change a file, list a
+directory, and remove a file or an empty directory. Whether a call needs
+approval depends on the path's workspace class, and a chat whose jail is on can
+only reach its own workspace — so the file tools reach no further than a jailed
+command does (ISOL-25).
 
 ## Requirements
 
@@ -61,13 +63,61 @@ so the file tools reach no further than a jailed command does (ISOL-25).
   reach outside the workspace, so such a path is refused rather than offered for
   the user's approval (FILE-12), and that a symlink is followed no further than
   the workspace (FILE-13).
+- **FILE-15** `list_files` lists one level of the directory at `path`, which
+  defaults to the workspace root (FILE-1). The result's first line is
+  `[<dir> (<n> entries)]`, with `<dir>` the directory's path relative to the
+  workspace root (`.` for the root itself) and `<n>` the number of entries in
+  it; then one line per entry, named by its path relative to the workspace
+  root: a directory with a trailing `/`, a file with its size in bytes, a
+  symlink with `->` and the target it points at, and anything else by name
+  alone. Directories come before the rest, and each group is sorted by name
+  case-insensitively. Entries are listed as they are — dotfiles and protected
+  paths (WS-1) included, since reading them is not refused either.
+- **FILE-16** `list_files` returns at most 200 entries. `limit` can lower the
+  count but never raise it above 200. When entries are left out, the result
+  ends with `[+<n> more entries]`, and the entries shown are the first ones in
+  the order of FILE-15, so the rest can be reached by listing a subdirectory.
+- **FILE-17** `list_files` fails, naming the path and the reason and changing
+  nothing, when the path is missing or isn't a directory (a file path is read
+  with `read_file`). An empty directory gives the header line and no entries.
+- **FILE-18** Approval for `list_files` follows the read policy (FILE-4): it is
+  never asked inside the workspace and required for a path outside it, and with
+  the jail on a path outside the workspace — or one that resolves out of it
+  (FILE-13) — is refused, naming the path, instead of being offered for
+  approval (FILE-12).
+- **FILE-19** `delete_file` removes the file, symlink or empty directory at
+  `path`, and its result names the deleted path relative to the workspace root.
+  It fails, naming the path and changing nothing, when the path doesn't exist,
+  and when the path is a directory that isn't empty.
+- **FILE-20** A symlink is deleted as a link, never followed: the delete
+  removes the link itself and leaves whatever it points at alone. Whether it
+  may be touched is decided like any other path (FILE-21), so with the jail on
+  a link that resolves out of the workspace is refused (FILE-13), and with the
+  jail off the class of the path as written decides (WS-1).
+- **FILE-21** `delete_file` follows the path's class (FILE-5): under `skills/`
+  without approval, other workspace files with approval, and a protected or
+  outside path refused, naming the path. With the jail on, a path outside the
+  workspace — or one that resolves out of it (FILE-13) — is refused as it is
+  with the jail off (FILE-12).
+- **FILE-22** `delete_file` takes the same per-file lock as `write_file` and
+  `edit_file` (FILE-11), so a delete never races a write or edit of the same
+  path.
+- **FILE-23** Every list of the file tools names all five: the skill's
+  description and instructions say the tools also list a directory and delete a
+  file or empty directory, and that deleting needs the same approvals as
+  writing (FILE-21); the `shell` tool's description sends file work to all five
+  (SHELL-8); and the chat's tool card gives them its document icon (UI-15).
 
 ## Implementation
 
-`Elia.Skills.Files` (the policies), with `Elia.Workspace.real_location/1`
-(WS-5) and `Elia.Shell.reachable?/2` (ISOL-25) for the confinement.
+`Elia.Skills.Files` (the tools and the policies), with
+`Elia.Workspace.real_location/1` (WS-5) and `Elia.Shell.reachable?/2` (ISOL-25)
+for the confinement. `Elia.Explorer` (EXPL-3) lists directories for the
+`/files` page with its own rules — protected paths filtered out, symlinks
+refused — so `list_files` doesn't share it.
 
 ## Tests
 
 `test/elia/self_modification_test.exs` (the policies, jail on and off, the
-symlink escape), `test/elia/shell_test.exs` (the jail's reach).
+symlink escape, and the tools), `test/elia/shell_test.exs` (the jail's reach),
+`test/elia/skills/files_test.exs` (the instructions).

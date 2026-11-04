@@ -30,8 +30,8 @@ refused.
   | folder skill script tools | always |
   | `spawn_task` | always (SUBTASK-2) |
   | `list_tasks`, `await_task` | never (SUBTASK-26, SUBTASK-27) |
-  | `read_file` | only outside the workspace |
-  | `write_file`, `edit_file` | see FILE-5 |
+  | `read_file`, `list_files` | only outside the workspace |
+  | `write_file`, `edit_file`, `delete_file` | see FILE-5 |
   | `reload_skills`, `run_tests`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
   | `ask_user` | never (ASK-1) |
 
@@ -81,10 +81,10 @@ model act in that chat without review. The UI says so next to the switch
 A new chat starts with every approvable tool auto-approved (APPR-14), because
 the jail (ISOL-1) is what made the prompt the only safeguard for the tools that
 run processes. The jail doesn't cover the file tools, which run in the server,
-so in a new chat `write_file`/`edit_file` on the workspace's core files
-(FILE-5, WS-1) and `read_file` outside the workspace (FILE-4) are approved
-without review as well; a chat that needs that review turns those switches off
-(UI-39).
+so in a new chat `write_file`/`edit_file`/`delete_file` on the workspace's core
+files (FILE-5, WS-1) and `read_file`/`list_files` outside the workspace (FILE-4)
+are approved without review as well; a chat that needs that review turns those
+switches off (UI-39).
 
 ## Implementation
 
