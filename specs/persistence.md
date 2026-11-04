@@ -84,8 +84,9 @@ reopened.
   outlive a restart. `load_compaction/1` returns it, or `nil` when the chat is
   missing, unreadable, corrupt or has none.
 
-- **STORE-22** Starting a chat from the UI (`/` or `/p/<id>/new`, UI-1,
-  PROJ-26) saves it at once, with no messages and its project (STORE-19), so it
+- **STORE-22** Starting a chat from the UI (`/` when it has no chat to resume
+  (UI-71), or `/p/<id>/new`, UI-1, PROJ-26) saves it at once, with no messages
+  and its project (STORE-19), so it
   is listed while it is still empty: its title is "New chat" (STORE-7) and its
   `created_at` is the moment it was started (STORE-11), which its later saves
   keep. Starting a session for an id that is only opened (`/c/<id>`, UI-2)
@@ -109,6 +110,13 @@ reopened.
   answers like LIMIT-1 for a chat that is missing, unreadable, corrupt or has
   none.
 
+- **STORE-29** `latest/0` returns the most recently started listed chat
+  (STORE-12) that isn't a task chat (STORE-17), as a listed entry, or `nil`
+  when there is none. It looks at every saved chat, not only the first page of
+  `list/1`, so a run of task chats doesn't hide the chat to resume (UI-71), and
+  it skips an entry whose id isn't valid (STORE-4), so `/` never sends the
+  browser to a chat its own route rejects (UI-2).
+
 ## Implementation
 
 `Elia.Store`, `Elia.Agent.new_id/0`.
@@ -116,7 +124,7 @@ reopened.
 ## Tests
 
 `test/elia/agent_test.exs` (history survives a restart),
-`test/elia/store_test.exs`,
+`test/elia/store_test.exs` (STORE-29, the chat to resume),
 `test/elia_web/live/page_title_test.exs`,
 `test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
-STORE-22).
+STORE-22; `/` resumes the most recent chat, UI-1, UI-71).

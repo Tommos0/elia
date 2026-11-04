@@ -21,7 +21,8 @@ defmodule EliaWeb.ChatBrowserTest do
 
   # BROWSER-8: `/` reaches a chat page. That redirect is a `push_navigate` from
   # the mounted LiveView, so a chat form being there means the socket connected
-  # and the page's scripts ran.
+  # and the page's scripts ran. `/` resumes the latest chat (UI-1, UI-71), and
+  # starts one only when there is none (STORE-22).
   test "the chat page loads in the browser and moves on to a chat", %{conn: conn} do
     opened = session_ids()
 

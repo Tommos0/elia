@@ -357,5 +357,69 @@ defmodule Elia.StoreTest do
     assert [%Message{}] = Store.load(kept)
   end
 
+  # STORE-29, UI-71: the chat `/` resumes — the most recently started chat that
+  # isn't a task chat.
+  test "latest/0 is the newest chat that isn't a task chat" do
+    parent = Elia.Agent.new_id()
+    task = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([parent, task], &Store.delete/1) end)
+
+    :ok = Store.save(parent, [Message.user("where I left off")])
+
+    # Started after it, but a sub-task chat is reached from its parent's card,
+    # not from the app (UI-71).
+    :ok =
+      Store.save(task, [Message.user("preamble")],
+        task: %{parent_id: parent, title: "A task", brief: "Brief", status: "running"}
+      )
+
+    assert Store.latest().id == parent
+    assert Store.latest().title == "where I left off"
+  end
+
+  # STORE-29, UI-1: with nothing saved there is no chat to resume.
+  test "latest/0 is nil when no chat is saved" do
+    with_empty_store(fn ->
+      assert Store.list(1000) == []
+      assert Store.latest() == nil
+    end)
+  end
+
+  # STORE-29, STORE-4, UI-2: a stray file whose name isn't a valid chat id is
+  # not resumed — `/c/<id>` would reject it and send the browser back to `/`,
+  # over and over.
+  test "latest/0 skips an entry whose id isn't valid" do
+    with_empty_store(fn ->
+      File.mkdir_p!(Store.dir())
+
+      File.write!(
+        Path.join(Store.dir(), "not a chat.term"),
+        :erlang.term_to_binary(%{version: 1, messages: []})
+      )
+
+      assert Store.latest() == nil
+      assert [%{id: "not a chat"}] = Store.list(10)
+    end)
+  end
+
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))
+
+  # A store of its own: a throwaway runtime root, since that is where Elia's
+  # data and so the saved chats live (DEPLOY-2).
+  defp with_empty_store(fun) do
+    root = Path.join(System.tmp_dir!(), "elia-latest-store-#{Elia.Agent.new_id()}")
+    File.mkdir_p!(root)
+    previous = Application.get_env(:elia, :runtime_root)
+    Application.put_env(:elia, :runtime_root, root)
+
+    try do
+      fun.()
+    after
+      if previous,
+        do: Application.put_env(:elia, :runtime_root, previous),
+        else: Application.delete_env(:elia, :runtime_root)
+
+      File.rm_rf!(root)
+    end
+  end
 end

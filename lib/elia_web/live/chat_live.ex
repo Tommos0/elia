@@ -14,11 +14,16 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # PROJ-26: `/` (the logo and "Chats" header button) starts a chat in the
-  # default project (PROJ-8). The sidebar's "New chat" (UI-31) instead goes to
-  # the open chat's project, `/p/<id>/new` above.
+  # UI-1, UI-71: `/` — the app's start URL (PWA-1), the header logo and the
+  # "Chats" button (UI-32) — resumes the most recent chat, and only starts a
+  # chat in the default project (PROJ-8) when there is nothing to resume. The
+  # sidebar's "New chat" (UI-31) instead goes to the open chat's project,
+  # `/p/<id>/new` above.
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket) do
-    start_new_chat(socket, Elia.Projects.default())
+    case Elia.Store.latest() do
+      %{id: id} -> {:ok, push_navigate(socket, to: ~p"/c/#{id}")}
+      nil -> start_new_chat(socket, Elia.Projects.default())
+    end
   end
 
   def mount(%{"id" => id}, _session, socket) do

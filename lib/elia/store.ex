@@ -183,6 +183,18 @@ defmodule Elia.Store do
   def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
 
   @doc """
+  The chat to resume when the user opens the app (STORE-29, UI-71): the most
+  recently started chat (STORE-12) that isn't a task chat (STORE-17), as a
+  listed entry, or `nil` when there is none. Every saved chat is considered,
+  not only the first page of `list/1`.
+  """
+  @spec latest() :: map() | nil
+  def latest do
+    all_entries()
+    |> Enum.find(&(valid_id?(&1.id) and Map.get(&1, :task_status) == nil))
+  end
+
+  @doc """
   The task chats started by `parent_id`, oldest first, as listed entries
   (STORE-18).
   """

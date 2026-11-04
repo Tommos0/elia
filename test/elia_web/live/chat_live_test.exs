@@ -11,28 +11,64 @@ defmodule EliaWeb.ChatLiveTest do
     :ok
   end
 
-  test "/ redirects to a fresh chat", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/c/" <> _id}}} = live(conn, ~p"/")
+  # UI-1, UI-71: `/` is where the app opens (its start URL, PWA-1), where the
+  # header logo and the "Chats" button lead (UI-32) and where deleting the open
+  # chat lands (UI-65), so it resumes the chat the user left off in instead of
+  # leaving another empty one behind on every visit.
+  test "/ resumes the most recent chat, and looking at it saves nothing", %{conn: conn} do
+    with_empty_store(fn ->
+      older = saved_chat()
+      # A sub-task chat started after it: not where the user left off (UI-71).
+      task = saved_task_chat(older)
+      newest = saved_chat()
+      listed = Enum.map(Elia.Store.list(1000), & &1.id)
+
+      assert {:error, {:live_redirect, %{to: "/c/" <> ^newest}}} = live(conn, ~p"/")
+      # UI-71, STORE-22: resuming writes nothing, so no empty chat piles up.
+      assert Enum.map(Elia.Store.list(1000), & &1.id) == listed
+      assert task in listed
+
+      # With the newest chat gone, the next one is resumed rather than the
+      # task chat (UI-71, STORE-29).
+      :ok = Elia.Store.delete(newest)
+      assert {:error, {:live_redirect, %{to: "/c/" <> ^older}}} = live(conn, ~p"/")
+    end)
+  end
+
+  # UI-1, UI-71, STORE-22: with nothing saved there is no chat to resume, so
+  # `/` starts one in the default project (PROJ-8) and saves it at once.
+  test "/ starts a chat when there is nothing to resume", %{conn: conn} do
+    with_empty_store(fn ->
+      # No stored default project, so it is Elia's own (PROJ-8).
+      Elia.Settings.delete(:default_project)
+
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+
+      assert [%{id: ^id, title: "New chat", project_id: "harness"}] = Elia.Store.list(30)
+      assert Elia.Store.load(id) == []
+    end)
   end
 
   # STORE-22, UI-63: a chat started from the UI is saved as it opens, so the
   # sidebar lists it, as the open chat, before the user has sent anything.
   test "a started chat is saved and in the sidebar at once", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
-    on_exit(fn -> Elia.Store.delete(id) end)
+    # Its own store: with a chat saved there, `/` would resume that one (UI-71).
+    with_empty_store(fn ->
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
 
-    # STORE-22: on disk with no messages, its project and its start time.
-    assert %{id: ^id, title: "New chat", description: "New chat", project_id: "harness"} =
-             Enum.find(Elia.Store.list(30), &(&1.id == id))
+      # STORE-22: on disk with no messages, its project and its start time.
+      assert %{id: ^id, title: "New chat", description: "New chat", project_id: "harness"} =
+               Enum.find(Elia.Store.list(30), &(&1.id == id))
 
-    assert Elia.Store.load(id) == []
+      assert Elia.Store.load(id) == []
 
-    # UI-63: and the sidebar of the chat it opened shows it right away.
-    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+      # UI-63: and the sidebar of the chat it opened shows it right away.
+      {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
-    assert has_element?(view, "#chat-link-#{id}", "New chat")
-    assert has_element?(view, "#chat-link-#{id}.bg-base-300")
-    assert has_element?(view, "#chat-time-#{id}", "just now")
+      assert has_element?(view, "#chat-link-#{id}", "New chat")
+      assert has_element?(view, "#chat-link-#{id}.bg-base-300")
+      assert has_element?(view, "#chat-time-#{id}", "just now")
+    end)
   end
 
   # UI-6: a turn's start refreshes the sidebar and the page title, so the chat
@@ -384,8 +420,9 @@ defmodule EliaWeb.ChatLiveTest do
     end
   end
 
-  # UI-32: the header's Chats button goes to "/" and precedes Sessions.
-  test "header has a Chats button left of Sessions that opens a fresh chat", %{conn: conn} do
+  # UI-32: the header's Chats button goes to "/" and precedes Sessions. What
+  # "/" then opens is UI-1, UI-71.
+  test "header has a Chats button left of Sessions that goes to /", %{conn: conn} do
     id = Agent.new_id()
 
     {:ok, view, html} = live(conn, ~p"/c/#{id}")
@@ -755,22 +792,27 @@ defmodule EliaWeb.ChatLiveTest do
     assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/p/nope/new")
   end
 
-  # PROJ-26, UI-31: "/" starts a chat in the default project.
+  # PROJ-8, PROJ-26, UI-1: with nothing to resume, "/" starts a chat in the
+  # default project.
   test "a new chat starts in the default project", %{conn: conn} do
     root = Path.join(Workspace.root(), "chat-live-default")
     File.mkdir_p!(root)
-    {:ok, project} = Projects.create("Default one", root)
 
-    on_exit(fn ->
-      File.rm_rf!(root)
-      Projects.delete(project.id)
-      Elia.Settings.delete(:default_project)
+    # A store with no chat to resume (UI-71): this is the starting-over path.
+    with_empty_store(fn ->
+      {:ok, project} = Projects.create("Default one", root)
+
+      on_exit(fn ->
+        File.rm_rf!(root)
+        Projects.delete(project.id)
+        Elia.Settings.delete(:default_project)
+      end)
+
+      Elia.Projects.set_default(project.id)
+
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
+      assert Agent.snapshot(id).project.id == project.id
     end)
-
-    Elia.Projects.set_default(project.id)
-
-    assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/")
-    assert Agent.snapshot(id).project.id == project.id
   end
 
   # PROJ-26: the sidebar's "New chat" button (UI-31) starts a chat in the open
@@ -804,6 +846,46 @@ defmodule EliaWeb.ChatLiveTest do
              live(conn, ~p"/p/#{project.id}/new")
 
     assert Agent.snapshot(id).project.id == project.id
+  end
+
+  # UI-71: a store of its own — a throwaway runtime root, where Elia's data and
+  # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
+  # the chats other tests leave behind.
+  defp with_empty_store(fun) do
+    root = Path.join(Workspace.root(), "resume-#{Agent.new_id()}")
+    File.mkdir_p!(root)
+    previous = Application.get_env(:elia, :runtime_root)
+    Application.put_env(:elia, :runtime_root, root)
+
+    try do
+      fun.()
+    after
+      if previous,
+        do: Application.put_env(:elia, :runtime_root, previous),
+        else: Application.delete_env(:elia, :runtime_root)
+
+      File.rm_rf!(root)
+      Elia.Settings.delete(:default_project)
+    end
+  end
+
+  # A chat `/` can resume: saved with one message, so it has a title (STORE-7).
+  defp saved_chat do
+    id = Agent.new_id()
+    :ok = Elia.Store.save(id, [Message.user("where I left off")])
+    id
+  end
+
+  # A sub-task chat started after it (STORE-16, UI-71).
+  defp saved_task_chat(parent) do
+    id = Agent.new_id()
+
+    :ok =
+      Elia.Store.save(id, [Message.user("preamble")],
+        task: %{parent_id: parent, title: "A task", brief: "Brief", status: "running"}
+      )
+
+    id
   end
 
   # True when `first` appears before `second` in `html`.

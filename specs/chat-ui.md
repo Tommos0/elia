@@ -9,7 +9,20 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 ### Routing
 
-- **UI-1** `GET /` redirects to `/c/<id>` with a freshly generated chat id.
+- **UI-1** `GET /` navigates to `/c/<id>`: the most recently started chat that
+  isn't a task chat (UI-71), or a freshly generated chat id when there is none
+  (saved at once, STORE-22).
+- **UI-71** Opening the chat list's entry point — `GET /`, which is the app's
+  start URL (PWA-1) and the target of the header logo and "Chats" button
+  (UI-32) — resumes work rather than starting over: it opens the most recently
+  started chat (STORE-12 order, the first one the sidebar lists) that isn't a
+  task chat (STORE-17, UI-45), since a sub-task chat is reached from its
+  parent's card (UI-44) and not where the user left off. Only when there is no
+  such chat does `/` start a fresh one in the default project (PROJ-8). So
+  browsing to `/` never leaves another empty "New chat" behind while a chat
+  exists, and resuming writes nothing (STORE-22). Starting a chat stays
+  explicit: the sidebar's "New chat" button (UI-31) and `/p/<id>/new`
+  (PROJ-26) always start a fresh chat, and `/` does while no chat exists.
 - **UI-2** `/c/<id>` opens that chat, starting its session if needed. An id
   that fails `Elia.Store.valid_id?/1` redirects to `/`.
 - **UI-3** The page title is the chat's title (see STORE-7) and follows the
@@ -51,7 +64,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `localStorage`, and survives LiveView patches and navigation between chats.
 - **UI-32** The header on every page has a "Chats" button (`#chats-link`) to
   the left of "Sessions". It goes where the logo at the top left goes: `/`,
-  which opens a fresh chat (UI-1).
+  which opens the most recent chat (UI-1, UI-71).
 - **UI-36** On small screens the chat list is a drawer: the header toggle
   button (`#chats-toggle`) opens and closes it, its `aria-expanded` follows,
   the drawer starts closed, and a backdrop (`#chats-backdrop`) or the Escape
@@ -79,7 +92,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `data-confirm` naming the chat, and only then deletes it.
 - **UI-65** Confirming a delete removes the chat (SESS-29): its row leaves the
   sidebar and a "Chat deleted." flash appears. Deleting the chat that is open
-  navigates to `/` (a fresh chat, UI-1); deleting any other chat leaves the open
+  navigates to `/` (the most recent chat, or a fresh chat when there is none —
+  UI-1, UI-71); deleting any other chat leaves the open
   one in place. Deleting a chat whose turn is running stops that turn first
   (SESS-29), so a running chat can be deleted from any chat's sidebar.
 - **UI-66** Deleting a parent chat leaves its task chats saved and listed on
@@ -325,13 +339,15 @@ the hidden tool calls leave with a one-line summary of the current step.
 ## Implementation
 
 `EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`,
+`Elia.Store` (the chat `/` resumes, STORE-29, UI-71),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
 ## Tests
 
-`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/auto_approve_test.exs`,
+`test/elia_web/live/chat_live_test.exs` (including what `/` opens, UI-1, UI-71),
+`test/elia_web/live/auto_approve_test.exs`,
 `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
 `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),
 `test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
