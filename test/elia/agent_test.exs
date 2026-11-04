@@ -182,8 +182,16 @@ defmodule Elia.AgentTest do
 
     assert {:error, :not_pending} = Agent.answer(id, "q1", "too late")
 
+    # SESS-34, STOP-1: the open call got its result, and the stop is written
+    # under it, so the transcript says why the turn ended (STOP-2).
+    messages = Agent.snapshot(id).messages
+
     assert %Message{role: :tool, content: [%{tool_call_id: "q1", is_error: true}]} =
-             List.last(Agent.snapshot(id).messages)
+             Enum.at(messages, -2)
+
+    stopped = List.last(messages)
+    assert %Message{role: :user, meta: %{harness: true, stopped: :stopped}} = stopped
+    assert Message.text_content(stopped) =~ "Stopped by the user."
   end
 
   # ASK-8, LOOP-20
@@ -239,7 +247,7 @@ defmodule Elia.AgentTest do
     assert result.content =~ "options must have at most 6 items"
   end
 
-  # LIMIT-9, LIMIT-10, SESS-37
+  # LIMIT-9, LIMIT-10, SESS-37, STOP-1, STOP-2
   test "a chat that sets no limits pauses at the loop's default 100 steps, and says so", %{} do
     id = start_fake_skill_session([])
     push_repeating_tool_call(100)
@@ -261,13 +269,19 @@ defmodule Elia.AgentTest do
              "Step limit reached (100 steps). The turn is paused: Continue starts " <>
                "the count over, Fail ends it."
 
-    # LIMIT-11: ending it writes nothing of its own.
+    # STOP-1, STOP-2: failing the pause ends the turn, and that is written too,
+    # under the pause's own message — with the same text the event carries
+    # (STOP-4).
     :ok = Agent.fail_task(id)
     assert_receive {:agent, ^id, {:error, "Stopped after 100 steps without finishing"}}, 10_000
     await_status(id, :idle)
+
+    stopped = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
+    assert Message.text_content(stopped) =~ "Stopped after 100 steps without finishing"
   end
 
-  # LOOP-16, LIMIT-9, LIMIT-11
+  # LOOP-16, LIMIT-9, STOP-1, STOP-2
   test "the max_steps option sets the turn's step limit, and turning pausing off keeps the ending",
        %{} do
     id = start_fake_skill_session(max_steps: 3, pause_on_limit: false)
@@ -278,8 +292,11 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:error, "Stopped after 3 steps without finishing"}}, 10_000
     await_status(id, :idle)
 
-    # LIMIT-11: nothing of the ending is written into the transcript.
-    refute Enum.any?(Elia.Store.load(id), &Map.get(&1.meta, :limit))
+    # STOP-1, STOP-2: the ending is written — marked `:limit`, and saved with
+    # the chat, so it is still there when the chat is opened again.
+    stopped = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
+    assert Message.text_content(stopped) =~ "Stopped after 3 steps without finishing"
   end
 
   # LOOP-19, SESS-27
@@ -331,7 +348,7 @@ defmodule Elia.AgentTest do
     await_status(id, :idle)
   end
 
-  # LOOP-19, SESS-27, LIMIT-11
+  # LOOP-19, SESS-27, STOP-1, STOP-2
   test "failing a paused turn ends it with the limit's error", %{} do
     id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
     push_repeating_tool_call(1)
@@ -344,9 +361,14 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:error, "Stopped after 1 steps without finishing"}}, 10_000
     await_status(id, :idle)
 
-    # LIMIT-11: ending at a limit writes nothing of its own — what the
-    # transcript keeps is the pause's own message (LIMIT-10).
-    assert %Message{role: :user, meta: %{limit: {:steps, 1}}} = List.last(Elia.Store.load(id))
+    # LIMIT-10, STOP-2: the transcript holds both — that the turn waited (the
+    # pause's own message) and that it was ended at the limit.
+    messages = Elia.Store.load(id)
+    assert %Message{role: :user, meta: %{limit: {:steps, 1}}} = Enum.at(messages, -2)
+
+    stopped = List.last(messages)
+    assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
+    assert Message.text_content(stopped) =~ "Stopped after 1 steps without finishing"
   end
 
   # LOOP-20, SESS-27
@@ -410,8 +432,11 @@ defmodule Elia.AgentTest do
 
     %{status: :idle, messages: messages} = Agent.snapshot(id)
 
+    # SESS-8, STOP-1: the dangling call is closed and the stop follows it.
     assert %Message{role: :tool, content: [%{tool_call_id: "c1", is_error: true}]} =
-             List.last(messages)
+             Enum.at(messages, -2)
+
+    assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
   end
 
   test "history survives a session restart", %{id: id} do
@@ -492,8 +517,64 @@ defmodule Elia.AgentTest do
     :ok = Agent.send_message(id, "something declined")
     assert_receive {:agent, ^id, {:error, "The model declined this request."}}, 5000
 
-    assert [%Message{role: :user}, %Message{role: :assistant}] = Agent.snapshot(id).messages
+    # SESS-10, STOP-2: the rollback is what the refusal needs; the stop is what
+    # the transcript keeps of it, written after the rollback so it is the last
+    # thing there rather than the request the model declined.
+    assert [
+             %Message{role: :user},
+             %Message{role: :assistant},
+             %Message{role: :user, meta: %{harness: true, stopped: :refused}} = stopped
+           ] = Agent.snapshot(id).messages
+
+    assert Message.text_content(stopped) =~ "The model declined this request."
     assert Agent.snapshot(id).last_usage == nil
+  end
+
+  # STOP-1, STOP-2, STOP-4
+  test "a provider that failed is written into the transcript as the stop it is", %{} do
+    id = start_fake_skill_session([])
+
+    # Nothing scripted: the provider call fails, so the loop returns an error
+    # (LOOP-5, LLM-13) instead of a reply.
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    # STOP-4: the event a watcher reads carries the message's own text.
+    assert_receive {:agent, ^id, {:error, "FakeLLM: no scripted turn"}}, 5000
+
+    # STOP-1, STOP-2: the loop's reason, marked as the error kind, saved with
+    # the chat.
+    stopped = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, stopped: :error}} = stopped
+    assert Message.text_content(stopped) =~ "FakeLLM: no scripted turn"
+  end
+
+  # STOP-1, STOP-2, STOP-3
+  test "a loop that dies is written into the transcript, and the next turn reads it", %{id: id} do
+    # The loop dying is logged by the task supervisor (hence the capture), and
+    # it is the crash the stop reports.
+    ExUnit.CaptureLog.capture_log(fn ->
+      FakeLLM.push(fn _request, _on_event -> raise "boom" end)
+
+      :ok = Agent.send_message(id, "go")
+      await_status(id, :idle)
+    end)
+
+    # STOP-2: the reason the loop died with, on one line, not a stacktrace.
+    stopped = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, stopped: :crash}} = stopped
+    assert Message.text_content(stopped) =~ "The harness crashed:"
+    assert Message.text_content(stopped) =~ "boom"
+    refute Message.text_content(stopped) =~ "stacktrace"
+
+    # STOP-3: the message is part of the history, so the next turn sends it to
+    # the model instead of a history that stops mid-turn.
+    FakeLLM.push(FakeLLM.assistant([Message.text("I know.")]))
+    :ok = Agent.send_message(id, "carry on")
+    await_status(id, :idle)
+
+    request = List.last(FakeLLM.requests())
+    assert Enum.any?(request.messages, &(&1.meta[:stopped] == :crash))
   end
 
   # CTX-10: usage carries the estimate for the history that request sent, which

@@ -64,9 +64,9 @@ however much later the chat is opened.
 - ~~**LIMIT-8** A chat with no limits is unchanged (LOOP-3): a runaway turn
   still ends with an error after 100 steps, and a turn that ends at a limit the
   user failed, or with no `pause_on_limit`, stores nothing.~~ Superseded by
-  LIMIT-9 and LIMIT-11: a chat with no limits pauses at the step limit (LIMIT-9)
+  LIMIT-9 and STOP-1: a chat with no limits pauses at the step limit (LIMIT-9)
   and the transcript keeps that (LIMIT-10), while a turn that *ends* at a limit
-  still stores nothing of its own (LIMIT-11).
+  writes its own stop message as well (STOP-1, STOP-2).
 
 - **LIMIT-9** `pause_on_limit` is on by default: a chat that sets no limits of
   its own **pauses** when its turn reaches a limit — the loop's 100 steps
@@ -91,13 +91,16 @@ however much later the chat is opened.
   never reads as if it had finished. It is written once per pause: a resumed
   turn that reaches the limit again writes another.
 
-- **LIMIT-11** A turn that *ends* at a limit is unchanged (LOOP-3): the user
+- ~~**LIMIT-11** A turn that *ends* at a limit is unchanged (LOOP-3): the user
   failed a paused turn (SESS-27, LOOP-19), or the chat turned `pause_on_limit`
   off (LIMIT-9), so the turn stops and the session reports the limit's error as
   an error row (UI-12) that is not written into the transcript, and the turn's
   end adds nothing to the chat beyond the messages it already has. What the
   transcript keeps is the pause's own message (LIMIT-10), which is what says why
-  the turn stopped.
+  the turn stopped.~~ Superseded by STOP-1 and STOP-2: a turn that ends at a
+  limit writes its own message too, marked `:limit`, and the pause's own message
+  (LIMIT-10) sits above it — so the transcript says both that the turn waited
+  and that it was ended (UI-82).
 
 ## Implementation
 
@@ -112,8 +115,9 @@ Limits section), `EliaWeb.ChatLive` (the pause's row, UI-81).
 `test/elia/agent_test.exs` (the limits in a turn: a step limit and a budget
 pausing a turn, the defaults — a chat with no limits pauses at 100 steps
 (LIMIT-9) — the pause's message and what the transcript keeps of it (LIMIT-10),
-the ending (LIMIT-11), persistence across a restart, LIMIT-1 to LIMIT-4, LIMIT-9
-to LIMIT-11), `test/elia/store_test.exs` (STORE-27, STORE-28),
-`test/elia/tasks_test.exs` (a child's limits come from its spawn, LIMIT-5),
-`test/elia_web/live/chat_settings_test.exs` (the Limits section, LIMIT-6,
-LIMIT-7), `test/elia_web/live/chat_live_test.exs` (the pause's row, UI-81).
+and the stop a limit ends in (STOP-1, STOP-2), persistence across a restart,
+LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10), `test/elia/store_test.exs` (STORE-27,
+STORE-28), `test/elia/tasks_test.exs` (a child's limits come from its spawn,
+LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
+LIMIT-6, LIMIT-7), `test/elia_web/live/chat_live_test.exs` (the pause's row,
+UI-81).

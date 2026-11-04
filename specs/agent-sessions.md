@@ -23,7 +23,8 @@ progress so any number of UIs can follow it.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
-  `{:tool_status, call_id, s}`, `{:error, text}`, `{:reset, messages}`,
+  `{:tool_status, call_id, s}`, `{:error, text}` (a stop, whose transcript
+  message is STOP-1's, SESS-38), `{:reset, messages}`,
   `{:compaction, state}` (the chat's compaction state changed, COMPACT-24),
   `{:model, selection}` (the chat's model selection changed, MODEL-1),
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
@@ -51,8 +52,9 @@ progress so any number of UIs can follow it.
   can render the current state.
 - **SESS-8** Stopping a turn kills its task, gives each unanswered tool call
   in the last assistant message an error result ("Cancelled by the user."),
-  returns to idle and broadcasts the notice "Stopped.". Stopping an idle
-  session does nothing.
+  returns to idle and writes the stop into the transcript — "Stopped by the
+  user.", STOP-1, SESS-38 — in place of the "Stopped." notice it used to
+  broadcast. Stopping an idle session does nothing.
 - **SESS-9** Messages from a stopped loop that arrive late are ignored.
 - **SESS-10** If the loop ends with `:refused`, the history is truncated to
   what it was before the turn's user message, the truncated history is saved
@@ -60,8 +62,10 @@ progress so any number of UIs can follow it.
   is broadcast.
 - **SESS-11** If the loop ends with an error, the error text is broadcast and
   the session returns to idle with the history kept.
-- **SESS-12** If the loop task crashes, "Agent crashed: …" is broadcast and
-  any unanswered tool calls are closed with an error result, as in SESS-8.
+- **SESS-12** If the loop task crashes, "The harness crashed: …" — the exit
+  reason, on one line — is broadcast, the stop is written into the transcript
+  (STOP-1, STOP-2) and any unanswered tool calls are closed with an error
+  result, as in SESS-8.
 - **SESS-13** A failure to save the history is logged and does not stop the
   session.
 - **SESS-14** A session loads its saved model selection on start (STORE-9).
@@ -218,6 +222,17 @@ progress so any number of UIs can follow it.
   `snapshot/1`'s `pause`, the status and the turn's task are unchanged
   (SESS-27), and nothing is written for a session that does not persist
   (SESS-13).
+
+- **SESS-38** Every way a turn ends other than the model finishing writes it
+  into the transcript through one path (STOP-1): the loop's error (SESS-11), its
+  refusal (SESS-10), the loop dying (SESS-12) and the user's stop (SESS-8) each
+  append the marked harness message STOP-2 describes — `meta.stopped` holding
+  the kind, one of `:limit`, `:error`, `:refused`, `:crash`, `:stopped` —
+  before the session returns to idle, so a stop is written whether or not a page
+  is open and stays after the turn is over. The text is the same one the event
+  carries: `{:error, text}` is still broadcast for the watchers that read a
+  chat's events (STOP-4, SUBTASK-13), and the page renders the message rather
+  than that event, so a stop is not shown twice (UI-82).
 
 - **SESS-33** `Elia.Agent.set_title/2` (chat id, text) sets the chat's own title
   (TITLE-1, TITLE-4): the session shapes the text (trimmed, whitespace collapsed,

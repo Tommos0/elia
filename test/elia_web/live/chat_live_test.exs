@@ -936,6 +936,70 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "The turn is paused"
   end
 
+  # UI-82, STOP-1, STOP-2
+  test "a stop is an error row in the transcript, and one only", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, [], project: "harness")
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    Agent.subscribe(id)
+
+    # A turn that is running while we look at it.
+    FakeLLM.push(fn _request, _on_event ->
+      Process.sleep(1_000)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("Sure.")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "a long turn")
+    assert_receive {:agent, ^id, {:status, :running}}, 2_000
+
+    :ok = Agent.stop(id)
+    assert_receive {:agent, ^id, {:status, :idle}}, 2_000
+
+    # UI-82: the message the session wrote (STOP-1) is the row, and it reads as
+    # an error rather than as an ordinary harness notice (UI-9).
+    assert has_element?(view, "[data-kind='error']")
+    assert render(view) =~ "Stopped by the user."
+
+    # UI-82, STOP-4: the error event the session also sends carries the same
+    # text, and is not a second row of its own.
+    Phoenix.PubSub.broadcast(
+      Elia.PubSub,
+      Elia.Agent.topic(id),
+      {:agent, id, {:error, "Stopped by the user."}}
+    )
+
+    html = render(view)
+    assert length(String.split(html, "Stopped by the user.")) == 2
+  end
+
+  # UI-82, STOP-1
+  test "a stop a session wrote reads as an error row when the chat is opened", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # The message a session writes when a turn's provider fails (STOP-1,
+    # STOP-2): a harness message marked with the kind of stop it was.
+    stopped = Message.harness("FakeLLM: no scripted turn")
+    stopped = %{stopped | meta: Map.put(stopped.meta, :stopped, :error)}
+    :ok = Elia.Store.save(id, [Message.user("go"), stopped])
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#items-m1 [data-kind='error']")
+    refute has_element?(view, "#items-m1 [data-kind='notice']")
+    assert html =~ "FakeLLM: no scripted turn"
+  end
+
   # UI-77: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
   # the chats other tests leave behind.

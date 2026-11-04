@@ -200,7 +200,15 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `data-kind="error"`, so a turn waiting on the user is not mistaken for one
   that ended quietly as a plain harness notice (UI-9). It is there on first
   render, from the saved messages (LIMIT-10), and stays when the turn is
-  resumed or failed (LIMIT-11).
+  resumed or ends at the limit (STOP-1).
+- **UI-82** Every harness message that reports why a turn isn't running renders
+  as an error row (UI-12), told apart by the marker in its meta: a pause at a
+  limit (`meta.limit`, UI-81), a stop (`meta.stopped`, STOP-1, SESS-38) and the
+  notice a restart leaves (`meta.interrupted`, UI-73). A stop's row carries
+  `data-kind="error"` and is there on first render, from the saved messages, as
+  well as while the page is watching the turn. The session's `{:error, text}`
+  event (SESS-6, SESS-38) is not a row of its own — the message is the row — so
+  a stop reads once, whichever of the two arrives first (STOP-4).
 
 ### Tool calls
 

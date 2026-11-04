@@ -14,7 +14,8 @@ defmodule Elia.Agent.Session do
 
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
-  `{:usage, usage}`, `{:compaction, state}`, `{:error, text}`,
+  `{:usage, usage}`, `{:compaction, state}`, `{:error, text}` (a stop, whose
+  transcript message is STOP-1's, STOP-4),
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
   `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:done, on?}`,
   `{:paused, message}`, `{:task, metadata}`.
@@ -503,9 +504,9 @@ defmodule Elia.Agent.Session do
     state =
       state
       |> close_dangling_tool_calls("Cancelled by the user.")
+      |> append(stop_notice(:stopped, "Stopped by the user."))
       |> finish_turn()
 
-    broadcast(state, {:notice, "Stopped."})
     {:reply, :ok, state}
   end
 
@@ -624,6 +625,8 @@ defmodule Elia.Agent.Session do
         :refused ->
           # Roll back to the prefix before this turn; nothing in it was edited.
           # The rolled-back request's usage no longer describes the context (CTX-6).
+          # STOP-2: the rollback is what the refusal needs; the stop is written
+          # after it, so the message is the last thing the transcript holds.
           state =
             save(%{
               state
@@ -632,23 +635,23 @@ defmodule Elia.Agent.Session do
             })
 
           broadcast(state, {:reset, state.messages})
-          broadcast(state, {:error, "The model declined this request."})
-          state
+          stop(state, :refused, "The model declined this request.")
+
+        {:limit, limit} ->
+          stop(state, :limit, limit_message(limit))
 
         {:error, reason} ->
-          broadcast(state, {:error, to_string(reason)})
-          state
+          stop(state, :error, to_string(reason))
       end
 
     {:noreply, finish_turn(state)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = state) do
-    broadcast(state, {:error, "Agent crashed: #{Exception.format_exit(reason)}"})
-
     state =
       state
       |> close_dangling_tool_calls("The harness crashed while running this tool.")
+      |> stop(:crash, "The harness crashed: " <> crash_reason(reason))
       |> finish_turn()
 
     {:noreply, state}
@@ -978,6 +981,37 @@ defmodule Elia.Agent.Session do
 
   defp pause_message({:time, ms}),
     do: "Time limit reached (#{Elia.Agent.Loop.minutes(ms)})."
+
+  # STOP-2, LOOP-3, LOOP-20: what a turn that a limit ended says it was.
+  defp limit_message({:steps, max}), do: "Stopped after #{max} steps without finishing"
+
+  defp limit_message({:time, ms}),
+    do: "Stopped after #{Elia.Agent.Loop.minutes(ms)}: the time budget ran out"
+
+  # STOP-1, SESS-38: a turn that didn't finish says so in the transcript, marked
+  # with the kind of stop it was (STOP-2), saved as any appended message is and
+  # rendered as an error row (UI-82).
+  defp stop_notice(kind, text) do
+    message = Message.harness(text)
+    %{message | meta: Map.put(message.meta, :stopped, kind)}
+  end
+
+  # STOP-4: the transcript gets the message and the watchers that read a chat's
+  # events get the same text, which is how a sub-task's parent reads a child's
+  # failure (SUBTASK-13). The page renders the message, not the event (UI-82).
+  defp stop(state, kind, text) do
+    state = append(state, stop_notice(kind, text))
+    broadcast(state, {:error, text})
+    state
+  end
+
+  # STOP-2: the reason the loop died with, as the one-line banner a crash is
+  # reported with — not a stacktrace, which is neither what a transcript wants
+  # nor what a sub-task's result wants.
+  defp crash_reason({exception, _stacktrace}) when is_exception(exception),
+    do: Exception.format_banner(:error, exception)
+
+  defp crash_reason(reason), do: Exception.format_banner(:exit, reason)
 
   # LIMIT-10, SESS-37: the same pause written into the transcript, so a chat
   # waiting on the user's decision says why — now and whenever it is opened

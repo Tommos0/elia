@@ -291,7 +291,12 @@ defmodule Elia.TasksConcurrencyTest do
 
     assert Tasks.active() == []
 
+    # SESS-22, STOP-1: the cancelled call, and then the stop the user asked for.
+    messages = Agent.snapshot(parent).messages
+
     assert %Message{role: :tool, content: [%{content: "Cancelled by the user.", is_error: true}]} =
-             List.last(Agent.snapshot(parent).messages)
+             Enum.at(messages, -2)
+
+    assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
   end
 end

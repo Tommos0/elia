@@ -16,9 +16,10 @@ results back, and repeat until the model answers without calling a tool.
   They are the chat's project's skills and `AGENTS.md` (PROJ-15).
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
-- **LOOP-3** A turn stops with an error after the step limit: 100 steps unless
-  the `:max_steps` option says otherwise (LOOP-16). With the `:pause_on_limit`
-  option it pauses instead (LOOP-19).
+- **LOOP-3** A turn ends after the step limit: 100 steps unless the `:max_steps`
+  option says otherwise (LOOP-16). The loop returns `{:limit, {:steps, n}}`, and
+  the session writes why the turn stopped into the transcript (STOP-1, STOP-2).
+  With the `:pause_on_limit` option it pauses instead (LOOP-19).
 - **LOOP-4** If the model refuses (`stop_reason: :refusal`), the loop returns
   `:refused` and runs none of that response's tool calls.
 - **LOOP-5** If a response hits the output limit without calling a tool, the
@@ -70,8 +71,9 @@ results back, and repeat until the model answers without calling a tool.
   the turn instead of ending it: the loop sends the session
   `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}` or `{:time, ms}`) and
   blocks. `{:pause_decision, :continue}` resumes it with the step count and the
-  wall-clock budget started over; `{:pause_decision, :fail}` ends the turn with
-  the limit's error text (LOOP-3, LOOP-20).
+  wall-clock budget started over; `{:pause_decision, :fail}` ends the turn,
+  reporting the limit the turn was paused at (LOOP-3, LOOP-20), so the session
+  says the turn stopped there (STOP-1, STOP-2).
 - **LOOP-20** The `:budget_ms` option (default nil) is a wall-clock budget for
   the turn. The loop checks it at the start of each step: when the time spent
   exceeds it, it is a limit like LOOP-3. Time spent waiting for the user's

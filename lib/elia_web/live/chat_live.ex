@@ -1833,10 +1833,15 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  defp apply_event({kind, text}, socket) when kind in [:notice, :error] do
-    item = %{id: "#{kind}-#{System.unique_integer([:positive])}", kind: kind, text: text}
+  # UI-9: the loop's own notices are rows of their own. An error event is not:
+  # the session writes the stop into the transcript first (STOP-1), and that
+  # message is the row, so a stop reads once (UI-82, STOP-4).
+  defp apply_event({:notice, text}, socket) do
+    item = %{id: "notice-#{System.unique_integer([:positive])}", kind: :notice, text: text}
     stream_insert(socket, :items, item)
   end
+
+  defp apply_event({:error, _text}, socket), do: socket
 
   defp apply_event({:reset, messages}, socket) do
     socket
@@ -2071,19 +2076,22 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
+  # UI-73, UI-81, UI-82: the harness messages that report why a turn isn't
+  # running, told apart by the marker each carries.
+  defp stop_reported?(meta) do
+    Enum.any?([:interrupted, :limit, :stopped], &Map.get(meta, &1))
+  end
+
   defp insert_message(
          socket,
          %Message{role: :user, meta: %{harness: true}} = message,
          index,
          status
        ) do
-    # UI-9, UI-73, UI-81: a harness message reads as a notice, except the ones
-    # that report why a turn isn't running: the notice a restart leaves (INTR-3)
-    # and a pause at a limit (LIMIT-10).
-    kind =
-      if Map.get(message.meta, :interrupted, false) or Map.get(message.meta, :limit),
-        do: :error,
-        else: :notice
+    # UI-9, UI-73, UI-81, UI-82: a harness message reads as a notice, except the
+    # ones that report why a turn isn't running: the notice a restart leaves
+    # (INTR-3), a pause at a limit (LIMIT-10) and a stop (STOP-1).
+    kind = if stop_reported?(message.meta), do: :error, else: :notice
 
     stream_item(
       socket,

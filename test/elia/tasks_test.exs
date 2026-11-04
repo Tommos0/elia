@@ -763,8 +763,14 @@ defmodule Elia.TasksTest do
     assert %{status: "cancelled", result: %{"reason" => "cancelled"}} = Store.load_task(child)
     assert Agent.snapshot(child).status == :idle
 
+    # SESS-22, STOP-1: the stop the user asked for is in the parent's transcript
+    # too, under the cancelled call.
+    messages = Agent.snapshot(parent).messages
+
     assert %Message{role: :tool, content: [%{content: "Cancelled by the user.", is_error: true}]} =
-             List.last(Agent.snapshot(parent).messages)
+             Enum.at(messages, -2)
+
+    assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
   end
 
   # SUBTASK-29, SESS-29

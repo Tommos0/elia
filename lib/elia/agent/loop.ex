@@ -41,7 +41,9 @@ defmodule Elia.Agent.Loop do
 
   @max_steps 100
 
-  @type result :: :done | :refused | {:error, term()}
+  @type limit :: {:steps, pos_integer()} | {:time, non_neg_integer()}
+
+  @type result :: :done | :refused | {:limit, limit()} | {:error, term()}
 
   @spec run(pid(), [Message.t()], keyword()) :: result()
   def run(session, history, opts \\ []) do
@@ -91,9 +93,10 @@ defmodule Elia.Agent.Loop do
     end
   end
 
-  # LOOP-19: a limit pauses the turn when the option says so, else ends it.
+  # LOOP-19: a limit pauses the turn when the option says so, else ends it. The
+  # loop reports which limit it was, and the session says so (STOP-1, STOP-2).
   defp limit(%{pause_on_limit: true} = ctx, history, limit), do: pause(ctx, history, limit)
-  defp limit(_ctx, _history, limit), do: {:error, limit_message(limit)}
+  defp limit(_ctx, _history, limit), do: {:limit, limit}
 
   # LOOP-19: ask the session to pause the turn and wait for the user's decision.
   # A resume starts the step count and the wall-clock budget over (LOOP-20).
@@ -105,12 +108,9 @@ defmodule Elia.Agent.Loop do
         step(%{ctx | started_ms: now_ms(), approved_ms: 0}, history, 1)
 
       {:pause_decision, :fail} ->
-        {:error, limit_message(limit)}
+        {:limit, limit}
     end
   end
-
-  defp limit_message({:steps, max}), do: "Stopped after #{max} steps without finishing"
-  defp limit_message({:time, ms}), do: "Stopped after #{minutes(ms)}: the time budget ran out"
 
   # LOOP-20: the wall-clock budget, less the time spent waiting for approvals.
   defp over_budget?(%{budget_ms: nil}), do: false
