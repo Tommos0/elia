@@ -152,8 +152,9 @@ defmodule EliaWeb.ChatSettingsTest do
     view |> element("#jail-toggle") |> render_click()
     assert Agent.snapshot(id).jail == false
 
+    # LIMIT-9: pausing is on by default, so the click turns it off.
     view |> element("#limit-pause") |> render_click()
-    assert Agent.snapshot(id).limits.pause_on_limit == true
+    assert Agent.snapshot(id).limits.pause_on_limit == false
 
     assert_saved(view, %{limits: limits("12", "5"), compaction: compaction("20000", "70")}, id)
 
@@ -177,7 +178,10 @@ defmodule EliaWeb.ChatSettingsTest do
     view |> element("#limit-pause") |> render_click()
     assert_saved(view, %{limits: limits("5"), compaction: compaction()}, id)
 
-    assert %{max_steps: 5, pause_on_limit: true} = Agent.snapshot(id).limits
+    # LIMIT-9: pausing is on by default, so what the click set is the off value
+    # — a value that isn't the default, and so the one the file carries
+    # (STORE-27).
+    assert %{max_steps: 5, pause_on_limit: false} = Agent.snapshot(id).limits
     refute Store.exists?(id)
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
@@ -187,7 +191,7 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert Store.exists?(id)
     assert Store.load_jail(id) == false
-    assert %{max_steps: 5, pause_on_limit: true} = Store.load_limits(id)
+    assert %{max_steps: 5, pause_on_limit: false} = Store.load_limits(id)
   end
 
   # LIMIT-6: the section shows what the chat runs with and what a limit does.
@@ -197,18 +201,29 @@ defmodule EliaWeb.ChatSettingsTest do
   } do
     {:ok, view, _html} = settings(conn, id)
 
-    # LIMIT-1: nothing set yet, so the loop's own default applies.
+    # LIMIT-1, LIMIT-9: nothing set yet, so the loop's own default applies and
+    # pausing is on.
     assert has_element?(view, "#limit-steps[value='']")
     assert has_element?(view, "#limit-minutes[value='']")
-    assert has_element?(view, "#limit-pause[aria-checked='false']")
-    assert has_element?(view, "#limit-pause-state", "Off")
+    assert has_element?(view, "#limit-pause[aria-checked='true']")
+    assert has_element?(view, "#limit-pause-state", "On")
+    assert has_element?(view, "#settings-limits", "On (the default)")
     assert has_element?(view, "#limits-state", "the default 100 steps")
     assert has_element?(view, "#limits-state", "no time budget")
-    assert has_element?(view, "#limits-state", "ends the turn with an error")
+    assert has_element?(view, "#limits-state", "pauses the turn")
 
     assert_saved(view, %{limits: limits("25", "10")}, id)
     # CSET-11: the save went back to the chat, so the page is opened again.
     {:ok, view, _html} = settings(conn, id)
+
+    # LIMIT-9: turning pausing off keeps the old ending (LOOP-3) ...
+    view |> element("#limit-pause") |> render_click()
+
+    assert has_element?(view, "#limit-pause[aria-checked='false']")
+    assert has_element?(view, "#limit-pause-state", "Off")
+    assert has_element?(view, "#limits-state", "ends the turn with an error")
+
+    # ... and turning it back on pauses.
     view |> element("#limit-pause") |> render_click()
 
     assert has_element?(view, "#limit-steps[value='25']")
@@ -232,7 +247,7 @@ defmodule EliaWeb.ChatSettingsTest do
     assert Agent.snapshot(id).limits == %{
              max_steps: nil,
              max_minutes: nil,
-             pause_on_limit: false
+             pause_on_limit: true
            }
 
     {:ok, view, _html} = settings(conn, id)

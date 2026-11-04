@@ -602,9 +602,12 @@ defmodule Elia.Agent.Session do
     {:noreply, set_status_if_changed(%{state | input: {pid, pending}}, :awaiting_input)}
   end
 
-  # SESS-27: the loop paused at a limit (LOOP-19) and waits for the user.
+  # SESS-27, SESS-37: the loop paused at a limit (LOOP-19) and waits for the
+  # user. The pause is written into the transcript as well (LIMIT-10), so a chat
+  # waiting on a decision says why however long afterwards it is opened.
   def handle_info({:loop_pause, pid, limit}, %{task: %Task{pid: pid}} = state) do
     message = pause_message(limit)
+    state = append(state, pause_notice(limit))
     state = set_status(%{state | pause: message}, :paused)
     broadcast(state, {:paused, message})
     {:noreply, state}
@@ -975,6 +978,25 @@ defmodule Elia.Agent.Session do
 
   defp pause_message({:time, ms}),
     do: "Time limit reached (#{Elia.Agent.Loop.minutes(ms)})."
+
+  # LIMIT-10, SESS-37: the same pause written into the transcript, so a chat
+  # waiting on the user's decision says why — now and whenever it is opened
+  # again. Marked (`meta.limit`) so its row reads as an error rather than as one
+  # of the loop's notices (UI-81).
+  defp pause_notice(limit) do
+    message = Message.harness(pause_notice_text(limit))
+    %{message | meta: Map.put(message.meta, :limit, limit)}
+  end
+
+  defp pause_notice_text({:steps, max}),
+    do:
+      pause_message({:steps, max}) <>
+        " The turn is paused: Continue starts the count over, Fail ends it."
+
+  defp pause_notice_text({:time, ms}),
+    do:
+      pause_message({:time, ms}) <>
+        " The turn is paused: Continue starts the clock over, Fail ends it."
 
   defp set_status(state, status) do
     broadcast(state, {:status, status})

@@ -5,14 +5,17 @@ defmodule Elia.Limits do
   (LOOP-19) instead of ending it with an error (LOOP-3).
 
   An empty value (`nil`) means "no limit of this chat's own", so the loop's own
-  default applies and a chat that sets nothing behaves exactly as it did before
-  (LIMIT-8). This module is the one place that knows the shape, the defaults,
+  default applies. `pause_on_limit` is on by default (LIMIT-9), so a chat that
+  sets no limits of its own pauses at the loop's step limit rather than ending
+  its turn with an error (LOOP-3); a chat that turns it off keeps the old
+  ending. This module is the one place that knows the shape, the defaults,
   what may be set (LIMIT-7) and the loop options a set of limits gives
   (LIMIT-3).
   """
 
   @keys [:max_steps, :max_minutes, :pause_on_limit]
-  @defaults %{max_steps: nil, max_minutes: nil, pause_on_limit: false}
+  # LIMIT-1, LIMIT-9: no step limit of this chat's own, no budget, and pausing.
+  @defaults %{max_steps: nil, max_minutes: nil, pause_on_limit: true}
 
   # LIMIT-7: what the chat settings page may set. A sub-task's own budget comes
   # from `spawn_task` instead (SUBTASK-12, SUBTASK-18) and is capped there.

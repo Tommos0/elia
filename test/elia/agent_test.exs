@@ -239,26 +239,47 @@ defmodule Elia.AgentTest do
     assert result.content =~ "options must have at most 6 items"
   end
 
-  # LOOP-3
-  test "a turn with no max_steps option stops after the default 100 steps", %{} do
+  # LIMIT-9, LIMIT-10, SESS-37
+  test "a chat that sets no limits pauses at the loop's default 100 steps, and says so", %{} do
     id = start_fake_skill_session([])
-    push_repeating_tool_call(101)
+    push_repeating_tool_call(100)
 
     :ok = Agent.send_message(id, "go")
 
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+    assert_receive {:agent, ^id, {:paused, "Step limit reached (100 steps)."}}, 10_000
+    assert id in Agent.paused()
+
+    # LIMIT-10, SESS-37: the pause is in the transcript as a harness message,
+    # marked with the limit it names and saved — so it is still there however
+    # long the chat is left waiting.
+    last = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, limit: {:steps, 100}}} = last
+
+    # UI-9: it reads as a harness message, with the pause's own wording.
+    assert Message.text_content(last) =~
+             "Step limit reached (100 steps). The turn is paused: Continue starts " <>
+               "the count over, Fail ends it."
+
+    # LIMIT-11: ending it writes nothing of its own.
+    :ok = Agent.fail_task(id)
     assert_receive {:agent, ^id, {:error, "Stopped after 100 steps without finishing"}}, 10_000
     await_status(id, :idle)
   end
 
-  # LOOP-16
-  test "the max_steps option sets the turn's step limit", %{} do
-    id = start_fake_skill_session(max_steps: 3)
+  # LOOP-16, LIMIT-9, LIMIT-11
+  test "the max_steps option sets the turn's step limit, and turning pausing off keeps the ending",
+       %{} do
+    id = start_fake_skill_session(max_steps: 3, pause_on_limit: false)
     push_repeating_tool_call(4)
 
     :ok = Agent.send_message(id, "go")
 
     assert_receive {:agent, ^id, {:error, "Stopped after 3 steps without finishing"}}, 10_000
     await_status(id, :idle)
+
+    # LIMIT-11: nothing of the ending is written into the transcript.
+    refute Enum.any?(Elia.Store.load(id), &Map.get(&1.meta, :limit))
   end
 
   # LOOP-19, SESS-27
@@ -288,7 +309,29 @@ defmodule Elia.AgentTest do
     assert Agent.snapshot(id).pause == nil
   end
 
-  # LOOP-19, SESS-27
+  # LIMIT-10: a resumed turn that reaches the limit again writes another
+  # message, so the transcript tells the whole story.
+  test "each pause writes its own message", %{} do
+    id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
+    push_repeating_tool_call(1)
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+
+    # Continue: the count starts over, so the next step runs and the one after
+    # it pauses again.
+    push_repeating_tool_call(1)
+    :ok = Agent.resume(id)
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+
+    notices = Enum.filter(Elia.Store.load(id), &Map.get(&1.meta, :limit))
+    assert length(notices) == 2
+
+    :ok = Agent.fail_task(id)
+    await_status(id, :idle)
+  end
+
+  # LOOP-19, SESS-27, LIMIT-11
   test "failing a paused turn ends it with the limit's error", %{} do
     id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
     push_repeating_tool_call(1)
@@ -300,6 +343,10 @@ defmodule Elia.AgentTest do
 
     assert_receive {:agent, ^id, {:error, "Stopped after 1 steps without finishing"}}, 10_000
     await_status(id, :idle)
+
+    # LIMIT-11: ending at a limit writes nothing of its own — what the
+    # transcript keeps is the pause's own message (LIMIT-10).
+    assert %Message{role: :user, meta: %{limit: {:steps, 1}}} = List.last(Elia.Store.load(id))
   end
 
   # LOOP-20, SESS-27
@@ -317,6 +364,13 @@ defmodule Elia.AgentTest do
 
     assert_receive {:agent, ^id, {:status, :paused}}, 10_000
     assert_receive {:agent, ^id, {:paused, "Time limit reached" <> _}}, 10_000
+
+    # SESS-37, LIMIT-10: the budget's own wording, and the clock started over.
+    last = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{limit: {:time, _}}} = last
+
+    assert Message.text_content(last) =~
+             "The turn is paused: Continue starts the clock over, Fail ends it."
 
     # Continue: the budget starts over, so a fast step finishes the turn.
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))

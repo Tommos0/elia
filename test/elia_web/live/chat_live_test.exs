@@ -912,6 +912,30 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#items-m1 [data-kind='error']")
   end
 
+  # UI-81, LIMIT-10, SESS-37
+  test "a pause at a limit is an error row in the transcript", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # The message a session writes when the loop pauses at a limit (LIMIT-10,
+    # SESS-37): a harness message marked with the limit it names.
+    notice =
+      Message.harness(
+        "Step limit reached (2 steps). The turn is paused: Continue starts the count over, Fail ends it."
+      )
+
+    notice = %{notice | meta: Map.put(notice.meta, :limit, {:steps, 2})}
+    :ok = Elia.Store.save(id, [Message.user("go"), notice])
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    # UI-81: an error row, not an ordinary harness notice (UI-9), on first
+    # render, from the saved messages.
+    assert has_element?(view, "#items-m1 [data-kind='error']")
+    refute has_element?(view, "#items-m1 [data-kind='notice']")
+    assert html =~ "The turn is paused"
+  end
+
   # UI-77: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
   # the chats other tests leave behind.

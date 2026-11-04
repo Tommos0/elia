@@ -2077,9 +2077,13 @@ defmodule EliaWeb.ChatLive do
          index,
          status
        ) do
-    # UI-9, UI-73: a harness message reads as a notice, except the one a restart
-    # leaves behind (INTR-3), which reads as an error.
-    kind = if Map.get(message.meta, :interrupted, false), do: :error, else: :notice
+    # UI-9, UI-73, UI-81: a harness message reads as a notice, except the ones
+    # that report why a turn isn't running: the notice a restart leaves (INTR-3)
+    # and a pause at a limit (LIMIT-10).
+    kind =
+      if Map.get(message.meta, :interrupted, false) or Map.get(message.meta, :limit),
+        do: :error,
+        else: :notice
 
     stream_item(
       socket,

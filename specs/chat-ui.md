@@ -194,6 +194,13 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (UI-9), so a turn the app killed is not mistaken for one that ended normally.
   The message marks it (`meta.interrupted`, INTR-3) and its row carries
   `data-kind="error"`, so the two are told apart in a test as well.
+- **UI-81** The harness message a pause at a limit writes (LIMIT-10, SESS-37)
+  renders as an error row (UI-12) too, like the notice a restart leaves (UI-73):
+  the message marks it (`meta.limit`, SESS-37) and its row carries
+  `data-kind="error"`, so a turn waiting on the user is not mistaken for one
+  that ended quietly as a plain harness notice (UI-9). It is there on first
+  render, from the saved messages (LIMIT-10), and stays when the turn is
+  resumed or failed (LIMIT-11).
 
 ### Tool calls
 

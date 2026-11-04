@@ -109,9 +109,9 @@ reopened.
   that sets none carries no entry and one that clears a limit drops it from the
   file.
 - **STORE-28** `load_limits/1` returns the chat's saved limits, merged over the
-  defaults (LIMIT-1: no step limit of its own, no time budget, no pause), so it
-  answers like LIMIT-1 for a chat that is missing, unreadable, corrupt or has
-  none.
+  defaults (LIMIT-1, LIMIT-9: no step limit of its own, no time budget,
+  `pause_on_limit` on), so it answers like LIMIT-1 for a chat that is missing,
+  unreadable, corrupt or has none.
 
 - **STORE-30** `save/3` takes `turn:` (a map with the turn's `id` and
   `started_at`) and stores it as `turn`; a save that doesn't give one writes no

@@ -207,6 +207,18 @@ progress so any number of UIs can follow it.
   renders it from the snapshot's `tool_status` and the history (SESS-7). Nothing
   is saved for a question beyond the tool call and its result (ASK-2).
 
+- **SESS-37** A pause at a limit is recorded in the transcript as well as
+  announced (SESS-27): when the loop pauses (LOOP-19), the session appends the
+  harness message LIMIT-10 describes — the pause message plus what the decision
+  does — to the history, marked `meta.limit` with the limit it names
+  (`{:steps, n}` or `{:time, ms}`), and saves the chat, exactly as it appends
+  any other message (SESS-6, STORE-1): the transcript keeps it, the broadcast
+  brings it to every open page, and the resumed turn sends it to the model like
+  any harness message, as a restart's notice does (INTR-3). The banner,
+  `snapshot/1`'s `pause`, the status and the turn's task are unchanged
+  (SESS-27), and nothing is written for a session that does not persist
+  (SESS-13).
+
 - **SESS-33** `Elia.Agent.set_title/2` (chat id, text) sets the chat's own title
   (TITLE-1, TITLE-4): the session shapes the text (trimmed, whitespace collapsed,
   cut to 60 characters, TITLE-2), saves it with the chat once the chat has

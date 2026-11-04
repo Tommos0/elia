@@ -227,8 +227,8 @@ defmodule EliaWeb.ChatSettingsLive do
                     label="Pause at a limit"
                   />
                   <p class="mt-1 text-[11px] text-base-content/50">
-                    Off: a turn that reaches a limit stops with an error. On: it pauses, and you
-                    can continue it with a fresh budget or fail it.
+                    Off: a turn that reaches a limit stops with an error. On (the default): it
+                    pauses, and you can continue it with a fresh budget or fail it.
                   </p>
                   <p id="limits-state" class="mt-2 text-xs text-base-content/50">
                     {limits_state(@limits)}
