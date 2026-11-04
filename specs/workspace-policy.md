@@ -26,6 +26,14 @@ in a class that decides what the agent's tools may do with it.
   Elia's own project. The skills folder is `<root>/skills` and harness data is
   always in `.elia` under Elia's live tree (`Elia.Workspace.runtime_root/0`,
   which defaults to Elia's root; PROJ-13, DEPLOY-2).
+- **WS-5** A path's *real location* can be asked for
+  (`Elia.Workspace.real_location/1`): its path with symlinks followed, and, for
+  a path that doesn't exist yet, the same for its deepest existing ancestor with
+  the rest of the path appended, so a write target that isn't there is still
+  judged by where it would land. The classes of WS-1 are decided on the path as
+  written (WS-2, WS-3 — a `skills/` path that goes through a symlink is `:core`);
+  a caller that must not be fooled by a link, like the file tools under the jail
+  (FILE-13), compares real locations itself.
 
 ## Implementation
 

@@ -34,9 +34,11 @@ defmodule Elia.Skills.Shell do
     workspace and the toolchain and nothing else. The settings database, the \
     saved conversations and the user's credentials (`~/.ssh`, \
     `~/.git-credentials`, `~/.config/gh`, `~/.netrc`) are not in it, so a \
-    command that can't find them is expected, not broken — read them with the \
-    file tools if the user asks. In a chat whose jail the user turned off, \
-    commands run unjailed, on the whole machine.
+    command that can't find them is expected, not broken — and with the jail on \
+    the file tools can't reach them either (FILE-12), so a refusal there is the \
+    same policy, not a reason to look for another way in. In a chat whose jail \
+    the user turned off, commands run unjailed, on the whole machine, and \
+    reading outside the workspace with the file tools needs their approval.
     """
   end
 

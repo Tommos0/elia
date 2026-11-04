@@ -116,6 +116,17 @@ genuinely needs the rest of the machine (ISOL-16).
   reads a command's output as a value takes that notice off first
   (`Elia.Shell.jail_skipped_notice/0`), so it never becomes part of a ref, a path
   or a count.
+- **ISOL-25** The file tools are confined to what the jail reaches (FILE-12,
+  FILE-13): the trees a chat's commands can reach are the trees its file tools
+  can read. What that is stays a property of the jail's profile (ISOL-13) and is
+  asked for rather than reimplemented — `Elia.Shell.reachable?/2` says whether a
+  jailed command in a given workspace can reach a path: the workspace, plus, for
+  a chat worktree, the trees the profile also binds, and never a masked `.elia`
+  (ISOL-6). The file tools run no process, so their confinement follows the jail
+  decision (`Elia.Shell.wanted/1`: the chat's setting, ISOL-16, and the host's,
+  ISOL-20) and not whether bubblewrap can build one (ISOL-12): a host that can't
+  build the jail is still confined, and the chat's own setting is what turns the
+  confinement off. A caller with no chat gets the default, which is on (ISOL-15).
 
 ### Profiles
 
@@ -148,10 +159,12 @@ genuinely needs the rest of the machine (ISOL-16).
 - **ISOL-18** The setting belongs to one chat. A sub-task starts with a copy of
   its parent's setting when it is spawned (SUBTASK-30) and its own from then on:
   changing either chat afterwards never affects the other.
-- **ISOL-19** Turning the jail off loosens nothing else: approval, the workspace
-  policy and the file tools are unchanged, no tool is auto-approved, and turning
-  it back on affects only calls that come later — a command already running
-  isn't killed.
+- **ISOL-19** Turning the jail off loosens the file tools and nothing else: with
+  the jail off the file tools may read outside the workspace again, with the
+  user's approval (FILE-12, FILE-4), and nothing else reaches further —
+  approval, the workspace policy's classes and the writes it refuses are
+  unchanged (WS-1, FILE-5), no tool is auto-approved, and turning it back on
+  affects only calls that come later — a command already running isn't killed.
 - **ISOL-20** A host can turn the jail off for every chat (`config :elia,
   Elia.Shell, jail: false`), which is what a machine without bubblewrap does.
   A chat's own setting can only turn it off, never force it on where the host
@@ -219,9 +232,11 @@ bubblewrap is missing (ISOL-12).
 
 ## Implementation
 
-`Elia.Shell` (the bubblewrap argv, the profiles, the environment allowlist;
-`run/2` takes `:jail` and `:profile`), `Elia.Skills.Shell`, `Elia.Skills.Folder`
+`Elia.Shell` (the bubblewrap argv, the profiles, the environment allowlist, and
+what a jailed command can reach — ISOL-25; `run/2` takes `:jail` and
+`:profile`), `Elia.Skills.Shell`, `Elia.Skills.Folder`
 and `Elia.Harness` (pass the chat's setting from the tool context),
+`Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
 (`save/3`'s `jail:`, `load_jail/1`), `Elia.Tasks` and `Elia.Deploy` (spawn `git`
 through `Elia.Shell.run/2`, and sync a worktree's deps before the first jailed
@@ -232,12 +247,14 @@ command in it), `Elia.DepsSync` (the sync itself),
 ## Tests
 
 `test/elia/shell_test.exs` (the argv, the profiles, the environment allowlist,
-the fallback when bubblewrap is missing), `test/elia/command_isolation_test.exs`
+what a jailed command can reach, the fallback when bubblewrap is missing),
+`test/elia/command_isolation_test.exs`
 (the settings path and `$HOME` absent, the server pid not in `/proc`, the
 workspace writable, a timeout still cleaning up), `test/elia/harness_test.exs`
 (`run_tests` jailed), `test/elia/deployment_test.exs` (the `:deps_sync` step),
 `test/elia/deps_sync_test.exs` and `test/elia/tasks_git_test.exs` (the sync and
-the harness's git calls),
+the harness's git calls), `test/elia/self_modification_test.exs` (the file
+tools' confinement, FILE-12, FILE-13),
 `test/elia/store_test.exs` and `test/elia/tasks_test.exs` (the setting and its
 inheritance), `test/elia_web/live/jail_test.exs` (UI-67..UI-69).
 

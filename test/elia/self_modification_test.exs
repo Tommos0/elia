@@ -34,6 +34,162 @@ defmodule Elia.SelfModificationTest do
       assert Files.read_policy(%{"path" => "lib/x.ex"}, %{}) == :never
       assert Files.read_policy(%{"path" => "/etc/hostname"}, %{}) == :required
     end
+
+    # WS-5: the classes are decided on the path as written, so a caller that
+    # must not be fooled by a link asks for the real location instead.
+    test "the real location follows symlinks, and a missing path by its ancestor" do
+      outside = Path.join(System.tmp_dir!(), "elia-real-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(outside)
+      File.write!(Path.join(outside, "file.txt"), "x")
+      File.mkdir_p!(in_root("real"))
+      File.ln_s!(outside, in_root("real/link"))
+      File.ln_s!(Path.join(outside, "gone.txt"), in_root("real/broken"))
+
+      on_exit(fn ->
+        File.rm_rf!(in_root("real"))
+        File.rm_rf!(outside)
+      end)
+
+      assert Workspace.real_location(in_root("real/link/file.txt")) ==
+               Path.join(outside, "file.txt")
+
+      # A path that isn't there yet is judged by where it would land.
+      assert Workspace.real_location(in_root("real/link/new/deep.txt")) ==
+               Path.join([outside, "new", "deep.txt"])
+
+      # `File.realpath/1` gives up on a link whose target is missing; the link
+      # is followed by hand instead.
+      assert Workspace.real_location(in_root("real/broken")) ==
+               Path.join(outside, "gone.txt")
+
+      assert Workspace.real_location(in_root("real")) == in_root("real")
+    end
+  end
+
+  describe "the file tools under the jail" do
+    # FILE-12, FILE-13: with the jail on, the file tools reach what a jailed
+    # command in this workspace reaches and nothing else (ISOL-25). The suite
+    # runs with the jail off (config/test.exs), so each test turns it on.
+    setup do
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+      :ok
+    end
+
+    # FILE-12
+    test "reads outside the workspace are refused, not offered for approval" do
+      assert {:deny, reason} = Files.read_policy(%{"path" => "/etc/hostname"}, %{jail: true})
+      assert reason =~ "/etc/hostname"
+      assert reason =~ "jail"
+
+      assert {:error, reason} = Files.read_file(%{"path" => "/etc/hostname"}, %{jail: true})
+      assert reason =~ "outside the workspace"
+
+      assert {:deny, _} = Files.write_policy(%{"path" => "/tmp/x"}, %{jail: true})
+
+      # The chat's own setting, and the host's, is what turns the confinement
+      # off (ISOL-16, ISOL-20) — not bubblewrap (ISOL-12). A caller with no chat
+      # gets the default, which is on (ISOL-15).
+      assert Files.read_policy(%{"path" => "/etc/hostname"}, %{jail: false}) == :required
+      assert {:deny, _} = Files.read_policy(%{"path" => "/etc/hostname"}, %{})
+
+      Application.put_env(:elia, Elia.Shell, jail: false)
+      assert Files.read_policy(%{"path" => "/etc/hostname"}, %{jail: true}) == :required
+    end
+
+    # FILE-12: the workspace is untouched by it.
+    test "the workspace itself is still fully usable" do
+      assert Files.read_policy(%{"path" => "lib/x.ex"}, %{jail: true}) == :never
+      assert Files.write_policy(%{"path" => "lib/x.ex"}, %{jail: true}) == :required
+      assert Files.write_policy(%{"path" => "skills/x/SKILL.md"}, %{jail: true}) == :never
+
+      ctx = %{jail: true}
+      assert {:ok, _} = Files.write_file(%{"path" => "notes/a.txt", "content" => "hi"}, ctx)
+      assert {:ok, "hi"} = Files.read_file(%{"path" => "notes/a.txt"}, ctx)
+    after
+      File.rm_rf!(in_root("notes"))
+    end
+
+    # FILE-13
+    test "a link out of the workspace is refused, and named for where it goes" do
+      outside = Path.join(System.tmp_dir!(), "elia-outside-#{System.unique_integer([:positive])}")
+      File.write!(outside, "not for the tools")
+      File.ln_s!(outside, in_root("link-out"))
+      File.ln_s!(Path.dirname(outside), in_root("link-dir"))
+
+      on_exit(fn ->
+        File.rm(in_root("link-out"))
+        File.rm(in_root("link-dir"))
+        File.rm(outside)
+      end)
+
+      assert {:deny, reason} = Files.read_policy(%{"path" => "link-out"}, %{jail: true})
+      assert reason =~ "resolves to #{outside}"
+
+      assert {:error, reason} = Files.read_file(%{"path" => "link-out"}, %{jail: true})
+      assert reason =~ "resolves to #{outside}"
+
+      # A write that would land outside through a link is refused too.
+      assert {:deny, _} =
+               Files.write_policy(%{"path" => "link-dir/evil.txt"}, %{jail: true})
+
+      assert {:error, _} =
+               Files.write_file(
+                 %{"path" => "link-dir/evil.txt", "content" => "x"},
+                 %{jail: true}
+               )
+
+      # Unjailed the link is an ordinary workspace path (FILE-12, FILE-13): it
+      # is the jail that refuses it.
+      assert Files.read_policy(%{"path" => "link-out"}, %{jail: false}) == :never
+      assert {:ok, "not for the tools"} = Files.read_file(%{"path" => "link-out"}, %{jail: false})
+      assert Files.write_policy(%{"path" => "link-dir/evil.txt"}, %{jail: false}) == :required
+    end
+
+    # FILE-13, ISOL-13: a chat worktree reaches the trees its jail profile also
+    # binds — the shared deps and the repository's git directory.
+    test "a worktree reaches the shared deps and the repo's git dir" do
+      live = Workspace.root()
+      worktree = Path.join([live, ".elia", "worktrees", "reach"])
+      File.mkdir_p!(Path.join([live, "deps", "shared"]))
+      File.write!(Path.join([live, "deps", "shared", "mix.exs"]), "x")
+      File.write!(Path.join(live, "outside.txt"), "x")
+      File.mkdir_p!(worktree)
+      File.ln_s!(Path.join(live, "deps"), Path.join(worktree, "deps"))
+      File.ln_s!(Path.join(live, ".git"), Path.join(worktree, ".gitdir"))
+
+      on_exit(fn ->
+        File.rm_rf!(worktree)
+        File.rm_rf!(Path.join(live, "deps"))
+        File.rm(Path.join(live, "outside.txt"))
+      end)
+
+      ctx = %{jail: true, workspace: worktree}
+
+      # `deps` is a link to the shared tree, which the jail binds (ISOL-7).
+      assert Files.read_policy(%{"path" => "deps/shared/mix.exs"}, ctx) == :never
+      assert Files.read_policy(%{"path" => ".gitdir/config"}, ctx) == :never
+
+      # The live tree around the worktree is not bound, so it is out of reach,
+      # by an absolute path or one that leaves the worktree (ISOL-6).
+      assert {:deny, _} = Files.read_policy(%{"path" => Path.join(live, "outside.txt")}, ctx)
+      assert {:deny, _} = Files.read_policy(%{"path" => "../outside.txt"}, ctx)
+      assert {:deny, _} = Files.read_policy(%{"path" => "/etc/hostname"}, ctx)
+    end
+
+    # FILE-13, ISOL-6: a chat that works in the live tree itself (DEPLOY-14)
+    # reaches the tree but not the `.elia` its jail masks.
+    test "the live tree's own .elia is out of reach" do
+      assert {:deny, _} =
+               Files.read_policy(%{"path" => ".elia/sessions/chat.json"}, %{jail: true})
+
+      assert {:error, _} =
+               Files.read_file(%{"path" => ".elia/sessions/chat.json"}, %{jail: true})
+
+      # Unjailed it is an ordinary protected path: not writable, readable.
+      assert Files.read_policy(%{"path" => ".elia/sessions/chat.json"}, %{jail: false}) == :never
+    end
   end
 
   describe "file tools" do

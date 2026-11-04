@@ -64,6 +64,60 @@ defmodule Elia.Shell do
   def jailed?(opts \\ []), do: wanted?(opts) and available?()
 
   @doc """
+  Whether the call wants a jail: the caller's setting (ISOL-16) and the host's
+  (ISOL-20), whether or not bubblewrap is installed (ISOL-12). `jailed?/1` is
+  this with a jail that can actually be built.
+
+  A tool that runs no process — the file tools (FILE-12) — follows this one:
+  what turns a confinement off is the user's own setting, not a missing
+  bubblewrap.
+  """
+  @spec wanted?(keyword()) :: boolean()
+  def wanted?(opts \\ []) do
+    Keyword.get(opts, :jail) != false and
+      Application.get_env(:elia, __MODULE__, [])[:jail] != false
+  end
+
+  @doc """
+  Whether a jailed command in the workspace `cd` can reach the absolute path
+  `abs` (ISOL-25): the workspace, plus, for a chat worktree, the trees its
+  profile also binds there — the repository's git directory and the shared
+  `deps` (ISOL-4, ISOL-13) — and never the `.elia` a `:live_tree` is masked with
+  (ISOL-6). Another project's folder reaches no further than itself.
+
+  Symlinks are followed (WS-5), so a link inside the workspace that points out
+  of it is not reachable either. The toolchain and `$HOME/.mix` (ISOL-4) are
+  bound too, but they are for running a program, not for reading, so they are
+  not part of this reach.
+  """
+  @spec reachable?(binary(), binary(), keyword()) :: boolean()
+  def reachable?(abs, cd, opts \\ []) do
+    profile = profile(cd, opts)
+    live = Workspace.real_location(Workspace.runtime_root())
+    cd = Workspace.real_location(cd)
+    abs = Workspace.real_location(abs)
+
+    cond do
+      not inside?(cd, live) ->
+        inside?(abs, cd)
+
+      cd == live ->
+        inside?(abs, cd) and
+          (profile == :deps_sync or not inside?(abs, Path.join(live, ".elia")))
+
+      true ->
+        inside?(abs, cd) or bound?(abs, live)
+    end
+  end
+
+  # What a chat worktree's profile binds besides the worktree itself (ISOL-13).
+  defp bound?(abs, live) do
+    Enum.any?([Path.join(live, "deps"), Path.join(live, ".git")], fn path ->
+      inside?(abs, Workspace.real_location(path))
+    end)
+  end
+
+  @doc """
   Runs `command` with the shell from `shell/1`.
 
   Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
@@ -282,11 +336,6 @@ defmodule Elia.Shell do
       nil -> System.find_executable("bwrap")
       path -> System.find_executable(path)
     end
-  end
-
-  defp wanted?(opts) do
-    Keyword.get(opts, :jail) != false and
-      Application.get_env(:elia, __MODULE__, [])[:jail] != false
   end
 
   # A command that wanted a jail and didn't get one says so, so a run that

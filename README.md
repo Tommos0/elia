@@ -54,7 +54,10 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
 - **Approval**: shell commands, script tools and writes outside `skills/` need
   the user's approval. Writes under `skills/` don't. `.git`,
   `_build`, `deps` and `.elia` can't be written by the file tools, and paths
-  outside the workspace are refused.
+  outside the workspace are refused. With the jail on — the default — the file
+  tools reach the workspace and nothing else: reading outside it is refused too,
+  and so is a path that resolves through a symlink out of it, so they reach no
+  further than a jailed command does (FILE-12, FILE-13).
 - **Tests**: nothing runs the test suite for you at the end of a turn. The agent
   runs `run_tests` (or plain `mix precommit`: no command inherits the server's
   `MIX_ENV`, so the alias's `preferred_envs` picks `test`, ISOL-24) itself before
