@@ -284,13 +284,17 @@ what the screen actually shows.
   (`#chat-list`) inside the sidebar, which scroll within their own boxes. This
   holds with an empty transcript too, and stays true as the transcript grows.
   What makes it hold is explicit rather than implied by the engine: the app
-  shell (`#app-shell`, `EliaWeb.Layouts`) is one *small* viewport tall
-  (`h-svh`) — the visible area with a mobile browser's toolbars shown — rather
-  than the dynamic `dvh`, which a phone's URL bar may still overlap on the first
-  load; and the message list and the column holding it may shrink to nothing
-  (`min-h-0`), so a composer stays where it is even in an engine that would
-  otherwise keep a flex child at its content height and push it off the screen.
-  The keyboard is covered by PWA-7.
+  shell (`#app-shell`, `EliaWeb.Layouts`) is one *small* viewport tall — the
+  visible area with a mobile browser's toolbars shown — rather than the dynamic
+  one, which a phone's URL bar may still overlap; and the message list and the
+  column holding it may shrink to nothing (`min-h-0`), so the composer stays
+  where it is even in an engine that would otherwise keep a flex child at its
+  content height and push it off the screen. The shell's height is its own
+  markup's (`style`, `100svh` with a `100vh` fallback) rather than a class: a
+  page that kept the stylesheet it loaded, and a deploy that never rebuilds the
+  built assets, would otherwise give the shell no height rule at all and leave
+  the composer at the end of the message list (HOT-8). The keyboard is
+  PWA-7.
 
 ### Markdown
 

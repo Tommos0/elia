@@ -30,6 +30,28 @@ defmodule EliaWeb.ChatLayoutTest do
     conn |> visit_chat(empty_chat()) |> assert_fits()
   end
 
+  # UI-78, HOT-8: what makes the page fit is in its markup, not in a stylesheet a
+  # page may not have. A deploy hot-reloads new markup into a page that keeps the
+  # stylesheet it loaded, and never rebuilds the built assets, so a shell kept at
+  # one viewport height by a *class* leaves such a page with no height rule at
+  # all — the page is as tall as its content, and the composer sits at the end of
+  # the message list, off the screen. This is that page.
+  @tag browser_context_opts: [viewport: %{width: 390, height: 660}]
+  test "the shell keeps its height without the app's stylesheet (UI-78)", %{conn: conn} do
+    conn =
+      conn
+      |> visit_chat(empty_chat())
+      |> evaluate(
+        "document.querySelectorAll('link[rel=stylesheet]').forEach(el => el.disabled = true)"
+      )
+
+    geometry = geometry(conn)
+
+    assert js_get(js_get(geometry, "shell"), "height") == js_get(geometry, "viewportHeight"),
+           "the shell has no height of its own without the stylesheet: " <>
+             "#{inspect(js_get(geometry, "shell"))}"
+  end
+
   @tag browser_context_opts: [viewport: %{width: 320, height: 420}]
   test "a short screen fits, and the message list is what scrolls (UI-78)", %{conn: conn} do
     # UI-78: an empty transcript first — the case a layout that lets the content

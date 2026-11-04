@@ -47,13 +47,17 @@ defmodule EliaWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <%!-- UI-78: the shell is one *small* viewport tall, not the dynamic one: a
-    phone's URL bar can still overlap `100dvh` on the first load, which would
-    leave the bottom of the page — a chat's composer — under it, where it can
-    only be reached by scrolling. `100svh` is the visible area with the largest
-    possible browser toolbars shown, so nothing of the page is ever under them.
-    The keyboard is PWA-7. --%>
-    <div id="app-shell" class="flex h-svh flex-col bg-base-100">
+    <%!-- UI-78, HOT-8: the shell's height is the markup's own, not a class's. A
+    deploy hot-reloads new markup into a page that keeps the stylesheet it
+    loaded — and its built assets are not rebuilt by the deploy at all — so a
+    class the stylesheet has never seen would leave the page with no height rule
+    for the shell: the page would be as tall as its content, which in a chat
+    means a message list the composer sits at the end of, off the screen. The
+    same reason the image viewer's closed state is its own markup (IMG-7).
+    `100vh` first, for an engine that doesn't know `svh`; `100svh` — the visible
+    area with a mobile browser's toolbars shown — where it does, so a phone's
+    URL bar cannot overlap the bottom of the page. The keyboard is PWA-7. --%>
+    <div id="app-shell" class="flex flex-col bg-base-100" style="height: 100vh; height: 100svh">
       <header class="flex items-center justify-between border-b border-base-300 px-4 py-3 sm:px-6">
         <.link
           navigate={~p"/"}
