@@ -270,6 +270,28 @@ stream in, approves or denies tool calls, and switches between saved chats.
   started in the background and one a command is waiting for, and it never
   blocks the composer or the transcript.
 
+### Fitting the screen
+
+The chat is read on a phone as much as on a desktop, where the browser's own
+toolbars and the on-screen keyboard cover part of the window. Only the
+conversation should ever scroll: the controls the user needs must sit inside
+what the screen actually shows.
+
+- **UI-78** The chat page fits the visible screen on any device: the header, the
+  chat list, a task header, the banners and the composer are all visible without
+  scrolling, and the document itself never scrolls — the only scroll areas are
+  the message list (`#transcript-scroll`), and the sidebar's own chat list
+  (`#chat-list`) inside the sidebar, which scroll within their own boxes. This
+  holds with an empty transcript too, and stays true as the transcript grows.
+  What makes it hold is explicit rather than implied by the engine: the app
+  shell (`#app-shell`, `EliaWeb.Layouts`) is one *small* viewport tall
+  (`h-svh`) — the visible area with a mobile browser's toolbars shown — rather
+  than the dynamic `dvh`, which a phone's URL bar may still overlap on the first
+  load; and the message list and the column holding it may shrink to nothing
+  (`min-h-0`), so a composer stays where it is even in an engine that would
+  otherwise keep a flex child at its content height and push it off the screen.
+  The keyboard is covered by PWA-7.
+
 ### Markdown
 
 - **UI-25** Assistant text, both saved and streaming (UI-10), renders as
@@ -427,7 +449,8 @@ the hidden tool calls leave with a one-line summary of the current step.
 
 ## Implementation
 
-`EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`,
+`EliaWeb.ChatLive`, `EliaWeb.Markdown`, `EliaWeb.Router`, `EliaWeb.Layouts`
+(the app shell the chat fills, `#app-shell`, UI-78),
 `Elia.Store` (the chat `/chats` resumes, STORE-29, UI-77; the title a row and the
 page show, STORE-33, UI-74),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
@@ -447,4 +470,6 @@ UI-38, UI-39, UI-67, UI-68).
 `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/live/user_input_test.exs` (the question card and the indicators,
 UI-75, UI-76),
+`test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
+a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

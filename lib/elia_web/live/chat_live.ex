@@ -142,7 +142,10 @@ defmodule EliaWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} chats_drawer chats_open={@chats_open}>
-      <div class="relative flex h-full">
+      <%!-- UI-78: this fills the shell (`main`, a flex column) and lets its own
+      column and the message list shrink to nothing, so the composer stays at
+      the bottom of the screen however long the transcript is. --%>
+      <div class="relative flex min-h-0 flex-1">
         <%!-- UI-36: backdrop for the small-screen chat drawer. FEED-1: a
         backdrop is not a control, so it does not press — shrinking it would
         show the page's edges through it. --%>
@@ -241,7 +244,7 @@ defmodule EliaWeb.ChatLive do
             <p :if={@chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
           </nav>
         </aside>
-        <div class="flex min-w-0 flex-1 flex-col">
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
           <.task_header
             :if={@task}
             task={@task}
@@ -285,7 +288,7 @@ defmodule EliaWeb.ChatLive do
               </button>
             </div>
           </div>
-          <div id="transcript-scroll" class="flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
+          <div id="transcript-scroll" class="min-h-0 flex-1 overflow-y-auto" phx-hook=".ScrollBottom">
             <div class="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
               <div id="transcript" phx-update="stream" class="space-y-5">
                 <div id="transcript-empty" class="hidden only:block py-24 text-center">

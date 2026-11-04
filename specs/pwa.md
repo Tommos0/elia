@@ -32,6 +32,12 @@ offline mode.
   breaks the page.
 - **PWA-6** The icon PNGs are reproducible: `assets/pwa_icons.exs` generates
   them into `priv/static/images/`.
+- **PWA-7** The root layout's viewport meta asks a mobile browser to resize the
+  page when the on-screen keyboard appears (`interactive-widget=resizes-content`),
+  so a phone's keyboard takes its room from the page instead of covering the
+  bottom of it — the composer in a chat (UI-78). A browser that doesn't know the
+  directive ignores it, and so does a desktop browser, where there is no
+  keyboard to resize for.
 
 ## Out of scope
 
@@ -46,8 +52,8 @@ offline mode.
 - `priv/static/manifest.webmanifest`, `priv/static/sw.js`,
   `priv/static/images/icon-*.png`, `priv/static/images/apple-touch-icon.png`
 - `assets/pwa_icons.exs` (icon generator)
-- `EliaWeb.static_paths/0` (serves the files), `root.html.heex` (head tags),
-  `assets/js/app.js` (registration)
+- `EliaWeb.static_paths/0` (serves the files), `root.html.heex` (head tags,
+  the viewport meta of PWA-7), `assets/js/app.js` (registration)
 
 ## Tests
 

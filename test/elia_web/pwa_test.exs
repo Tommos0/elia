@@ -62,6 +62,18 @@ defmodule EliaWeb.PwaTest do
     refute js =~ "caches."
   end
 
+  # PWA-7: the page is resized by a phone's on-screen keyboard rather than the
+  # keyboard covering the bottom of the page, where a chat's composer is (UI-78).
+  test "the viewport meta asks the keyboard to resize the page", %{conn: conn} do
+    html = conn |> get(~p"/settings") |> html_response(200)
+
+    assert html =~ ~s(name="viewport")
+
+    assert html =~
+             ~s(content="width=device-width, initial-scale=1, interactive-widget=resizes-content"),
+           "the viewport meta does not resize the page for the on-screen keyboard"
+  end
+
   # PWA-6
   test "icon generator exists", _ do
     assert File.exists?("assets/pwa_icons.exs")

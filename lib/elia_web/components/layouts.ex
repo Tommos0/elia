@@ -47,7 +47,13 @@ defmodule EliaWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <div class="flex h-dvh flex-col bg-base-100">
+    <%!-- UI-78: the shell is one *small* viewport tall, not the dynamic one: a
+    phone's URL bar can still overlap `100dvh` on the first load, which would
+    leave the bottom of the page — a chat's composer — under it, where it can
+    only be reached by scrolling. `100svh` is the visible area with the largest
+    possible browser toolbars shown, so nothing of the page is ever under them.
+    The keyboard is PWA-7. --%>
+    <div id="app-shell" class="flex h-svh flex-col bg-base-100">
       <header class="flex items-center justify-between border-b border-base-300 px-4 py-3 sm:px-6">
         <.link
           navigate={~p"/"}
@@ -95,7 +101,10 @@ defmodule EliaWeb.Layouts do
         </div>
       </header>
 
-      <main class="min-h-0 flex-1">
+      <%!-- UI-78: a flex column, so a page fills the rest of the shell by
+      growing into it rather than by a percentage height, and so the element a
+      page scrolls itself (the chat transcript) can shrink to nothing. --%>
+      <main class="flex min-h-0 flex-1 flex-col">
         {render_slot(@inner_block)}
       </main>
     </div>
