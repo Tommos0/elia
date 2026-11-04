@@ -23,6 +23,13 @@ left off in exactly as `/` used to (UI-1, UI-71).
   (UI-32). The dashboard has no chat list, so it has no drawer toggle (UI-36)
   and no sidebar.
 
+- **DASH-12** The dashboard is as wide as the screen and never wider, so nothing
+  on it scrolls sideways. A long chat title — TITLE-2 allows 60 characters —
+  truncates in the card that lists it (DASH-3, DASH-7) instead of widening that
+  card, and the two columns shrink with the screen rather than growing to their
+  contents: at a phone width the page's own scroll area (`#home-scroll`) has no
+  horizontal overflow, its `scrollWidth` being its `clientWidth`.
+
 ### Where you left off
 
 - **DASH-3** A "Continue" card (`#continue`) shows the chat the user left off
@@ -117,7 +124,8 @@ left off in exactly as `/` used to (UI-1, UI-71).
 
 ## Implementation
 
-`EliaWeb.DashboardLive`, `EliaWeb.Router` (the `/` route and the `/chats` route
+`EliaWeb.DashboardLive` (whose column grid shrinks with the screen, DASH-12),
+`EliaWeb.Router` (the `/` route and the `/chats` route
 of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
 `Elia.Projects`, `Elia.Agent` (statuses), `Elia.SystemStats` (DASH-10) and
 `Elia.Deploy.status/0` (DASH-11).
@@ -125,4 +133,5 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
 ## Tests
 
 `test/elia_web/live/dashboard_test.exs`,
-`test/elia_web/live/chat_live_test.exs` (what `/chats` opens, UI-77).
+`test/elia_web/live/chat_live_test.exs` (what `/chats` opens, UI-77),
+`test/elia_web/browser/small_screen_layout_test.exs` (DASH-12 at a phone width).

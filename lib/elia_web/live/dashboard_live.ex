@@ -186,7 +186,7 @@ defmodule EliaWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="h-full overflow-y-auto">
+      <div id="home-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
           <header>
             <h1 class="text-2xl font-semibold tracking-tight">Home</h1>
@@ -195,7 +195,10 @@ defmodule EliaWeb.DashboardLive do
             </p>
           </header>
 
-          <div class="mt-6 grid gap-4 lg:grid-cols-5">
+          <%!-- DASH-12: one column of `minmax(0, 1fr)` below `lg`, so the cards
+          shrink with the screen instead of growing to a long title's
+          `min-content` (a truncated title is one unbreakable line). --%>
+          <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
             <div class="flex flex-col gap-4 lg:col-span-3">
               <.continue_card
                 resume={@resume}

@@ -44,7 +44,7 @@ defmodule EliaWeb.SystemLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="h-full overflow-y-auto">
+      <div id="system-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -77,7 +77,7 @@ defmodule EliaWeb.SystemLive do
             </.link>
           </div>
 
-          <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <.tile id="tile-cpu" icon="hero-cpu-chip" label="CPU" pct={@cpu && @cpu.total}>
               <:detail>
                 {if @stats.cpu, do: "#{length(@stats.cpu.cores)} cores", else: "Unavailable"}
@@ -145,7 +145,9 @@ defmodule EliaWeb.SystemLive do
             </.card>
           </div>
 
-          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+          <%!-- SYS-12: one shrinkable column of cards below `lg`, so a long value
+          inside one can't widen the page. --%>
+          <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <.card id="cpu-cores" icon="hero-squares-2x2" label="CPU cores">
               <%= cond do %>
                 <% @cpu -> %>
@@ -236,7 +238,7 @@ defmodule EliaWeb.SystemLive do
             <% end %>
           </.card>
 
-          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+          <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <.card id="network" icon="hero-globe-alt" label="Interfaces">
               <%= cond do %>
                 <% @net == [] -> %>

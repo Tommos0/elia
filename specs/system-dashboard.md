@@ -44,6 +44,11 @@ now?" without opening a terminal.
 - **SYS-10** Byte counts are shown in binary units (B, KiB, MiB, GiB, TiB)
   with one decimal above bytes; rates add "/s".
 - **SYS-11** The app header has a "System" link to `/system`.
+- **SYS-12** `/system` is as wide as the screen, never wider: its rows of cards
+  — the tiles (SYS-7), the CPU-cores and memory row, and the interfaces and VM
+  row — are the screen's width on a phone, one column of them, rather than
+  growing to their contents. The page's own scroll area (`#system-scroll`) has
+  no horizontal overflow at a phone width.
 
 ## Out of scope
 
@@ -57,4 +62,5 @@ now?" without opening a terminal.
 
 ## Tests
 
-`test/elia/system_stats_test.exs`, `test/elia_web/live/system_live_test.exs`.
+`test/elia/system_stats_test.exs`, `test/elia_web/live/system_live_test.exs`,
+`test/elia_web/browser/small_screen_layout_test.exs` (SYS-12 at a phone width).
