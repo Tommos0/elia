@@ -868,6 +868,46 @@ defmodule EliaWeb.ChatLiveTest do
     assert Agent.snapshot(id).project.id == project.id
   end
 
+  # UI-73, UI-9, INTR-3, UI-72
+  test "a turn a restart cut short is an error row, and the chat is no longer flagged",
+       %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # The app stopped mid-turn: the chat carries the turn it was running, so
+    # opening it is what turns the record into a notice (INTR-3).
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = Elia.Store.save(id, [Message.user("run it")], turn: turn)
+
+    {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+    # UI-9, UI-73: a harness message, but rendered as an error rather than as a
+    # notice. (The transcript streams its items, so the row's own id is the
+    # item's, prefixed by the stream's name.)
+    assert has_element?(view, "#items-m1 [data-kind='error']")
+    refute has_element?(view, "#items-m1 [data-kind='notice']")
+    assert html =~ "The app restarted while this turn was running"
+
+    # UI-72: the page read the chats after its session started, so the chat it is
+    # showing is not flagged as interrupted.
+    assert has_element?(view, "#chat-status-#{id}[data-status='idle']")
+    refute has_element?(view, "#chat-status-#{id}[data-status='interrupted']")
+    assert Elia.Store.load_turn(id) == nil
+  end
+
+  # UI-9: the loop's own harness messages are still notices (COMPACT-19).
+  test "an ordinary harness message is a notice, not an error", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    messages = [Message.user("hi"), Message.harness("A note from the harness")]
+    :ok = Elia.Store.save(id, messages)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#items-m1 [data-kind='notice']")
+    refute has_element?(view, "#items-m1 [data-kind='error']")
+  end
+
   # UI-71: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
   # the chats other tests leave behind.

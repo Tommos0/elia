@@ -405,6 +405,25 @@ defmodule Elia.AgentTest do
     assert %{selection: nil, messages: []} = Agent.snapshot(id)
   end
 
+  # SESS-15, INTR-1
+  test "a session with state from before :turn existed is upgraded", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.replace_state(pid, &Map.delete(&1, :turn))
+
+    # The record belongs to the process that runs the turn, so nothing is loaded
+    # from the chat for it — and a turn still runs (INTR-1).
+    assert %{status: :idle} = Agent.snapshot(id)
+    assert Elia.Store.load_turn(id) == nil
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    assert [%Message{role: :user}, %Message{role: :assistant}] = Agent.snapshot(id).messages
+    # The turn was recorded and cleared as usual.
+    assert Elia.Store.load_turn(id) == nil
+  end
+
   # SESS-15, SESS-17
   test "a session with state from before :task_meta existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
@@ -483,6 +502,103 @@ defmodule Elia.AgentTest do
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
     assert [_, _] = Agent.snapshot(done).messages
   end
+
+  # INTR-1, STORE-30, STORE-31
+  test "a turn in flight is recorded in the saved chat, and cleared when it ends", %{id: id} do
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "run it")
+    # The turn waits for approval, so it is still in flight.
+    await_status(id, :awaiting_approval)
+
+    # The chat carries the turn: its id names the chat and it says when it began.
+    assert %{id: turn_id, started_at: %DateTime{}} = Elia.Store.load_turn(id)
+    assert turn_id =~ id
+    # STORE-31, INTR-2: a session runs for it, so the list doesn't call it
+    # interrupted.
+    assert %{interrupted: false} = listed(id)
+
+    :ok = Agent.approve(id, "c1")
+    await_status(id, :idle)
+
+    # INTR-1: the record goes with the turn.
+    assert Elia.Store.load_turn(id) == nil
+    assert %{interrupted: false} = listed(id)
+  end
+
+  # SESS-32
+  test "live?/1 reads the registry without starting a session", %{id: id} do
+    assert Agent.live?(id)
+    refute Agent.live?(Agent.new_id())
+    refute Agent.live?("not a chat id")
+    refute Agent.live?(nil)
+  end
+
+  # INTR-2, INTR-3, STORE-31, UI-72, UI-73
+  test "a session starting after a restart reports the interrupted turn" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # The app stopped mid-turn: the chat still carries the turn it was running.
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = Elia.Store.save(id, [Message.user("run it")], turn: turn)
+
+    # STORE-31, INTR-2: the chat list says so before the chat is opened.
+    assert %{interrupted: true} = listed(id)
+
+    Agent.subscribe(id)
+    Agent.subscribe_activity()
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    # INTR-3, UI-73: the notice is a harness message marked as the interruption.
+    assert_receive {:agent, ^id,
+                    {:message, %Message{meta: %{harness: true, interrupted: true}} = notice}}
+
+    assert Message.text_content(notice) =~ "The app restarted while this turn was running"
+
+    # It is part of the history, so the transcript keeps it, and the record the
+    # restart left behind is gone (INTR-1).
+    assert [%Message{role: :user}, %Message{meta: %{interrupted: true}}] = Elia.Store.load(id)
+    assert Elia.Store.load_turn(id) == nil
+    assert %{status: :idle, messages: [_, _]} = Agent.snapshot(id)
+
+    # UI-72: the status broadcast is what drops the marker in every other page.
+    assert_receive {:chat_status, ^id, :idle}
+    assert %{interrupted: false} = listed(id)
+
+    # INTR-3: a chat with no record is left untouched.
+    done = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(done) end)
+    :ok = Elia.Store.save(done, [Message.user("hi"), FakeLLM.assistant([Message.text("hello")])])
+    {:ok, pid} = Agent.ensure_started(done)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    assert [_, %Message{role: :assistant}] = Agent.snapshot(done).messages
+  end
+
+  # INTR-4, STORE-17, SUBTASK-20
+  test "a sub-task chat whose turn a restart cut short says so too" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    task = %{parent_id: "parent-1", title: "T", brief: "B", status: "running"}
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = Elia.Store.save(id, [Message.user("do it")], task: task, turn: turn)
+
+    # The task status is the one its parent's card shows (STORE-17).
+    assert %{task_status: "interrupted", interrupted: true} = listed(id)
+
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert [%Message{role: :user}, %Message{meta: %{interrupted: true}}] = Elia.Store.load(id)
+    # Nothing else about the task changes: it is still saved as running.
+    assert %{status: "running"} = Elia.Store.load_task(id)
+  end
+
+  defp listed(id), do: Enum.find(Elia.Store.list(1000), &(&1.id == id)) || %{interrupted: false}
 
   # SESS-19
   test "status changes go to the activity topic and the registry", %{id: id} do

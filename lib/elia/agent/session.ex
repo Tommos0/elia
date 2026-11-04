@@ -33,6 +33,10 @@ defmodule Elia.Agent.Session do
     # project its own git worktree (DEPLOY-1), else the project's folder.
     :workspace,
     :task,
+    # The turn this session is running: `%{id, started_at}` while one is in
+    # flight, `nil` otherwise. It is saved with the chat so that a later session
+    # can see that a restart cut the turn short (INTR-1, STORE-30).
+    :turn,
     :turn_start,
     # The chat's own model selection (MODEL-1); nil until chosen or pinned.
     :selection,
@@ -98,20 +102,24 @@ defmodule Elia.Agent.Session do
     state = %{state | auto_approve: initial_auto_approve(state, opts[:auto_approve])}
 
     # SESS-21: tool calls the app stopped in the middle of never got a result.
-    {:ok, close_dangling_tool_calls(state, "The app restarted while this tool was running.")}
+    state = close_dangling_tool_calls(state, "The app restarted while this tool was running.")
+    # INTR-3: and if the chat still carried a turn record, that turn was cut
+    # short by the restart, so the chat says so.
+    {:ok, note_interrupted_turn(state)}
   end
 
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail` or `:limits`
-  # existed (a session that outlived a hot reload). Fields it already has are
-  # kept.
+  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits` or
+  # `:turn` existed (a session that outlived a hot reload). Fields it already
+  # has are kept; `:turn` (INTR-1) is not loaded from disk, since it belongs to
+  # the process that is running the turn.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
              not is_map_key(state, :pause) or not is_map_key(state, :jail) or
-             not is_map_key(state, :limits) do
+             not is_map_key(state, :limits) or not is_map_key(state, :turn) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -203,9 +211,18 @@ defmodule Elia.Agent.Session do
     # message, and again at every step of the loop below (COMPACT-29).
     state = compact_at_turn_start(state)
 
-    state = %{state | turn_start: length(state.messages)} |> append(message)
     session = self()
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
+
+    # INTR-1: the turn is recorded in the chat as it starts — the save the user
+    # message triggers writes it — and cleared when it ends (finish_turn).
+    state = %{
+      state
+      | turn_start: length(state.messages),
+        turn: %{id: turn_id, started_at: DateTime.utc_now()}
+    }
+
+    state = append(state, message)
     # The chat's model selected now is used for the whole turn. An explicit
     # provider replaces the selection; other explicit options are merged over it.
     llm = llm_request(state)
@@ -762,7 +779,10 @@ defmodule Elia.Agent.Session do
              project: project(state).id,
              compaction: saved_compaction(Map.get(state, :compaction)),
              jail: Map.get(state, :jail, true),
-             limits: Map.get(state, :limits, Elia.Limits.defaults())
+             limits: Map.get(state, :limits, Elia.Limits.defaults()),
+             # STORE-30, INTR-1: the turn in flight, or nothing when there is
+             # none (which takes the entry off the file).
+             turn: Map.get(state, :turn)
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end
@@ -792,7 +812,40 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  defp finish_turn(state), do: set_status(%{state | task: nil, approval: nil, pause: nil}, :idle)
+  # INTR-1: the turn is over, so the record it wrote goes with it. Saving is
+  # needed only when there was one: everything else the turn changed was saved
+  # as it happened.
+  defp finish_turn(state) do
+    state = %{state | task: nil, approval: nil, pause: nil}
+
+    state = if Map.get(state, :turn), do: save(%{state | turn: nil}), else: state
+
+    set_status(state, :idle)
+  end
+
+  # INTR-3: the app stopped while the chat's last turn ran — the record is still
+  # there (STORE-30) and no session of this one owned it — so the chat says so.
+  # The notice goes into the history, where the transcript keeps it (UI-73), and
+  # appending it saves the chat, which clears the record (INTR-1). The status
+  # broadcast (SESS-19) is what drops the chat list's marker (UI-72) in every
+  # page, including the ones that are not showing this chat.
+  defp note_interrupted_turn(%{persist: false} = state), do: state
+
+  defp note_interrupted_turn(state) do
+    if Elia.Store.load_turn(state.id) do
+      state |> append(interrupted_notice()) |> set_status(:idle)
+    else
+      state
+    end
+  end
+
+  # INTR-3, UI-73: a harness message (UI-9), marked so the transcript can show
+  # it as an error rather than as one of the loop's notices.
+  defp interrupted_notice do
+    text = "The app restarted while this turn was running. Send a message to carry on."
+    message = Message.harness(text)
+    %{message | meta: Map.put(message.meta, :interrupted, true)}
+  end
 
   # SESS-27: the message shown while a turn is paused at a limit (LOOP-19).
   defp pause_message({:steps, max}), do: "Step limit reached (#{max} steps)."

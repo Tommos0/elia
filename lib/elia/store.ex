@@ -38,6 +38,10 @@ defmodule Elia.Store do
     chat = if task = opts[:task], do: Map.put(chat, :task, task), else: chat
     chat = if project = opts[:project], do: Map.put(chat, :project_id, project), else: chat
 
+    # STORE-30: the turn the chat's session is running. A save that doesn't give
+    # one writes no entry, so the turn's end takes the key off the file (INTR-1).
+    chat = if turn = opts[:turn], do: Map.put(chat, :turn, turn), else: chat
+
     chat =
       case opts[:compaction] do
         %{} = compaction -> Map.put(chat, :compaction, compaction)
@@ -179,6 +183,22 @@ defmodule Elia.Store do
     end
   end
 
+  @doc """
+  The turn the chat's session was running, or `nil` (STORE-30): `%{id,
+  started_at}` while a turn is in flight, left behind by a restart that stopped
+  the app mid-turn (INTR-2).
+  """
+  @spec load_turn(binary()) :: map() | nil
+  def load_turn(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{turn: %{id: _} = turn} <- decode(data) do
+      turn
+    else
+      _ -> nil
+    end
+  end
+
   @doc "Saved conversations, most recently started first (STORE-12)."
   def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
 
@@ -249,6 +269,7 @@ defmodule Elia.Store do
   defp put_task(entry, _task), do: entry
 
   defp list_entry(file) do
+    id = Path.rootname(file)
     path = Path.join(dir(), file)
     mtime = path |> File.stat!(time: :posix) |> Map.fetch!(:mtime) |> DateTime.from_unix!()
 
@@ -261,10 +282,13 @@ defmodule Elia.Store do
       end
 
     %{
-      id: Path.rootname(file),
+      id: id,
       messages: Map.get(chat, :messages, []),
       task: Map.get(chat, :task),
       project_id: Map.get(chat, :project_id),
+      # STORE-31: a chat that still holds a turn record (STORE-30) while no
+      # session for it runs was interrupted by a restart (INTR-2).
+      interrupted: not is_nil(Map.get(chat, :turn)) and not Elia.Agent.live?(id),
       created_at: Map.get(chat, :created_at) || mtime,
       updated_at: Map.get(chat, :updated_at) || mtime
     }

@@ -112,6 +112,18 @@ reopened.
   answers like LIMIT-1 for a chat that is missing, unreadable, corrupt or has
   none.
 
+- **STORE-30** `save/3` takes `turn:` (a map with the turn's `id` and
+  `started_at`) and stores it as `turn`; a save that doesn't give one writes no
+  `turn` entry, so the key is gone from the file as soon as the turn ends
+  (INTR-1). `load_turn/1` returns it, or `nil` when the chat is missing,
+  unreadable, corrupt or has none (INTR-2).
+
+- **STORE-31** Each listed chat carries `interrupted`: `true` when its saved
+  chat holds a `turn` (STORE-30) and no session for it is running in this app
+  instance (`Elia.Agent.live?/1`, SESS-32) — the app restarted while that turn
+  ran (INTR-2) — and `false` otherwise. A task chat keeps its own listed status
+  (STORE-17) as well.
+
 - **STORE-29** `latest/0` returns the most recently started listed chat
   (STORE-12) that isn't a task chat (STORE-17), as a listed entry, or `nil`
   when there is none. It looks at every saved chat, not only the first page of

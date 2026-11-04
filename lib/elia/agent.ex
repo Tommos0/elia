@@ -40,6 +40,20 @@ defmodule Elia.Agent do
     ])
   end
 
+  @doc """
+  Whether a session for this chat is running in this app instance (SESS-32),
+  read from the registry without calling it, like `running/0` and
+  `awaiting_approval/0` (SESS-19). It is `false` for a chat with no session, for
+  an invalid id and when the registry isn't running. A chat list uses it to tell
+  the record a restart left behind (INTR-2, STORE-31) from a turn that is
+  running right now.
+  """
+  @spec live?(binary()) :: boolean()
+  def live?(id) do
+    is_binary(id) and Process.whereis(Elia.Agent.Registry) != nil and
+      Registry.lookup(Elia.Agent.Registry, id) != []
+  end
+
   def new_id, do: Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
 
   @doc "Returns the session's pid, starting it if needed."

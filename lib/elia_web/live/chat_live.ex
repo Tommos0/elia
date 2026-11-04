@@ -59,6 +59,12 @@ defmodule EliaWeb.ChatLive do
     project = snapshot.project
     {skills, _errors} = Elia.Skills.for_project(project)
 
+    # UI-72: the sidebar's marker for a chat whose turn a restart cut short is
+    # right on first render, from the listed chats and the registry (STORE-31).
+    # This chat's own record is gone by now: its session has just started and
+    # cleared it (INTR-3).
+    chats = Elia.Store.list(30)
+
     socket =
       socket
       |> assign(
@@ -78,7 +84,9 @@ defmodule EliaWeb.ChatLive do
         draft_reasoning: "",
         form: to_form(%{"text" => ""}, as: :chat),
         page_title: Elia.Store.title(snapshot.messages),
-        chats: Elia.Store.list(30),
+        chats: chats,
+        # UI-72: chats whose turn a restart cut short, kept live.
+        interrupted: interrupted_ids(chats),
         projects: Elia.Projects.list(),
         # UI-47: chats with a tool call awaiting approval, kept live.
         awaiting: Agent.awaiting_approval(),
@@ -198,6 +206,7 @@ defmodule EliaWeb.ChatLive do
                   awaiting={chat.id in @awaiting}
                   paused={chat.id in @paused}
                   running={chat.id in @running}
+                  interrupted={chat.id in @interrupted}
                 />
                 <div
                   :if={children != []}
@@ -212,6 +221,7 @@ defmodule EliaWeb.ChatLive do
                     awaiting={child.id in @awaiting}
                     paused={child.id in @paused}
                     running={child.id in @running}
+                    interrupted={child.id in @interrupted}
                   />
                 </div>
               <% end %>
@@ -683,8 +693,10 @@ defmodule EliaWeb.ChatLive do
   attr :awaiting, :boolean, default: false
   attr :paused, :boolean, default: false
   attr :running, :boolean, default: false
+  # UI-72: the chat's saved turn was cut short by a restart (STORE-31, INTR-2).
+  attr :interrupted, :boolean, default: false
 
-  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64
+  # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64, UI-72
   defp chat_row(assigns) do
     {status_id, status} = chat_status(assigns.chat, assigns)
     assigns = assign(assigns, status_id: status_id, status: status)
@@ -764,6 +776,9 @@ defmodule EliaWeb.ChatLive do
   defp status_icon_spec("failed"), do: {"hero-x-circle", "text-error"}
   defp status_icon_spec("unfinished"), do: {"hero-question-mark-circle", "text-warning"}
   defp status_icon_spec("cancelled"), do: {"hero-stop-circle", "text-base-content/60"}
+  # UI-72: a turn a restart cut short (INTR-2), and the task status STORE-17
+  # gives a child whose session was lost.
+  defp status_icon_spec("interrupted"), do: {"hero-exclamation-triangle", "text-warning"}
   defp status_icon_spec("idle"), do: {nil, "text-base-content/30"}
   defp status_icon_spec(_other), do: {"hero-exclamation-triangle", "text-base-content/50"}
 
@@ -771,14 +786,24 @@ defmodule EliaWeb.ChatLive do
   defp status_title("idle"), do: "Idle"
   defp status_title("awaiting_approval"), do: "Needs approval"
   defp status_title("paused"), do: "Paused"
+  defp status_title("interrupted"), do: "Interrupted: the app restarted during the turn"
   defp status_title(status), do: "Task #{status}"
 
-  # UI-46, UI-47, UI-58, UI-59: the one status indicator a sidebar chat shows.
+  # UI-46, UI-47, UI-58, UI-59, UI-72: the one status indicator a sidebar chat
+  # shows.
   defp chat_status(chat, %{awaiting: true}), do: {"chat-status-#{chat.id}", "awaiting_approval"}
   defp chat_status(chat, %{paused: true}), do: {"chat-status-#{chat.id}", "paused"}
   defp chat_status(%{task_status: status} = chat, _state), do: {"chat-status-#{chat.id}", status}
+
+  defp chat_status(chat, %{interrupted: true}),
+    do: {"chat-status-#{chat.id}", "interrupted"}
+
   defp chat_status(chat, %{running: true}), do: {"chat-status-#{chat.id}", "working"}
   defp chat_status(chat, _state), do: {"chat-status-#{chat.id}", "idle"}
+
+  # UI-72, STORE-31: the chats in the sidebar whose saved turn a restart cut
+  # short, so the list is right on first render and every page shows the same.
+  defp interrupted_ids(chats), do: for(%{interrupted: true} = chat <- chats, do: chat.id)
 
   attr :task, :map, required: true
   attr :status, :string, required: true
@@ -1196,13 +1221,18 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  # UI-12, UI-73: notices and errors render as rows; the kind is on the element
+  # so a test can tell them apart (UI-73).
   defp item(%{item: %{kind: kind}} = assigns) when kind in [:notice, :error] do
     ~H"""
-    <div class={[
-      "flex items-center gap-2 rounded-lg px-3 py-2 text-xs",
-      @item.kind == :error && "bg-error/10 text-error",
-      @item.kind == :notice && "bg-base-200 text-base-content/70"
-    ]}>
+    <div
+      data-kind={@item.kind}
+      class={[
+        "flex items-center gap-2 rounded-lg px-3 py-2 text-xs",
+        @item.kind == :error && "bg-error/10 text-error",
+        @item.kind == :notice && "bg-base-200 text-base-content/70"
+      ]}
+    >
       <.icon
         name={
           if @item.kind == :error, do: "hero-exclamation-triangle", else: "hero-information-circle"
@@ -1453,18 +1483,27 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
-  # UI-47, UI-58, UI-59: follows every chat's status, to flag those awaiting
-  # approval, those paused at a limit, and those working.
+  # UI-47, UI-58, UI-59, UI-72: follows every chat's status, to flag those
+  # awaiting approval, those paused at a limit, those working, and to drop the
+  # marker of a chat whose session has started — which is what clears the record
+  # the restart left behind (INTR-3).
   def handle_info({:chat_status, id, status}, socket) do
     awaiting = put_member(socket.assigns.awaiting, id, status == :awaiting_approval)
     paused = put_member(socket.assigns.paused, id, status == :paused)
     running = put_member(socket.assigns.running, id, status == :running)
+    interrupted = List.delete(socket.assigns.interrupted, id)
 
     if awaiting == socket.assigns.awaiting and paused == socket.assigns.paused and
-         running == socket.assigns.running do
+         running == socket.assigns.running and interrupted == socket.assigns.interrupted do
       {:noreply, socket}
     else
-      socket = assign(socket, awaiting: awaiting, paused: paused, running: running)
+      socket =
+        assign(socket,
+          awaiting: awaiting,
+          paused: paused,
+          running: running,
+          interrupted: interrupted
+        )
 
       # UI-44, UI-58: the card of the task chat that is waiting.
       call_ids = for {call_id, %{child_id: ^id}} <- socket.assigns.tasks, do: call_id
@@ -1542,10 +1581,14 @@ defmodule EliaWeb.ChatLive do
   end
 
   # UI-6, UI-63: the sidebar's list and this chat's page title, re-read from the
-  # store.
+  # store. The chats are listed again with it, so the list's interrupted markers
+  # (UI-72, STORE-31) are as fresh as the list itself.
   defp refresh_listed(socket) do
+    chats = Elia.Store.list(30)
+
     assign(socket,
-      chats: Elia.Store.list(30),
+      chats: chats,
+      interrupted: interrupted_ids(chats),
       page_title: Elia.Store.title(Elia.Store.load(socket.assigns.session_id))
     )
   end
@@ -1897,9 +1940,13 @@ defmodule EliaWeb.ChatLive do
          index,
          status
        ) do
+    # UI-9, UI-73: a harness message reads as a notice, except the one a restart
+    # leaves behind (INTR-3), which reads as an error.
+    kind = if Map.get(message.meta, :interrupted, false), do: :error, else: :notice
+
     stream_item(
       socket,
-      %{id: "m#{index}", kind: :notice, text: Message.text_content(message), index: index},
+      %{id: "m#{index}", kind: kind, text: Message.text_content(message), index: index},
       status
     )
   end

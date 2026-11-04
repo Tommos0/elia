@@ -215,6 +215,52 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
   end
 
+  # UI-72, STORE-31, INTR-2, INTR-3: a turn a restart cut short is flagged in the
+  # chat list, before the chat is opened.
+  test "a chat whose turn a restart cut short is flagged until its session runs", %{
+    conn: conn,
+    parent: parent
+  } do
+    save_parent(parent)
+    cut = Agent.new_id()
+    on_exit(fn -> Store.delete(cut) end)
+
+    # The app stopped mid-turn: the chat still carries the turn it was running.
+    Store.save(cut, [Message.user("run it")],
+      turn: %{id: "turn-1", started_at: DateTime.utc_now()}
+    )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    assert has_element?(
+             view,
+             "#chat-status-#{cut}[data-status='interrupted'][title='Interrupted: the app restarted during the turn']"
+           )
+
+    # INTR-3: starting a session for the chat clears its record, and every page
+    # that isn't showing it hears that on the activity topic.
+    activity_send(cut, :idle)
+
+    assert has_element?(view, "#chat-status-#{cut}[data-status='idle']")
+    refute has_element?(view, "#chat-status-#{cut}[data-status='interrupted']")
+  end
+
+  # UI-72, INTR-3: because the open chat's session starts as the page mounts, the
+  # record is already gone when the page lists the chats.
+  test "opening an interrupted chat clears its flag", %{conn: conn} do
+    cut = Agent.new_id()
+    on_exit(fn -> Store.delete(cut) end)
+
+    Store.save(cut, [Message.user("run it")],
+      turn: %{id: "turn-1", started_at: DateTime.utc_now()}
+    )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{cut}")
+
+    assert has_element?(view, "#chat-status-#{cut}[data-status='idle']")
+    refute has_element?(view, "#chat-status-#{cut}[data-status='interrupted']")
+  end
+
   # UI-59: an ordinary chat shows its activity, live.
   test "an ordinary chat is idle, then working while its turn runs", %{
     conn: conn,

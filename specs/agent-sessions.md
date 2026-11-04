@@ -70,7 +70,8 @@ progress so any number of UIs can follow it.
   tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24), jail
   setting (SESS-30) and turn limits (SESS-31) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
-  kept.
+  kept. The turn record (INTR-1) is not loaded from disk: it belongs to the
+  process that is running the turn, so a missing one defaults to `nil`.
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15),
   or, for a chat that is new, starts with every tool that can need approval
   (APPR-14, APPR-13).
@@ -172,6 +173,13 @@ progress so any number of UIs can follow it.
   `{:limits, limits}` (SESS-6), so every view of the chat agrees. It is allowed
   mid-turn (LIMIT-3), and `snapshot/1` carries them (SESS-7). A turn is started
   with them without overriding an option the caller passed explicitly (LIMIT-3).
+
+- **SESS-32** `Elia.Agent.live?/1` reports whether a session for a chat is
+  running in this app instance, read from `Elia.Agent.Registry` without calling
+  it, like `running/0` and `awaiting_approval/0` (SESS-19, SESS-28). It is
+  `false` for a chat with no session, for an invalid or unknown id, and when the
+  registry isn't running. A chat list uses it to tell the record a restart left
+  behind (INTR-2, STORE-31) from a turn that is running right now.
 
 ## Out of scope
 

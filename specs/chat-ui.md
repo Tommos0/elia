@@ -86,7 +86,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (`#chat-status-<id>`, with `data-status` and a `title`). A chat that isn't a
   task chat (UI-46) shows `working` — an animated spinner — while its turn is
   running, that is while its session status is `:running` (SESS-4), and `idle`
-  — a dim dot — when it has no turn. Waiting for approval (`awaiting_approval`)
+  — a dim dot — when it has no turn, unless a restart cut that turn short, which
+  shows `interrupted` instead (UI-72). Waiting for approval (`awaiting_approval`)
   and paused come first (UI-47, UI-58), so a chat that needs the user is never
   shown as idle. The indicator is right on first render, from
   `Elia.Agent.running/0` and the registry (SESS-19, SESS-28), and follows
@@ -106,6 +107,17 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (SESS-29), so a running chat can be deleted from any chat's sidebar.
 - **UI-66** Deleting a parent chat leaves its task chats saved and listed on
   their own at the top level (UI-45); deleting a task chat leaves its parent.
+- **UI-72** A chat whose turn a restart cut short (STORE-31, INTR-2) shows the
+  `interrupted` status in the sidebar (`#chat-status-<id>`, UI-59): a warning
+  triangle with `data-status="interrupted"` and a `title` saying the app
+  restarted during the turn. It is right on first render, from the listed chats,
+  for a chat whose page isn't open, so a turn that was cut short is visible
+  before the chat is opened. It goes as soon as a session for the chat starts
+  (INTR-3): this page through the open chat's own `{:status, …}` (which lists
+  the chats again, UI-6) and every other page through `{:chat_status, id, :idle}`
+  on the activity topic (SESS-19). A task chat still shows its task status
+  (UI-46); `interrupted` is also the status STORE-17 gives a task chat whose
+  session was lost, and the two read the same.
 
 ### Transcript
 
@@ -126,6 +138,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `messages`.
 - **UI-14** The transcript stays scrolled to the bottom as content arrives,
   unless the user has scrolled more than 80px up.
+- **UI-73** The notice a session writes after a restart cut the turn short
+  (INTR-3) renders as an error row (UI-12), not as a plain harness notice
+  (UI-9), so a turn the app killed is not mistaken for one that ended normally.
+  The message marks it (`meta.interrupted`, INTR-3) and its row carries
+  `data-kind="error"`, so the two are told apart in a test as well.
 
 ### Tool calls
 

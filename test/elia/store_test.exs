@@ -293,6 +293,50 @@ defmodule Elia.StoreTest do
     assert Store.load_compaction("../bad") == nil
   end
 
+  # STORE-30, INTR-1
+  test "a chat's turn in flight is saved with it, and its end takes the entry off" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    turn = %{id: "turn-1", started_at: ~U[2026-01-01 00:00:00Z]}
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_turn(id) == nil
+    # A chat that has no turn carries no entry at all.
+    chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
+    refute Map.has_key?(chat, :turn)
+
+    :ok = Store.save(id, [Message.user("hi")], turn: turn)
+    assert Store.load_turn(id) == turn
+
+    # INTR-1: the save that ends the turn drops the key.
+    :ok = Store.save(id, [Message.user("hi"), Message.user("more")], turn: nil)
+    assert Store.load_turn(id) == nil
+    chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
+    refute Map.has_key?(chat, :turn)
+    assert [%Message{}, %Message{}] = Store.load(id)
+
+    assert Store.load_turn("missing-chat") == nil
+    assert Store.load_turn("../bad") == nil
+  end
+
+  # STORE-31, INTR-2
+  test "a listed chat says whether a restart interrupted its turn" do
+    id = Elia.Agent.new_id()
+    plain = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([id, plain], &Store.delete/1) end)
+
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = Store.save(id, [Message.user("hi")], turn: turn)
+    :ok = Store.save(plain, [Message.user("hi")])
+
+    # The record is there and no session runs for it: the app stopped mid-turn.
+    assert %{interrupted: true} = listed(id)
+    # A chat with no record is not flagged, and one whose file is gone isn't
+    # listed at all.
+    assert %{interrupted: false} = listed(plain)
+    assert listed("never-saved") == nil
+  end
+
   # STORE-23, UI-66
   test "deleting a chat removes its file, and only its own" do
     parent = Elia.Agent.new_id()

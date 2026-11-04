@@ -60,6 +60,7 @@ deleting it.
 | [Log viewer](log-viewer.md) | `LOG` | In-memory capture of the server's logs, on a `/logs` page |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser with a plain-text file viewer |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
+| [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, how decisions apply, per-chat auto-approval |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
