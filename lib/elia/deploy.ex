@@ -108,16 +108,68 @@ defmodule Elia.Deploy do
   def deployable?(root \\ Workspace.runtime_root()), do: deployable(root) == :ok
 
   @doc """
-  What the Settings page reports about deployment (CONF-19): the number of
-  commits on the trunk that are not deployed yet, or why the live tree isn't set
-  up for deployment (DEPLOY-14).
+  What the Settings page reports about deployment (CONF-19, DEPLOY-17): how many
+  commits on the trunk are not deployed yet, the revision `live` is at, the
+  revision the running app has loaded (`nil` when none is recorded), and whether
+  the app is behind `live` — a deploy that merged and never reached the load
+  (DEPLOY-15). `{:error, reason}` when the live tree isn't set up for deployment
+  (DEPLOY-14).
   """
-  @spec status(binary()) :: {:ok, non_neg_integer()} | {:error, binary()}
+  @spec status(binary()) :: {:ok, map()} | {:error, binary()}
   def status(root \\ Workspace.runtime_root()) do
     with :ok <- deployable(root),
-         {:ok, count} <- git(root, ["rev-list", "--count", "#{@live}..#{@trunk}"]) do
-      {:ok, String.to_integer(count)}
+         {:ok, count} <- git(root, ["rev-list", "--count", "#{@live}..#{@trunk}"]),
+         {:ok, live} <- git(root, ["rev-parse", @live]) do
+      loaded = loaded_revision(root)
+
+      {:ok,
+       %{
+         pending: String.to_integer(count),
+         live: live,
+         loaded: loaded,
+         behind?: loaded != nil and loaded != live
+       }}
     end
+  end
+
+  ## What the running app has loaded (DEPLOY-17)
+
+  @doc "Where a deploy records the revision the running app has loaded (DEPLOY-17)."
+  @spec loaded_path(binary()) :: binary()
+  def loaded_path(root \\ Workspace.runtime_root()),
+    do: Path.join(Workspace.data_dir(root), "deployed")
+
+  @doc """
+  The revision the running app has loaded (DEPLOY-17), or `nil` when none has
+  been recorded yet: a server that started before this was recorded.
+  """
+  @spec loaded_revision(binary()) :: binary() | nil
+  def loaded_revision(root \\ Workspace.runtime_root()) do
+    case File.read(loaded_path(root)) do
+      {:ok, contents} -> blank_to_nil(String.trim(contents))
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(sha), do: sha
+
+  @doc """
+  Records the revision the running app runs (DEPLOY-17): the one a deploy just
+  loaded (DEPLOY-6) or one a restart is about to come up on (DEPLOY-7). The
+  server's first start in the live tree counts too — it runs what the tree has
+  checked out — so `Elia.Deploy.Runner` records that at boot. A tree that isn't
+  set up for deployment (DEPLOY-14) is left alone, and failing to record is
+  never a deploy failure.
+  """
+  @spec record_loaded(binary()) :: :ok
+  def record_loaded(root \\ Workspace.runtime_root()) do
+    with :ok <- deployable(root),
+         {:ok, sha} <- git(root, ["rev-parse", @live]) do
+      File.write(loaded_path(root), sha <> "\n")
+    end
+
+    :ok
   end
 
   ## Worktree per chat
@@ -274,10 +326,10 @@ defmodule Elia.Deploy do
   def deploy(root \\ Workspace.runtime_root()) do
     with :ok <- deployable(root),
          :ok <- clean?(root),
-         {:ok, count} <- status(root) do
-      case count do
+         {:ok, %{pending: pending}} <- status(root) do
+      case pending do
         0 -> {:ok, "Nothing to deploy: #{@live} is already #{@trunk}."}
-        _ -> merge_and_test(count, root)
+        _ -> merge_and_test(pending, root)
       end
     end
   end
@@ -310,7 +362,7 @@ defmodule Elia.Deploy do
   def hot_reload(root \\ Workspace.runtime_root()) do
     if hot_reload_available?() do
       case deploy(root) do
-        {:ok, deployed} -> load(deployed)
+        {:ok, deployed} -> load(deployed, root)
         other -> other
       end
     else
@@ -333,6 +385,9 @@ defmodule Elia.Deploy do
     with :ok <- restartable?() do
       case deploy(root) do
         {:ok, deployed} ->
+          # DEPLOY-17: the server comes back on this revision, so record it
+          # before it stops.
+          record_loaded(root)
           stop()
           {:ok, "#{deployed} Restarting the server on the deployed code."}
 
@@ -341,6 +396,18 @@ defmodule Elia.Deploy do
       end
     end
   end
+
+  @doc """
+  Runs a deploy in one of its modes (DEPLOY-6, DEPLOY-7): `:reload` for the hot
+  reload, `:restart` for the restart. What `Elia.Deploy.Runner` calls, so a
+  deploy started from the Settings page runs outside the page (DEPLOY-15).
+  """
+  @spec run(:reload | :restart, binary()) ::
+          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def run(mode, root \\ Workspace.runtime_root())
+
+  def run(:reload, root), do: hot_reload(root)
+  def run(:restart, root), do: restart(root)
 
   @doc """
   Whether the server can be restarted: only a server run by `bin/serve` or
@@ -420,10 +487,12 @@ defmodule Elia.Deploy do
   # HOT-5: recompile the live tree and load the changed modules. Loading is a
   # function so tests can replace it (`config :elia, Elia.Deploy, load: fun`):
   # a real recompile inside a test run would rebuild Elia's own endpoint.
-  defp load(deployed) do
+  defp load(deployed, root) do
     case loader().(EliaWeb.Endpoint) do
       :ok ->
         Elia.Skills.reload()
+        # DEPLOY-17: what the app runs now, so a merge that never loads shows.
+        record_loaded(root)
         {:ok, "#{deployed} Recompiled and reloaded the running app."}
 
       {:error, output} ->

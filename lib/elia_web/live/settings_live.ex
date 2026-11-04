@@ -6,6 +6,10 @@ defmodule EliaWeb.SettingsLive do
   @impl true
   def mount(_params, _session, socket) do
     providers = LLM.providers()
+    # CONF-20, DEPLOY-16: the deploy in flight and the last one's result live in
+    # the runner, not in this page, so a page that mounts while a deploy runs or
+    # after one finished shows both.
+    deploy = Deploy.Runner.state()
 
     socket =
       socket
@@ -19,15 +23,24 @@ defmodule EliaWeb.SettingsLive do
         pending: %{},
         # key => :loading | {:ok, balance} | {:error, message}
         balances: %{},
-        # CONF-19: the deploy state (DEPLOY-14), and "reload" | "restart" while
-        # a deploy runs
+        # CONF-19: the deploy state (DEPLOY-14, DEPLOY-17), and "reload" |
+        # "restart" while a deploy runs
         deployment: Deploy.status(),
-        deploying: nil
+        deploying: deploy.running && to_string(deploy.running.mode),
+        # CONF-20: the last deploy's result, still shown for a page that arrives
+        # after it ended
+        deploy_result: deploy.last && deploy_result(deploy.last.result)
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
       |> refresh_keys()
 
-    {:ok, if(connected?(socket), do: load_balances(socket), else: socket)}
+    if connected?(socket) do
+      # CONF-20, DEPLOY-16: the runner broadcasts when a deploy starts and ends.
+      Deploy.Runner.subscribe()
+      {:ok, load_balances(socket)}
+    else
+      {:ok, socket}
+    end
   end
 
   defp load_balances(socket) do
@@ -290,6 +303,28 @@ defmodule EliaWeb.SettingsLive do
                 /> Restart
               </button>
             </div>
+
+            <%!-- CONF-20, DEPLOY-16: the last deploy's result stays here, so a
+            page that arrives after the deploy ended still reports what it did. --%>
+            <p
+              :if={@deploy_result}
+              id="deploy-result"
+              class={[
+                "mt-3 flex items-start gap-2 whitespace-pre-line break-words rounded-lg px-3 py-2 text-xs",
+                @deploy_result.kind == :ok && "bg-success/10 text-success",
+                @deploy_result.kind != :ok && "bg-error/10 text-error"
+              ]}
+            >
+              <.icon
+                name={
+                  if @deploy_result.kind == :ok,
+                    do: "hero-check-circle",
+                    else: "hero-exclamation-triangle"
+                }
+                class="mt-px size-4 shrink-0"
+              />
+              <span>{@deploy_result.text}</span>
+            </p>
           </section>
 
           <p
@@ -381,14 +416,29 @@ defmodule EliaWeb.SettingsLive do
 
   # CONF-19: whether the live tree is set up for deployment (DEPLOY-14) — the
   # deploy buttons only make sense when it is.
-  defp deploy_ready?({:ok, _commits}), do: true
+  defp deploy_ready?({:ok, _status}), do: true
   defp deploy_ready?({:error, _reason}), do: false
 
+  # CONF-19, DEPLOY-17: `live` is merged but the running app never got it — the
+  # deploy was interrupted after the merge. Say so, rather than "nothing to do".
+  defp deploy_status({:ok, %{behind?: true} = status}) do
+    "live has #{short(status.live)} merged, but the running app is still on " <>
+      "#{short(status.loaded)}: a deploy merged and never loaded. Hot reload brings " <>
+      "the app up to date — no new tests or merge needed."
+  end
+
   # CONF-19: what the deployment section says about the live tree.
-  defp deploy_status({:ok, 0}), do: "live is up to date with master: nothing to deploy."
-  defp deploy_status({:ok, 1}), do: "1 commit on master is not deployed yet."
-  defp deploy_status({:ok, commits}), do: "#{commits} commits on master are not deployed yet."
+  defp deploy_status({:ok, %{pending: 0}}),
+    do: "live is up to date with master: nothing to deploy."
+
+  defp deploy_status({:ok, %{pending: 1}}), do: "1 commit on master is not deployed yet."
+
+  defp deploy_status({:ok, %{pending: commits}}),
+    do: "#{commits} commits on master are not deployed yet."
+
   defp deploy_status({:error, reason}), do: reason
+
+  defp short(sha), do: String.slice(sha, 0, 12)
 
   defp mask(key), do: "••••" <> String.slice(key, -4, 4)
 
@@ -450,21 +500,39 @@ defmodule EliaWeb.SettingsLive do
      |> load_balance(key)}
   end
 
-  # CONF-19, CONF-20, DEPLOY-6, DEPLOY-7: deploy in the background, so the page
-  # stays responsive while the tests and the deploy run.
+  # CONF-19, CONF-20, DEPLOY-6, DEPLOY-7, DEPLOY-15: ask the runner for a deploy.
+  # It runs in its own process, so navigating away, closing the tab or this page
+  # reloading itself (DEPLOY-12) doesn't abort it.
   def handle_event("deploy", %{"mode" => mode}, socket) when mode in ~w(reload restart) do
-    if socket.assigns.deploying do
-      {:noreply, socket}
-    else
-      {:noreply,
-       socket
-       |> assign(deploying: mode)
-       |> start_async({:deploy, mode}, fn -> deploy(mode) end)}
-    end
+    socket =
+      case Deploy.Runner.start(deploy_mode(mode)) do
+        :ok ->
+          socket
+          |> assign(deploying: mode, deploy_result: nil)
+          |> assign(deployment: Deploy.status())
+
+        # CONF-20, DEPLOY-16: a click while a deploy runs is ignored, and the
+        # page shows the deploy that is already running.
+        {:error, :busy} ->
+          refresh_deploy(socket)
+      end
+
+    {:noreply, socket}
   end
 
-  defp deploy("reload"), do: Deploy.hot_reload()
-  defp deploy("restart"), do: Deploy.restart()
+  defp deploy_mode("reload"), do: :reload
+  defp deploy_mode("restart"), do: :restart
+
+  # CONF-20, DEPLOY-16: what the runner holds right now.
+  defp refresh_deploy(socket) do
+    deploy = Deploy.Runner.state()
+
+    assign(socket,
+      deploying: deploy.running && to_string(deploy.running.mode),
+      deploy_result: deploy.last && deploy_result(deploy.last.result),
+      deployment: Deploy.status()
+    )
+  end
 
   defp run(socket, key, action, fun) do
     if Map.has_key?(socket.assigns.pending, key) or LLM.provider_info(key) == nil do
@@ -523,31 +591,34 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, socket}
   end
 
-  # CONF-20, DEPLOY-5..DEPLOY-7: report what the deploy did, and how the live
-  # tree stands now. `start_async` wraps the result in `{:ok, result}`.
-  def handle_async({:deploy, _mode}, result, socket) do
-    socket = assign(socket, deploying: nil, deployment: Deploy.status())
-
-    {:noreply,
-     case result do
-       {:ok, {:ok, message}} ->
-         put_flash(socket, :info, message)
-
-       {:ok, {:tests_failed, output}} ->
-         put_flash(
-           socket,
-           :error,
-           "Tests failed; nothing was merged or loaded.\n\n" <>
-             Elia.Shell.truncate(output, 4_000)
-         )
-
-       {:ok, {:error, reason}} ->
-         put_flash(socket, :error, reason)
-
-       {:exit, reason} ->
-         put_flash(socket, :error, "The deploy failed: #{Exception.format_exit(reason)}")
-     end}
+  # CONF-20, DEPLOY-16: the deploy's events come from the runner, so they reach
+  # this page even when another page started the deploy — and a page that mounts
+  # while one runs or after one finished reads the same state in mount/3.
+  @impl true
+  def handle_info({:deploy_started, %{mode: mode}}, socket) do
+    {:noreply, assign(socket, deploying: to_string(mode))}
   end
+
+  def handle_info({:deploy_finished, %{result: result}}, socket) do
+    {:noreply, refresh_deploy(assign(socket, deploy_result: deploy_result(result)))}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # CONF-20, DEPLOY-5..DEPLOY-7, DEPLOY-17: report what the deploy did, and how
+  # the live tree stands now.
+  defp deploy_result({:ok, message}), do: %{kind: :ok, text: message}
+
+  defp deploy_result({:tests_failed, output}),
+    do: %{
+      kind: :error,
+      text: "Tests failed; nothing was loaded.\n\n" <> Elia.Shell.truncate(output, 4_000)
+    }
+
+  defp deploy_result({:error, reason}), do: %{kind: :error, text: reason}
+
+  defp deploy_result({:exit, reason}),
+    do: %{kind: :error, text: "The deploy failed: #{Exception.format_exit(reason)}"}
 
   defp put_result(socket, key, result) do
     assign(socket, results: Map.put(socket.assigns.results, key, result))

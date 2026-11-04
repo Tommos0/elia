@@ -287,7 +287,7 @@ defmodule Elia.DeploymentTest do
     file = work_on_trunk(path)
 
     before = head(tree)
-    assert Deploy.status() == {:ok, 1}
+    assert {:ok, %{pending: 1}} = Deploy.status()
     assert {:ok, message} = Deploy.deploy()
 
     assert message =~ "merged into live"
@@ -300,12 +300,44 @@ defmodule Elia.DeploymentTest do
 
   # DEPLOY-5: nothing to do when the trunk is already deployed.
   test "there is nothing to deploy when live is already the trunk", %{tree: tree} do
-    assert Deploy.status() == {:ok, 0}
+    assert {:ok, %{pending: 0}} = Deploy.status()
 
     live = head(tree)
     assert {:ok, message} = Deploy.deploy()
     assert message =~ "Nothing to deploy"
     assert head(tree) == live
+  end
+
+  # DEPLOY-17: what the app has loaded is recorded, so a deploy that merged and
+  # never reached the load is reported rather than looking up to date.
+  test "a merge that never loaded is reported", %{tree: tree} do
+    running_server()
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    # Nothing recorded yet: what the app runs is unknown, not "behind".
+    assert {:ok, %{behind?: false, loaded: nil}} = Deploy.status()
+
+    # A deploy that loads records the revision it loaded.
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, %{behind?: false, loaded: loaded}} = Deploy.status()
+    assert loaded == head(tree)
+
+    # Another change merges into the live tree and the load never happens — a
+    # deploy interrupted between the merge and the load (DEPLOY-15).
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.deploy()
+
+    assert {:ok, %{behind?: true, pending: 0, loaded: ^loaded, live: live}} = Deploy.status()
+    assert live != loaded
+    assert live == head(tree)
+
+    # DEPLOY-6: hot reload with nothing to deploy still loads, which is the
+    # recovery, and it records what it loaded.
+    assert {:ok, message} = Deploy.hot_reload()
+    assert message =~ "Nothing to deploy"
+    assert message =~ "Recompiled and reloaded"
+    assert {:ok, %{behind?: false, loaded: ^live}} = Deploy.status()
   end
 
   # DEPLOY-5, DEPLOY-8, HOT-4
@@ -698,7 +730,7 @@ defmodule Elia.DeploymentTest do
       refute Elia.Shell.available?()
 
       assert Deploy.deployable() == :ok
-      assert Deploy.status() == {:ok, 1}
+      assert {:ok, %{pending: 1}} = Deploy.status()
 
       before = head(tree)
       assert {:ok, message} = Deploy.deploy()

@@ -73,4 +73,4 @@ viewer's markup (`specs/image-viewer.md`, IMG-7).
 HOT-8 is what the image viewer's browser test holds to
 (`test/elia_web/browser/chat_browser_test.exs`, IMG-7). HOT-9 is the deploy
 runner's own test: the page may go away, the deploy goes on
-(`test/elia/deployment_test.exs`, DEPLOY-15).
+(`test/elia_web/live/settings_live_test.exs`, DEPLOY-15).

@@ -19,6 +19,9 @@ defmodule Elia.Application do
       Elia.Settings,
       Elia.LLM.Catalog,
       Elia.Skills,
+      # DEPLOY-15, DEPLOY-16: a deploy runs here, not in the Settings page that
+      # started it.
+      Elia.Deploy.Runner,
       # Start to serve requests, typically the last entry
       EliaWeb.Endpoint
     ]
