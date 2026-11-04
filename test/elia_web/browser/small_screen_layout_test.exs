@@ -21,6 +21,17 @@ defmodule EliaWeb.SmallScreenLayoutTest do
   # case creates per test (as the chat layout tests do, UI-78).
   @phone [viewport: %{width: 390, height: 900}]
 
+  # HOT-8: `grid-template-columns: none` is the layout a bundle without the new
+  # grid rule gives, and it reports how many elements it touched, so the test
+  # can tell "the fix held" from "there was nothing to neutralise".
+  @without_new_grid_rule """
+  () => {
+    const els = [...document.querySelectorAll('.grid-cols-1')];
+    els.forEach((el) => { el.style.gridTemplateColumns = 'none'; });
+    return els.length;
+  }
+  """
+
   @tag browser_context_opts: @phone
   test "a long chat title doesn't scroll Home sideways (DASH-12)", %{conn: conn} do
     id = "layout-long-title"
@@ -38,6 +49,27 @@ defmodule EliaWeb.SmallScreenLayoutTest do
   @tag browser_context_opts: @phone
   test "the System page doesn't scroll sideways (SYS-12)", %{conn: conn} do
     conn |> visit("/system") |> refute_sideways_scroll("#system-scroll")
+  end
+
+  # HOT-8, DASH-12: a page keeps the stylesheet it loaded — the browser fetches a
+  # new one only on a full page load, and the bundle the running app serves may
+  # itself be older than the markup. So a fit must not need a rule that
+  # stylesheet may not have yet: `grid-template-columns: none` is the layout a
+  # bundle without the new class gives, and the cards still fit, because the
+  # columns carry `min-w-0` (in use since the app's first commit).
+  @tag browser_context_opts: @phone
+  test "a long chat title fits with the stylesheet the page already has (HOT-8)", %{conn: conn} do
+    id = "layout-old-css"
+    :ok = Store.save(id, [], title: String.duplicate("b-long-chat-title-", 4))
+    on_exit(fn -> Store.delete(id) end)
+
+    conn
+    |> visit("/")
+    |> assert_has("#recent-chats", text: "b-long-chat-title-")
+    |> evaluate(@without_new_grid_rule, [is_function: true], fn neutralised ->
+      assert neutralised > 0, "no element carried the page's new grid rule to neutralise"
+    end)
+    |> refute_sideways_scroll("#home-scroll")
   end
 
   @sideways_scroll """

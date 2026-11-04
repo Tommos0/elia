@@ -195,11 +195,14 @@ defmodule EliaWeb.DashboardLive do
             </p>
           </header>
 
-          <%!-- DASH-12: one column of `minmax(0, 1fr)` below `lg`, so the cards
-          shrink with the screen instead of growing to a long title's
-          `min-content` (a truncated title is one unbreakable line). --%>
+          <%!-- DASH-12: one shrinkable column below `lg` — `grid-cols-1` is
+          `minmax(0, 1fr)` — so the cards shrink with the screen instead of
+          growing to a long title's `min-content` (a truncated title is one
+          unbreakable line). The columns carry `min-w-0` as well, because a
+          page may still be showing the stylesheet it loaded (HOT-8), which
+          predates the new class. --%>
           <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
-            <div class="flex flex-col gap-4 lg:col-span-3">
+            <div class="flex min-w-0 flex-col gap-4 lg:col-span-3">
               <.continue_card
                 resume={@resume}
                 status={@resume_status}
@@ -211,7 +214,7 @@ defmodule EliaWeb.DashboardLive do
               <.recent_card rows={@recent} now={@now} />
             </div>
 
-            <div class="flex flex-col gap-4 lg:col-span-2">
+            <div class="flex min-w-0 flex-col gap-4 lg:col-span-2">
               <.projects_card rows={project_rows(@projects, @chats)} />
               <.system_card
                 stats={@stats}

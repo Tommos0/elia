@@ -294,10 +294,16 @@ defmodule EliaWeb.SystemLive do
     ~H"""
     <section
       id={@id}
-      class={[
-        "rounded-xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm",
-        @class
-      ]}
+      class={
+        [
+          # SYS-12: `min-w-0` so the card itself, not only the grid tracks
+          # (`grid-cols-1` in the rows that hold it), can shrink with the screen —
+          # the class a page's already-loaded stylesheet has, whatever it predates
+          # (HOT-8).
+          "min-w-0 rounded-xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm",
+          @class
+        ]
+      }
     >
       <h2 class="flex items-center gap-2 text-sm font-medium text-base-content/70">
         <.icon name={@icon} class="size-4" /> {@label}
