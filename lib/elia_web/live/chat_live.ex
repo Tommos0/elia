@@ -392,17 +392,6 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
               </button>
-              <%!-- COMPACT-10: compact this chat now, on demand --%>
-              <button
-                type="button"
-                id="compact-button"
-                phx-click="compact"
-                title="Elide the older turns of this chat's context now"
-                class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
-              >
-                <.icon name="hero-archive-box-arrow-down" class="size-3.5 shrink-0 opacity-70" />
-                <span class="font-medium">Compact</span>
-              </button>
               <%!-- UI-70, ISOL-23: the worktree's dependency sync, while it runs.
               Text beside the controls, so it never blocks the composer or the
               transcript. --%>

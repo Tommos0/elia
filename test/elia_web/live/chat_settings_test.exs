@@ -18,9 +18,16 @@ defmodule EliaWeb.ChatSettingsTest do
     on_exit(fn -> Store.delete(id) end)
 
     # Selecting a model remembers it as the app's default (MODEL-15), and the
-    # settings store is shared by the whole suite, so put it back.
+    # settings store is shared by the whole suite, so put it back — or drop it
+    # again, so a chat that selects one doesn't leave every later test on that
+    # provider.
     previous_model = Elia.Settings.get(:model)
-    on_exit(fn -> if previous_model, do: Elia.Settings.put(:model, previous_model) end)
+
+    on_exit(fn ->
+      if previous_model,
+        do: Elia.Settings.put(:model, previous_model),
+        else: Elia.Settings.delete(:model)
+    end)
 
     %{id: id}
   end
@@ -37,8 +44,23 @@ defmodule EliaWeb.ChatSettingsTest do
     %{budget: budget, fraction: fraction, target_fraction: target, working_set: working_set}
   end
 
-  defp submit_compaction(view, params) do
-    view |> element("#compaction-form") |> render_submit(%{"compaction" => params})
+  # CSET-7, CSET-11: the page's one form and one Save. The group a test doesn't
+  # name keeps the values the form shows, so a submit carries a whole, valid set.
+  # An accepted save returns `{:error, {:live_redirect, …}}`, a rejected one the
+  # page.
+  defp submit_settings(view, params) do
+    view |> form("#settings-form", params) |> render_submit()
+  end
+
+  defp submit_limits(view, max_steps, max_minutes \\ ""),
+    do: submit_settings(view, %{limits: limits(max_steps, max_minutes)})
+
+  defp submit_compaction(view, params), do: submit_settings(view, %{compaction: params})
+
+  # CSET-11: an accepted save goes back to that chat.
+  defp assert_saved(view, params, id) do
+    assert {:error, {:live_redirect, %{to: to}}} = submit_settings(view, params)
+    assert to == "/c/#{id}"
   end
 
   # CSET-1, UI-2
@@ -74,10 +96,34 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#settings-model #model-picker-button")
     assert has_element?(view, "#settings-auto-approve #auto-approve-button")
     assert has_element?(view, "#settings-jail #jail-toggle")
-    assert has_element?(view, "#settings-limits #limits-form")
+    assert has_element?(view, "#settings-form #settings-limits #limit-steps")
     assert has_element?(view, "#settings-limits #limit-pause[role='switch']")
-    assert has_element?(view, "#settings-context #compaction-form")
+    assert has_element?(view, "#settings-form #settings-context #compaction-budget")
     assert has_element?(view, "#settings-context #compaction-auto[role='switch']")
+    # CSET-5, UI-54: the Compact button, which used to sit in the composer.
+    assert has_element?(view, "#settings-context #compact-button")
+  end
+
+  # CSET-7: every numeric setting is set in one form with one Save — the limits
+  # and the context options alike.
+  test "the page has one form with one Save for every numeric setting", %{
+    conn: conn,
+    id: id
+  } do
+    {:ok, view, _html} = settings(conn, id)
+    document = view |> render() |> LazyHTML.from_fragment()
+
+    assert has_element?(view, "#settings-form #limit-steps")
+    assert has_element?(view, "#settings-form #limit-minutes")
+    assert has_element?(view, "#settings-form #compaction-budget")
+    assert has_element?(view, "#settings-form #compaction-fraction")
+    assert has_element?(view, "#settings-form #compaction-target")
+    assert has_element?(view, "#settings-form #compaction-working-set")
+    assert has_element?(view, "#settings-form #save-settings")
+
+    assert length(LazyHTML.to_tree(LazyHTML.query(document, "form#settings-form"))) == 1
+
+    assert length(LazyHTML.to_tree(LazyHTML.query(document, "button[type='submit']"))) == 1
   end
 
   # CSET-3: every control follows the chat's own events, so a change made
@@ -98,7 +144,8 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#compaction-auto[aria-checked='false']")
   end
 
-  # CSET-4: a change made here applies to the chat at once, and starts nothing.
+  # CSET-4, CSET-7, CSET-11: a change made here applies to the chat at once, and
+  # an accepted save goes back to it. Nothing here starts a turn.
   test "changes apply to the chat's session", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
 
@@ -108,8 +155,10 @@ defmodule EliaWeb.ChatSettingsTest do
     view |> element("#limit-pause") |> render_click()
     assert Agent.snapshot(id).limits.pause_on_limit == true
 
-    view |> form("#limits-form", limits: limits("12", "5")) |> render_submit()
+    assert_saved(view, %{limits: limits("12", "5"), compaction: compaction("20000", "70")}, id)
+
     assert %{max_steps: 12, max_minutes: 5} = Agent.snapshot(id).limits
+    assert %{budget: 20_000, fraction: 0.7} = Agent.snapshot(id).compaction.options
 
     assert Agent.snapshot(id).status == :idle
     assert Agent.snapshot(id).messages == []
@@ -126,7 +175,7 @@ defmodule EliaWeb.ChatSettingsTest do
 
     view |> element("#jail-toggle") |> render_click()
     view |> element("#limit-pause") |> render_click()
-    view |> form("#limits-form", limits: limits("5")) |> render_submit()
+    assert_saved(view, %{limits: limits("5"), compaction: compaction()}, id)
 
     assert %{max_steps: 5, pause_on_limit: true} = Agent.snapshot(id).limits
     refute Store.exists?(id)
@@ -157,7 +206,9 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#limits-state", "no time budget")
     assert has_element?(view, "#limits-state", "ends the turn with an error")
 
-    view |> form("#limits-form", limits: limits("25", "10")) |> render_submit()
+    assert_saved(view, %{limits: limits("25", "10")}, id)
+    # CSET-11: the save went back to the chat, so the page is opened again.
+    {:ok, view, _html} = settings(conn, id)
     view |> element("#limit-pause") |> render_click()
 
     assert has_element?(view, "#limit-steps[value='25']")
@@ -176,7 +227,7 @@ defmodule EliaWeb.ChatSettingsTest do
     :ok = Agent.set_limits(id, %{max_steps: 25})
     render(view)
 
-    view |> form("#limits-form", limits: limits()) |> render_submit()
+    assert_saved(view, %{limits: limits()}, id)
 
     assert Agent.snapshot(id).limits == %{
              max_steps: nil,
@@ -184,6 +235,7 @@ defmodule EliaWeb.ChatSettingsTest do
              pause_on_limit: false
            }
 
+    {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#limits-state", "the default 100 steps")
   end
 
@@ -192,7 +244,7 @@ defmodule EliaWeb.ChatSettingsTest do
     {:ok, view, _html} = settings(conn, id)
 
     for bad <- ~w(abc 0 -3 1001 2.5) do
-      view |> form("#limits-form", limits: limits(bad)) |> render_submit()
+      submit_limits(view, bad)
 
       assert has_element?(view, "#settings-error")
       assert Agent.snapshot(id).limits.max_steps == nil
@@ -200,13 +252,12 @@ defmodule EliaWeb.ChatSettingsTest do
       assert has_element?(view, "#limit-steps[value='#{bad}']")
     end
 
-    view |> form("#limits-form", limits: limits("", "0")) |> render_submit()
+    submit_limits(view, "", "0")
     assert has_element?(view, "#settings-error")
     assert Agent.snapshot(id).limits.max_minutes == nil
 
-    # A good value clears the message.
-    view |> form("#limits-form", limits: limits("3")) |> render_submit()
-    refute has_element?(view, "#settings-error")
+    # CSET-11: a good value is accepted, and the save goes back to the chat.
+    assert_saved(view, %{limits: limits("3")}, id)
     assert Agent.snapshot(id).limits.max_steps == 3
   end
 
@@ -228,12 +279,13 @@ defmodule EliaWeb.ChatSettingsTest do
   test "the Context section sets the chat's options", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
 
-    view
-    |> form("#compaction-form", compaction: compaction("20000", "70", "40", "3"))
-    |> render_submit()
+    assert_saved(view, %{compaction: compaction("20000", "70", "40", "3")}, id)
 
     assert %{budget: 20_000, fraction: 0.7, target_fraction: 0.4, working_set: 3} =
              Agent.snapshot(id).compaction.options
+
+    # CSET-11: the save went back to the chat, so the page is opened again.
+    {:ok, view, _html} = settings(conn, id)
 
     assert has_element?(view, "#compaction-budget[value='20000']")
     assert has_element?(view, "#compaction-fraction[value='70']")
@@ -279,9 +331,108 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#settings-error")
     refute Agent.snapshot(id).compaction.options[:working_set]
 
-    # A good value clears the message.
-    submit_compaction(view, compaction())
-    refute has_element?(view, "#settings-error")
+    # CSET-7, CSET-11: a good value is accepted, and the save goes back to the
+    # chat.
+    assert_saved(view, %{compaction: compaction()}, id)
     assert Agent.snapshot(id).compaction.options.fraction == 0.8
+  end
+
+  # CSET-7, CSET-11: the save is all or nothing — a value that isn't one in
+  # either section saves neither — and a rejected save stays on the page with
+  # the message and the values as typed.
+  test "a rejected save changes neither the limits nor the context options", %{
+    conn: conn,
+    id: id
+  } do
+    {:ok, view, _html} = settings(conn, id)
+
+    # Valid limits, an invalid context option: the limits are not saved either.
+    refute match?(
+             {:error, _},
+             submit_settings(view, %{limits: limits("7"), compaction: %{budget: "0"}})
+           )
+
+    assert has_element?(view, "#settings-error")
+    assert Agent.snapshot(id).limits.max_steps == nil
+    refute Agent.snapshot(id).compaction.options[:budget]
+    # The typed values stay, in both sections.
+    assert has_element?(view, "#limit-steps[value='7']")
+    assert has_element?(view, "#compaction-budget[value='0']")
+
+    # And the other way round: an invalid limit saves no context option.
+    refute match?(
+             {:error, _},
+             submit_settings(view, %{limits: limits("nope"), compaction: compaction()})
+           )
+
+    assert has_element?(view, "#settings-error")
+    assert Agent.snapshot(id).limits.max_steps == nil
+    refute Agent.snapshot(id).compaction.options[:fraction]
+  end
+
+  # CSET-11, UI-54, CSET-12: the Compact button is on the page (in the Context
+  # section) and compacts the chat, then goes back to it.
+  test "Compact compacts the chat and goes back to it", %{conn: conn, id: id} do
+    :ok = Store.save(id, chat_with_cold_turns())
+    {:ok, view, _html} = settings(conn, id)
+
+    assert has_element?(view, "#settings-context #compact-button")
+
+    # CSET-12: the button compacts and returns to the chat.
+    assert {:error, {:live_redirect, %{to: to}}} =
+             view |> element("#compact-button") |> render_click()
+
+    assert to == "/c/#{id}"
+    # COMPACT-10: the cold turns were elided on the spot.
+    assert Agent.snapshot(id).compaction.covered > 0
+  end
+
+  # CSET-12, UI-54: a chat that is mid-turn stays on the page with the error,
+  # rather than going to a chat that can't be compacted yet.
+  test "Compact on a chat that is working stays on the page and says so", %{
+    conn: conn,
+    id: id
+  } do
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(fn _request, _on_event ->
+      Process.sleep(5_000)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("late")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    Agent.subscribe(id)
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:agent, ^id, {:status, :running}}, 2_000
+
+    {:ok, view, _html} = settings(conn, id)
+
+    html = view |> element("#compact-button") |> render_click()
+
+    # It stays on the page (no redirect) and flashes the error (UI-54).
+    assert is_binary(html)
+    assert html =~ "Elia is working"
+    assert has_element?(view, "#settings-context #compact-button")
+  end
+
+  # A chat of several turns, so the older ones are cold and can be elided
+  # (COMPACT-12).
+  defp chat_with_cold_turns do
+    Enum.flat_map(1..8, fn n ->
+      [
+        Message.user("turn #{n} asks something"),
+        %Message{
+          role: :assistant,
+          content: [Message.text("an answer for turn #{n} " <> String.duplicate("word ", 40))]
+        }
+      ]
+    end)
   end
 end

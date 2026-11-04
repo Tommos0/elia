@@ -48,8 +48,8 @@ sets nothing behaves exactly as it did before.
   later change in either chat never affects the other, and the parent's own
   limits are not inherited.
 - **LIMIT-6** The chat settings page's **Limits** section (CSET-5) shows the
-  three settings — the two numbers in a form with a Save button
-  (`#limit-steps`, `#limit-minutes`) and `pause_on_limit` as a switch
+  three settings — the two numbers in the page's single form
+  (`#limit-steps`, `#limit-minutes`, CSET-7) and `pause_on_limit` as a switch
   (`#limit-pause`, CSET-7) — marks a value that isn't the chat's own as the
   default it falls back to (LIMIT-1), says what reaching a limit does with
   `pause_on_limit` on and off (LIMIT-4, LOOP-3), and sets them (CSET-4).

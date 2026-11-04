@@ -237,7 +237,9 @@ defmodule EliaWeb.CompactionTest do
     refute has_element?(view, "#context-breakdown", "Provider adjustment")
   end
 
-  # COMPACT-10, COMPACT-25, UI-54
+  # COMPACT-10, COMPACT-25, UI-54, CSET-10, CSET-12: the Compact button lives on
+  # the chat settings page, and takes the user back to the chat, where the
+  # transcript says what was elided.
   test "compact now compacts the chat and the transcript says so", %{conn: conn} do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -257,10 +259,19 @@ defmodule EliaWeb.CompactionTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
     refute has_element?(view, "#status-m1-0", "Not sent")
-    assert has_element?(view, "#compact-button")
+    # CSET-10: the composer no longer holds the Compact button.
+    refute has_element?(view, "#compact-button")
 
-    view |> element("#compact-button") |> render_click()
-    _ = :sys.get_state(view.pid)
+    {:ok, settings, _html} = live(conn, ~p"/c/#{id}/settings")
+    assert has_element?(settings, "#settings-context #compact-button")
+
+    # CSET-12: it compacts the chat and goes back to it.
+    assert {:error, {:live_redirect, %{to: to}}} =
+             settings |> element("#compact-button") |> render_click()
+
+    assert to == "/c/#{id}"
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
     # The cold turns are dropped and the transcript says so (COMPACT-16, COMPACT-25).
     assert has_element?(view, "#status-m1-0", "Not sent to the model")

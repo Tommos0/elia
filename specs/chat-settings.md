@@ -11,7 +11,9 @@ each has a home on that chat's settings page, together with the settings the
 composer never showed at all (turn limits, [LIMIT](turn-limits.md), and the
 chat's compaction options, COMPACT-9). The chat page keeps one control that
 leads there, carrying the model's name, so what is answering is still visible
-while typing.
+while typing. The page is a detour from the conversation, so its single Save
+goes back to the chat when the chat accepts the values (CSET-11), where they
+show up; so does the Compact button (CSET-12).
 
 ## Requirements
 
@@ -39,16 +41,20 @@ while typing.
   it: **Model** (the picker of MODEL-9 to MODEL-13), **Auto-approve** (the
   button, popover and switches of UI-38 to UI-42), **Jail** (the switch of
   UI-67 and UI-68), **Limits** (LIMIT-6) and **Context** (the chat's compaction
-  options of COMPACT-9).
+  options of COMPACT-9 and the "Compact" button of UI-54, COMPACT-10).
 - **CSET-6** Every control that changes a chat's saved value does so through the
   session (SESS-14, SESS-16, SESS-30, LIMIT-2), so a chat with no messages yet
   is not written to disk by a change made here: the value lives in the running
   session and is saved with the chat's first message.
-- **CSET-7** Each numeric setting is set in a form with a Save button, so a
-  half-typed number is never a setting, and an invalid one is rejected with a
-  message (`#settings-error`) instead of changing the chat (LIMIT-7,
-  COMPACT-30). A setting that is on or off is a switch that applies the moment
-  it is clicked, like the jail switch and the auto-approve switches
+- **CSET-7** Every numeric setting on the page is set in **one** form
+  (`#settings-form`) with **one** Save button (`#save-settings`), which saves
+  them all: the turn limits (LIMIT-6) and the compaction options (COMPACT-30) of
+  the Limits and Context sections alike. A half-typed number is never a setting.
+  The save is all or nothing: a value that isn't one (LIMIT-7, COMPACT-30)
+  changes nothing — no limit and no option — and the page shows the message for
+  the first bad value (`#settings-error`), keeping what was typed so it can be
+  corrected. A setting that is on or off is a switch that applies the moment it
+  is clicked, like the jail switch and the auto-approve switches
   (UI-42, UI-67), and says its state in words.
 
 ### The chat page
@@ -63,9 +69,16 @@ while typing.
   chat page still says so next to that link (`#jail-warning`,
   `#jail-unavailable`), as ISOL-17 and UI-68 require: the warning belongs where
   commands run, not only on a settings page.
-- **CSET-10** The Focus view toggle (UI-60), the Compact button (UI-54) and the
-  deps-sync indicator (UI-70) stay in the composer: they act on the transcript
-  the user is reading, not on the chat's saved settings.
+- **CSET-10** The Focus view toggle (UI-60) and the deps-sync indicator (UI-70)
+  stay in the composer: they act on the transcript the user is reading, not on
+  the chat's saved settings.
+- **CSET-11** A Save (`#save-settings`) the chat accepts (CSET-7) returns to the
+  chat (`/c/<id>`): the settings show up there (CSET-4) and the settings page
+  was a detour. A save the chat rejects leaves the user on the page, with the
+  message (`#settings-error`) and the values as typed, to correct them.
+- **CSET-12** The "Compact" button (UI-54) compacts the chat and returns to it
+  (`/c/<id>`), so the user sees the result in the transcript. A chat that is
+  mid-turn keeps the user on the page with the error (UI-54).
 
 ## Out of scope
 
@@ -79,14 +92,15 @@ while typing.
 ## Implementation
 
 `EliaWeb.ChatSettingsLive` (the page, which the model picker, the auto-approve
-picker and the jail switch move to), `EliaWeb.ChatLive` (the settings link and
-the jail warning), `EliaWeb.Router`.
+picker, the jail switch and the "Compact" button move to),
+`EliaWeb.ChatLive` (the settings link and the jail warning), `EliaWeb.Router`.
 
 ## Tests
 
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
-CSET-7), `test/elia_web/live/model_picker_test.exs`,
+CSET-7 and CSET-11 to CSET-12), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
 `test/elia_web/live/jail_test.exs` (the moved controls),
 `test/elia_web/live/chat_live_test.exs` (the composer toolbar, CSET-8 to
-CSET-10).
+CSET-10), `test/elia_web/live/compaction_test.exs` (the moved Compact button,
+UI-54).

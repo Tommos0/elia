@@ -161,187 +161,206 @@ defmodule EliaWeb.ChatSettingsLive do
               </div>
             </section>
 
-            <%!-- CSET-5, LIMIT-6: the turn's limits --%>
-            <section
-              id="settings-limits"
-              class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
-            >
-              <h2 class="font-medium">Limits</h2>
-              <p class="mt-0.5 text-xs text-base-content/50">
-                How far one turn may go before Elia stops. Leave a field empty for the
-                default: limits apply from the next turn.
-              </p>
-
-              <.form for={%{}} id="limits-form" phx-submit="save_limits" class="mt-4 space-y-3">
-                <div class="flex flex-wrap gap-4">
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">Steps per turn</span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      id="limit-steps"
-                      name="limits[max_steps]"
-                      value={@limits_form["max_steps"]}
-                      placeholder="100"
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                    <span class="mt-1 block text-[11px] text-base-content/40">
-                      Empty: the loop's own default, 100 steps.
-                    </span>
-                  </label>
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">
-                      Time budget (minutes)
-                    </span>
-                    <input
-                      type="text"
-                      inputmode="decimal"
-                      id="limit-minutes"
-                      name="limits[max_minutes]"
-                      value={@limits_form["max_minutes"]}
-                      placeholder="none"
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                    <span class="mt-1 block text-[11px] text-base-content/40">
-                      Empty: no time budget. Time spent waiting for your approval doesn't count.
-                    </span>
-                  </label>
-                </div>
-
-                <div class="flex justify-end">
-                  <button
-                    type="submit"
-                    id="save-limits"
-                    class="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95"
-                  >
-                    Save
-                  </button>
-                </div>
-              </.form>
-
-              <%!-- CSET-7, LIMIT-6: an on/off setting is a switch (UI-42, UI-67): it
-              applies the moment it is clicked, and says its state in words. --%>
-              <div class="mt-3 rounded-xl bg-base-200/50 px-3 py-2">
-                <.switch
-                  id="limit-pause"
-                  on={@limits.pause_on_limit}
-                  click="toggle_limit_pause"
-                  label="Pause at a limit"
-                />
-                <p class="mt-1 text-[11px] text-base-content/50">
-                  Off: a turn that reaches a limit stops with an error. On: it pauses, and you
-                  can continue it with a fresh budget or fail it.
-                </p>
-                <p id="limits-state" class="mt-2 text-xs text-base-content/50">
-                  {limits_state(@limits)}
-                </p>
-              </div>
-            </section>
-
-            <%!-- CSET-5, COMPACT-30: this chat's compaction options --%>
-            <section
-              id="settings-context"
-              class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
-            >
-              <h2 class="font-medium">Context</h2>
-              <p class="mt-0.5 text-xs text-base-content/50">
-                What this chat sends the model once it grows long. The transcript always keeps
-                the whole conversation; only what the model is sent is reduced.
-              </p>
-
-              <.form
-                for={%{}}
-                id="compaction-form"
-                phx-submit="save_compaction"
-                class="mt-4 space-y-3"
+            <%!-- CSET-7: one form with one Save holds every numeric setting on the
+            page — the turn's limits below and the context options after them — so
+            the save is all or nothing, and an accepted one goes back to the chat
+            (CSET-11). --%>
+            <.form for={%{}} id="settings-form" phx-submit="save_settings" class="space-y-4">
+              <%!-- CSET-5, LIMIT-6: the turn's limits --%>
+              <section
+                id="settings-limits"
+                class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
               >
-                <div class="flex flex-wrap gap-4">
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">Budget (tokens)</span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      id="compaction-budget"
-                      name="compaction[budget]"
-                      value={@compaction_form["budget"]}
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                  </label>
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">
-                      Fraction of the window (%)
-                    </span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      id="compaction-fraction"
-                      name="compaction[fraction]"
-                      value={@compaction_form["fraction"]}
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                  </label>
-                </div>
-
-                <div class="flex flex-wrap gap-4">
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">
-                      Target (% of the trigger)
-                    </span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      id="compaction-target"
-                      name="compaction[target_fraction]"
-                      value={@compaction_form["target_fraction"]}
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                  </label>
-                  <label class="flex-1 basis-40">
-                    <span class="text-xs font-medium text-base-content/70">
-                      Working set (turns)
-                    </span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      id="compaction-working-set"
-                      name="compaction[working_set]"
-                      value={@compaction_form["working_set"]}
-                      class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
-                    />
-                    <span class="mt-1 block text-[11px] text-base-content/40">
-                      The most recent turns kept as they are.
-                    </span>
-                  </label>
-                </div>
-
-                <p id="compaction-trigger" class="text-xs text-base-content/50">
-                  {compaction_trigger_note(@compaction, @context_window)}
+                <h2 class="font-medium">Limits</h2>
+                <p class="mt-0.5 text-xs text-base-content/50">
+                  How far one turn may go before Elia stops. Leave a field empty for the
+                  default: limits apply from the next turn.
                 </p>
 
-                <div class="flex justify-end">
+                <div class="mt-4 space-y-3">
+                  <div class="flex flex-wrap gap-4">
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">Steps per turn</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="limit-steps"
+                        name="limits[max_steps]"
+                        value={@limits_form["max_steps"]}
+                        placeholder="100"
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                      <span class="mt-1 block text-[11px] text-base-content/40">
+                        Empty: the loop's own default, 100 steps.
+                      </span>
+                    </label>
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">
+                        Time budget (minutes)
+                      </span>
+                      <input
+                        type="text"
+                        inputmode="decimal"
+                        id="limit-minutes"
+                        name="limits[max_minutes]"
+                        value={@limits_form["max_minutes"]}
+                        placeholder="none"
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                      <span class="mt-1 block text-[11px] text-base-content/40">
+                        Empty: no time budget. Time spent waiting for your approval doesn't
+                        count.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <%!-- CSET-7, LIMIT-6: an on/off setting is a switch (UI-42, UI-67): it
+                applies the moment it is clicked, and says its state in words. --%>
+                <div class="mt-3 rounded-xl bg-base-200/50 px-3 py-2">
+                  <.switch
+                    id="limit-pause"
+                    on={@limits.pause_on_limit}
+                    click="toggle_limit_pause"
+                    label="Pause at a limit"
+                  />
+                  <p class="mt-1 text-[11px] text-base-content/50">
+                    Off: a turn that reaches a limit stops with an error. On: it pauses, and you
+                    can continue it with a fresh budget or fail it.
+                  </p>
+                  <p id="limits-state" class="mt-2 text-xs text-base-content/50">
+                    {limits_state(@limits)}
+                  </p>
+                </div>
+              </section>
+
+              <%!-- CSET-5, COMPACT-30: this chat's compaction options --%>
+              <section
+                id="settings-context"
+                class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+              >
+                <h2 class="font-medium">Context</h2>
+                <p class="mt-0.5 text-xs text-base-content/50">
+                  What this chat sends the model once it grows long. The transcript always keeps
+                  the whole conversation; only what the model is sent is reduced.
+                </p>
+
+                <div class="mt-4 space-y-3">
+                  <div class="flex flex-wrap gap-4">
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">Budget (tokens)</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="compaction-budget"
+                        name="compaction[budget]"
+                        value={@compaction_form["budget"]}
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                    </label>
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">
+                        Fraction of the window (%)
+                      </span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="compaction-fraction"
+                        name="compaction[fraction]"
+                        value={@compaction_form["fraction"]}
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                    </label>
+                  </div>
+
+                  <div class="flex flex-wrap gap-4">
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">
+                        Target (% of the trigger)
+                      </span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="compaction-target"
+                        name="compaction[target_fraction]"
+                        value={@compaction_form["target_fraction"]}
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                    </label>
+                    <label class="flex-1 basis-40">
+                      <span class="text-xs font-medium text-base-content/70">
+                        Working set (turns)
+                      </span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        id="compaction-working-set"
+                        name="compaction[working_set]"
+                        value={@compaction_form["working_set"]}
+                        class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
+                      />
+                      <span class="mt-1 block text-[11px] text-base-content/40">
+                        The most recent turns kept as they are.
+                      </span>
+                    </label>
+                  </div>
+
+                  <p id="compaction-trigger" class="text-xs text-base-content/50">
+                    {compaction_trigger_note(@compaction, @context_window)}
+                  </p>
+                </div>
+
+                <%!-- CSET-7, COMPACT-30: automatic compaction is a switch. --%>
+                <div class="mt-3 rounded-xl bg-base-200/50 px-3 py-2">
+                  <.switch
+                    id="compaction-auto"
+                    on={compaction_options(@compaction).auto}
+                    click="toggle_compaction_auto"
+                    label="Compact automatically"
+                  />
+                  <p class="mt-1 text-[11px] text-base-content/50">
+                    Off: nothing is reduced until you press Compact below.
+                  </p>
+                </div>
+
+                <%!-- UI-54, COMPACT-10, CSET-12: compact this chat now, on demand. The
+                transcript is where the result shows, so the button goes back to the
+                chat. --%>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
                   <button
-                    type="submit"
-                    id="save-compaction"
-                    class="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                    type="button"
+                    id="compact-button"
+                    phx-click="compact"
+                    title="Elide the older turns of this chat's context now"
+                    class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content active:scale-[0.98]"
                   >
-                    Save
+                    <.icon
+                      name="hero-archive-box-arrow-down"
+                      class="size-3.5 shrink-0 opacity-70"
+                    />
+                    <span class="font-medium">Compact</span>
                   </button>
+                  <span class="text-[11px] text-base-content/50">
+                    Elides this chat's older turns now, whatever the trigger.
+                  </span>
                 </div>
-              </.form>
+              </section>
 
-              <%!-- CSET-7, COMPACT-30: automatic compaction is a switch. --%>
-              <div class="mt-3 rounded-xl bg-base-200/50 px-3 py-2">
-                <.switch
-                  id="compaction-auto"
-                  on={compaction_options(@compaction).auto}
-                  click="toggle_compaction_auto"
-                  label="Compact automatically"
-                />
-                <p class="mt-1 text-[11px] text-base-content/50">
-                  Off: nothing is reduced until you press Compact in the chat.
-                </p>
+              <%!-- CSET-7, CSET-11: the page's one Save, for every numeric setting
+              above. --%>
+              <div class="flex flex-wrap items-center justify-end gap-3">
+                <span class="text-xs text-base-content/50">
+                  Saves this chat's limits and context options.
+                </span>
+                <button
+                  type="submit"
+                  id="save-settings"
+                  class="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                >
+                  Save
+                </button>
               </div>
-            </section>
+            </.form>
           </div>
         </div>
       </div>
@@ -877,29 +896,42 @@ defmodule EliaWeb.ChatSettingsLive do
     {:noreply, assign(socket, auto_approve_open: false)}
   end
 
-  # LIMIT-6, LIMIT-7: set the chat's turn limits, or reject a value that isn't
-  # one and leave them as they were. `pause_on_limit` is the switch above
-  # (CSET-7), so it isn't part of the form.
-  def handle_event("save_limits", %{"limits" => params}, socket) do
-    changes = %{
-      max_steps: parse_number(params["max_steps"]),
-      max_minutes: parse_number(params["max_minutes"])
+  # CSET-7, CSET-11: the page's one Save sets every numeric setting at once — the
+  # turn limits (LIMIT-6, LIMIT-7) and the compaction options (COMPACT-30) — or
+  # changes nothing and names the first value that isn't one. `pause_on_limit`
+  # and automatic compaction are the switches above (CSET-7), so they aren't part
+  # of the form. A save the chat accepts goes back to the chat, where the
+  # settings show up (CSET-4).
+  def handle_event("save_settings", params, socket) do
+    limit_params = params["limits"] || %{}
+    compaction_params = params["compaction"] || %{}
+
+    limits = %{
+      max_steps: parse_number(limit_params["max_steps"]),
+      max_minutes: parse_number(limit_params["max_minutes"])
     }
 
-    case Agent.set_limits(socket.assigns.session_id, changes) do
-      :ok ->
-        {:noreply,
-         assign(socket,
-           limits_form: limits_form(changes),
-           settings_error: nil
-         )}
-
+    with {:ok, limits} <- Elia.Limits.validate(limits),
+         {:ok, options} <- compaction_changes(compaction_params) do
+      :ok = Agent.set_limits(socket.assigns.session_id, limits)
+      :ok = Agent.set_compaction(socket.assigns.session_id, options)
+      {:noreply, push_navigate(socket, to: ~p"/c/#{socket.assigns.session_id}")}
+    else
       {:error, message} ->
-        {:noreply,
-         assign(socket,
-           limits_form: Map.merge(socket.assigns.limits_form, submitted_limits_form(params)),
-           settings_error: message
-         )}
+        {:noreply, reject_settings(socket, limit_params, compaction_params, message)}
+    end
+  end
+
+  # CSET-12, COMPACT-10, UI-54: compact this chat now, whatever the trigger, and
+  # go back to the chat, where the transcript shows what was elided. A chat that
+  # is mid-turn stays here with the error.
+  def handle_event("compact", _params, socket) do
+    case Agent.compact(socket.assigns.session_id) do
+      :ok ->
+        {:noreply, push_navigate(socket, to: ~p"/c/#{socket.assigns.session_id}")}
+
+      {:error, :busy} ->
+        {:noreply, put_flash(socket, :error, "Elia is working; try again in a moment.")}
     end
   end
 
@@ -917,22 +949,6 @@ defmodule EliaWeb.ChatSettingsLive do
     auto = not compaction_options(socket.assigns.compaction).auto
     :ok = Agent.set_compaction(socket.assigns.session_id, %{auto: auto})
     {:noreply, socket}
-  end
-
-  # COMPACT-30: set this chat's compaction options, or reject the values.
-  def handle_event("save_compaction", %{"compaction" => params}, socket) do
-    case compaction_changes(params) do
-      {:ok, changes} ->
-        :ok = Agent.set_compaction(socket.assigns.session_id, changes)
-        {:noreply, assign(socket, settings_error: nil)}
-
-      {:error, message} ->
-        {:noreply,
-         assign(socket,
-           settings_error: message,
-           compaction_form: Map.merge(socket.assigns.compaction_form, params)
-         )}
-    end
   end
 
   def handle_event("open_picker", _params, socket) do
@@ -1035,6 +1051,17 @@ defmodule EliaWeb.ChatSettingsLive do
   # The chat's other events (deltas, tool status, tasks) have nothing to say on
   # this page.
   defp apply_event(_event, socket), do: socket
+
+  # CSET-11: a rejected save changes nothing and leaves the user on the page,
+  # with the message and the values as they were typed, so they can be corrected
+  # (CSET-7).
+  defp reject_settings(socket, limit_params, compaction_params, message) do
+    assign(socket,
+      settings_error: message,
+      limits_form: Map.merge(socket.assigns.limits_form, submitted_limits_form(limit_params)),
+      compaction_form: Map.merge(socket.assigns.compaction_form, compaction_params)
+    )
+  end
 
   defp noreply(socket), do: {:noreply, socket}
 

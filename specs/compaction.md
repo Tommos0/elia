@@ -80,7 +80,8 @@ are not.
   set — in turns and in tokens (COMPACT-12, COMPACT-28) — and whether automatic
   compaction is on are configurable per chat, from the chat settings page
   (CSET-5, COMPACT-30).
-- **COMPACT-10** A manual "compact now" action compacts an idle chat on demand,
+- **COMPACT-10** A manual "compact now" action — the Compact button on the
+  chat's settings page (UI-54, CSET-5) — compacts an idle chat on demand,
   ignoring the threshold and the target.
 
 ### What is always kept
@@ -198,12 +199,13 @@ order, stopping as soon as the estimate is at or below the target:
   (COMPACT-9): whether automatic compaction is on, as a switch
   (`#compaction-auto`, CSET-7), and the token budget, the fraction of the
   model's window — shown and entered as a percentage — the target as a
-  percentage of the trigger and the working set in turns, in a form with a Save
-  button. A value that isn't a positive number, a percentage outside 0 to 100,
-  or a working set below one turn is rejected and leaves the chat's options as
-  they were (CSET-7). The section also shows the trigger those values give for
-  the chat's model window (COMPACT-6), or says that no window is known
-  (COMPACT-7).
+  percentage of the trigger and the working set in turns, in the page's single
+  form (`#compaction-budget`, `#compaction-fraction`, `#compaction-target`,
+  `#compaction-working-set`, CSET-7). A value that isn't a positive number, a
+  percentage outside 0 to 100, or a working set below one turn is rejected, so
+  the whole save changes nothing (CSET-7). The section also shows the trigger
+  those values give for the chat's model window (COMPACT-6), or says that no
+  window is known (COMPACT-7).
 
 ## Out of scope
 
