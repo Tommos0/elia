@@ -80,15 +80,21 @@ where the running server is brought up to date with the trunk `master`.
   in `#deploy-status`, what the live tree's deploy state is: how many commits on
   the trunk are not deployed yet, that `live` is already at the trunk when
   there is nothing to deploy, or why the live tree isn't set up for deployment
-  (DEPLOY-14). When it is set up for deployment the section has two buttons,
-  "Hot reload" (`#deploy-reload`) and "Restart" (`#deploy-restart`), each that
-  deploy mode (DEPLOY-6, DEPLOY-7).
-- **CONF-20** A deploy runs in the background, so the page stays responsive: the
-  button that started it shows a spinner and both are disabled until it is done,
-  and a click while one runs is ignored. The result arrives as a flash — what
-  was merged and what loaded on success, and the error (test output truncated)
-  on a test failure or a refusal — and the deploy status is refreshed
-  afterwards.
+  (DEPLOY-14). When the running app is behind `live` — a deploy that merged and
+  never loaded (DEPLOY-17) — the section says so, with the revision the app is
+  running and that Hot reload will bring it up to date, rather than reporting
+  that there is nothing to deploy. When it is set up for deployment the section
+  has two buttons, "Hot reload" (`#deploy-reload`) and "Restart"
+  (`#deploy-restart`), each that deploy mode (DEPLOY-6, DEPLOY-7).
+- **CONF-20** A deploy runs in the background (DEPLOY-15), so the page stays
+  responsive and the deploy outlives it: while one runs, the button for that
+  mode shows a spinner and both are disabled, and a click while one runs is
+  ignored — state that comes from the runner (DEPLOY-16), so a page that mounts
+  mid-deploy shows it too. The result of the last deploy — what was merged and
+  what loaded on success, the error (test output truncated) on a test failure
+  or a refusal — is shown in the section as `#deploy-result`, and is still
+  there for a page that mounts after the deploy ended; the deploy status
+  (CONF-19) is refreshed when it changes.
 
 ## Configuration
 

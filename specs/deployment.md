@@ -95,6 +95,25 @@ gate.
   reloading on those would reload the browser in the middle of the navigation
   to the new chat and land it back on the old one.
 
+- **DEPLOY-15** A deploy runs in a process Elia's application owns, not in the
+  Settings LiveView: the page that started it may navigate away, be closed or
+  reload itself (DEPLOY-12) without aborting it, and it runs to the end — the
+  tests, the merge, and then the load (DEPLOY-6) or the restart (DEPLOY-7). A
+  deploy that the runtime system dies under (RESTART-1) loses whatever it had
+  not done yet; DEPLOY-17 makes that visible rather than silent.
+- **DEPLOY-16** One deploy runs at a time, and its state belongs to the runner
+  rather than to a page: `Elia.Deploy.Runner` holds the deploy in flight — its
+  mode and when it started — and the result of the last one, refuses to start
+  a second while one is running, and hands both to a Settings page that mounts
+  while a deploy runs or after one finished (CONF-20).
+- **DEPLOY-17** What the running app has actually loaded is recorded: when a
+  hot reload (DEPLOY-6) has loaded the live tree, or a restart (DEPLOY-7) has
+  brought the server up on it, the `live` revision that was loaded is written
+  to the live tree's data dir (`.elia`, DEPLOY-2) — in the restart case before
+  the server stops. `Elia.Deploy.status/1` compares `live` with it, so the
+  state a deploy leaves when it merges (DEPLOY-5) and never reaches the load is
+  reported rather than looking up to date (CONF-19).
+
 ### Sub-tasks and lifecycle
 
 - **DEPLOY-9** A sub-task in Elia's own project works in its own worktree,
@@ -126,6 +145,8 @@ for Elia's own project; the live tree), SKILL and APPR (the
 
 `Elia.Deploy` (worktrees, the trunk and `live`, the deploy, hot reload and
 restart, `deployable/1`, `status/1`, the inert request reloader),
+`Elia.Deploy.Runner` (the deploy's own process and its result, DEPLOY-15 to
+DEPLOY-17), `Elia.Application` (starts it),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop`, `Elia.Harness` (running the tests in that
@@ -137,5 +158,7 @@ deployment section), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
 ## Tests
 
 `test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, hot reload,
-restart, DEPLOY-1 to DEPLOY-14), `test/elia_web/live/settings_live_test.exs`
-(the deployment section), `test/support/live_tree.ex` (a throwaway live tree).
+restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-17),
+`test/elia_web/live/settings_live_test.exs` (the deployment section, including
+a page that mounts mid-deploy and after one), `test/support/live_tree.ex` (a
+throwaway live tree).

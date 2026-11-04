@@ -52,10 +52,16 @@ user's.
   markup (IMG-7 in `specs/image-viewer.md`). A `priv/static` change is also
   what makes the browser's own live reload fire (DEPLOY-12), so a page whose
   assets did not change is not reloaded at all.
+- **HOT-9** The live reload a deploy's own asset change triggers (HOT-8,
+  DEPLOY-12) does not abort it: the browser page may reload and re-mount while
+  the tests, the merge or the load run (DEPLOY-15), and the page that comes back
+  reads the deploy's state from the runner rather than from its own assigns
+  (DEPLOY-16, CONF-20).
 
 ## Implementation
 
 `Elia.Deploy.hot_reload/1` (the tests → merge → reload deploy, DEPLOY-6),
+`Elia.Deploy.Runner` (the deploy's own process, DEPLOY-15, DEPLOY-16),
 `Elia.Deploy.hot_reload_available?/0`, `Elia.Deploy`, `config/config.exs` and
 `config/runtime.exs` (HOT-7), `mix.exs` (the dependency). HOT-8 is a rule for
 each UI change rather than for a module: its first instance is the image
@@ -65,4 +71,6 @@ viewer's markup (`specs/image-viewer.md`, IMG-7).
 
 `test/elia/deployment_test.exs`, `test/elia_web/live/settings_live_test.exs`;
 HOT-8 is what the image viewer's browser test holds to
-(`test/elia_web/browser/chat_browser_test.exs`, IMG-7).
+(`test/elia_web/browser/chat_browser_test.exs`, IMG-7). HOT-9 is the deploy
+runner's own test: the page may go away, the deploy goes on
+(`test/elia/deployment_test.exs`, DEPLOY-15).
