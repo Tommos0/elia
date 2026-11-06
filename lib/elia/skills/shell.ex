@@ -39,6 +39,13 @@ defmodule Elia.Skills.Shell do
     same policy, not a reason to look for another way in. In a chat whose jail \
     the user turned off, commands run unjailed, on the whole machine, and \
     reading outside the workspace with the file tools needs their approval.
+
+    A command also runs at a lower scheduling priority than the server, on the \
+    CPU (`nice`) and on the disk (`ionice`), so a compile or a test suite \
+    doesn't take the machine from the UI and the agent loops that drive them. \
+    On a busy machine such a command therefore takes longer than it would on an \
+    idle one, which is expected, not a failure; timings from one are not a \
+    measure of speed.
     """
   end
 
@@ -59,7 +66,9 @@ defmodule Elia.Skills.Shell do
             "the toolchain and nothing else: the settings database, the saved " <>
             "conversations and the user's credentials are not in it, so a command " <>
             "that can't find them is expected, not broken. In a chat whose jail " <>
-            "the user turned off, commands run unjailed.",
+            "the user turned off, commands run unjailed. " <>
+            "The command runs at a lower CPU and I/O priority than the server, " <>
+            "so a heavy one takes longer on a busy machine than on an idle one.",
         input_schema: %{
           "type" => "object",
           "properties" => %{

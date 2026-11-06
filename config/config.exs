@@ -104,6 +104,14 @@ config :elia, Elia.Skills,
 # (ISOL-20).
 config :elia, Elia.Shell, jail: true
 
+# Process priority (PRIO): every process Elia spawns for a tool call or a
+# harness step — the shell tool, a test suite, a compile — runs below the
+# server's own CPU priority (`nice`) and I/O class (`ionice`), so it takes the
+# machine from the UI and the agent loops only as far as it must (PRIO-1,
+# PRIO-4). Only the children are lowered, so no privileges are needed; `nice: 0`
+# or `nil` and `ionice: nil` turn either half off (PRIO-6).
+config :elia, Elia.Priority, nice: 10, ionice: 6
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

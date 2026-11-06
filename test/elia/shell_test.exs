@@ -1,7 +1,7 @@
 defmodule Elia.ShellTest do
   use ExUnit.Case, async: true
 
-  alias Elia.Shell
+  alias Elia.{Priority, Shell}
 
   # SHELL-2
   test "runs with bash when it is installed, and POSIX sh when it is not" do
@@ -46,6 +46,72 @@ defmodule Elia.ShellTest do
     assert {:ok, output, status} = Shell.run("echo ${PIPESTATUS[0]}", shell: "sh")
     assert output =~ "Bad substitution"
     assert status != 0
+  end
+
+  # PRIO-1, PRIO-3, PRIO-5: a command starts below the priority of whoever
+  # asked for it — `nice` adds its adjustment to the niceness the process would
+  # inherit — and everything the command starts inherits it. `priority:
+  # [nice: 0]` is a call asking for its own priority instead, which is what a
+  # step that needs the whole machine does.
+  test "a command runs below its caller's priority, and the whole tree it starts has it" do
+    if File.exists?("/proc/self/stat") do
+      parent = own_niceness()
+      below = min(parent + (Priority.settings()[:nice] || 0), 19)
+
+      assert {:ok, output, 0} =
+               Shell.run("ps -o ni= -p $$; sh -c 'ps -o ni= -p $$'", shell: "sh")
+
+      assert output |> String.split("\n", trim: true) |> Enum.map(&String.trim/1) ==
+               [to_string(below), to_string(below)]
+
+      assert {:ok, output, 0} =
+               Shell.run("ps -o ni= -p $$", shell: "sh", priority: [nice: 0])
+
+      assert String.trim(output) == to_string(parent)
+    end
+  end
+
+  # PRIO-4, PRIO-6: the command's I/O is in the configured class too — a
+  # best-effort level, or the idle class — and never the realtime one, which
+  # would need privileges.
+  test "a command's own I/O class is the configured one" do
+    if System.find_executable("ionice") do
+      assert {:ok, output, 0} = Shell.run("ionice -p $$", shell: "sh")
+      refute output =~ "realtime"
+
+      expected =
+        case Priority.settings()[:ionice] do
+          :idle -> "idle"
+          level when is_integer(level) -> "prio #{level}"
+          nil -> "none"
+        end
+
+      assert output =~ expected
+    end
+  end
+
+  # PRIO-3, PRIO-7: the priority is a prefix on the executable, and the programs
+  # it names `exec`, so the process Elia started is still the session and
+  # process group leader whose group the timeout kills (SHELL-3, ISOL-10) — and
+  # a niced command is killed with everything it started, like any other.
+  test "a niced command is still its own group leader, and a timeout still cleans up" do
+    assert {:ok, output, 0} = Shell.run("ps -o pid=,pgid= -p $$", shell: "sh", jail: false)
+    assert [pid, pgid] = String.split(String.trim(output))
+    assert pid == pgid
+
+    assert {:timeout, _output} = Shell.run("sleep 61 | cat", timeout: 500, jail: false)
+
+    assert {:ok, "0\n", _status} =
+             Shell.run("ps -eo args | grep -c '^sleep 61$'", shell: "sh", jail: false)
+  end
+
+  # The niceness of this process, which is the one a command it spawns inherits
+  # and `nice` adds its adjustment to (PRIO-1). In `/proc/self/stat` the value
+  # is field 17, counting from `state`, so index 16 after the `(comm)` field
+  # (which may itself hold spaces and parentheses).
+  defp own_niceness do
+    [_, fields] = String.split(File.read!("/proc/self/stat"), ") ", parts: 2)
+    fields |> String.split(" ") |> Enum.at(16) |> String.to_integer()
   end
 end
 

@@ -13,8 +13,12 @@ defmodule Elia.Shell do
   (ISOL-5), and can't read the server's memory (ISOL-9). `jail: false` — the
   chat's own setting (ISOL-16) — or a host without bubblewrap (ISOL-12,
   ISOL-20) runs the command directly, as it did before.
+
+  Every command starts below the server's own CPU and I/O priority (PRIO-1), so
+  a compile or a test suite doesn't take the machine from the UI and the agent
+  loops: see `Elia.Priority` and `run/2`'s `:priority`.
   """
-  alias Elia.Workspace
+  alias Elia.{Priority, Workspace}
 
   @type result :: {:ok, binary(), non_neg_integer()} | {:timeout, binary()}
   @type profile :: :worktree | :deps_sync | :live_tree
@@ -123,8 +127,10 @@ defmodule Elia.Shell do
   Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
   pairs), `:shell` (path or name, to override the shell), `:timeout` in
   milliseconds (default 60s), `:jail` (`false` runs the command unjailed,
-  ISOL-16) and `:profile` (`:deps_sync` for the harness's own dependency
-  compile, ISOL-7; otherwise it follows `:cd`, ISOL-13).
+  ISOL-16), `:profile` (`:deps_sync` for the harness's own dependency
+  compile, ISOL-7; otherwise it follows `:cd`, ISOL-13) and `:priority`
+  (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to run it at the
+  server's own priority, PRIO-5).
   """
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
@@ -174,6 +180,16 @@ defmodule Elia.Shell do
       else
         {shell(opts), ["-c", script]}
       end
+
+    # PRIO-1, PRIO-3: the command starts below the server's own CPU and I/O
+    # priority, so a compile or a suite doesn't take the machine from the UI and
+    # the agent loops. It is a prefix on the executable rather than a wrapper
+    # around the command: `nice` and `ionice` `exec`, so the process started
+    # here is still the session and process group leader whose group the
+    # timeout kills (SHELL-3), and everything the command starts inherits the
+    # priority. The jail is around the command either way: the prefix is set on
+    # the `bwrap` process and inherited by what it starts (ISOL-10).
+    {exe, args} = Priority.spawn_argv(exe, args, Keyword.get(opts, :priority, []))
 
     env = for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}
 
