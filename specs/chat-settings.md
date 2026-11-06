@@ -69,9 +69,8 @@ show up; so does the Compact button (CSET-12).
   chat page still says so next to that link (`#jail-warning`,
   `#jail-unavailable`), as ISOL-17 and UI-68 require: the warning belongs where
   commands run, not only on a settings page.
-- **CSET-10** The Focus view toggle (UI-60) and the deps-sync indicator (UI-70)
-  stay in the composer: they act on the transcript the user is reading, not on
-  the chat's saved settings.
+- **CSET-10** The Focus view toggle (UI-60) stays in the composer: it acts on
+  the transcript the user is reading, not on the chat's saved settings.
 - **CSET-11** A Save (`#save-settings`) the chat accepts (CSET-7) returns to the
   chat (`/c/<id>`): the settings show up there (CSET-4) and the settings page
   was a detour. A save the chat rejects leaves the user on the page, with the

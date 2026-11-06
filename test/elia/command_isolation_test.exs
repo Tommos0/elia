@@ -87,6 +87,57 @@ defmodule Elia.CommandIsolationTest do
     assert {:ok, "true\n", 0} = jailed("git rev-parse --is-inside-work-tree")
   end
 
+  # ISOL-7: a chat's commands see the shared dependency tree as an overlay — the
+  # live tree's `deps` read-only as the lower layer, the worktree's own writable
+  # layer on top — so a compile that writes inside a dependency succeeds, and
+  # what the live tree and the other chats compile against is unchanged.
+  test "a command writes inside the shared deps without changing it (ISOL-7)" do
+    live = Elia.Workspace.runtime_root()
+    id = "overlay-#{System.unique_integer([:positive])}"
+    worktree = Path.join([live, ".elia", "worktrees", id])
+    deps = Path.join(live, "deps")
+    templates = Path.join(deps, "phoenix/priv/templates")
+
+    File.mkdir_p!(templates)
+    File.write!(Path.join(templates, "kept.eex"), "shared\n")
+    File.mkdir_p!(worktree)
+    File.ln_s(deps, Path.join(worktree, "deps"))
+
+    on_exit(fn ->
+      File.rm_rf!(worktree)
+      File.rm_rf!(deps)
+      Elia.Deps.remove(worktree, live)
+    end)
+
+    # The worktree's `deps` is the live tree's (DEPLOY-1), and a write through it
+    # lands in the worktree's own layer.
+    assert {:ok, output, 0} =
+             jailed(
+               "cat deps/phoenix/priv/templates/kept.eex && " <>
+                 "echo written > deps/phoenix/priv/templates/new.eex && " <>
+                 "ls deps/phoenix/priv/templates",
+               cd: worktree
+             )
+
+    assert output =~ "shared"
+    assert output =~ "new.eex"
+
+    # The shared tree is unchanged: the write is in the layer, which the command
+    # can't reach either (ISOL-6).
+    refute File.exists?(Path.join(templates, "new.eex"))
+
+    layer = Elia.Deps.layer(worktree, live)
+
+    assert File.read!(Path.join([layer, "upper", "phoenix/priv/templates/new.eex"])) ==
+             "written\n"
+
+    assert {:ok, output, status} =
+             jailed("ls #{Path.join(live, ".elia/deps_layer")} 2>&1", cd: worktree)
+
+    assert status != 0
+    assert output =~ "No such file"
+  end
+
   test "a timed-out jail leaves nothing running (ISOL-10)" do
     assert {:timeout, _output} = jailed("sleep 61", timeout: 500)
 

@@ -127,8 +127,8 @@ defmodule Elia.Shell do
   Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
   pairs), `:shell` (path or name, to override the shell), `:timeout` in
   milliseconds (default 60s), `:jail` (`false` runs the command unjailed,
-  ISOL-16), `:profile` (`:deps_sync` for the harness's own dependency
-  compile, ISOL-7; otherwise it follows `:cd`, ISOL-13) and `:priority`
+  ISOL-16), `:profile` (`:deps_sync` for the harness's own steps in the live
+  tree, ISOL-22; otherwise it follows `:cd`, ISOL-13) and `:priority`
   (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to run it at the
   server's own priority, PRIO-5).
   """
@@ -138,13 +138,7 @@ defmodule Elia.Shell do
     script = "exec </dev/null\n" <> drop_mix_env(command, opts)
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
 
-    # ISOL-7: a worktree's compile is a harness step, and the command that needs
-    # one waits for it — including one already running, since `Elia.DepsSync`
-    # lets a single sync of a shared `deps` run at a time.
-    case sync_deps(cd, opts) do
-      :ok -> execute(script, cd, opts)
-      {:error, reason} -> with_notice(execute(script, cd, opts), unsynced(reason))
-    end
+    execute(script, cd, opts)
   end
 
   # ISOL-24: the server has its own `MIX_ENV` (`bin/serve`'s, RESTART-8), and a
@@ -212,27 +206,6 @@ defmodule Elia.Shell do
   end
 
   ## The jail
-
-  # ISOL-7: before a command runs in a worktree whose `mix.lock` changed since it
-  # was last synced, the harness compiles the shared tree itself, under the
-  # `:deps_sync` profile. Only the `:worktree` profile: that run must never
-  # re-enter this, and the live tree's own profile has nothing to sync.
-  defp sync_deps(cd, opts) do
-    if profile(cd, opts) == :worktree, do: Elia.DepsSync.sync_worktree(cd), else: :ok
-  end
-
-  # ISOL-23: a failed sync says so in the result of the command that asked for
-  # it, and the command still runs. Refusing it would leave the chat unusable
-  # over a dependency it may not need — `git commit` is not a compile — while a
-  # command that does need the dependencies fails with its own error, which says
-  # more than a refusal. Nothing was remembered, so the next command tries the
-  # sync again (ISOL-7).
-  defp with_notice({:ok, output, status}, notice), do: {:ok, notice <> output, status}
-  defp with_notice({:timeout, output}, notice), do: {:timeout, notice <> output}
-
-  defp unsynced(reason) do
-    "The shared dependencies could not be synced:\n" <> reason <> "\n"
-  end
 
   defp jail_args(script, cd, opts) do
     [
@@ -317,7 +290,7 @@ defmodule Elia.Shell do
         # A chat worktree: its own tree, the repository's git directory (the
         # worktree's `.git` is a pointer file into `<live>/.git/worktrees/<id>`,
         # whose common dir commits need), and the shared dependencies.
-        ["--bind", cd, cd] ++ git_args(live) ++ deps_args(live, profile)
+        ["--bind", cd, cd] ++ git_args(live) ++ deps_args(live, profile, cd)
     end
   end
 
@@ -337,11 +310,26 @@ defmodule Elia.Shell do
     ["--bind-try", git, git]
   end
 
-  # The shared dependency tree is read-only for a tool call (ISOL-7): a compile
-  # can want to write there, so the harness compiles it itself under
-  # `:deps_sync`.
-  defp deps_args(live, :deps_sync), do: bind_try(Path.join(live, "deps"), "--bind-try")
-  defp deps_args(live, _profile), do: bind_try(Path.join(live, "deps"), "--ro-bind-try")
+  # ISOL-7: a chat's commands see the shared dependency tree as an overlay — the
+  # live tree's `deps` read-only as the lower layer, and that worktree's own
+  # writable layer on top — so a compile that writes inside a dependency, or a
+  # fetch for one the chat added, succeeds without changing what the live tree
+  # and the other chats compile against. A tree that isn't there, or a layer that
+  # can't be made, falls back to the read-only bind: the command then fails on
+  # its own write and says what it could not write.
+  defp deps_args(live, :worktree, cd) do
+    deps = Path.join(live, "deps")
+
+    with true <- File.dir?(deps),
+         {:ok, {upper, work}} <- Elia.Deps.open(cd, live) do
+      ["--overlay-src", deps, "--overlay", upper, work, deps]
+    else
+      _ -> bind_try(deps, "--ro-bind-try")
+    end
+  end
+
+  defp deps_args(live, :deps_sync, _cd), do: bind_try(Path.join(live, "deps"), "--bind-try")
+  defp deps_args(live, _profile, _cd), do: bind_try(Path.join(live, "deps"), "--ro-bind-try")
 
   defp bind_try(path, flag), do: [flag, path, path]
 

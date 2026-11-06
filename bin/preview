@@ -34,9 +34,9 @@ fi
 
 # A preview must not show a stale bundle: build the assets the browser loads
 # (PREVIEW-1, PREVIEW-6). Both steps are no-ops once they have been run. They
-# run in the test env — the preview's own env, and the one the harness keeps a
-# chat worktree's dependencies compiled for (ISOL-7), so this works inside the
-# jail a command runs in.
+# run in the test env — the preview's own env — and a chat worktree's
+# dependencies are compiled there on first use, in the worktree's own layer
+# (ISOL-7), so this works inside the jail a command runs in.
 MIX_ENV=test mix assets.setup || exit 1
 MIX_ENV=test mix assets.build || exit 1
 

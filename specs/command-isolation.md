@@ -57,27 +57,34 @@ genuinely needs the rest of the machine (ISOL-16).
   the jail. When the workspace is the live tree itself (DEPLOY-14) the tree is
   bound read-write and `.elia` is masked with an empty tmpfs *after* that bind:
   bubblewrap applies its mounts in argument order, so the later mask wins.
-- **ISOL-7** The shared dependency tree stays read-only where a command could
-  reach it: a chat worktree's `deps` is the live tree's (DEPLOY-5) and is bound
-  read-only (ISOL-13). A compile can need to write there — `deps/phoenix`
-  copies `installer/templates/*.eex` into its own `priv/templates` — so the
-  harness keeps it compiled itself: before the first jailed command in a
-  worktree — one it just created, or one that predates this feature — and again
-  whenever that worktree's `mix.lock` changes, it runs `mix deps.get` and
-  `MIX_ENV=test mix deps.compile` in the worktree under the `:deps_sync`
-  profile. `deps.get` finds the lock's dependencies already present in the
-  shared tree and needs no network; only a changed `mix.lock` fetches. What it
-  remembers is one value per worktree, the `mix.lock` it last synced with. This
-  is a harness step, not a tool call: it needs no approval and the model doesn't
-  choose it.
+- **ISOL-7** The dependency tree a chat's commands compile against stays the
+  live tree's: a chat worktree holds no dependency of its own — its `deps` is a
+  symlink to the live tree's (DEPLOY-1) — so every worktree and the
+  live tree compile the same sources. A compile can need to write inside that
+  tree: `deps/phoenix` copies its installer templates into its own
+  `priv/templates`, and `mix deps.get` unpacks a dependency the chat added. So
+  for a chat's own commands the tree is mounted as an **overlay** (ISOL-13): the
+  live tree's `deps` is the read-only lower layer and the worktree gets a
+  writable upper layer of its own, under the live tree's data dir (DEPLOY-2). A
+  command's write therefore succeeds and lands in that worktree's layer: what
+  the live tree and every other chat compile against is unchanged by any
+  command, and two worktrees never write the same file. The layer sits under
+  the masked `.elia` (ISOL-6), so nothing inside the jail can reach it, and it
+  goes when the worktree goes (DEPLOY-10).
 
-  It doesn't hold up the start of a chat: it runs in the background, and the
-  first jailed command in a worktree that isn't synced yet waits for it, so no
-  command ever compiles against a half-synced tree. Two syncs of the same `deps`
-  never run at once: they would write the same files in the shared tree — a
-  compile writes into a dependency's own tree, a fetch into the hex cache — and a
-  file torn that way breaks every worktree that compiles against it. A failure
-  isn't remembered (nothing is written), so the next command tries again.
+  Nothing runs ahead of a command: there is no pre-compile and no `mix.lock`
+  bookkeeping, nothing starts when a chat opens, and a chat that runs no command
+  in its worktree compiles nothing at all. The first command that compiles the
+  dependencies pays for it, as part of that command: it is a tool call the chat
+  already shows as running (FEED), it needs no approval of its own, and it
+  answers to the command's own timeout (SHELL-3) — ten minutes for `run_tests`
+  (VERIFY-1), and whatever the model asks for with the `shell` tool.
+
+  A dependency the chat adds is fetched into its own layer, so it stays that
+  chat's until the change is deployed: the live tree gets it when the deploy
+  fetches it there (DEPLOY-18). With the jail off (ISOL-16) there is no mount
+  namespace to overlay in and commands in the worktree write the shared tree
+  directly, as before.
 - **ISOL-8** The environment is cleared and rebuilt from an allowlist: `PATH`,
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
   them. Nothing is inherited, so a key in the server's own environment (CONF-5)
@@ -92,7 +99,7 @@ genuinely needs the rest of the machine (ISOL-16).
   even where the command's own project asks for another environment
   (`preferred_envs`, which Mix only honours when `MIX_ENV` is unset — so
   `mix precommit` would compile and test in `dev`). The harness's own steps that
-  need `MIX_ENV=test` set it themselves (VERIFY-1, ISOL-7) and are unaffected.
+  need `MIX_ENV=test` set it themselves (VERIFY-1) and are unaffected.
 - **ISOL-9** The pid namespace and its fresh `/proc` mean the server process
   isn't visible and neither is its memory. (This host runs with
   `ptrace_scope=0`, so unjailed any command could read it.)
@@ -134,13 +141,14 @@ genuinely needs the rest of the machine (ISOL-16).
 
   | Profile | For | Workspace | Shared `deps` | Repo git dir | `.elia` |
   | --- | --- | --- | --- | --- | --- |
-  | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | ro | rw | not bound |
-  | `:deps_sync` | the harness's own steps: `mix deps.get` / `deps.compile` (ISOL-7) and the `git worktree` commands that create, remove or prune a worktree (ISOL-22) | rw | rw | rw | not bound |
-  | `:live_tree` | a chat that works in the live tree (DEPLOY-14) and the deploy's suite run (ISOL-14) | rw | rw, inside the tree | inside the tree | masked empty |
+  | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | overlay: read-only lower, the worktree's own upper (ISOL-7) | rw | not bound |
+  | `:deps_sync` | the harness's own steps in the live tree: the `git worktree` commands that create, remove or prune a worktree (ISOL-22). The name is historical — nothing syncs dependencies any more (ISOL-7) | rw | rw | rw | not bound |
+  | `:live_tree` | a chat that works in the live tree (DEPLOY-14), the deploy's fetch (DEPLOY-18) and its suite run (ISOL-14) | rw | rw, inside the tree | inside the tree | masked empty |
 
-- **ISOL-14** The deploy's test run (`Elia.Deploy`, DEPLOY-5) is jailed with
-  `:live_tree`, and no chat's setting is involved: it runs the merged trunk's
-  suite in the live tree, which needs write access there.
+- **ISOL-14** The deploy's fetch (`mix deps.get` in the live tree, DEPLOY-18)
+  and its test run (`Elia.Deploy`, DEPLOY-5) are jailed with `:live_tree`, and no
+  chat's setting is involved: they run the merged trunk in the live tree, which
+  needs write access there.
 - **ISOL-15** The tool context carries the jail decision, like `:workspace`
   does, so the shell tools and `run_tests` jail a call according to the chat
   they run in. A caller with no chat — the deploy (ISOL-14) — gets the default,
@@ -182,21 +190,24 @@ genuinely needs the rest of the machine (ISOL-16).
 ### The harness's own steps
 
 - **ISOL-22** The harness's worktree administration — `git worktree add`,
-  `remove` and `prune`, and the dependency compile of ISOL-7 — runs as a harness
-  step under a profile that leaves `.elia` reachable (ISOL-13), because a chat's
+  `remove` and `prune` — runs as a harness step under a profile that leaves
+  `.elia` reachable (ISOL-13), because a chat's
   worktree is created *inside* `.elia/worktrees`. Under `:live_tree` the mask
   would swallow the new worktree and the command would still exit 0, having
   written nowhere the harness can see. Nothing the model wrote goes into these
   steps and their arguments are the harness's, fixed at the call site. This is
   the one place a jailed process has `.elia` in reach, and it is a deliberate
   trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).
-- **ISOL-23** While a worktree's sync (ISOL-7) is in flight the chat says so
+- ~~**ISOL-23** While a worktree's sync (ISOL-7) is in flight the chat says so
   (UI-70), covering a sync a chat started in the background and one a command is
   waiting for; for the latter it doubles as the command's "what am I waiting
   for". The indicator goes when the sync ends, whether it succeeded or failed. A
   failure leaves the chat usable: the command the sync was owed still runs, its
   result says the sync failed and a command that does need the dependencies
-  fails with its own error.
+  fails with its own error.~~ Removed: nothing runs ahead of a command any more
+  (ISOL-7). A command that compiles its worktree's dependencies is the command
+  itself, and the chat already shows it as running (FEED) — there is no sync
+  left to indicate.
 
 ## Configuration
 
@@ -224,9 +235,36 @@ bubblewrap is missing (ISOL-12).
   deployment change, so it comes first.
 - **Which tools need approval.** With the jail on, `run_tests` runs
   model-written code where it can't reach a secret, so APPR-7 is left as it is.
+- **Hex's own store (future work).** A jailed command gets no Hex store to keep.
+  `$HOME` inside the jail is a fresh empty directory holding only the binds
+  (ISOL-4), so the store Hex makes — `~/.hex/cache.bin`, the registry, and
+  `~/.hex/packages/<repo>/<package>.tar` — is created for one command and goes
+  with its mount namespace. Fetching still works (the network is reachable,
+  ISOL-11: a jailed `mix hex.package fetch jason 1.4.4` downloads into that
+  store), at the cost of fetching the registry and the packages again in every
+  command that fetches — including a chat that adds a dependency (ISOL-7), which
+  fetches it afresh in each command that builds it. A future fix gives a chat's
+  commands somewhere to keep one: bind the shared `~/.hex` read-write for the
+  `:worktree` profile, or keep a store per worktree under the data dir (DEPLOY-2)
+  and remove it with the worktree (DEPLOY-10). Hex 2.6.0 names no variable that
+  would move its store — its `HEX_*` variables are cooldown, HTTP timeout,
+  repo-origin verification, offline, lock policy and registry verification — so
+  a store of our own would have to be bound at that path. Mix's path variables
+  are a separate matter: `MIX_DEPS_PATH` moves the deps directory and
+  `MIX_BUILD_PATH` the build directory (both verified on Elixir 1.18.3), which
+  is what a per-worktree deps directory would use instead of the overlay
+  (ISOL-7).
 - **Sanitising the shared dependency tree**, and `mix deps.get` for a project
   other than Elia's own — that project's `deps` is inside its workspace and
   writable there (ISOL-4).
+- **A host whose kernel can't mount an overlay in a user namespace.** The
+  overlay is the mechanism ISOL-7 rests on: without it a jailed compile has
+  nowhere to write inside the shared `deps`, and such a host would need the
+  pre-compile back, or a deps directory of the worktree's own (`MIX_DEPS_PATH`
+  puts one there, at the cost of fetching into every worktree). Not built: the
+  overlay mounts here (bubblewrap 0.12 on kernel 6.12, verified by mounting one
+  in a namespace), and a host where it doesn't deserves a deliberate answer
+  rather than a silent fallback.
 - Seccomp filters, cgroup limits, and capping what a jailed command may write
   inside its own workspace.
 
@@ -239,8 +277,9 @@ and `Elia.Harness` (pass the chat's setting from the tool context),
 `Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
 (`save/3`'s `jail:`, `load_jail/1`), `Elia.Tasks` and `Elia.Deploy` (spawn `git`
-through `Elia.Shell.run/2`, and sync a worktree's deps before the first jailed
-command in it), `Elia.DepsSync` (the sync itself),
+through `Elia.Shell.run/2`, and the deploy's own fetch of the trunk's
+dependencies, DEPLOY-18), `Elia.Deps` (a worktree's dependency layer: where it
+lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
 `Elia.Tasks` (copy the parent's setting to the child, SUBTASK-30),
 `EliaWeb.ChatLive` (the switch).
 
@@ -248,12 +287,16 @@ command in it), `Elia.DepsSync` (the sync itself),
 
 `test/elia/shell_test.exs` (the argv, the profiles, the environment allowlist,
 what a jailed command can reach, the fallback when bubblewrap is missing),
+`test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
+and its removal, ISOL-7, DEPLOY-10),
 `test/elia/command_isolation_test.exs`
 (the settings path and `$HOME` absent, the server pid not in `/proc`, the
-workspace writable, a timeout still cleaning up), `test/elia/harness_test.exs`
-(`run_tests` jailed), `test/elia/deployment_test.exs` (the `:deps_sync` step),
-`test/elia/deps_sync_test.exs` and `test/elia/tasks_git_test.exs` (the sync and
-the harness's git calls), `test/elia/self_modification_test.exs` (the file
+workspace writable, a command writing inside the shared `deps` and leaving it
+unchanged, a timeout still cleaning up), `test/elia/harness_test.exs`
+(`run_tests` jailed), `test/elia/deployment_test.exs` (the worktree
+administration and the deploy's fetch, DEPLOY-18),
+`test/elia/tasks_git_test.exs` (the harness's git calls),
+`test/elia/self_modification_test.exs` (the file
 tools' confinement, FILE-12, FILE-13),
 `test/elia/store_test.exs` and `test/elia/tasks_test.exs` (the setting and its
 inheritance), `test/elia_web/live/jail_test.exs` (UI-67..UI-69).

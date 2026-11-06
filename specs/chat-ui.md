@@ -290,12 +290,15 @@ stream in, approves or denies tool calls, and switches between saved chats.
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
   runs unjailed (ISOL-17).
-- **UI-70** The chat shows a worktree's dependency sync in progress (ISOL-7,
+- ~~**UI-70** The chat shows a worktree's dependency sync in progress (ISOL-7,
   ISOL-23) as text next to the composer (`#deps-sync`, "Preparing shared
   dependencies…"), following an event like `{:deps_sync, on?}`, gone when the
   sync ends whether it succeeded or failed. It covers both a sync the chat
   started in the background and one a command is waiting for, and it never
-  blocks the composer or the transcript.
+  blocks the composer or the transcript.~~ Removed: nothing runs ahead of a
+  command any more (ISOL-7, ISOL-23), so there is no sync for the chat to show.
+  A command that compiles its worktree's dependencies is a tool call, and the
+  transcript already shows it as running (FEED).
 
 - **UI-79** The composer toolbar (UI-60's "Focus" toggle, the settings link) has
   a done control (`#done-toggle`) for an ordinary chat: a button whose
@@ -511,7 +514,6 @@ UI-38, UI-39, UI-67, UI-68).
 `test/elia_web/live/auto_approve_test.exs`,
 `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
 `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),
-`test/elia_web/live/deps_sync_test.exs` (the sync indicator, UI-70),
 `test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
 `test/elia_web/live/page_title_test.exs`, `test/elia_web/live/chat_title_test.exs`
 (UI-74, the stored title and `{:title, title}`),

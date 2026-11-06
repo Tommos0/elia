@@ -41,6 +41,11 @@ defmodule Elia.Deploy do
   # from.
   @restart_status 75
 
+  # How long the deploy's own fetch of the trunk's dependencies may take
+  # (DEPLOY-18): the same as a test run, since it is the same network and the
+  # same tree (VERIFY-1).
+  @deps_timeout :timer.minutes(10)
+
   ## Paths and branches
 
   @doc "The dir holding the chats' worktrees: under the live tree's data dir (DEPLOY-1)."
@@ -206,7 +211,7 @@ defmodule Elia.Deploy do
 
     cond do
       File.dir?(path) ->
-        synced(path, root)
+        {:ok, path}
 
       true ->
         case deployable(root) do
@@ -231,7 +236,7 @@ defmodule Elia.Deploy do
     case git(root, args, profile: :deps_sync) do
       {:ok, _output} ->
         link_deps(path, root)
-        synced(path, root)
+        {:ok, path}
 
       {:error, reason} ->
         {:error, "could not create a worktree for this chat: #{reason}"}
@@ -251,7 +256,7 @@ defmodule Elia.Deploy do
 
     cond do
       File.dir?(path) ->
-        synced(path, root)
+        {:ok, path}
 
       branch_exists?(branch(parent_id), root) ->
         add_worktree(child_id, path, root, branch(parent_id))
@@ -261,20 +266,9 @@ defmodule Elia.Deploy do
     end
   end
 
-  # ISOL-7: a worktree's `deps` is the live tree's, bound read-only for a
-  # command that runs there (ISOL-13), so the harness keeps the shared tree
-  # compiled itself — for a worktree it just created, and for one that predates
-  # this and is resolved again (DEPLOY-1). It runs in the background, so the
-  # chat this is on the way to starting doesn't wait for the compile; the first
-  # jailed command in the worktree waits for it instead (ISOL-7, `Elia.Shell`).
-  defp synced(path, root) do
-    Elia.DepsSync.sync_in_background(path, root)
-    {:ok, path}
-  end
-
   # A fresh worktree has no dependencies (`deps` is git-ignored), so `mix test`
-  # couldn't run there (DEPLOY-5). Share the live tree's, which tests read but
-  # never write.
+  # couldn't run there (DEPLOY-5). Share the live tree's, which a command reads
+  # through an overlay and writes in its own layer (ISOL-7).
   defp link_deps(path, root) do
     deps = Path.join(root, "deps")
     link = Path.join(path, "deps")
@@ -307,7 +301,7 @@ defmodule Elia.Deploy do
       git(root, ["branch", "-D", branch(chat_id)])
     end
 
-    Elia.DepsSync.forget(path, root)
+    Elia.Deps.remove(path, root)
     :ok
   end
 
@@ -432,23 +426,52 @@ defmodule Elia.Deploy do
       Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true
   end
 
-  # DEPLOY-5: merge, test in the live tree, and undo the merge when the tests
-  # fail so a failed deploy changes nothing.
+  # DEPLOY-5: merge, fetch dependencies, test in the live tree, and undo the
+  # merge when either of those fails, so a failed deploy changes nothing.
   defp merge_and_test(count, root) do
     with {:ok, before} <- git(root, ["rev-parse", @live]),
          {:ok, _merged} <- merge(root) do
-      # ISOL-14: the merged trunk's suite runs in the live tree, jailed by
-      # default — no chat's setting is involved (ISOL-15), and the live tree's
-      # `:live_tree` profile is what `Elia.Harness.run_tests/2` gets from the
-      # working directory it runs in (ISOL-13).
-      case Elia.Harness.run_tests([], root) do
-        {:ok, _output} ->
-          {:ok, "#{commits(count)} merged into #{@live}."}
-
-        {:error, output} ->
-          {:tests_failed, output <> rollback_note(before, root)}
+      case fetch_deps(root) do
+        :ok -> test_merged(count, before, root)
+        {:error, reason} -> {:error, fetch_failed(reason) <> rollback_note(before, root)}
       end
     end
+  end
+
+  defp test_merged(count, before, root) do
+    # ISOL-14: the merged trunk's suite runs in the live tree, jailed by
+    # default — no chat's setting is involved (ISOL-15), and the live tree's
+    # `:live_tree` profile is what `Elia.Harness.run_tests/2` gets from the
+    # working directory it runs in (ISOL-13).
+    case Elia.Harness.run_tests([], root) do
+      {:ok, _output} ->
+        {:ok, "#{commits(count)} merged into #{@live}."}
+
+      {:error, output} ->
+        {:tests_failed, output <> rollback_note(before, root)}
+    end
+  end
+
+  # DEPLOY-18: a dependency a chat added lives in that chat's own dependency
+  # layer (ISOL-7), which the live tree never sees, so the merged trunk's
+  # `mix.lock` is fetched here before its suite runs. In the live tree, whose own
+  # `deps` is writable under the `:live_tree` profile (ISOL-13, ISOL-14); a lock
+  # that is already satisfied fetches nothing.
+  defp fetch_deps(root) do
+    case Elia.Shell.run("mix deps.get", cd: root, timeout: @deps_timeout) do
+      {:ok, _output, 0} ->
+        :ok
+
+      {:ok, output, status} ->
+        {:error, "mix deps.get exited with #{status}:\n" <> Elia.Shell.truncate(output, 2_000)}
+
+      {:timeout, output} ->
+        {:error, "mix deps.get timed out:\n" <> Elia.Shell.truncate(output, 2_000)}
+    end
+  end
+
+  defp fetch_failed(reason) do
+    "Could not fetch the trunk's dependencies (DEPLOY-18):\n" <> reason
   end
 
   defp commits(1), do: "1 commit from #{@trunk}"

@@ -268,6 +268,27 @@ defmodule Elia.DeploymentTest do
     assert File.read!(Path.join(path, "notes.txt")) == "wip"
   end
 
+  # ISOL-7: nothing runs ahead of a command. A chat's worktree is created with
+  # the shared `deps` linked in and no compile of its own, so a chat that runs no
+  # command compiles nothing at all.
+  test "a new worktree links the shared deps and starts no compile (ISOL-7)", %{tree: tree} do
+    File.mkdir_p!(Path.join(tree, "deps/req"))
+    {_id, path} = new_worktree()
+
+    assert File.read_link!(Path.join(path, "deps")) == Path.join(tree, "deps")
+    refute File.exists?(Elia.Deps.layer(path, tree))
+  end
+
+  # DEPLOY-10: a worktree's dependency layer goes with it.
+  test "removing a worktree removes its dependency layer (DEPLOY-10)", %{tree: tree} do
+    {id, path} = new_worktree()
+    assert {:ok, _} = Elia.Deps.open(path, tree)
+    assert File.dir?(Elia.Deps.layer(path, tree))
+
+    Deploy.remove_worktree(id)
+    refute File.exists?(Elia.Deps.layer(path, tree))
+  end
+
   # DEPLOY-13: a chat merges its own branch into the trunk, so the next chat to
   # start works on top of it.
   test "the trunk carries the work a chat has merged into it", %{tree: tree} do
@@ -296,6 +317,30 @@ defmodule Elia.DeploymentTest do
     # The code is in the live tree now, and the running app is unchanged until a
     # deploy loads it (DEPLOY-8).
     assert File.exists?(Path.join(tree, file))
+  end
+
+  # DEPLOY-18: a dependency a chat added lives in that chat's own layer (ISOL-7),
+  # so the deploy fetches the merged trunk's dependencies in the live tree before
+  # its suite runs — and a fetch that fails is a deploy failure that rolls `live`
+  # back, like a failing suite.
+  test "a deploy fetches the trunk's dependencies before its suite (DEPLOY-18)", %{
+    tree: tree
+  } do
+    {_id, path} = new_worktree()
+
+    # A `mix.exs` the fetch can't load, merged into the trunk the way a chat's
+    # work is: `mix deps.get` fails, so the deploy stops before the suite.
+    File.write!(Path.join(path, "mix.exs"), "defmodule Broken do\n")
+    commit(path, "a mix.exs that can't be loaded")
+    LiveTree.push_to_trunk(path)
+
+    before = head(tree)
+    assert {:error, message} = Deploy.deploy()
+
+    assert message =~ "Could not fetch the trunk's dependencies"
+    # Nothing is deployed: `live` is where it was (DEPLOY-5).
+    assert head(tree) == before
+    assert branch(tree) == "live"
   end
 
   # DEPLOY-5: nothing to do when the trunk is already deployed.

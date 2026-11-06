@@ -35,9 +35,6 @@ progress so any number of UIs can follow it.
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
-  `{:deps_sync, on?}` (a compile of the shared dependencies is in flight for
-  this chat's worktree, ISOL-23, UI-70; sent by `Elia.DepsSync`, not by the
-  session itself),
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its

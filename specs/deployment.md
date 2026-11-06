@@ -36,7 +36,8 @@ gate.
 - **DEPLOY-1** A chat in Elia's own project works in its own git worktree, on
   branch `chat/<chat id>`, forked from the trunk `master` when the chat starts.
   That worktree is the chat's workspace root: the file and shell tools operate
-  there (PROJ-12).
+  there (PROJ-12), and it holds no dependency tree of its own — it shares the
+  live tree's `deps` (ISOL-7).
 - **DEPLOY-2** The live tree is where the server runs, where the code reloader
   reloads, and where Elia's data lives: `.elia` sits directly under it, so
   chats are the same across a chat's worktrees and across a deploy. It is `config :elia, :runtime_root` (default: the server's working
@@ -72,11 +73,20 @@ gate.
 - **DEPLOY-5** A deploy brings the trunk to `live` and loads it into the
   running app. It is refused, before anything runs, when the live tree isn't
   set up for deployment (DEPLOY-14) or has uncommitted changes. Otherwise it
-  runs the full test suite in the live tree, then fast-forwards `live` to
+  runs the full test suite in the live tree — after fetching the trunk's
+  dependencies there (DEPLOY-18) — then fast-forwards `live` to
   `master` when the tests pass; when they fail it rolls `live` back to where it
   was, so nothing is deployed and the running app is unaffected, and it returns
   the test output. When `live` is already at `master` there is nothing to
   deploy: no tests run and only the load (DEPLOY-6, DEPLOY-7) happens.
+- **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
+  test in the live tree itself — `mix deps.get`, jailed with `:live_tree`
+  (ISOL-14) — before the suite runs. A dependency a chat added lives in that
+  chat's own dependency layer (ISOL-7) and the live tree has never seen it, so
+  without this the merged trunk fails to build for a reason the deploy invented.
+  A lock that already matches fetches nothing, and a fetch that fails is a
+  deploy failure like a failing suite: `live` is rolled back to where it was and
+  nothing is deployed (DEPLOY-5).
 - **DEPLOY-6** Hot reload is the soft deploy mode (HOT-1–HOT-6): after
   DEPLOY-5 the live tree is recompiled and the changed modules are loaded into
   the running app, keeping running state. Its control is on the Settings page
@@ -121,9 +131,9 @@ gate.
   `chat/<parent id>` (SUBTASK-23). The harness leaves its work on that branch
   and lets the parent agent merge it itself (SUBTASK-25).
 - **DEPLOY-10** A chat's worktree is created when the chat starts and removed
-  when the chat is deleted; its `chat/<id>` branch is pruned. A branch is kept
-  while its chat exists, since chats are resumable; there is no time-based
-  pruning.
+  when the chat is deleted; its `chat/<id>` branch is pruned, and its dependency
+  layer goes with it (ISOL-7). A branch is kept while its chat exists, since
+  chats are resumable; there is no time-based pruning.
 
 ### Retired: guarded files
 
@@ -139,7 +149,8 @@ HOT (hot reload is a deploy mode, with no tool), CONF (the Settings page's
 deployment section), RESTART (the restart control), PROJ (per-chat worktrees
 for Elia's own project; the live tree), SKILL and APPR (the
 `self-modification` skill's tools), CKPT and RECOVER (both retired), SUBTASK
-(the sub-task's own worktree).
+(the sub-task's own worktree), ISOL (the deploy's own fetch and suite run,
+DEPLOY-18, ISOL-14).
 
 ## Implementation
 
@@ -158,7 +169,7 @@ deployment section), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
 ## Tests
 
 `test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, hot reload,
-restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-17),
+restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-18),
 `test/elia_web/live/settings_live_test.exs` (the deployment section, including
 a page that mounts mid-deploy and after one), `test/support/live_tree.ex` (a
 throwaway live tree).
