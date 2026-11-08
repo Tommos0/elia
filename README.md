@@ -10,26 +10,87 @@ index are in `specs/README.md`. The topic notes for editing the code are in
 
 ## Getting started
 
+### What it needs
+
+- **Elixir `~> 1.17`**, with a matching Erlang/OTP release
+  (`elixir --version`; `erl` must be on `PATH` too). A distribution's `elixir`
+  package is often older than 1.17, so `asdf` or `mise`, with the `erlang` and
+  `elixir` plugins, is the reliable way to install both.
+- **`git`** — a chat in Elia's own project works in its own git worktree, and a
+  deploy fast-forwards a branch (DEPLOY-1, DEPLOY-5).
+- **`bubblewrap`** (`bwrap`) — optional. Every OS command Elia runs is jailed;
+  without bubblewrap, or where user namespaces or their mounts are unavailable,
+  commands run unjailed instead, which the chat's settings page says (ISOL-12).
+- **Node ≥ 20** — optional, and only for the real-browser tests and
+  `bin/preview`, which install the browser layer's packages in `assets/`
+  (BROWSER-10, PREVIEW-14).
+
+Nothing else: no database, no Ecto, no Docker, and no API key needed to start.
+
+### Set it up
+
 ```sh
-export ANTHROPIC_API_KEY=...     # or OPENROUTER_API_KEY, or enter a key on /settings
-mix setup
-mix phx.server                   # http://localhost:7000
+git clone <the repository> elia
+cd elia
+mix setup                    # deps, the tailwind/esbuild binaries, the assets
+mix phx.server               # http://localhost:7000
 ```
 
-`mix setup` fetches the deps, installs the asset tools and builds the assets.
-Needs Elixir `~> 1.17`, `git` (chat worktrees, DEPLOY-1) and, for the command
-jail, `bubblewrap` — without it commands run unjailed (ISOL-12). Node ≥ 20 is
-needed only for the real-browser tests and `bin/preview` (BROWSER-10).
+Then add a provider key, in the browser: open <http://localhost:7000>, go to the
+Settings page (`/settings`) and paste an Anthropic or OpenRouter key into its
+card. The key is checked against the provider before it is stored, so a bad key
+fails there rather than in the middle of a chat (CONF-6, CONF-7); the same page
+selects the model. Keys are user settings, not workspace data: they live in
+`~/.local/share/elia/settings.dets`, outside the repository (CONF-1, CONF-4).
+Setting `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in the environment works
+too, and a key saved in Settings wins over one from there (CONF-5).
 
-To have the server restart itself after a crash, run `bin/serve` instead of
-`mix phx.server` (see `specs/auto-restart.md`). Ctrl-C stops it for good; attach
-a shell with `iex --sname dbg --remsh elia`.
+For chats to work in their own worktrees and for the Settings page to be able
+to deploy, the tree the server runs from must be *set up for deployment*: on the
+branch `live`, with a `master` at or ahead of it (DEPLOY-14). In a fresh clone,
+from the trunk:
 
-To run it as a systemd user service (starts at login, restarts on failure), stop
-any running server and run `bin/install-service --now`. Put API keys in
-`~/.config/elia/env` (`ANTHROPIC_API_KEY=...`), follow the logs with
-`journalctl --user -u elia -f`, and run `loginctl enable-linger $USER` to start
-it at boot without a login.
+```sh
+git checkout -b live         # the tree the server runs from; a deploy fast-forwards it
+```
+
+(`git branch master` once, at `live`, if the trunk has another name.) Until the
+tree is set up, the Settings page says what is missing and a chat here edits the
+live tree itself rather than a worktree (DEPLOY-1).
+
+### Keep it running
+
+`mix phx.server` stops when its terminal does. Either:
+
+```sh
+bin/serve                    # the server in a loop, restarted whenever it dies
+bin/install-service --now    # a systemd user service: at login, restarts on failure
+```
+
+`bin/serve` starts the server again after a crash — waiting longer after each
+quick failure, and turning off Erlang crash dumps so a crash loop can't fill the
+disk (RESTART-1–RESTART-6). Ctrl-C stops it for good; an exit status of 0 means
+it stays down (RESTART-2, RESTART-3).
+
+`bin/install-service` renders `deploy/elia.service` with this project's root and
+your `PATH` into `~/.config/systemd/user/elia.service`, then enables it. Stop a
+server already running on port 7000 first. Afterwards:
+
+```sh
+systemctl --user start elia      # also: stop, restart, status, disable
+journalctl --user -u elia -f     # the logs
+loginctl enable-linger $USER     # start at boot, without a login
+```
+
+The unit reads `~/.config/elia/env` if it exists, as `KEY=value` lines — useful
+for `PORT=...`, or for a provider key if you would rather keep it out of the
+settings database (CONF-5). Don't put `MIX_ENV` in it: the server runs in Mix's
+default `dev` env either way, and every command it spawns would inherit the
+value (RESTART-8, ISOL-24).
+
+`bin/serve` runs without an interactive shell; attach one with
+`iex --sname dbg --remsh elia`. Without systemd, any supervisor will do, with
+`bin/serve` as its command (`specs/auto-restart.md`).
 
 A change to `lib/`, `config/` or `mix.exs` reaches the running app only through
 a *deploy*, from the Settings page — a request recompiles and loads nothing
