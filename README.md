@@ -51,7 +51,8 @@ a *deploy*, from the Settings page — a request recompiles and loads nothing
 ## Screenshots
 
 Taken from the app itself with `bin/preview` (`specs/ui-preview.md`), on the
-sample data a preview seeds: the light theme at desktop width.
+sample data a preview seeds: the dark theme at a phone width
+(`ELIA_PREVIEW_THEME=dark`, `ELIA_PREVIEW_WIDTH=390`).
 
 ![The dashboard](docs/screenshots/dashboard.png)
 
