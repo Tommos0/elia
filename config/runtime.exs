@@ -29,6 +29,10 @@ end
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
 config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
 
+# PUSH-18: the contact a push service can reach the operator at, which some of
+# them insist on in the VAPID JWT. `mailto:` by default.
+config :elia, Elia.Push, subject: System.get_env("PUSH_SUBJECT")
+
 # Reload browser tabs when matching files change. Every environment the server
 # runs in gets it, not just the dev Mix env (HOT-7): the live reload and the
 # in-VM code reloader (HOT-2, HOT-5) are part of the deploy. It stays in

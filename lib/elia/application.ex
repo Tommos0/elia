@@ -17,6 +17,10 @@ defmodule Elia.Application do
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
       Elia.Settings,
+      # PUSH-13, PUSH-14: which chats have a visible page, and PUSH-11, PUSH-12:
+      # the notifications sent when one needs the user.
+      Elia.Push.Viewers,
+      Elia.Push.Notifier,
       Elia.LLM.Catalog,
       Elia.Skills,
       # DEPLOY-15, DEPLOY-16: a deploy runs here, not in the Settings page that
