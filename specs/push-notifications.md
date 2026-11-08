@@ -1,6 +1,6 @@
 # Push notifications
 
-Status: Draft
+Status: Implemented
 
 Elia can tell the user's device that a chat needs them, so they can put the
 phone down instead of watching a long turn. It uses Web Push: the browser makes
@@ -129,15 +129,34 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 
 ## Tests
 
-- `test/elia/push_test.exs` — VAPID key generation and reuse (PUSH-1), the VAPID
-  header and RFC 8291 encryption against the RFC's own test vectors (PUSH-15),
-  404/410 removing a subscription (PUSH-16) and a failure not reaching the
-  caller (PUSH-17).
-- `test/elia/push_notifier_test.exs` — the transitions that notify and the ones
-  that don't, and suppression by a visible page (PUSH-11–PUSH-13).
-- `test/elia_web/live/push_settings_test.exs` — the section's states, the test
-  notification and "remove all" (PUSH-2, PUSH-5–PUSH-8).
-- `test/elia_web/browser/push_test.exs` — the hook in a real browser: subscribe
-  with permission granted, the stored subscription (PUSH-3), the switch's state
-  (PUSH-4), the reason on an insecure origin (PUSH-6) and visibility reporting
-  (PUSH-14) — run explicitly, like the other browser tests (BROWSER).
+- `test/elia/push_crypto_test.exs` — the key pair (PUSH-1), the RFC 8291
+  section 5 vector for the encrypted body, the VAPID JWT verified through its
+  own signature, and a subscription that is not usable (PUSH-15).
+- `test/elia/push_test.exs` — the key pair generated once and kept (PUSH-1),
+  the payload a chat's notification carries (PUSH-9), the request's headers and
+  the payload a browser decrypts out of the body (PUSH-15), 404/410 removing a
+  subscription (PUSH-16), a failure being counted and logged rather than raised
+  (PUSH-17), `notify/1` sending off the caller's process (PUSH-17) and the test
+  notification (PUSH-8).
+- `test/elia/push_subscriptions_test.exs` — storing a subscription, replacing
+  one by endpoint, refusing an unusable one (PUSH-3), removing one (PUSH-4,
+  PUSH-16), counting and clearing them (PUSH-7).
+- `test/elia/push_notifier_test.exs` — the status changes that notify and the
+  ones that don't (PUSH-11, PUSH-12), suppression by a visible page (PUSH-13)
+  and a send from a status broadcast all the way to the decrypted payload.
+- `test/elia_web/live/settings_live_test.exs` — the section's key (PUSH-2), a
+  subscription the page reports being stored and counted, one that is refused
+  (PUSH-3), unsubscribing one device (PUSH-4), "remove all" (PUSH-7) and what
+  the test notification reports (PUSH-8).
+- `test/elia_web/live/push_visibility_test.exs` — a chat page reporting its
+  visibility, a page that goes away stopping, and no notification for the chat
+  the page is showing (PUSH-13, PUSH-14).
+- `test/elia_web/browser/push_test.exs` — the hook in a real browser: the
+  switch where the browser can notify and the reason where it cannot (PUSH-2,
+  PUSH-5), and the chat page's visibility (PUSH-14). Run explicitly, like the
+  other browser tests (BROWSER).
+- Not covered by an automated test, and checked by hand as PWA-5 is: making a
+  real subscription and receiving a notification end to end, which needs a
+  browser with notifications on and its own push service on the internet
+  (PUSH-3, PUSH-4, PUSH-10), and the insecure-origin reason of PUSH-6, which
+  needs an origin that is not `localhost`.

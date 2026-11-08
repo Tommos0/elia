@@ -3,16 +3,22 @@ defmodule EliaWeb.SettingsLiveTest do
 
   import Phoenix.LiveViewTest
   import Elia.LLMCase
+  import Elia.PushCase
 
   alias Elia.LLM
   alias Elia.LLM.{Anthropic, OpenRouter}
-  alias Elia.{Deploy, LiveTree}
+  alias Elia.{Deploy, LiveTree, Push}
   alias Elia.Deploy.Runner
 
   setup do
     reset_settings()
     configure(Anthropic)
     configure(OpenRouter)
+    # PUSH-2..PUSH-8: the push section talks to the push service through
+    # Req.Test, and keeps its subscriptions in the settings database.
+    configure(Push)
+    stub_push_service()
+    on_exit(&reset_push/0)
 
     # "good" is the only valid OpenRouter key.
     Req.Test.stub(OpenRouter, fn conn ->
@@ -471,5 +477,94 @@ defmodule EliaWeb.SettingsLiveTest do
     assert {:ok, %{behind?: false}} = Deploy.status()
     assert has_element?(view, "#deploy-status", "nothing to deploy")
     assert LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
+  end
+
+  # PUSH-2
+  test "the push section carries the key a browser subscribes with", %{conn: conn} do
+    key = Push.public_key()
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(view, ~s(#push-section[data-vapid-public-key="#{key}"]))
+    assert has_element?(view, "#push-toggle")
+  end
+
+  # PUSH-3, PUSH-7
+  test "a subscription the page reports is stored, and the section counts it", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert has_element?(view, "#push-count", "No device is subscribed yet.")
+    assert has_element?(view, "#push-remove-all[disabled]")
+
+    render_hook(view, "push-subscribe", %{"subscription" => subscription(receiver())})
+
+    assert Push.Subscriptions.count() == 1
+    assert has_element?(view, "#push-count", "1 device is subscribed.")
+    assert has_element?(view, "#push-status", "This device is subscribed.")
+    refute has_element?(view, "#push-remove-all[disabled]")
+  end
+
+  # PUSH-3
+  test "a subscription that is not a usable one is refused", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    render_hook(view, "push-subscribe", %{
+      "subscription" => %{"endpoint" => "http://push.example.net/sub/1"}
+    })
+
+    assert Push.Subscriptions.count() == 0
+    assert has_element?(view, "#push-status", "not a usable one")
+  end
+
+  # PUSH-3, PUSH-4
+  test "unsubscribing one device leaves the others", %{conn: conn} do
+    :ok = Push.Subscriptions.save(subscription(receiver(), "https://push.example.net/sub/1"))
+    :ok = Push.Subscriptions.save(subscription(receiver(), "https://push.example.net/sub/2"))
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert has_element?(view, "#push-count", "2 devices are subscribed.")
+
+    render_hook(view, "push-unsubscribe", %{"endpoint" => "https://push.example.net/sub/1"})
+
+    assert Push.Subscriptions.count() == 1
+    assert has_element?(view, "#push-count", "1 device is subscribed.")
+    assert has_element?(view, "#push-status", "no longer subscribed")
+  end
+
+  # PUSH-7
+  test "remove all forgets every device", %{conn: conn} do
+    :ok = Push.Subscriptions.save(subscription(receiver(), "https://push.example.net/sub/1"))
+    :ok = Push.Subscriptions.save(subscription(receiver(), "https://push.example.net/sub/2"))
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    view |> element("#push-remove-all") |> render_click()
+
+    assert Push.Subscriptions.count() == 0
+    assert has_element?(view, "#push-count", "No device is subscribed yet.")
+    assert has_element?(view, "#push-status", "Every subscribed device was removed.")
+  end
+
+  # PUSH-8
+  test "the test notification reports what the push service said", %{conn: conn} do
+    store()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    view |> element("#push-send-test") |> render_click()
+
+    assert_receive {:push_request, "/sub/1", _headers, _body}
+    render_async(view)
+    assert has_element?(view, "#push-status", "Accepted by the push service for 1 subscription.")
+  end
+
+  # PUSH-8
+  test "the test notification says when no device is subscribed", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    view |> element("#push-send-test") |> render_click()
+
+    render_async(view)
+
+    assert has_element?(
+             view,
+             "#push-status",
+             "No device is subscribed yet, so there was nowhere to send it."
+           )
   end
 end

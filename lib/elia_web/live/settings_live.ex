@@ -1,7 +1,7 @@
 defmodule EliaWeb.SettingsLive do
   use EliaWeb, :live_view
 
-  alias Elia.{Deploy, LLM}
+  alias Elia.{Deploy, LLM, Push}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,6 +37,13 @@ defmodule EliaWeb.SettingsLive do
         # CONF-20: the last deploy's result, still shown for a page that arrives
         # after it ended
         deploy_result: deploy.last && deploy_result(deploy.last.result)
+      )
+      # PUSH-2: the key the section's hook subscribes with; PUSH-7: how many
+      # devices are subscribed; PUSH-8: how the last test notification went.
+      |> assign(
+        push_key: Push.public_key(),
+        push_count: Push.Subscriptions.count(),
+        push_status: nil
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
       |> refresh_keys()
@@ -332,6 +339,93 @@ defmodule EliaWeb.SettingsLive do
             </p>
           </section>
 
+          <%!-- PUSH-2, PUSH-5..PUSH-8: Web Push on this device. The hook does the
+          subscribing (PUSH-3, PUSH-4), because only the page can ask for
+          permission and make a subscription; the section says why when it
+          cannot (PUSH-5, PUSH-6), and offers what the server does (PUSH-7,
+          PUSH-8). --%>
+          <section
+            id="push-section"
+            phx-hook=".PushSettings"
+            data-vapid-public-key={@push_key}
+            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+          >
+            <div class="flex items-center gap-3">
+              <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                <.icon name="hero-bell-alert" class="size-5" />
+              </div>
+              <div>
+                <h2 class="font-medium">Push notifications</h2>
+                <p class="text-xs text-base-content/50">
+                  Be told when a chat needs you — an approval, a question, a turn that
+                  finished — even with Elia closed.
+                </p>
+              </div>
+            </div>
+
+            <p id="push-reason" class="mt-4 text-xs text-base-content/50">
+              Checking this browser…
+            </p>
+
+            <div id="push-controls" class="mt-4 hidden flex-col gap-3">
+              <div class="flex items-center justify-between gap-3 rounded-xl bg-base-200/50 px-4 py-3">
+                <span class="text-sm">Notifications on this device</span>
+                <button
+                  type="button"
+                  id="push-toggle"
+                  aria-pressed="false"
+                  class="h-10 shrink-0 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                >
+                  Turn on
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  id="push-send-test"
+                  phx-click="push-send-test"
+                  class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110"
+                >
+                  <.icon name="hero-paper-airplane" class="size-4" /> Send a test notification
+                </button>
+                <button
+                  type="button"
+                  id="push-remove-all"
+                  phx-click="push-remove-all"
+                  disabled={@push_count == 0}
+                  class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                >
+                  <.icon name="hero-trash" class="size-4" /> Remove all devices
+                </button>
+              </div>
+
+              <p id="push-count" class="text-xs text-base-content/50">
+                {push_count_text(@push_count)}
+              </p>
+
+              <p
+                :if={@push_status}
+                id="push-status"
+                class={[
+                  "flex items-start gap-2 break-words rounded-lg px-3 py-2 text-xs",
+                  @push_status.kind == :ok && "bg-success/10 text-success",
+                  @push_status.kind != :ok && "bg-error/10 text-error"
+                ]}
+              >
+                <.icon
+                  name={
+                    if @push_status.kind == :ok,
+                      do: "hero-check-circle",
+                      else: "hero-exclamation-triangle"
+                  }
+                  class="mt-px size-4 shrink-0"
+                />
+                <span>{@push_status.text}</span>
+              </p>
+            </div>
+          </section>
+
           <p
             id="settings-path"
             class="mt-8 flex items-center gap-2 text-xs text-base-content/50"
@@ -344,6 +438,119 @@ defmodule EliaWeb.SettingsLive do
           </p>
         </div>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".PushSettings">
+        // PUSH-3..PUSH-6: subscribing is the page's job — only the page can ask
+        // for permission and make a subscription — so this hook owns the switch
+        // and tells the server about the subscription it made, and says why
+        // there can be no switch at all.
+        export default {
+          mounted() {
+            this.reason = this.el.querySelector("#push-reason")
+            this.controls = this.el.querySelector("#push-controls")
+            this.toggle = this.el.querySelector("#push-toggle")
+            this.key = this.el.dataset.vapidPublicKey
+            this.subscribed = false
+            this.toggle.addEventListener("click", () => this.toggleSubscription())
+            this.refresh()
+          },
+
+          // PUSH-5, PUSH-6: why this browser cannot subscribe, or null when it can.
+          blocker() {
+            if (!window.isSecureContext) {
+              return "Notifications need a secure origin: open Elia over HTTPS, or on localhost."
+            }
+            if (!("serviceWorker" in navigator)) {
+              return "This browser has no service worker, so it cannot receive notifications."
+            }
+            if (!("PushManager" in window) || !("Notification" in window)) {
+              return "This browser cannot show notifications."
+            }
+            if (Notification.permission === "denied") {
+              return "Notifications are blocked for this site. Allow them for it in the browser's settings, then reload."
+            }
+            return null
+          },
+
+          async refresh() {
+            const blocker = this.blocker()
+            if (blocker) return this.show(blocker, false)
+
+            try {
+              const registration = await navigator.serviceWorker.ready
+              const subscription = await registration.pushManager.getSubscription()
+              this.show(null, !!subscription)
+            } catch (error) {
+              this.show(`This browser could not be asked about notifications: ${error}`, false)
+            }
+          },
+
+          show(reason, subscribed) {
+            this.reason.textContent = reason || ""
+            this.reason.classList.toggle("hidden", !reason)
+            this.controls.classList.toggle("hidden", !!reason)
+            this.controls.classList.toggle("flex", !reason)
+            this.subscribed = subscribed
+            this.toggle.textContent = subscribed ? "Turn off" : "Turn on"
+            this.toggle.setAttribute("aria-pressed", subscribed ? "true" : "false")
+          },
+
+          async toggleSubscription() {
+            this.toggle.disabled = true
+
+            try {
+              if (this.subscribed) await this.unsubscribe()
+              else await this.subscribe()
+            } catch (error) {
+              console.warn("push:", error)
+              this.show(`Notifications could not be changed: ${error}`, this.subscribed)
+            } finally {
+              this.toggle.disabled = false
+            }
+          },
+
+          async subscribe() {
+            const permission = await Notification.requestPermission()
+            if (permission !== "granted") {
+              return this.show("Notifications were not allowed for this site.", false)
+            }
+
+            const registration = await navigator.serviceWorker.ready
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: decodeKey(this.key)
+            })
+
+            // PUSH-3: the server keeps it, so a chat that needs the user can
+            // reach this device.
+            this.pushEvent("push-subscribe", {subscription: subscription.toJSON()})
+            this.show(null, true)
+          },
+
+          async unsubscribe() {
+            const registration = await navigator.serviceWorker.ready
+            const subscription = await registration.pushManager.getSubscription()
+
+            if (subscription) {
+              const endpoint = subscription.endpoint
+              await subscription.unsubscribe()
+              // PUSH-4: this device's entry goes with the subscription.
+              this.pushEvent("push-unsubscribe", {endpoint: endpoint})
+            }
+
+            this.show(null, false)
+          }
+        }
+
+        // The app's VAPID public key is URL-safe base64; the Push API wants the
+        // bytes it stands for.
+        function decodeKey(base64) {
+          const padding = "=".repeat((4 - (base64.length % 4)) % 4)
+          const normalized = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/")
+          const raw = atob(normalized)
+          return Uint8Array.from(raw, character => character.charCodeAt(0))
+        }
+      </script>
     </Layouts.app>
     """
   end
@@ -525,8 +732,79 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, socket}
   end
 
+  # PUSH-3: the page subscribed and reports the subscription it made, so that
+  # device can be sent to. An unusable one is refused rather than stored.
+  def handle_event("push-subscribe", %{"subscription" => subscription}, socket) do
+    case Push.Subscriptions.save(subscription) do
+      :ok ->
+        {:noreply,
+         assign(socket,
+           push_count: Push.Subscriptions.count(),
+           push_status: %{kind: :ok, text: "This device is subscribed."}
+         )}
+
+      {:error, :invalid_subscription} ->
+        {:noreply,
+         assign(socket,
+           push_status: %{
+             kind: :error,
+             text: "That subscription is not a usable one, so it was not stored."
+           }
+         )}
+    end
+  end
+
+  # PUSH-4: the page unsubscribed, so that endpoint goes with it.
+  def handle_event("push-unsubscribe", %{"endpoint" => endpoint}, socket) do
+    :ok = Push.Subscriptions.remove(endpoint)
+
+    {:noreply,
+     assign(socket,
+       push_count: Push.Subscriptions.count(),
+       push_status: %{kind: :ok, text: "This device is no longer subscribed."}
+     )}
+  end
+
+  # PUSH-8: ask the push service now, off this process, and report what it said.
+  def handle_event("push-send-test", _params, socket) do
+    {:noreply, start_async(socket, :push_test, fn -> Push.test_notification() end)}
+  end
+
+  # PUSH-7: every subscription goes, including the ones whose device is gone.
+  def handle_event("push-remove-all", _params, socket) do
+    :ok = Push.Subscriptions.clear()
+
+    {:noreply,
+     assign(socket,
+       push_count: 0,
+       push_status: %{kind: :ok, text: "Every subscribed device was removed."}
+     )}
+  end
+
   defp deploy_mode("reload"), do: :reload
   defp deploy_mode("restart"), do: :restart
+
+  # PUSH-7: how many devices are subscribed.
+  defp push_count_text(0), do: "No device is subscribed yet."
+  defp push_count_text(1), do: "1 device is subscribed."
+  defp push_count_text(count), do: "#{count} devices are subscribed."
+
+  # PUSH-8: what the test notification did, as the section reports it.
+  defp push_result({:ok, %{sent: sent, gone: gone, failed: failed}}) do
+    parts =
+      ["Accepted by the push service for #{subscriptions(sent)}."] ++
+        if(gone > 0, do: ["#{subscriptions(gone)} had gone and were removed."], else: []) ++
+        if(failed > 0, do: ["#{subscriptions(failed)} failed."], else: [])
+
+    %{kind: if(gone > 0 or failed > 0, do: :error, else: :ok), text: Enum.join(parts, " ")}
+  end
+
+  defp push_result({:error, :no_subscriptions}) do
+    %{kind: :error, text: "No device is subscribed yet, so there was nowhere to send it."}
+  end
+
+  defp subscriptions(1), do: "1 subscription"
+  defp subscriptions(count), do: "#{count} subscriptions"
 
   # CONF-20, DEPLOY-16: what the runner holds right now.
   defp refresh_deploy(socket) do
@@ -548,6 +826,18 @@ defmodule EliaWeb.SettingsLive do
       |> assign(results: Map.delete(socket.assigns.results, key))
       |> start_async({:key, key, action}, fun)
     end
+  end
+
+  # PUSH-8: what the test notification did.
+  def handle_async(:push_test, {:ok, result}, socket) do
+    {:noreply, assign(socket, push_status: push_result(result))}
+  end
+
+  def handle_async(:push_test, {:exit, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       push_status: %{kind: :error, text: "Sending it failed: #{inspect(reason)}"}
+     )}
   end
 
   @impl true

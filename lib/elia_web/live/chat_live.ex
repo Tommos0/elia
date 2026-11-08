@@ -134,9 +134,24 @@ defmodule EliaWeb.ChatLive do
       |> load_messages(snapshot.messages)
       |> refresh_work_summary()
       |> start_work_ticker()
+      # PUSH-14: this page's own visibility events, which say whether the chat
+      # is in front of the user (PUSH-13).
+      |> attach_hook(:push_visibility, :handle_event, &report_visibility/3)
 
     {:ok, socket}
   end
+
+  # PUSH-14: the client reports whether this page is visible, when it mounts and
+  # whenever that changes. A hidden page is not one in front of the user, so it
+  # does not suppress a push for this chat (PUSH-13), and the entry goes when
+  # this process does, since `Elia.Push.Viewers` monitors it.
+  defp report_visibility("visibility", %{"visible" => visible}, socket)
+       when is_boolean(visible) do
+    Elia.Push.Viewers.set(socket.assigns.session_id, self(), visible)
+    {:halt, socket}
+  end
+
+  defp report_visibility(_event, _params, socket), do: {:cont, socket}
 
   @impl true
   def render(assigns) do
@@ -144,8 +159,10 @@ defmodule EliaWeb.ChatLive do
     <Layouts.app flash={@flash} chats_drawer chats_open={@chats_open}>
       <%!-- UI-78: this fills the shell (`main`, a flex column) and lets its own
       column and the message list shrink to nothing, so the composer stays at
-      the bottom of the screen however long the transcript is. --%>
-      <div class="relative flex min-h-0 flex-1">
+      the bottom of the screen however long the transcript is. PUSH-14: the
+      page also reports here whether it is visible, so no notification is sent
+      for the chat in front of the user (PUSH-13). --%>
+      <div id="chat-shell" phx-hook=".ChatVisibility" class="relative flex min-h-0 flex-1">
         <%!-- UI-36: backdrop for the small-screen chat drawer. FEED-1: a
         backdrop is not a control, so it does not press — shrinking it would
         show the page's edges through it. --%>
@@ -524,6 +541,22 @@ defmodule EliaWeb.ChatLive do
             this.handleEvent("chat:clear", () => { this.el.value = ""; resize() })
           },
           updated() { if (!this.el.disabled) this.el.focus() }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatVisibility">
+        // PUSH-14: report whether this page is in front of the user, so that no
+        // notification arrives for the chat being read (PUSH-13). A page in a
+        // background tab — or behind another app on a phone — is not visible.
+        export default {
+          mounted() {
+            this.report = () =>
+              this.pushEvent("visibility", {visible: document.visibilityState === "visible"})
+            this.report()
+            document.addEventListener("visibilitychange", this.report)
+          },
+          destroyed() {
+            document.removeEventListener("visibilitychange", this.report)
+          }
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SidebarResize">
