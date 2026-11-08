@@ -229,21 +229,36 @@ defmodule EliaWeb.SettingsLiveTest do
   # reloader is on (HOT-2, HOT-7; the suite turns it off, config/test.exs), and
   # loading a deploy is a message to the test instead of a real recompile, which
   # would rebuild Elia's own endpoint inside the test run (HOT-5).
-  defp running_server do
+  #
+  # With `hold_load`, the deploy stops in its load step and reports itself as
+  # `{:loading, pid}`, and waits for `:continue`: that is how a test knows a
+  # deploy is really mid-flight instead of racing one that may have finished.
+  defp running_server(hold_load \\ false) do
     endpoint = Application.get_env(:elia, EliaWeb.Endpoint)
     deploy = Application.get_env(:elia, Deploy, [])
     test_pid = self()
 
     Application.put_env(:elia, EliaWeb.Endpoint, Keyword.put(endpoint, :code_reloader, true))
 
-    Application.put_env(
-      :elia,
-      Deploy,
-      Keyword.put(deploy, :load, fn _endpoint ->
-        send(test_pid, :loaded)
-        :ok
-      end)
-    )
+    load =
+      if hold_load do
+        fn _endpoint ->
+          send(test_pid, {:loading, self()})
+
+          receive do
+            :continue -> :ok
+          after
+            30_000 -> :ok
+          end
+        end
+      else
+        fn _endpoint ->
+          send(test_pid, :loaded)
+          :ok
+        end
+      end
+
+    Application.put_env(:elia, Deploy, Keyword.put(deploy, :load, load))
 
     on_exit(fn ->
       Application.put_env(:elia, EliaWeb.Endpoint, endpoint)
@@ -388,7 +403,10 @@ defmodule EliaWeb.SettingsLiveTest do
   # CONF-20, DEPLOY-16: one deploy at a time, and the runner's state reaches a
   # page that mounts while a deploy runs or after it finished.
   test "a page that mounts during or after a deploy shows it", %{conn: conn} do
-    running_server()
+    # The deploy is held in its load step until this test lets it finish, so the
+    # page below mounts mid-deploy for real instead of racing one that may have
+    # ended already (CONF-20, DEPLOY-16).
+    running_server(true)
     tree = live_tree()
     work_on_trunk()
 
@@ -399,10 +417,14 @@ defmodule EliaWeb.SettingsLiveTest do
     # DEPLOY-16: a second request while one runs is refused.
     assert Runner.start(:reload) == {:error, :busy}
 
+    assert_receive {:loading, deploy}, 30_000
+
     # CONF-20: a page that mounts mid-deploy shows it in flight, without having
     # started it.
     {:ok, during, _html} = live(conn, ~p"/settings")
     assert has_element?(during, "#deploy-reload[disabled]")
+
+    send(deploy, :continue)
 
     assert {:ok, message} = await_deploy()
     assert message =~ "Recompiled and reloaded"

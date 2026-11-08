@@ -5,6 +5,13 @@ defmodule EliaWeb.SettingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      # CONF-20, DEPLOY-16: subscribe before the deploy state is read below, so
+      # a deploy that starts or ends between the two can't slip past: the read
+      # sees it, or the broadcast that follows does.
+      Deploy.Runner.subscribe()
+    end
+
     providers = LLM.providers()
     # CONF-20, DEPLOY-16: the deploy in flight and the last one's result live in
     # the runner, not in this page, so a page that mounts while a deploy runs or
@@ -35,8 +42,6 @@ defmodule EliaWeb.SettingsLive do
       |> refresh_keys()
 
     if connected?(socket) do
-      # CONF-20, DEPLOY-16: the runner broadcasts when a deploy starts and ends.
-      Deploy.Runner.subscribe()
       {:ok, load_balances(socket)}
     else
       {:ok, socket}
