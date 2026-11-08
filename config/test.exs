@@ -44,11 +44,18 @@ config :phoenix,
 config :elia, Elia.LLM, provider: Elia.FakeLLM
 
 # Settings (API keys, model selection) go to a scratch database.
+# A run's state can be pointed elsewhere, so several test runs share the machine
+# without colliding — `bin/test` gives each partition its own (SUITE-1).
 config :elia, Elia.Settings,
-  path: Path.join([System.tmp_dir!(), "elia-test-settings", "settings.dets"])
+  path:
+    System.get_env("ELIA_TEST_SETTINGS") ||
+      Path.join([System.tmp_dir!(), "elia-test-settings", "settings.dets"])
 
 # Tests run against a scratch workspace (a fresh git repo, see test_helper.exs).
-config :elia, :workspace, Path.join(System.tmp_dir!(), "elia-test-workspace")
+config :elia,
+       :workspace,
+       System.get_env("ELIA_TEST_WORKSPACE") ||
+         Path.join(System.tmp_dir!(), "elia-test-workspace")
 
 # The suite runs commands unjailed so it needs no bubblewrap; the isolation
 # tests turn the jail on per call and skip where bubblewrap is missing

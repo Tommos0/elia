@@ -81,6 +81,7 @@ deleting it.
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
 | [Checkpoints](checkpoints.md) | `CKPT` | Retired: per-chat worktrees replaced snapshots and rollback |
 | [Test runs](verification.md) | `VERIFY` | `run_tests`: running `mix test` in a chat's workspace |
+| [Parallel test suite](test-suite.md) | `SUITE` | `bin/test` runs the suite as concurrent partitions with their own scratch state; `mix precommit` uses it |
 | [Hot reload](hot-reload.md) | `HOT` | Hot reload: the soft deploy mode, loading tested code into the running server |
 | [Guarded files](guarded-files.md) | `GUARD` | Retired: per-chat worktrees replaced it; the "never reload on request" rule moved to Deployment |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |

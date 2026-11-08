@@ -79,4 +79,17 @@ a browser during `mix test`.
 ## Running
 
 - One file: `mix test test/path_test.exs` (or `run_tests`). Previously failed: `mix test --failed`.
-- Before finishing: `mix precommit`.
+- The whole suite: `bin/test` — the same tests as `mix test`, but as concurrent
+  partitions (`specs/test-suite.md`, SUITE). Each partition gets its own scratch
+  workspace, settings database and port (`ELIA_TEST_WORKSPACE`,
+  `ELIA_TEST_SETTINGS`, `ELIA_TEST_PORT`, SUITE-1), so the wall time is the
+  slowest partition instead of the sum. `bin/test --plan` prints the split
+  without running anything, and `bin/test test/foo_test.exs` (or `--failed`, or
+  `--only`) falls back to one plain `mix test` (SUITE-6).
+- The split is by file, weighted by how slow each one measured: the deploy tests
+  and the restart tests each lead their own partition. A new file needs no entry
+  — it weighs 1 and lands on the lightest partition (SUITE-3). The weights are
+  a comment away in `bin/test`; re-measure with `mix test --slowest 20` when a
+  partition feels lopsided.
+- Before finishing: `mix precommit`, which runs its test step through `bin/test`
+  (SUITE-8).

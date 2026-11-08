@@ -1,0 +1,157 @@
+#!/bin/sh
+# Runs the test suite in parallel partitions (specs/test-suite.md).
+#
+#   bin/test                     the whole suite, in partitions
+#   bin/test --plan              print the split and the command, run nothing
+#   bin/test test/foo_test.exs   one plain `mix test` with those arguments
+#   bin/test --failed            likewise
+#
+# Environment:
+#   ELIA_TEST_PARTITIONS  how many partitions to start (default 4)
+#   ELIA_TEST_CMD         the command a partition runs (default: mix test)
+#
+# Exit status is 0 only when every partition passed.
+
+cd "$(dirname "$0")/.." || exit 1
+
+partitions=${ELIA_TEST_PARTITIONS:-4}
+cmd=${ELIA_TEST_CMD:-"mix test"}
+
+plan_only=0
+if [ "$1" = "--plan" ]; then
+  plan_only=1
+  shift
+fi
+
+# A partition's own scratch state, so several runs share the machine (SUITE-1).
+# TMPDIR matters as much as the rest: test paths are named with
+# `System.unique_integer/1`, which is unique inside one BEAM node only, so two
+# partitions in a shared temp dir would otherwise pick the same live tree.
+base_of() { echo "${TMPDIR:-/tmp}/elia-test-p$1"; }
+tmpdir_of() { echo "$(base_of "$1")/tmp"; }
+workspace_of() { echo "$(base_of "$1")/workspace"; }
+settings_of() { echo "$(base_of "$1")/settings/settings.dets"; }
+port_of() { echo $((4002 + $1 - 1)); }
+
+# How slow a file is, in rough ExUnit milliseconds, measured with
+# `mix test --slowest` on a 4-core machine. A file not listed weighs 1, so a
+# new file still gets a home without anyone updating this table (SUITE-3).
+weight_of() {
+  case "$1" in
+    test/elia/deployment_test.exs) echo 15000 ;;
+    test/elia_web/live/settings_live_test.exs) echo 8200 ;;
+    test/elia/serve_script_test.exs) echo 5300 ;;
+    test/elia/tasks_test.exs) echo 3700 ;;
+    test/elia/llm/stream_timeout_test.exs) echo 2900 ;;
+    test/elia/agent_test.exs) echo 2000 ;;
+    test/elia/command_isolation_test.exs) echo 1600 ;;
+    test/elia_web/live/chat_live_test.exs) echo 1300 ;;
+    test/elia/shell_test.exs) echo 1100 ;;
+    test/elia/skills/shell_test.exs) echo 1100 ;;
+    test/elia/self_modification_test.exs) echo 700 ;;
+    test/elia/tasks_git_test.exs) echo 600 ;;
+    test/elia_web/live/dashboard_test.exs) echo 540 ;;
+    # What a file not listed above costs, in the same units: the rest of the
+    # suite averages about 140 ms a file, so they spread out instead of all
+    # landing on whichever partition the heavy files left lightest.
+    *) echo 140 ;;
+  esac
+}
+
+# The split: the heaviest file goes first, each one to the lightest partition so
+# far, ties to the lowest number, so the same files always split the same way
+# (SUITE-3). Prints "<partition> <weight> <files...>" per partition.
+split() {
+  find test -name '*_test.exs' | sort | while read -r file; do
+    printf '%s %s\n' "$(weight_of "$file")" "$file"
+  done | sort -k1,1nr -k2,2 | awk -v n="$partitions" '
+    {
+      best = 1
+      for (p = 2; p <= n; p++) if (loads[p] < loads[best]) best = p
+      loads[best] += $1
+      files[best] = (files[best] == "" ? $2 : files[best] " " $2)
+    }
+    END { for (p = 1; p <= n; p++) printf "%d %d %s\n", p, loads[p], files[p] }'
+}
+
+if [ "$plan_only" = 1 ]; then
+  if [ $# -gt 0 ]; then
+    echo "single run: $cmd $*"
+  else
+    split | while read -r p weight files; do
+      echo "partition $p (weight $weight)"
+      echo "  files: $files"
+      echo "  env: TMPDIR=$(tmpdir_of "$p") ELIA_TEST_WORKSPACE=$(workspace_of "$p") ELIA_TEST_SETTINGS=$(settings_of "$p") ELIA_TEST_PORT=$(port_of "$p")"
+      echo "  command: $cmd --no-compile $files"
+    done
+  fi
+  exit 0
+fi
+
+# Arguments make it a single plain run: a file, --failed, --only (SUITE-6).
+if [ $# -gt 0 ]; then
+  exec $cmd "$@"
+fi
+
+case "$partitions" in
+  '' | *[!0-9]*) echo "bin/test: ELIA_TEST_PARTITIONS must be a number" >&2; exit 2 ;;
+esac
+if [ "$partitions" -lt 1 ]; then
+  echo "bin/test: ELIA_TEST_PARTITIONS must be at least 1" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+start=$(date +%s)
+
+# Compile once, here: the partitions run with compilation skipped, so none of
+# them builds the same tree at the same time (SUITE-2). A substituted
+# ELIA_TEST_CMD is not `mix test`, so it gets no compile of its own.
+if [ -z "$ELIA_TEST_CMD" ]; then
+  MIX_ENV=test mix compile --quiet || exit 1
+fi
+
+split > "$tmp/plan"
+
+: > "$tmp/runs"
+while read -r p weight files; do
+  log="$tmp/p$p.log"
+
+  (
+    TMPDIR=$(tmpdir_of "$p")
+    ELIA_TEST_WORKSPACE=$(workspace_of "$p")
+    ELIA_TEST_SETTINGS=$(settings_of "$p")
+    ELIA_TEST_PORT=$(port_of "$p")
+    export TMPDIR ELIA_TEST_WORKSPACE ELIA_TEST_SETTINGS ELIA_TEST_PORT
+    mkdir -p "$TMPDIR"
+    exec $cmd --no-compile $files
+  ) > "$log" 2>&1 &
+
+  echo "$p $! $(date +%s)" >> "$tmp/runs"
+done < "$tmp/plan"
+
+# A partition's ExUnit summary line, for the one-line report (SUITE-7).
+summary() {
+  line=$(grep -E 'tests?, [0-9]+ failures?' "$1" | tail -n 1)
+  if [ -z "$line" ]; then line="(no summary)"; fi
+  echo "$line"
+}
+
+failed=0
+while read -r p pid started; do
+  if wait "$pid"; then
+    printf 'partition %s: passed in %ss  %s\n' "$p" "$(($(date +%s) - started))" "$(summary "$tmp/p$p.log")"
+  else
+    failed=1
+    printf 'partition %s: FAILED after %ss\n' "$p" "$(($(date +%s) - started))"
+    echo "----- partition $p output -----"
+    cat "$tmp/p$p.log"
+    echo "----- end of partition $p -----"
+  fi
+done < "$tmp/runs"
+
+printf 'total: %ss\n' "$(($(date +%s) - start))"
+
+exit "$failed"

@@ -91,7 +91,14 @@ defmodule Elia.MixProject do
         "esbuild elia --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      # SUITE-8: the test step goes through the partitioned runner, so the gate
+      # is as fast as `bin/test`; a plain `mix test` stays single-process.
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "cmd bin/test"
+      ]
     ]
   end
 end
