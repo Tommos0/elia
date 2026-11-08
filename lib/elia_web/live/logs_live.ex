@@ -140,20 +140,35 @@ defmodule EliaWeb.LogsLive do
               :for={{dom_id, entry} <- @streams.entries}
               id={dom_id}
               data-level={entry.level}
-              class="flex gap-3 border-b border-base-300 px-4 py-2 font-mono text-[13px] leading-5 last:border-b-0 hover:bg-base-200/40"
+              class="border-b border-base-300 px-4 py-2 font-mono text-[13px] leading-5 last:border-b-0 hover:bg-base-200/40 sm:flex sm:gap-3"
             >
-              <time class="shrink-0 text-base-content/40" title={DateTime.to_iso8601(entry.at)}>
-                {Calendar.strftime(entry.at, "%H:%M:%S")}
-              </time>
-              <span class={[
-                "shrink-0 self-start rounded px-1.5 text-[11px] uppercase",
-                level_class(entry.level)
-              ]}>
-                {entry.level}
-              </span>
-              <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{entry.message}</span>
-              <span :if={source(entry)} class="shrink-0 text-xs text-base-content/30">
-                {source(entry)}
+              <!--
+                LOG-11: a phone has no room for time, level, source and message
+                in one row — the message would be squeezed into a column a
+                character wide. Below `sm` the meta parts share a line and the
+                message gets the next one; from `sm` up the wrapper is
+                `contents`, so they are the row's own items again.
+              -->
+              <div class="flex min-w-0 items-center gap-2 sm:contents">
+                <time class="shrink-0 text-base-content/40" title={DateTime.to_iso8601(entry.at)}>
+                  {Calendar.strftime(entry.at, "%H:%M:%S")}
+                </time>
+                <span class={[
+                  "shrink-0 rounded px-1.5 text-[11px] uppercase sm:self-start",
+                  level_class(entry.level)
+                ]}>
+                  {entry.level}
+                </span>
+                <span
+                  :if={source(entry)}
+                  title={source(entry)}
+                  class="min-w-0 truncate text-xs text-base-content/30 sm:order-last"
+                >
+                  {source(entry)}
+                </span>
+              </div>
+              <span class="mt-0.5 block whitespace-pre-wrap break-words sm:mt-0 sm:min-w-0 sm:flex-1">
+                {entry.message}
               </span>
             </li>
           </ul>

@@ -1,21 +1,25 @@
 defmodule EliaWeb.SmallScreenLayoutTest do
   @moduledoc """
-  The Home and System pages at a phone width (DASH-12 in specs/dashboard.md,
-  SYS-12 in specs/system-dashboard.md). How wide a page comes out is a question
-  about geometry, so it is asked of a real headless Chromium (BROWSER-1,
-  BROWSER-7) — and it is the page's own scroll area, not the document, that
-  scrolls sideways when a card grows to fit its contents.
+  The Home, System and Logs pages at a phone width (DASH-12 in
+  specs/dashboard.md, SYS-12 in specs/system-dashboard.md, LOG-11 in
+  specs/log-viewer.md). How wide a page comes out is a question about geometry,
+  so it is asked of a real headless Chromium (BROWSER-1, BROWSER-7) — and it is
+  the page's own scroll area, not the document, that scrolls sideways when a
+  card grows to fit its contents.
 
   DASH-12 is a title's: a chat title is one unbreakable line (`truncate`,
   TITLE-2's 60 characters), and the cards' column has to be able to shrink
   below it. SYS-12 is a state check rather than a regression guard: `/system`
   reads the machine's real `/proc` (SYS-1), so a test cannot hand it a value
-  wide enough to trip the layout.
+  wide enough to trip the layout. LOG-11 is a row's: a log entry's message must
+  get a line of its own, not a column a character wide.
   """
 
   use EliaWeb.BrowserCase
 
-  alias Elia.Store
+  alias Elia.{Logs, Store}
+
+  require Logger
 
   # DASH-12, SYS-12: the viewport applies to the browser context, which the
   # case creates per test (as the chat layout tests do, UI-78).
@@ -78,6 +82,96 @@ defmodule EliaWeb.SmallScreenLayoutTest do
     return [window.innerWidth, el.scrollWidth - el.clientWidth];
   }
   """
+
+  # LOG-11: the row's own content width is the yardstick, and the message is the
+  # innermost element that carries the text.
+  @log_message "logs-phone: a log message long enough to need more than one line on a phone"
+
+  @entry_geometry """
+  text => {
+    const li = [...document.querySelectorAll('#log-entries li')].find((el) =>
+      el.textContent.includes(text)
+    );
+    if (!li) return null;
+
+    const message = [...li.querySelectorAll('*')].find(
+      (el) => el.children.length === 0 && el.textContent.includes(text)
+    );
+    if (!message) return null;
+
+    const style = getComputedStyle(li);
+    const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const source = [...li.querySelectorAll('*')].find(
+      (el) => el.children.length === 0 && el.textContent.includes('SmallScreenLayoutTest')
+    );
+
+    return {
+      // What the message may use: the row without its own padding.
+      content: li.clientWidth - padding,
+      message: message.clientWidth,
+      // The message starts below the time and level, not beside them.
+      stacked: message.getBoundingClientRect().top >=
+        li.querySelector('time').getBoundingClientRect().bottom - 1,
+      // LOG-9: on a wide screen the source is the row's last item, after the
+      // message — the wrapper is `contents` there, so the order is the markup's.
+      source_last: source != null &&
+        source.getBoundingClientRect().left >= message.getBoundingClientRect().left,
+      // Nothing in the row may push it wider: a long source is cut off.
+      overflow: li.scrollWidth - li.clientWidth,
+    };
+  }
+  """
+
+  @tag browser_context_opts: @phone
+  test "a log entry's message gets a line of its own on a phone (LOG-11)", %{conn: conn} do
+    Logs.clear()
+
+    conn
+    |> visit("/logs")
+    # LOG-6: the entry arrives over the socket, so the page has to bring it in.
+    |> tap(fn _ -> Logger.warning(@log_message) end)
+    # The row is what the assertion waits for: on the layout this fixes, the
+    # message is a box with no width of its own.
+    |> assert_has("#log-entries li[data-level]", timeout: 2000)
+    |> evaluate(@entry_geometry, [is_function: true, arg: @log_message], fn entry ->
+      assert entry, "the entry for the logged line never appeared on the page"
+
+      # LOG-11: the message is the row's width — this module's mfa and a pid are
+      # a long source for the line above it.
+      assert entry["message"] >= entry["content"] * 0.95,
+             "the message is #{entry["message"]}px of the row's #{entry["content"]}px"
+
+      assert entry["stacked"],
+             "the message is drawn beside the time and level, not below them"
+
+      # The parts that don't shrink may not push the row wider, so the source is
+      # cut off rather than spilling out of it.
+      assert entry["overflow"] <= 0,
+             "the entry's row overflows sideways by #{entry["overflow"]}px"
+    end)
+  end
+
+  # LOG-11: from `sm` up an entry is the single row of LOG-9 again — the
+  # wrapper's `contents` puts the message back among the row's own items and the
+  # source's `order-last` after it.
+  @tag browser_context_opts: [viewport: %{width: 1280, height: 900}]
+  test "a log entry is one row on a wide screen (LOG-11)", %{conn: conn} do
+    Logs.clear()
+
+    conn
+    |> visit("/logs")
+    |> tap(fn _ -> Logger.warning(@log_message) end)
+    |> assert_has("#log-entries li[data-level]", timeout: 2000)
+    |> evaluate(@entry_geometry, [is_function: true, arg: @log_message], fn entry ->
+      assert entry, "the entry for the logged line never appeared on the page"
+
+      refute entry["stacked"], "the message is on a line of its own on a wide screen"
+      assert entry["source_last"], "the source is not the last thing in the row"
+
+      assert entry["overflow"] <= 0,
+             "the entry's row overflows sideways by #{entry["overflow"]}px"
+    end)
+  end
 
   defp refute_sideways_scroll(conn, selector) do
     evaluate(conn, @sideways_scroll, [is_function: true, arg: selector], fn [window, overflow] ->

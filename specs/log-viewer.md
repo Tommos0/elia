@@ -41,6 +41,13 @@ deploy.
 - **LOG-9** Each entry shows its time, level, message, and its source (module
   and pid) when present.
 - **LOG-10** The System page has a "Logs" link to `/logs`.
+- **LOG-11** On a narrow screen (below the `sm` breakpoint, a phone) an entry's
+  time, level and source share one line and its message gets a line of its own
+  below them, at the width of the row, so a message is never squeezed into a
+  column a character wide; a source too long for that line is cut off with an
+  ellipsis. From `sm` up an entry is the single row of LOG-9. A page whose
+  stylesheet is older than this markup still reads: without the rules, the
+  parts simply stack (HOT-8).
 
 ## Out of scope
 
@@ -57,4 +64,6 @@ logger handler that forwards events), `EliaWeb.LogsLive` (the page).
 
 ## Tests
 
-`test/elia/logs_test.exs`, `test/elia_web/live/logs_live_test.exs`.
+`test/elia/logs_test.exs`, `test/elia_web/live/logs_live_test.exs`, and
+`test/elia_web/browser/small_screen_layout_test.exs` for the phone layout
+(LOG-11), which is geometry and so needs a browser (BROWSER-1).
