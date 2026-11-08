@@ -28,8 +28,8 @@ offline mode.
   navigations through the worker can leave a blank page after a refresh), and
   it activates immediately (`skipWaiting` and `clients.claim`).
 - **PWA-5** `assets/js/app.js` registers `/sw.js` when the browser supports
-  service workers. A registration failure is ignored (logged only) and never
-  breaks the page.
+  service workers. A registration failure never breaks the page: it is logged,
+  and the push section reports it (PUSH-19).
 - **PWA-6** The icon PNGs are reproducible: `assets/pwa_icons.exs` generates
   them into `priv/static/images/`.
 - **PWA-7** The root layout's viewport meta asks a mobile browser to resize the
@@ -46,6 +46,11 @@ offline mode.
   LAN address, Chrome only offers a shortcut, not an installed app. Use HTTPS
   (e.g. a tunnel or reverse proxy) or `chrome://flags` "Insecure origins treated
   as secure".
+- Behind an auth proxy (Cloudflare Access, HTTP basic auth), `/sw.js` has to be
+  excluded from the login, or nothing installs and push cannot work (PUSH-19):
+  unlike the manifest, which the page can fetch with credentials (PWA-3), a
+  browser fetches a service worker script without them, so the login page comes
+  back and the registration fails.
 
 ## Implementation
 

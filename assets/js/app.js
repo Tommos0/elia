@@ -43,9 +43,15 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 liveSocket.connect()
 autoReconnect(liveSocket)
 
-// Installable web app (PWA-5): a failure here must never break the page.
+// Installable web app (PWA-5): a failure here must never break the page. It is
+// logged, and left on `window` as well: the push section reports it (PUSH-19),
+// because a phone's console is out of reach and an app whose worker never
+// started used to just sit at "Checking this browser…".
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(err => console.warn("service worker:", err))
+  navigator.serviceWorker.register("/sw.js").catch(err => {
+    console.warn("service worker:", err)
+    window.eliaServiceWorkerError = (err && err.message) || String(err)
+  })
 }
 
 // expose liveSocket on window for web console debug logs and latency simulation:

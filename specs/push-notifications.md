@@ -84,6 +84,13 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   whether the send worked, failed or there is nothing to send to.
 - **PUSH-18** The VAPID contact (`sub`) is configurable (`PUSH_SUBJECT`) and
   defaults to a `mailto:` URL, which push services accept.
+- **PUSH-19** The section never sits at "Checking this browser…": where a
+  service worker has not become active — the app's own registration failed, as
+  when an auth proxy answers `/sw.js` with its login page (PWA-5), or nothing
+  registered in a few seconds — it says so in `#push-reason`, naming the
+  worker, and offers no switch. If the worker does become active later, the
+  section reads the browser again by itself, so the switch appears without a
+  reload.
 
 ## Configuration
 
@@ -120,10 +127,12 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   page is on that chat (PUSH-13).
 - `Elia.Push.Viewers` — which chats have a visible page, kept from the chat
   LiveView's mount, its visibility changes and its exit (PUSH-13, PUSH-14).
-- `EliaWeb.SettingsLive` — the push section (PUSH-2, PUSH-5–PUSH-8) and a
-  colocated hook (`.PushSettings`) for permission, subscribing, the test button
-  and reporting, since this project keeps client code in colocated hooks rather
-  than in `assets/js/`.
+- `EliaWeb.SettingsLive` — the push section (PUSH-2, PUSH-5–PUSH-8, PUSH-19) and
+  a colocated hook (`.PushSettings`) for permission, subscribing, the test
+  button and reporting, since this project keeps client code in colocated hooks
+  rather than in `assets/js/`.
+- `assets/js/app.js` — the service worker registration (PWA-5) and the failure
+  it leaves behind for the section to report (PUSH-19).
 - `EliaWeb.ChatLive` — reports visibility (PUSH-14).
 - `priv/static/sw.js` — `push` and `notificationclick` handlers (PUSH-10).
 
@@ -153,7 +162,8 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   the page is showing (PUSH-13, PUSH-14).
 - `test/elia_web/browser/push_test.exs` — the hook in a real browser: the
   switch where the browser can notify and the reason where it cannot (PUSH-2,
-  PUSH-5), and the chat page's visibility (PUSH-14). Run explicitly, like the
+  PUSH-5), the chat page's visibility (PUSH-14) and the reason a service worker
+  that never activates leaves behind (PUSH-19). Run explicitly, like the
   other browser tests (BROWSER).
 - Not covered by an automated test, and checked by hand as PWA-5 is: making a
   real subscription and receiving a notification end to end, which needs a

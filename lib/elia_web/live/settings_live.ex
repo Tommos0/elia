@@ -443,7 +443,11 @@ defmodule EliaWeb.SettingsLive do
         // PUSH-3..PUSH-6: subscribing is the page's job — only the page can ask
         // for permission and make a subscription — so this hook owns the switch
         // and tells the server about the subscription it made, and says why
-        // there can be no switch at all.
+        // there can be no switch at all. PUSH-19: the worker the app registered
+        // (PWA-5) is what a subscription rides on, so when it never starts the
+        // section says that instead of waiting for ever.
+        const workerWait = 4000
+
         export default {
           mounted() {
             this.reason = this.el.querySelector("#push-reason")
@@ -455,7 +459,8 @@ defmodule EliaWeb.SettingsLive do
             this.refresh()
           },
 
-          // PUSH-5, PUSH-6: why this browser cannot subscribe, or null when it can.
+          // PUSH-5, PUSH-6: why this browser cannot push at all, or null when it
+          // can. These are cheap, permanent answers about the browser itself.
           blocker() {
             if (!window.isSecureContext) {
               return "Notifications need a secure origin: open Elia over HTTPS, or on localhost."
@@ -466,9 +471,6 @@ defmodule EliaWeb.SettingsLive do
             if (!("PushManager" in window) || !("Notification" in window)) {
               return "This browser cannot show notifications."
             }
-            if (Notification.permission === "denied") {
-              return "Notifications are blocked for this site. Allow them for it in the browser's settings, then reload."
-            }
             return null
           },
 
@@ -476,13 +478,95 @@ defmodule EliaWeb.SettingsLive do
             const blocker = this.blocker()
             if (blocker) return this.show(blocker, false)
 
+            // PUSH-19: the worker comes before the permission question. A page
+            // whose worker never started cannot subscribe whatever permission
+            // it has, and "blocked" would point at the wrong thing — as when an
+            // auth proxy answers /sw.js with its login page.
+            const registration = await this.activeWorker()
+            if (!registration) return this.show(this.workerReason(), false)
+
+            if (Notification.permission === "denied") {
+              return this.show(
+                "Notifications are blocked for this site. Allow them for it in the browser's settings, then reload.",
+                false
+              )
+            }
+
             try {
-              const registration = await navigator.serviceWorker.ready
               const subscription = await registration.pushManager.getSubscription()
               this.show(null, !!subscription)
             } catch (error) {
               this.show(`This browser could not be asked about notifications: ${error}`, false)
             }
+          },
+
+          // PUSH-19: why there is nothing to offer when the worker never became
+          // active. PWA-5 leaves a failed registration's error on `window`; with
+          // no error, the worker was still starting after a few seconds.
+          workerReason() {
+            const error = window.eliaServiceWorkerError
+            const because = error ? ` (${error})` : ""
+            return (
+              `Notifications need this app's service worker, and it has not started${because}. ` +
+              "If the app is behind a login page, let /sw.js through it, then reload."
+            )
+          },
+
+          // PUSH-19: the worker the page registered (PWA-5), or null when it is
+          // not active. A failed registration leaves its error on `window`, and
+          // an older worker may still be in charge, so then the registration is
+          // read as it stands rather than waited on; one still starting gets a
+          // few seconds. Either way the section reads the browser again by
+          // itself when a worker does turn up, so nothing waits for ever and no
+          // reload is needed.
+          async activeWorker() {
+            const registration = window.eliaServiceWorkerError
+              ? await this.registeredNow()
+              : await this.waitForWorker()
+
+            if (!registration) this.readAgainWhenReady()
+
+            return registration
+          },
+
+          async registeredNow() {
+            try {
+              const registration = await navigator.serviceWorker.getRegistration()
+              return registration && registration.active ? registration : null
+            } catch (_error) {
+              return null
+            }
+          },
+
+          waitForWorker() {
+            return new Promise(resolve => {
+              let settled = false
+
+              const settle = registration => {
+                if (settled) return
+                settled = true
+                clearTimeout(timer)
+                clearInterval(poll)
+                resolve(registration)
+              }
+
+              const timer = setTimeout(() => settle(null), workerWait)
+              const poll = setInterval(() => {
+                if (window.eliaServiceWorkerError) settle(null)
+              }, 200)
+
+              navigator.serviceWorker.ready.then(registration => settle(registration))
+            })
+          },
+
+          readAgainWhenReady() {
+            if (this.watching) return
+            this.watching = true
+
+            navigator.serviceWorker.ready.then(() => {
+              this.watching = false
+              this.refresh()
+            })
           },
 
           show(reason, subscribed) {
