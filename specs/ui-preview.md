@@ -13,7 +13,7 @@ assertions (BROWSER-1 - BROWSER-7), which is what makes it possible at all: the
 test env server in the same BEAM node serves the workspace's own compiled code
 with `Elia.FakeLLM` answering model calls, so nothing is deployed and no API key
 is involved. The app the preview shows is that workspace's own, whose data is
-its own too — empty, except for the sample chat a preview seeds so the pages
+its own too — empty, except for the sample chats a preview seeds so the pages
 have something to render.
 
 ## Requirements
@@ -72,9 +72,9 @@ have something to render.
   (PREVIEW-1); an install that fails ends the run with the command it ran and
   the workspace it ran in.
 
-### The sample chat the preview seeds
+### The sample chats the preview seeds
 
-Pages without content are hard to judge, so a preview seeds one. It goes into
+Pages without content are hard to judge, so a preview seeds them. They go into
 the workspace's own data (PREVIEW-2), through the app's own persistence, so the
 live tree's saved chats are never touched.
 
@@ -89,11 +89,25 @@ live tree's saved chats are never touched.
 - **PREVIEW-11** The sample chat has the fixed id `preview`, so `/c/preview` is
   the same page on every run and its picture's file name never changes
   (PREVIEW-4). The path `@chat` in a preview's arguments means `/c/preview`, and
-  the report (PREVIEW-5) prints that path.
+  the report (PREVIEW-5) prints that path. `@ask` means the paused-question
+  chat's path instead (PREVIEW-15).
 - **PREVIEW-12** The sample chat is a saved chat, not a running turn: states
-  that exist only while a turn runs (working, streaming, awaiting approval, a
-  pause) are not in it, and previewing one needs a scripted turn, which is out
-  of scope.
+  that exist only while a turn runs (working, streaming, awaiting approval) are
+  not in it. The one such state a preview does show — a turn paused on a
+  question — belongs to the second sample chat of PREVIEW-15.
+- **PREVIEW-15** A preview also seeds a chat whose turn is paused on a question,
+  so a picture can show what the user is asked to click (UI-75, ASK-2 - ASK-4):
+  the question card with its option buttons, and the chat shown as waiting for
+  an answer (ASK-10). It is seeded like the sample chat (PREVIEW-2): the chat's
+  id and path are fixed (`preview-question`, `/c/preview-question`), so its
+  picture's file name never changes either (PREVIEW-4), and the question and its
+  options are the fixed sample input `Elia.Preview.question_input/0` — one
+  question and a few short options. Its turn is a real one: the preview starts
+  the chat through the app's own agent (`Elia.Agent`) and answers the model call
+  with the browser layer's scripted provider (BROWSER-3), so the page renders
+  the wait itself and nothing is stubbed in a template. The preview waits until
+  that chat is awaiting an answer before it visits the page, so a picture never
+  catches the turn mid-flight.
 
 ### Showing a preview in the chat
 
@@ -129,6 +143,7 @@ live tree's saved chats are never touched.
 ```sh
 bin/preview                      # the empty state and the sample chat
 bin/preview @chat                # just the sample chat
+bin/preview @ask                 # the chat whose turn is paused on a question
 bin/preview / /files /settings   # three pages, three PNGs, three links
 ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat  # the agent's default
 ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
@@ -154,26 +169,29 @@ network and takes a second or two.
   projects and settings: a preview runs the test env app on its own data — the
   sample chat it seeds (PREVIEW-10 - PREVIEW-12) and nothing else. A dev-env
   preview over a copy of the live data would be a separate change.
-- Scripted interaction (clicking, hovering, typing, a streaming turn) and
-  video or Playwright traces: a preview navigates and waits.
+- Scripted interaction (clicking, hovering, typing, a streaming turn) and video
+  or Playwright traces: a preview navigates and waits. The scripted turn of
+  PREVIEW-15 runs server-side before the page is visited — it is not
+  interaction with the page.
 - Browsers other than Chromium, and sizing below the phone breakpoint.
 - A preview tool of its own with an approval card: it runs through `shell`,
   whose `timeout_seconds` a long first run (npm, a compile, the browser) needs.
 
 ## Implementation
 
-- `Elia.Preview` (naming, path safety, the URLs and the sample chat, no
-  browser), `EliaWeb.PreviewController` + a router entry (PREVIEW-7),
-  `test/elia_web/browser/preview_test.exs` with `use EliaWeb.BrowserCase`
-  (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12), `bin/preview` (PREVIEW-1,
-  PREVIEW-14), the transcript's image styling in `EliaWeb.ChatLive`
-  (PREVIEW-8), `AGENTS.md`, `docs/agents/harness.md` and the
-  `self-modification` skill (PREVIEW-9).
+- `Elia.Preview` (naming, path safety, the URLs, the sample chat and the paused
+  question of PREVIEW-15, no browser), `EliaWeb.PreviewController` + a router
+  entry (PREVIEW-7), `test/elia_web/browser/preview_test.exs` with
+  `use EliaWeb.BrowserCase` (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12,
+  PREVIEW-15), `bin/preview` (PREVIEW-1, PREVIEW-14), the transcript's image
+  styling in `EliaWeb.ChatLive` (PREVIEW-8), `AGENTS.md`,
+  `docs/agents/harness.md` and the `self-modification` skill (PREVIEW-9).
 
 ## Tests
 
 - `test/elia/preview_test.exs` (naming and path safety, PREVIEW-4, PREVIEW-7;
-  the sample chat, PREVIEW-10 - PREVIEW-11).
+  the sample chat, PREVIEW-10 - PREVIEW-11; the paused question's id, path and
+  input, PREVIEW-15).
 - `test/elia_web/controllers/preview_controller_test.exs` (PREVIEW-7), against a
   throwaway live tree with a chat worktree (`Elia.LiveTree.create/0`).
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).

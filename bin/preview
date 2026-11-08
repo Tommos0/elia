@@ -4,6 +4,7 @@
 #
 #   bin/preview                      # the empty state and the sample chat
 #   bin/preview @chat                # just the sample chat
+#   bin/preview @ask                 # the chat whose turn is paused on a question
 #   bin/preview / /files /settings   # pages of your choosing
 #   ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 #   ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme

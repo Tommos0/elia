@@ -6,13 +6,13 @@ defmodule Elia.Preview do
   with the browser layer's Playwright (PREVIEW-1 - PREVIEW-6); that half lives
   in the test layer, where the Playwright dependency is (BROWSER-1). What is
   here is what the running app shares with it: the file names a preview writes
-  (PREVIEW-4), the sample chat it seeds so the pages have something to render
-  (PREVIEW-10 - PREVIEW-12), and the lookup the route serving those images does
-  (PREVIEW-7) — no browser involved.
+  (PREVIEW-4), the sample chats it seeds so the pages have something to render
+  (PREVIEW-10 - PREVIEW-12, PREVIEW-15), and the lookup the route serving those
+  images does (PREVIEW-7) — no browser involved.
   """
 
   alias Elia.LLM.Message
-  alias Elia.{Deploy, Explorer, Store, Workspace}
+  alias Elia.{Agent, Deploy, Explorer, Store, Workspace}
 
   # PREVIEW-4: a preview's own dir, gitignored so it never reaches a commit or
   # a deploy.
@@ -26,6 +26,17 @@ defmodule Elia.Preview do
   # title show a title of its own, and its transcript shows the `set_title` call
   # that named it (TITLE-5).
   @sample_title "Sample chat"
+
+  # PREVIEW-15: the second sample chat, whose turn is paused on a question. Its
+  # id is fixed for the same reason as the first one's, and the question and its
+  # options are the fixed sample input, so the picture of the card is the same
+  # from one run to the next.
+  @question_id "preview-question"
+  @question_prompt "Set up this project for me."
+  @question %{
+    "question" => "How should the shell tool run commands in this project?",
+    "options" => ["In the jail", "Unjailed", "Ask me each time"]
+  }
 
   @extensions ~w(.png .jpg .jpeg .webp)
 
@@ -54,9 +65,47 @@ defmodule Elia.Preview do
   @spec sample_path() :: binary()
   def sample_path, do: "/c/" <> @sample_id
 
-  @doc "What a preview's argument means as a path: `@chat` is the sample chat (PREVIEW-11)."
+  @doc "The paused-question chat's id (PREVIEW-15)."
+  @spec question_id() :: binary()
+  def question_id, do: @question_id
+
+  @doc "The paused-question chat's path in the app (PREVIEW-15)."
+  @spec question_path() :: binary()
+  def question_path, do: "/c/" <> @question_id
+
+  @doc """
+  The question the paused turn is waiting on (PREVIEW-15): the `ask_user` input
+  — a question and a few short options — the picture of the card shows.
+  """
+  @spec question_input() :: map()
+  def question_input, do: @question
+
+  @doc "The message the paused-question chat's turn is started with (PREVIEW-15)."
+  @spec question_prompt() :: binary()
+  def question_prompt, do: @question_prompt
+
+  @doc """
+  Starts the paused-question chat's turn (PREVIEW-15): the chat is started
+  through the app's own agent (`Elia.Agent`) and sent `question_prompt/0`, so
+  the page renders the wait itself rather than a stubbed template. The model's
+  answer is the scripted provider the browser layer runs (BROWSER-3), which must
+  already hold an `ask_user` call carrying `question_input/0`; the caller then
+  waits for the chat to be awaiting an answer (`Elia.Agent.awaiting_input/0`)
+  before it visits the page.
+  """
+  @spec start_question() :: :ok
+  def start_question do
+    {:ok, _pid} = Agent.ensure_started(@question_id)
+    :ok = Agent.send_message(@question_id, @question_prompt)
+  end
+
+  @doc """
+  What a preview's argument means as a path: `@chat` is the sample chat and
+  `@ask` the paused-question chat (PREVIEW-11, PREVIEW-15).
+  """
   @spec resolve_path(binary()) :: binary()
   def resolve_path("@chat"), do: sample_path()
+  def resolve_path("@ask"), do: question_path()
   def resolve_path(path), do: path
 
   @doc """

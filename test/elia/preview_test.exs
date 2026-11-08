@@ -34,6 +34,50 @@ defmodule Elia.PreviewTest do
     end
   end
 
+  # PREVIEW-15
+  describe "the chat whose turn is paused on a question" do
+    test "is fixed, and `@ask` stands for it" do
+      assert Preview.question_id() == "preview-question"
+      assert Preview.question_path() == "/c/preview-question"
+      assert Preview.resolve_path("@ask") == "/c/preview-question"
+    end
+
+    # PREVIEW-15: one question, a few short options — the card the picture shows
+    # is the card a real question renders (UI-75).
+    test "asks a question with short options" do
+      input = Preview.question_input()
+
+      assert is_binary(input["question"])
+      assert input["question"] != ""
+
+      options = input["options"]
+      assert length(options) >= 2
+      assert length(options) <= 6
+      assert Enum.all?(options, &(is_binary(&1) and byte_size(&1) <= 40))
+      assert Preview.question_prompt() != ""
+    end
+
+    # PREVIEW-15: the turn is a real one — the app's own agent, answered by the
+    # scripted provider — so the page renders the wait itself.
+    test "starts the chat's own turn, which waits for an answer" do
+      start_supervised!(Elia.FakeLLM)
+      id = Preview.question_id()
+      on_exit(fn -> Elia.Agent.delete(id) end)
+
+      Elia.FakeLLM.push(
+        Elia.FakeLLM.assistant([
+          Elia.FakeLLM.tool_call("q1", "ask_user", Preview.question_input())
+        ])
+      )
+
+      Elia.Agent.subscribe(id)
+
+      assert :ok = Preview.start_question()
+      assert_receive {:agent, ^id, {:status, :awaiting_input}}, 5000
+      assert id in Elia.Agent.awaiting_input()
+    end
+  end
+
   # PREVIEW-13
   describe "the colour scheme a preview emulates" do
     test "is the one `ELIA_PREVIEW_THEME` names" do

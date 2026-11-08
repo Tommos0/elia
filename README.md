@@ -48,6 +48,30 @@ a *deploy*, from the Settings page — a request recompiles and loads nothing
 | `/sessions` | Open tabs, with IP, browser and page |
 | `/settings` | API keys, the selected model, and the deploy buttons |
 
+## Screenshots
+
+Taken from the app itself with `bin/preview` (`specs/ui-preview.md`), on the
+sample data a preview seeds: the light theme at desktop width.
+
+![The dashboard](docs/screenshots/dashboard.png)
+
+*The dashboard: what needs you, where you left off, the machine and the deploy
+state.*
+
+![A chat](docs/screenshots/chat.png)
+
+*A chat: a reply with Markdown, a reasoning block, tool calls with their output,
+and one that failed.*
+
+![A question with option buttons](docs/screenshots/question.png)
+
+*`ask_user` puts a question to the user and the turn waits: each option is a
+button, and there is always a field for an answer in their own words (ASK-4).*
+
+![The settings page](docs/screenshots/settings.png)
+
+*`/settings`: a card per provider for its API key, and the deploy buttons.*
+
 ## Tests and previews
 
 ```sh

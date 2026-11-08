@@ -63,6 +63,23 @@ defmodule EliaWeb.UserInputTest do
     refute has_element?(view, "#answer-q1-0")
   end
 
+  # UI-75, ASK-4: a page opened while the question is already waiting shows the
+  # card with its buttons on the first render — a reload, or the picture a
+  # preview takes (PREVIEW-15).
+  test "a chat opened while the question waits shows its buttons", %{conn: conn, id: id} do
+    ask_question(id)
+    {:ok, _pid} = Agent.ensure_started(id)
+    Agent.subscribe(id)
+    :ok = Agent.send_message(id, "ask me")
+    assert_receive {:agent, ^id, {:status, :awaiting_input}}, 5000
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#answer-q1-0", "Jailed")
+    assert has_element?(view, "#answer-q1-1", "Not jailed")
+    assert has_element?(view, "#transcript", "Needs your answer")
+  end
+
   # UI-75, ASK-4, ASK-6
   test "clicking an option answers the question", %{conn: conn, id: id} do
     ask_question(id)

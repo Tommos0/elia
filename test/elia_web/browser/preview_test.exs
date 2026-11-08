@@ -17,13 +17,14 @@ defmodule EliaWeb.PreviewTest do
 
       bin/preview
       bin/preview / /files
+      bin/preview @ask
       ELIA_PREVIEW_WIDTH=390 bin/preview @chat
       ELIA_PREVIEW_THEME=dark bin/preview @chat
   """
 
   use PhoenixTest.Playwright.Case, async: false
 
-  alias Elia.{FakeLLM, Preview}
+  alias Elia.{Agent, FakeLLM, Preview}
   alias EliaWeb.BrowserJsLogger
 
   @moduletag :preview
@@ -81,6 +82,9 @@ defmodule EliaWeb.PreviewTest do
     # PREVIEW-10: a page without content is hard to judge.
     :ok = Preview.seed()
 
+    # PREVIEW-15: so is a card nobody has been asked yet.
+    start_question()
+
     {:ok, root: root}
   end
 
@@ -117,6 +121,25 @@ defmodule EliaWeb.PreviewTest do
     case System.get_env("PREVIEW_PATHS") do
       nil -> ["/", "/c/" <> Preview.sample_id()]
       paths -> paths |> String.split("\n", trim: true) |> Enum.map(&Preview.resolve_path/1)
+    end
+  end
+
+  # PREVIEW-15: the second sample chat's turn is a real one — the app's own
+  # agent, answered by the scripted provider (BROWSER-3) with the question the
+  # picture shows. It is started before the page is visited and the wait is
+  # waited out here, so a picture never catches the turn mid-flight.
+  defp start_question do
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("q1", "ask_user", Preview.question_input())])
+    )
+
+    Agent.subscribe(Preview.question_id())
+    :ok = Preview.start_question()
+
+    receive do
+      {:agent, _id, {:status, :awaiting_input}} -> :ok
+    after
+      5_000 -> raise "the question sample chat (PREVIEW-15) never waited for an answer"
     end
   end
 
