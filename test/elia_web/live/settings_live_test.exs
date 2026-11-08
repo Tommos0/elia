@@ -488,6 +488,39 @@ defmodule EliaWeb.SettingsLiveTest do
     assert has_element?(view, "#push-toggle")
   end
 
+  # PUSH-22
+  test "a page that has not reached the server says so; a connected one checks", %{conn: conn} do
+    # The dead render: the browser has the page, but none of the section's own
+    # script has run and nothing has been read, so it says which of the two it
+    # is doing. On a phone, which has no console, that is how a page that never
+    # connected is told from a reading that failed.
+    html = conn |> get(~p"/settings") |> html_response(200)
+
+    assert html =~ "This page has not reached the server yet"
+    refute html =~ "Checking this browser"
+
+    # Connected, and before the hook has answered (PUSH-20): reading it is.
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert has_element?(view, "#push-reason", "Checking this browser")
+  end
+
+  # PUSH-23
+  test "a reason takes the switch's place, not the server's own controls", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # What a reason replaces (PUSH-5) is the switch, and the switch is the whole
+    # of that row: the count, the test notification and "remove all" are about
+    # the server, so they stay reachable where this browser cannot push.
+    assert has_element?(view, "#push-switch-row #push-toggle")
+    refute has_element?(view, "#push-switch-row #push-send-test")
+    refute has_element?(view, "#push-switch-row #push-remove-all")
+    refute has_element?(view, "#push-switch-row #push-count")
+
+    assert has_element?(view, "#push-controls #push-send-test")
+    assert has_element?(view, "#push-controls #push-remove-all")
+    assert has_element?(view, "#push-controls #push-count")
+  end
+
   # PUSH-3, PUSH-7
   test "a subscription the page reports is stored, and the section counts it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/settings")

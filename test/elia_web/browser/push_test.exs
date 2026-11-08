@@ -2,8 +2,10 @@ defmodule EliaWeb.PushBrowserTest do
   @moduledoc """
   The push JavaScript in a real headless Chromium (BROWSER-8): the settings
   section's own hook (PUSH-2, PUSH-5), what it says about a service worker that
-  never started (PUSH-19) and the chat page's visibility reporting (PUSH-14),
-  none of which `Phoenix.LiveViewTest` runs.
+  never started (PUSH-19), how it settles again once the server has rendered it
+  again and how it reports a reading that failed (PUSH-20, PUSH-21), what a
+  reason leaves in place (PUSH-23) and the chat page's visibility reporting
+  (PUSH-14), none of which `Phoenix.LiveViewTest` runs.
 
   A browser run needs built assets and `assets/node_modules` (BROWSER-2,
   BROWSER-6), and is excluded from a plain `mix test` (BROWSER-5):
@@ -36,8 +38,10 @@ defmodule EliaWeb.PushBrowserTest do
       conn
       |> visit("/settings")
       |> assert_has(~s(#push-section[data-vapid-public-key="#{key}"]))
-      # The hook ran: the section stopped saying it is still checking.
-      |> refute_has("#push-reason", text: "Checking this browser")
+
+    # The hook ran: the marker the server renders for "nothing has been read
+    # yet" is gone (PUSH-20, PUSH-22).
+    assert await_settled(conn)
 
     # Which of the two the hook shows follows what the browser itself says about
     # notifications (PUSH-5): the switch where they are possible, and the reason
@@ -79,12 +83,102 @@ defmodule EliaWeb.PushBrowserTest do
       |> assert_has("#push-reason", text: "/sw.js")
       |> refute_has("#push-toggle")
 
+    # PUSH-23: the reason takes the switch's place, and nothing else. The test
+    # notification and "remove all" are about the server, so a browser that
+    # cannot push — or cannot be read — can still try a send and clear a device
+    # that is gone.
+    conn
+    |> assert_has("#push-send-test")
+    |> assert_has("#push-count")
+
     # A worker that does turn up later is read again by the section itself, so
     # the stale failure stops being the answer without a reload.
     conn
     |> allow_worker()
     |> evaluate("navigator.serviceWorker.register('/sw.js')")
     |> refute_has("#push-reason", text: "has not started")
+  end
+
+  # PUSH-20: the section's answer lives in its own markup, so a section the
+  # server renders again — which is what a reconnect after the app has been in
+  # the background leaves behind — gets the server's own words back, and has to
+  # read the browser again rather than sit at "Checking this browser…" for ever.
+  test "the section reads the browser again when the server renders it again", %{conn: conn} do
+    conn = visit(conn, "/settings")
+    # The hook has answered once: the marker the server renders is gone.
+    assert await_settled(conn)
+
+    # The server's render, put back by hand: the answer this hook put there is
+    # not part of it, so the section is back to saying that it is checking.
+    conn = server_render(conn)
+
+    assert value(
+             conn,
+             "document.querySelector('#push-reason').classList.contains('push-checking')"
+           )
+
+    # …and it settles again by itself, without a reload.
+    assert await_settled(conn)
+
+    case value(conn, "Notification.permission") do
+      "denied" ->
+        assert_has(conn, "#push-reason", text: "Notifications are blocked for this site")
+
+      _possible ->
+        assert_has(conn, "#push-toggle", text: "Turn on")
+    end
+  end
+
+  # PUSH-20: a reading that fails is an answer too, and the only one a phone can
+  # show — it has no console.
+  test "the section says when the browser cannot be read at all", %{conn: conn} do
+    conn = visit(conn, "/settings")
+    assert await_settled(conn)
+
+    # The browser's own API, failing the way a browser that will not answer
+    # does. The section reads it again because the server's words are back
+    # (PUSH-20), and this time the reading throws.
+    conn =
+      conn
+      |> evaluate("""
+      (() => {
+        Object.defineProperty(navigator.serviceWorker, "ready", {
+          get() { throw new Error("nope") },
+          configurable: true
+        })
+        return null
+      })()
+      """)
+      |> server_render()
+
+    assert await_settled(conn)
+    assert_has(conn, "#push-reason", text: "could not be read")
+    assert_has(conn, "#push-reason", text: "nope")
+  end
+
+  # PUSH-21: a page that comes back in front of the user reads the browser
+  # again, so an answer that changed while it was away — permission withdrawn,
+  # a subscription made or dropped — does not stay stale on screen.
+  test "the section reads the browser again when the page comes back", %{conn: conn} do
+    conn = visit(conn, "/settings")
+    assert await_settled(conn)
+
+    # What the browser answers from now on, so that a second reading can be told
+    # from the first: this device holds a subscription.
+    conn =
+      evaluate(conn, """
+      (() => {
+        Object.defineProperty(Notification, "permission", {get: () => "granted", configurable: true})
+        navigator.serviceWorker.ready.then(registration => {
+          registration.pushManager.getSubscription = async () => ({endpoint: "https://push.example.net/sub/1"})
+        })
+        return null
+      })()
+      """)
+
+    conn
+    |> evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    |> assert_has("#push-toggle", text: "Turn off", timeout: to_timeout(second: 5))
   end
 
   # PUSH-13, PUSH-14
@@ -98,6 +192,36 @@ defmodule EliaWeb.PushBrowserTest do
     # The event is a websocket message, so the server needs a moment to handle
     # it: there is nothing page-visible to wait for.
     assert await_visible?(id)
+  end
+
+  # PUSH-20: the marker the server renders is what the section says before
+  # anything has been read, and the hook takes it away with its first answer —
+  # whatever that answer is.
+  defp await_settled(conn, tries \\ 60) do
+    settled? =
+      value(conn, "!document.querySelector('#push-reason').classList.contains('push-checking')")
+
+    cond do
+      settled? -> true
+      tries == 0 -> false
+      true -> Process.sleep(100) && await_settled(conn, tries - 1)
+    end
+  end
+
+  # PUSH-20: the section as the server renders it, which is all a re-render of
+  # the page leaves behind — the words it says before anything has been read.
+  defp server_render(conn) do
+    evaluate(conn, """
+    (() => {
+      const reason = document.querySelector("#push-reason")
+      reason.textContent = "Checking this browser…"
+      reason.classList.add("push-checking")
+      reason.classList.remove("hidden")
+      const row = document.querySelector("#push-switch-row")
+      row.classList.add("hidden")
+      row.classList.remove("flex")
+    })()
+    """)
   end
 
   defp await_visible?(id, tries \\ 40) do

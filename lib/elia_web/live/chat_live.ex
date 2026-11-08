@@ -547,6 +547,9 @@ defmodule EliaWeb.ChatLive do
         // PUSH-14: report whether this page is in front of the user, so that no
         // notification arrives for the chat being read (PUSH-13). A page in a
         // background tab — or behind another app on a phone — is not visible.
+        // A page that goes away needs nothing of its own: LiveView disconnects
+        // the socket as it is put away, and this process going is what forgets
+        // it (PUSH-14).
         export default {
           mounted() {
             this.report = () =>

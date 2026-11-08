@@ -39,11 +39,15 @@ defmodule EliaWeb.SettingsLive do
         deploy_result: deploy.last && deploy_result(deploy.last.result)
       )
       # PUSH-2: the key the section's hook subscribes with; PUSH-7: how many
-      # devices are subscribed; PUSH-8: how the last test notification went.
+      # devices are subscribed; PUSH-8: how the last test notification went;
+      # PUSH-22: whether this page has reached the server yet, which only the
+      # server can say and which decides what the section says before its own
+      # script has run.
       |> assign(
         push_key: Push.public_key(),
         push_count: Push.Subscriptions.count(),
-        push_status: nil
+        push_status: nil,
+        push_connected: connected?(socket)
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
       |> refresh_keys()
@@ -363,12 +367,25 @@ defmodule EliaWeb.SettingsLive do
               </div>
             </div>
 
-            <p id="push-reason" class="mt-4 text-xs text-base-content/50">
-              Checking this browser…
+            <%!-- PUSH-19, PUSH-22: what the section is doing. Before the page has
+            reached the server nothing has been read, and only the server can
+            say so — the hook (PUSH-20) replaces this with what it found, and
+            takes the `push-checking` marker with it, so a section whose markup
+            is rendered again reads the browser again. --%>
+            <p id="push-reason" class="push-checking mt-4 text-xs text-base-content/50">
+              {push_checking_text(@push_connected)}
             </p>
 
-            <div id="push-controls" class="mt-4 hidden flex-col gap-3">
-              <div class="flex items-center justify-between gap-3 rounded-xl bg-base-200/50 px-4 py-3">
+            <div id="push-controls" class="mt-4 flex flex-col gap-3">
+              <%!-- PUSH-5, PUSH-23: a reason takes the switch's place, and
+              nothing else. The count, the test notification and "remove all"
+              are about the server, so they stay reachable where this browser
+              cannot push: a device that is gone can still be removed from here
+              (PUSH-7), and a send can still be tried (PUSH-8). --%>
+              <div
+                id="push-switch-row"
+                class="hidden items-center justify-between gap-3 rounded-xl bg-base-200/50 px-4 py-3"
+              >
                 <span class="text-sm">Notifications on this device</span>
                 <button
                   type="button"
@@ -447,16 +464,47 @@ defmodule EliaWeb.SettingsLive do
         // (PWA-5) is what a subscription rides on, so when it never starts the
         // section says that instead of waiting for ever.
         const workerWait = 4000
+        // PUSH-20: how often a section that has not settled is looked at again.
+        // The look itself is one class lookup; the browser is read again only
+        // when the section is showing neither the switch nor a reason.
+        const recheckEvery = 2000
 
         export default {
           mounted() {
-            this.reason = this.el.querySelector("#push-reason")
-            this.controls = this.el.querySelector("#push-controls")
-            this.toggle = this.el.querySelector("#push-toggle")
-            this.key = this.el.dataset.vapidPublicKey
             this.subscribed = false
-            this.toggle.addEventListener("click", () => this.toggleSubscription())
+
+            // PUSH-20: the switch is looked up on every use rather than kept,
+            // and the click is heard on the section itself, so a section the
+            // server renders again is still the one this hook drives.
+            this.el.addEventListener("click", event => {
+              if (event.target.closest("#push-toggle")) this.toggleSubscription()
+            })
+
+            // PUSH-21: a page that comes back in front of the user reads the
+            // browser again, since its answer may have changed while it was
+            // away — permission withdrawn, a subscription made or dropped.
+            this.onVisibility = () => {
+              if (document.visibilityState === "visible") this.refresh()
+            }
+            document.addEventListener("visibilitychange", this.onVisibility)
+
+            this.timer = setInterval(() => this.recheck(), recheckEvery)
             this.refresh()
+          },
+
+          destroyed() {
+            document.removeEventListener("visibilitychange", this.onVisibility)
+            clearInterval(this.timer)
+          },
+
+          // PUSH-20: whether the section still has to be read. The marker the
+          // server renders is what the section says before anything has been
+          // read, and it comes back with the markup whenever the server renders
+          // the section again — as a reconnect does after the app has been in
+          // the background, which is where the answer this hook put there goes.
+          recheck() {
+            const reason = this.el.querySelector("#push-reason")
+            if (reason && reason.classList.contains("push-checking")) this.refresh()
           },
 
           // PUSH-5, PUSH-6: why this browser cannot push at all, or null when it
@@ -475,28 +523,30 @@ defmodule EliaWeb.SettingsLive do
           },
 
           async refresh() {
-            const blocker = this.blocker()
-            if (blocker) return this.show(blocker, false)
-
-            // PUSH-19: the worker comes before the permission question. A page
-            // whose worker never started cannot subscribe whatever permission
-            // it has, and "blocked" would point at the wrong thing — as when an
-            // auth proxy answers /sw.js with its login page.
-            const registration = await this.activeWorker()
-            if (!registration) return this.show(this.workerReason(), false)
-
-            if (Notification.permission === "denied") {
-              return this.show(
-                "Notifications are blocked for this site. Allow them for it in the browser's settings, then reload.",
-                false
-              )
-            }
-
             try {
+              const blocker = this.blocker()
+              if (blocker) return this.show(blocker, false)
+
+              // PUSH-19: the worker comes before the permission question. A page
+              // whose worker never started cannot subscribe whatever permission
+              // it has, and "blocked" would point at the wrong thing — as when an
+              // auth proxy answers /sw.js with its login page.
+              const registration = await this.activeWorker()
+              if (!registration) return this.show(this.workerReason(), false)
+
+              if (Notification.permission === "denied") {
+                return this.show(
+                  "Notifications are blocked for this site. Allow them for it in the browser's settings, then reload.",
+                  false
+                )
+              }
+
               const subscription = await registration.pushManager.getSubscription()
               this.show(null, !!subscription)
             } catch (error) {
-              this.show(`This browser could not be asked about notifications: ${error}`, false)
+              // PUSH-20: a browser that cannot be read at all is an answer too,
+              // and the one a phone — which has no console — can show.
+              this.show(`This browser could not be read: ${error}`, false)
             }
           },
 
@@ -570,17 +620,32 @@ defmodule EliaWeb.SettingsLive do
           },
 
           show(reason, subscribed) {
-            this.reason.textContent = reason || ""
-            this.reason.classList.toggle("hidden", !reason)
-            this.controls.classList.toggle("hidden", !!reason)
-            this.controls.classList.toggle("flex", !reason)
+            const reasonLine = this.el.querySelector("#push-reason")
+            const switchRow = this.el.querySelector("#push-switch-row")
+            const toggle = this.el.querySelector("#push-toggle")
+
+            // PUSH-20: the marker goes with the first answer. A section the
+            // server renders again gets it back, and reads the browser again.
+            reasonLine.classList.remove("push-checking")
+            reasonLine.textContent = reason || ""
+            reasonLine.classList.toggle("hidden", !reason)
+
+            // PUSH-23: the reason takes the switch's place, and nothing else —
+            // the count, the test and "remove all" stay where they are.
+            switchRow.classList.toggle("hidden", !!reason)
+            switchRow.classList.toggle("flex", !reason)
+
             this.subscribed = subscribed
-            this.toggle.textContent = subscribed ? "Turn off" : "Turn on"
-            this.toggle.setAttribute("aria-pressed", subscribed ? "true" : "false")
+
+            if (toggle) {
+              toggle.textContent = subscribed ? "Turn off" : "Turn on"
+              toggle.setAttribute("aria-pressed", subscribed ? "true" : "false")
+            }
           },
 
           async toggleSubscription() {
-            this.toggle.disabled = true
+            const toggle = this.el.querySelector("#push-toggle")
+            if (toggle) toggle.disabled = true
 
             try {
               if (this.subscribed) await this.unsubscribe()
@@ -589,7 +654,7 @@ defmodule EliaWeb.SettingsLive do
               console.warn("push:", error)
               this.show(`Notifications could not be changed: ${error}`, this.subscribed)
             } finally {
-              this.toggle.disabled = false
+              if (toggle) toggle.disabled = false
             }
           },
 
@@ -602,7 +667,7 @@ defmodule EliaWeb.SettingsLive do
             const registration = await navigator.serviceWorker.ready
             const subscription = await registration.pushManager.subscribe({
               userVisibleOnly: true,
-              applicationServerKey: decodeKey(this.key)
+              applicationServerKey: decodeKey(this.el.dataset.vapidPublicKey)
             })
 
             // PUSH-3: the server keeps it, so a chat that needs the user can
@@ -867,6 +932,15 @@ defmodule EliaWeb.SettingsLive do
 
   defp deploy_mode("reload"), do: :reload
   defp deploy_mode("restart"), do: :restart
+
+  # PUSH-22: what the section says before its own script has run. A page that
+  # has not reached the server cannot have read anything, and saying which of
+  # the two it is doing is how a phone, which has no console, tells a page that
+  # never connected from a reading that failed.
+  defp push_checking_text(true), do: "Checking this browser…"
+
+  defp push_checking_text(false),
+    do: "This page has not reached the server yet, so nothing has been read."
 
   # PUSH-7: how many devices are subscribed.
   defp push_count_text(0), do: "No device is subscribed yet."

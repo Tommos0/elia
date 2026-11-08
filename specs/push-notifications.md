@@ -91,6 +91,27 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   worker, and offers no switch. If the worker does become active later, the
   section reads the browser again by itself, so the switch appears without a
   reload.
+- **PUSH-20** The section settles whatever happens: within a few seconds of its
+  script running it either offers the switch or shows a reason, and a failure
+  of its own reading of the browser — an exception from the browser's own API,
+  say — is reported in `#push-reason` rather than swallowed, so "Checking this
+  browser…" is never the last word. A section whose markup the server has
+  replaced or patched goes back to saying what it found (PUSH-21), since the
+  replacement takes the section's own answer with it.
+- **PUSH-21** The section reads the browser again by itself when the page
+  becomes visible again, and while it has not settled, so a section left stale
+  by a page that sat in the background is corrected without a reload.
+- **PUSH-22** A page whose LiveView has not connected yet says so in
+  `#push-reason` — this page has not reached the server, so nothing has been
+  read — instead of claiming to check the browser. A phone has no console, so
+  the section saying which of the two it is doing is how a stack that stalls
+  before any of its JavaScript runs can be told apart from one that fails in
+  the reading.
+- **PUSH-23** A reason takes the switch's place only: how many subscriptions
+  are stored (PUSH-7), "Send a test notification" (PUSH-8) and "Remove all"
+  (PUSH-7) stay reachable beside it, because they are about the server rather
+  than about this browser. A phone whose section cannot read the browser can
+  still send a test notification and clear a device that is gone.
 
 ## Configuration
 
@@ -127,10 +148,13 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   page is on that chat (PUSH-13).
 - `Elia.Push.Viewers` — which chats have a visible page, kept from the chat
   LiveView's mount, its visibility changes and its exit (PUSH-13, PUSH-14).
-- `EliaWeb.SettingsLive` — the push section (PUSH-2, PUSH-5–PUSH-8, PUSH-19) and
-  a colocated hook (`.PushSettings`) for permission, subscribing, the test
+- `EliaWeb.SettingsLive` — the push section (PUSH-2, PUSH-5–PUSH-8, PUSH-19)
+  and a colocated hook (`.PushSettings`) for permission, subscribing, the test
   button and reporting, since this project keeps client code in colocated hooks
-  rather than in `assets/js/`.
+  rather than in `assets/js/`. The hook settles by itself and reports its own
+  failures (PUSH-20), re-reads as the page comes and goes (PUSH-21), and the
+  server controls sit beside a reason rather than under it (PUSH-23); the page
+  before it has connected says so (PUSH-22), as only the server can tell.
 - `assets/js/app.js` — the service worker registration (PWA-5) and the failure
   it leaves behind for the section to report (PUSH-19).
 - `EliaWeb.ChatLive` — reports visibility (PUSH-14).
@@ -155,16 +179,20 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   and a send from a status broadcast all the way to the decrypted payload.
 - `test/elia_web/live/settings_live_test.exs` — the section's key (PUSH-2), a
   subscription the page reports being stored and counted, one that is refused
-  (PUSH-3), unsubscribing one device (PUSH-4), "remove all" (PUSH-7) and what
-  the test notification reports (PUSH-8).
+  (PUSH-3), unsubscribing one device (PUSH-4), "remove all" (PUSH-7), what
+  the test notification reports (PUSH-8), and the page before it has connected
+  saying so, with a reason still leaving the server's own controls in place
+  (PUSH-22, PUSH-23).
 - `test/elia_web/live/push_visibility_test.exs` — a chat page reporting its
   visibility, a page that goes away stopping, and no notification for the chat
   the page is showing (PUSH-13, PUSH-14).
 - `test/elia_web/browser/push_test.exs` — the hook in a real browser: the
   switch where the browser can notify and the reason where it cannot (PUSH-2,
-  PUSH-5), the chat page's visibility (PUSH-14) and the reason a service worker
-  that never activates leaves behind (PUSH-19). Run explicitly, like the
-  other browser tests (BROWSER).
+  PUSH-5), the section settling again once the server has rendered it again and
+  reporting a reading that failed (PUSH-20, PUSH-21), what a reason leaves in
+  place (PUSH-23), the chat page's visibility (PUSH-14) and the reason a
+  service worker that never activates leaves behind (PUSH-19). Run explicitly,
+  like the other browser tests (BROWSER).
 - Not covered by an automated test, and checked by hand as PWA-5 is: making a
   real subscription and receiving a notification end to end, which needs a
   browser with notifications on and its own push service on the internet
