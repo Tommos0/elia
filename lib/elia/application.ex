@@ -7,7 +7,20 @@ defmodule Elia.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
+    # See https://elixir.hexdocs.pm/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: Elia.Supervisor]
+    Supervisor.start_link(children(), opts)
+  end
+
+  @doc """
+  The processes Elia runs (HOT-10): what `start/2` starts, and what a hot reload
+  compares with the running supervisor, since a reload loads modules but cannot
+  add a child to a tree built at boot (DEPLOY-6). One function, so the two
+  cannot drift apart.
+  """
+  def children do
+    [
       EliaWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:elia, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Elia.PubSub},
@@ -29,11 +42,6 @@ defmodule Elia.Application do
       # Start to serve requests, typically the last entry
       EliaWeb.Endpoint
     ]
-
-    # See https://elixir.hexdocs.pm/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Elia.Supervisor]
-    Supervisor.start_link(children, opts)
   end
 
   # Tell Phoenix to update the endpoint configuration

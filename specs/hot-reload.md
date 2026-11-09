@@ -57,6 +57,16 @@ user's.
   the tests, the merge or the load run (DEPLOY-15), and the page that comes back
   reads the deploy's state from the runner rather than from its own assigns
   (DEPLOY-16, CONF-20).
+- **HOT-10** A reload loads modules; it cannot add a supervised process to a
+  tree that was built when the server started (DEPLOY-6). So it says when that
+  is what happened: after the load it compares the children the running
+  `Elia.Supervisor` has with the ones the loaded code asks for
+  (`Elia.Application.children/0`), and the deploy's message names each child
+  that is not running, and each one that runs and is no longer asked for, with
+  the note that only a restart starts or stops it (DEPLOY-7). A reload whose
+  tests failed, or one that changed no child, says nothing extra. The list of
+  children is one function, so what the server starts and what the reload
+  compares can never drift apart.
 
 ## Implementation
 
@@ -65,7 +75,10 @@ user's.
 `Elia.Deploy.hot_reload_available?/0`, `Elia.Deploy`, `config/config.exs` and
 `config/runtime.exs` (HOT-7), `mix.exs` (the dependency). HOT-8 is a rule for
 each UI change rather than for a module: its first instance is the image
-viewer's markup (`specs/image-viewer.md`, IMG-7).
+viewer's markup (`specs/image-viewer.md`, IMG-7). HOT-10 is
+`Elia.Application.children/0` (the one child list), `Elia.Deploy.load/2`'s
+comparison of it with the running supervisor (`Elia.Deploy.changed_children/1`)
+and the notice it adds (`Elia.Deploy.restart_notice/1`).
 
 ## Tests
 
@@ -73,4 +86,7 @@ viewer's markup (`specs/image-viewer.md`, IMG-7).
 HOT-8 is what the image viewer's browser test holds to
 (`test/elia_web/browser/chat_browser_test.exs`, IMG-7). HOT-9 is the deploy
 runner's own test: the page may go away, the deploy goes on
-(`test/elia_web/live/settings_live_test.exs`, DEPLOY-15).
+(`test/elia_web/live/settings_live_test.exs`, DEPLOY-15). HOT-10 is what
+`test/elia/deployment_test.exs` holds to: no child changed is no notice, a child
+the running server lacks is named as missing, one it runs that the code no
+longer asks for is named too, and a reload that failed says nothing extra.

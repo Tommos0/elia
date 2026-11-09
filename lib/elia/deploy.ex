@@ -443,6 +443,46 @@ defmodule Elia.Deploy do
       Application.get_env(:elia, EliaWeb.Endpoint)[:code_reloader] == true
   end
 
+  @doc """
+  Which supervised processes a reload could not change (HOT-10): what the loaded
+  code asks for that the running server does not have, and what it runs that the
+  code no longer asks for. A reload loads modules but cannot add a child to a
+  tree that was built at boot (DEPLOY-6), so a difference here is a change only a
+  restart makes (DEPLOY-7).
+  """
+  @spec changed_children([Supervisor.child_spec() | {module(), term()} | module()]) ::
+          %{missing: [term()], extra: [term()]}
+  def changed_children(asked \\ Elia.Application.children()) do
+    wanted = Enum.map(asked, &child_id/1)
+
+    running =
+      for {id, _pid, _type, _modules} <- Supervisor.which_children(Elia.Supervisor), do: id
+
+    %{missing: wanted -- running, extra: running -- wanted}
+  end
+
+  @doc """
+  What a hot reload adds to its message when it could not change the tree
+  (HOT-10): nothing at all when no child differs, since a reload that changed no
+  supervised process needs no restart.
+  """
+  @spec restart_notice(map()) :: binary()
+  def restart_notice(changes \\ changed_children())
+
+  def restart_notice(%{missing: [], extra: []}), do: ""
+
+  def restart_notice(%{missing: missing, extra: extra}) do
+    lines =
+      [
+        missing != [] && "Not running: #{names(missing)}.",
+        extra != [] && "Still running, though the code no longer asks for it: #{names(extra)}."
+      ]
+      |> Enum.reject(&(&1 == false))
+
+    "\n\nA hot reload loads modules but cannot change the supervisor's children, so " <>
+      "only a restart starts or stops:\n" <> Enum.join(lines, "\n")
+  end
+
   # DEPLOY-5: merge, fetch dependencies, test in the live tree, and undo the
   # merge when either of those fails, so a failed deploy changes nothing.
   defp merge_and_test(count, root) do
@@ -533,7 +573,7 @@ defmodule Elia.Deploy do
         Elia.Skills.reload()
         # DEPLOY-17: what the app runs now, so a merge that never loads shows.
         record_loaded(root)
-        {:ok, "#{deployed} Recompiled and reloaded the running app."}
+        {:ok, "#{deployed} Recompiled and reloaded the running app.#{restart_notice()}"}
 
       {:error, output} ->
         {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
@@ -573,6 +613,12 @@ defmodule Elia.Deploy do
 
     [~r{^#{Regex.escape(root)}/priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$}]
   end
+
+  # HOT-10: a child's id, derived the way the supervisor itself derives it, so
+  # the loaded code's list and the running tree are compared the same way.
+  defp child_id(child), do: Supervisor.child_spec(child, []).id
+
+  defp names(ids), do: Enum.map_join(ids, ", ", &inspect/1)
 
   ## Git
 

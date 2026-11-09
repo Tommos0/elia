@@ -512,6 +512,35 @@ defmodule Elia.DeploymentTest do
     assert message =~ "Recompiled and reloaded"
     assert head(tree) != before
     assert File.exists?(Path.join(tree, file))
+    # HOT-10: this reload changed no supervised process, so it says nothing
+    # about a restart.
+    assert message =~ "Recompiled and reloaded"
+    refute message =~ "restart"
+  end
+
+  # HOT-10
+  test "a reload names the supervised processes only a restart starts or stops" do
+    running_server()
+
+    # What the server is running is what the loaded code asks for, so a reload
+    # has nothing to warn about — and this is also what holds the one child list
+    # (`Elia.Application.children/0`) to the tree that was started.
+    assert Deploy.changed_children() == %{missing: [], extra: []}
+    assert Deploy.restart_notice() == ""
+
+    # A process a deploy adds is not running: a reload cannot start it, so it is
+    # named (DEPLOY-6, DEPLOY-7).
+    added = {Registry, keys: :unique, name: Elia.Test.Registry.Never}
+    changes = Deploy.changed_children([added | Elia.Application.children()])
+    assert changes == %{missing: [Elia.Test.Registry.Never], extra: []}
+    assert Deploy.restart_notice(changes) =~ "Not running: Elia.Test.Registry.Never"
+
+    # And one the code no longer asks for keeps running until a restart stops it.
+    removed = List.delete(Elia.Application.children(), Elia.Push.Viewers)
+    changes = Deploy.changed_children(removed)
+    assert changes == %{missing: [], extra: [Elia.Push.Viewers]}
+    assert Deploy.restart_notice(changes) =~ "Still running"
+    assert Deploy.restart_notice(changes) =~ "Elia.Push.Viewers"
   end
 
   # DEPLOY-6, HOT-6
