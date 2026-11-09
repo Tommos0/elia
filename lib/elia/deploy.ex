@@ -200,6 +200,23 @@ defmodule Elia.Deploy do
   def workspace(project, _chat_id), do: project.folder
 
   @doc """
+  The workspace a chat works in when one already exists (EXPL-17, FLINK-5): its
+  own worktree for a chat in Elia's own project, the project's folder otherwise
+  (PROJ-12). Unlike `workspace/2` it creates nothing — a page that resolves it —
+  the Files page browsing a chat, or a file link checked against its workspace —
+  must not fork a branch as a side effect of being read.
+  """
+  @spec existing_workspace(Elia.Projects.t(), binary() | nil) :: binary()
+  def existing_workspace(project, nil), do: project.folder
+
+  def existing_workspace(%{harness?: true} = project, chat_id) do
+    path = worktree_path(chat_id)
+    if File.dir?(path), do: path, else: project.folder
+  end
+
+  def existing_workspace(project, _chat_id), do: project.folder
+
+  @doc """
   Creates the chat's worktree, on branch `chat/<chat id>` forked from the trunk
   `master`, unless it already exists. Idempotent: a chat that is opened again,
   or resumes after a restart, keeps the worktree (and its uncommitted work) it

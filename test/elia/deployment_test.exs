@@ -252,6 +252,26 @@ defmodule Elia.DeploymentTest do
     refute File.exists?(Deploy.worktree_path(id))
   end
 
+  # EXPL-17, FLINK-5: resolving the workspace a chat works in creates nothing —
+  # the Files page and a file link read it, so a read must not fork a branch —
+  # and it is the same answer the chat's own tools get (PROJ-12).
+  test "resolving a chat's workspace creates no worktree", %{tree: tree} do
+    id = Agent.new_id()
+    project = Projects.harness()
+
+    assert Deploy.existing_workspace(project, id) == tree
+    assert Deploy.existing_workspace(project, nil) == tree
+    refute File.dir?(Deploy.worktree_path(id))
+
+    {id, path} = new_worktree()
+    assert Deploy.existing_workspace(project, id) == path
+    assert Deploy.existing_workspace(project, id) == Deploy.workspace(project, id)
+
+    # A project without worktrees browses its folder (PROJ-12).
+    assert Deploy.existing_workspace(%{id: "o", name: "O", folder: tree, harness?: false}, id) ==
+             tree
+  end
+
   # DEPLOY-1, DEPLOY-13
   test "a chat's worktree is on its own branch, forked from the trunk", %{tree: tree} do
     {id, path} = new_worktree()

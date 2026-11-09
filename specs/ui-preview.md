@@ -83,9 +83,12 @@ live tree's saved chats are never touched.
   assistant reply with Markdown (heading, list, table, fenced code block, link),
   a `shell` tool call with its output, a failed tool call with its error output,
   and a reasoning block — the pieces a transcript renders (UI-8, UI-15, UI-16,
-  UI-20, UI-29). It is a named chat: it carries a title of its own (TITLE-1) and
-  its transcript holds the `set_title` call that named it (TITLE-5), so its row,
-  its page title and its card are the ones a chat the agent named shows (UI-72).
+  UI-20, UI-29). The reply mentions a file of the workspace in inline code and
+  the sample holds a `read_file` call for one, so the picture shows a linked
+  mention in a reply and on a tool card (FLINK-1, FLINK-4). It is a named chat:
+  it carries a title of its own (TITLE-1) and its transcript holds the
+  `set_title` call that named it (TITLE-5), so its row, its page title and its
+  card are the ones a chat the agent named shows (UI-72).
 - **PREVIEW-11** The sample chat has the fixed id `preview`, so `/c/preview` is
   the same page on every run and its picture's file name never changes
   (PREVIEW-4). The path `@chat` in a preview's arguments means `/c/preview`, and

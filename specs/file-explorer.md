@@ -4,14 +4,16 @@ Status: Implemented
 
 A Files page lets the user browse the workspace and read text files in the
 browser, without opening a terminal or asking the agent. It is read-only and
-deliberately small: a directory listing next to a plain-text viewer.
+deliberately small: a directory listing next to a plain-text viewer. It browses
+a project's folder, or a single chat's own workspace (EXPL-17), which is where
+a file the agent mentions in that chat is opened (FLINK-5).
 
 ## Requirements
 
 ### Browsing (`Elia.Explorer`)
 
 - **EXPL-1** Paths are relative to the workspace root (the browsed project's
-  folder, EXPL-15). A path that resolves
+  folder, EXPL-15, or a chat's workspace, EXPL-17). A path that resolves
   outside the workspace, or into a `:protected` path (WS-1: `.git`, `_build`,
   `deps`, `.elia`), is refused as forbidden and never read or listed.
 - **EXPL-2** Any path that goes through a symlink is refused as forbidden, so a
@@ -53,6 +55,25 @@ deliberately small: a directory listing next to a plain-text viewer.
   (`#project-picker`) to switch to another one, which keeps the current path
   when it exists there and falls back to the root when it doesn't.
 
+- **EXPL-17** The page can browse a chat's own workspace instead of a project
+  folder: a `chat` query parameter names a saved chat (STORE), and paths are
+  then relative to the workspace that chat works in (PROJ-12) — its own
+  worktree when the chat is in Elia's own project (DEPLOY-1), its project's
+  folder otherwise — with EXPL-1–EXPL-5 applying to that root as to any other.
+  The project in view is the chat's own, so a `project` parameter alongside it
+  doesn't override it. It is how a file the agent mentions is opened, so the
+  page shows the file as that chat has it rather than the live tree's copy
+  (FLINK-5). A `chat` that isn't a saved chat is ignored, and the page browses
+  the project as EXPL-15 says. Resolving the workspace never creates one: a
+  chat without a worktree is browsed in its project's folder.
+- **EXPL-18** The page says which workspace it browses: the project as now
+  (EXPL-16) and, with a chat in view, that chat beside it (`#workspace-note`: a
+  chat icon and the chat's title, STORE-33 — "New chat" before it has one —
+  with the root in its `title`), so a worktree is not mistaken for the project
+  folder. The project picker (`#project-picker`) switches to that project's
+  folder and leaves the chat behind — dropping `chat` from the URL — keeping
+  the current path when it exists there (EXPL-16).
+
 ### Syntax highlighting
 
 Highlighting runs in the browser. The server only names the language and
@@ -84,9 +105,13 @@ always sends the plain text, so the socket payload doesn't grow.
 ## Implementation
 
 `Elia.Explorer` (path safety, listing, reading, language detection),
-`EliaWeb.FilesLive`, the `Highlight` hook in `assets/js/highlight.js`, and
+`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18),
+`Elia.Deploy` (a chat's workspace, EXPL-17), `EliaWeb.FileLinks` (the links that
+open a chat's own workspace, FLINK),
+the `Highlight` hook in `assets/js/highlight.js`, and
 highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 
 ## Tests
 
-`test/elia/explorer_test.exs`, `test/elia_web/live/files_live_test.exs`.
+`test/elia/explorer_test.exs`, `test/elia_web/live/files_live_test.exs` (the
+project and the chat in view, EXPL-15 - EXPL-18).

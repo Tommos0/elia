@@ -192,7 +192,8 @@ defmodule Elia.Preview do
   @doc """
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply
   with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), the
-  `set_title` call that named the chat (TITLE-5, UI-74), a `shell` call with its
+  `set_title` call that named the chat (TITLE-5, UI-74), a `read_file` call for a
+  file of the workspace (FLINK-4), a `shell` call with its
   output and a failed one (UI-15, UI-16, UI-20).
   """
   @spec sample_messages() :: [Message.t()]
@@ -218,6 +219,12 @@ defmodule Elia.Preview do
           },
           %{
             type: :tool_call,
+            id: "call-preview-4",
+            name: "read_file",
+            input: %{"path" => "lib/elia/preview.ex"}
+          },
+          %{
+            type: :tool_call,
             id: "call-preview-1",
             name: "shell",
             input: %{"command" => "mix test"}
@@ -234,6 +241,10 @@ defmodule Elia.Preview do
         role: :tool,
         content: [
           Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
+          Message.tool_result(
+            "call-preview-4",
+            "defmodule Elia.Preview do\n  # … and the file the card links (FLINK-4)\n"
+          ),
           Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]"),
           Message.tool_result(
             "call-preview-2",

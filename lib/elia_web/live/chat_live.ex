@@ -5,6 +5,7 @@ defmodule EliaWeb.ChatLive do
   alias Elia.LLM
   alias Elia.LLM.{Compaction, Context, Message}
   alias EliaWeb.ChatStatus
+  alias EliaWeb.FileLinks
 
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
@@ -73,6 +74,9 @@ defmodule EliaWeb.ChatLive do
       |> assign(
         session_id: id,
         project: project,
+        # FLINK-1, FLINK-5: where this chat's file mentions resolve — the
+        # workspace the chat works in (PROJ-12).
+        links: FileLinks.context(project, id),
         status: snapshot.status,
         tool_status: snapshot.tool_status,
         last_usage: snapshot.last_usage,
@@ -325,7 +329,7 @@ defmodule EliaWeb.ChatLive do
                     class={["transition-opacity", pruned?(item) && "opacity-40 hover:opacity-100"]}
                     data-pruned={to_string(pruned?(item))}
                   >
-                    <.item item={item} jail={@jail} />
+                    <.item item={item} jail={@jail} links={@links} />
                   </div>
                   <.item_meta :if={!@compact_view and Map.get(item, :request_status)} item={item} />
                 </div>
@@ -335,7 +339,7 @@ defmodule EliaWeb.ChatLive do
                 <.item item={%{kind: :reasoning, text: @draft_reasoning, streaming: true}} />
               </div>
               <div :if={@draft != ""} id="draft">
-                <.item item={%{kind: :assistant, text: @draft}} />
+                <.item item={%{kind: :assistant, text: @draft}} links={@links} />
               </div>
               <%!-- UI-62: the compact view's one-line summary of the current step. --%>
               <div
@@ -1035,6 +1039,8 @@ defmodule EliaWeb.ChatLive do
 
   attr :item, :map, required: true
   attr :jail, :boolean, default: true
+  # FLINK-1, FLINK-5: where this chat's mentions resolve.
+  attr :links, :map, default: nil
 
   defp item(%{item: %{kind: :user}} = assigns) do
     ~H"""
@@ -1048,7 +1054,7 @@ defmodule EliaWeb.ChatLive do
 
   defp item(%{item: %{kind: :assistant}} = assigns) do
     ~H"""
-    <div class="markdown text-sm leading-relaxed">{EliaWeb.Markdown.to_html(@item.text)}</div>
+    <div class="markdown text-sm leading-relaxed">{EliaWeb.Markdown.to_html(@item.text, @links)}</div>
     """
   end
 
@@ -1107,6 +1113,9 @@ defmodule EliaWeb.ChatLive do
   end
 
   defp item(%{item: %{kind: :tool}} = assigns) do
+    # FLINK-4: resolved once per render — the path a card links, if any.
+    assigns = assign(assigns, tool_link: EliaWeb.FileLinks.card_url(assigns.links, assigns.item))
+
     ~H"""
     <div class={[
       "overflow-hidden rounded-xl border text-sm transition",
@@ -1122,14 +1131,21 @@ defmodule EliaWeb.ChatLive do
         <.tool_badge status={@item.status} is_error={@item.is_error} />
       </div>
       <%!-- UI-83: a question is prose, so its card's text wraps; every other
-      card keeps the sideways scroll that keeps a command's columns readable. --%>
+      card keeps the sideways scroll that keeps a command's columns readable.
+      FLINK-4: a file tool's card links its path, when the Files page could
+      show it (FLINK-5); every other card's summary is text, as before. --%>
       <pre class={[
         "px-3 py-2 font-mono text-xs leading-relaxed",
         if(@item.name == "ask_user",
           do: "whitespace-pre-wrap break-words",
           else: "overflow-x-auto"
         )
-      ]}><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span>{tool_summary(@item)}</pre>
+      ]}><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span><a
+        :if={@tool_link}
+        id={"tool-path-#{@item.call_id}"}
+        href={@tool_link}
+        class="underline decoration-dotted underline-offset-2 transition hover:decoration-solid"
+      >{tool_summary(@item)}</a><span :if={is_nil(@tool_link)}>{tool_summary(@item)}</span></pre>
       <%!-- UI-75, ASK-4, ASK-6: a question, answered with one click or in the
       user's own words. It goes when the answer does. --%>
       <div

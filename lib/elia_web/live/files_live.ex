@@ -5,7 +5,7 @@ defmodule EliaWeb.FilesLive do
   """
   use EliaWeb, :live_view
 
-  alias Elia.{Explorer, SystemStats, Workspace}
+  alias Elia.{Deploy, Explorer, Store, SystemStats, Workspace}
 
   @highlight_max 128 * 1024
 
@@ -14,11 +14,11 @@ defmodule EliaWeb.FilesLive do
     {:ok, assign(socket, page_title: "Files")}
   end
 
-  # EXPL-6, EXPL-9, EXPL-15
+  # EXPL-6, EXPL-9, EXPL-15, EXPL-17
   @impl true
   def handle_params(params, _uri, socket) do
-    project = project(params["project"])
-    root = project.folder
+    {project, chat} = viewed(params)
+    root = Deploy.existing_workspace(project, chat)
     path = normalize(root, params["path"])
 
     {dir, file, error} =
@@ -47,6 +47,9 @@ defmodule EliaWeb.FilesLive do
     {:noreply,
      assign(socket,
        project: project,
+       chat: chat,
+       chat_title: chat && Store.chat_title(chat),
+       root: root,
        projects: Elia.Projects.list(),
        dir: dir,
        entries: entries,
@@ -57,18 +60,42 @@ defmodule EliaWeb.FilesLive do
      )}
   end
 
+  # EXPL-17: with a chat in view its own workspace is browsed, and the project
+  # in view is that chat's (PROJ-9, PROJ-12); a `chat` that isn't a saved chat
+  # is ignored and EXPL-15 decides.
+  defp viewed(params) do
+    chat = chat(params["chat"])
+    project = (chat && project_of(chat)) || project(params["project"])
+    {project, chat}
+  end
+
+  # EXPL-17: a chat in view is a saved chat, or nothing.
+  defp chat(id) do
+    if is_binary(id) and Store.exists?(id), do: id
+  end
+
+  # PROJ-9: a chat without a project belongs to Elia's own.
+  defp project_of(chat) do
+    case Store.load_project(chat) do
+      nil -> Elia.Projects.harness()
+      id -> Elia.Projects.get(id) || Elia.Projects.harness()
+    end
+  end
+
   # EXPL-15: a missing or unknown project id browses Elia's own project.
   defp project(nil), do: Elia.Projects.harness()
   defp project(id), do: Elia.Projects.get(id) || Elia.Projects.harness()
 
-  # EXPL-16: switch the browsed project, keeping the current path when it
-  # exists in the new project (it falls back to that project's root otherwise).
+  # EXPL-16, EXPL-18: switch the browsed project, keeping the current path when
+  # it exists in the new project (it falls back to that project's root
+  # otherwise). It leaves a chat in view behind, so the page browses the
+  # project's own folder.
   @impl true
   def handle_event("pick_project", %{"project" => id}, socket) do
     project = Elia.Projects.get(id) || Elia.Projects.harness()
     path = socket.assigns.selected || socket.assigns.dir
     path = if exists?(project, path), do: path, else: ""
-    {:noreply, push_patch(socket, to: files_path(project, path))}
+    {:noreply, push_patch(socket, to: files_path(project, path, nil))}
   end
 
   # EXPL-16: only keep the current path when the new project has it; otherwise
@@ -117,9 +144,13 @@ defmodule EliaWeb.FilesLive do
     |> Enum.map(fn {path, name} -> {name, path} end)
   end
 
-  # EXPL-15: the default project's links stay param-free, so the URLs are stable.
-  defp files_path(project, path) do
-    params = if project.harness?, do: %{}, else: %{project: project.id}
+  # EXPL-15, EXPL-17: the default project's links stay param-free, so the URLs
+  # are stable; a chat in view is named instead of its project, which the page
+  # takes from the chat (EXPL-18).
+  defp files_path(project, path, chat) do
+    params = %{}
+    params = if project.harness? or chat, do: params, else: Map.put(params, :project, project.id)
+    params = if chat, do: Map.put(params, :chat, chat), else: params
     params = if path == "", do: params, else: Map.put(params, :path, path)
 
     if params == %{}, do: ~p"/files", else: ~p"/files?#{params}"
@@ -169,13 +200,26 @@ defmodule EliaWeb.FilesLive do
           class="flex max-h-72 min-h-0 shrink-0 flex-col border-b border-base-300 lg:max-h-none lg:w-80 lg:border-r lg:border-b-0"
         >
           <div class="flex items-center gap-2 border-b border-base-300 px-4 py-2">
-            <span
-              id="project-name"
-              class="min-w-0 flex-1 truncate text-sm font-medium"
-              title={@project.folder}
-            >
-              {@project.name}
-            </span>
+            <div class="min-w-0 flex-1">
+              <span
+                id="project-name"
+                class="block truncate text-sm font-medium"
+                title={@project.folder}
+              >
+                {@project.name}
+              </span>
+              <%!-- EXPL-18: a chat in view browses its own workspace, not the
+              project's folder, so the page names it. --%>
+              <span
+                :if={@chat}
+                id="workspace-note"
+                class="flex items-center gap-1 text-xs text-base-content/50"
+                title={@root}
+              >
+                <.icon name="hero-chat-bubble-left-right" class="size-3.5 shrink-0" />
+                <span class="truncate">{@chat_title}</span>
+              </span>
+            </div>
             <form id="project-switch" phx-change="pick_project">
               <select
                 id="project-picker"
@@ -194,12 +238,12 @@ defmodule EliaWeb.FilesLive do
             aria-label="Breadcrumb"
             class="flex flex-wrap items-center gap-x-1 border-b border-base-300 px-4 py-2.5 text-sm"
           >
-            <.link patch={files_path(@project, "")} class="font-medium hover:underline">
+            <.link patch={files_path(@project, "", @chat)} class="font-medium hover:underline">
               workspace
             </.link>
             <span :for={{name, path} <- @crumbs} class="flex items-center gap-1">
               <span class="text-base-content/40">/</span>
-              <.link patch={files_path(@project, path)} class="hover:underline">{name}</.link>
+              <.link patch={files_path(@project, path, @chat)} class="hover:underline">{name}</.link>
             </span>
           </nav>
 
@@ -207,7 +251,7 @@ defmodule EliaWeb.FilesLive do
             <li :if={@dir != ""}>
               <.link
                 id="parent-dir"
-                patch={files_path(@project, parent(@dir))}
+                patch={files_path(@project, parent(@dir), @chat)}
                 class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200"
               >
                 <.icon name="hero-arrow-uturn-left" class="size-4 text-base-content/50" /> ..
@@ -220,7 +264,7 @@ defmodule EliaWeb.FilesLive do
               <.link
                 :if={entry.type in [:dir, :file]}
                 data-entry={entry.path}
-                patch={files_path(@project, entry.path)}
+                patch={files_path(@project, entry.path, @chat)}
                 aria-current={@selected == entry.path && "true"}
                 class={[
                   "flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200",

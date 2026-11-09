@@ -62,6 +62,7 @@ deleting it.
 | [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |
 | [Log viewer](log-viewer.md) | `LOG` | In-memory capture of the server's logs, on a `/logs` page |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser with a plain-text file viewer |
+| [File links](file-links.md) | `FLINK` | A file the agent mentions in a reply or on a tool card links to the Files page |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
 | [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, the user's stop — writes why into the transcript |

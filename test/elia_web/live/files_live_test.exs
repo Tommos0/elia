@@ -199,4 +199,60 @@ defmodule EliaWeb.FilesLiveTest do
       assert has_element?(view, "[data-entry='#{@dir}']")
     end
   end
+
+  # EXPL-17, EXPL-18: a chat's own workspace can be browsed — its worktree for a
+  # chat in Elia's own project (PROJ-12, DEPLOY-1), not the project's folder —
+  # and the page names the chat it browses.
+  test "browses a chat's own workspace", %{conn: conn} do
+    chat = Elia.Agent.new_id()
+    worktree = Elia.Deploy.worktree_path(chat)
+    File.rm_rf!(worktree)
+    File.mkdir_p!(Path.join(worktree, "inner"))
+    File.write!(Path.join(worktree, "inner/only_in_worktree.ex"), "defmodule OnlyHere do\nend\n")
+    # The project's folder has the same directory with another file, so the test
+    # tells which of the two is in view.
+    File.mkdir_p!(in_root("inner"))
+    File.write!(in_root("inner/live_only.txt"), "the live tree's copy\n")
+    :ok = Elia.Store.save(chat, [], project: "harness", title: "Where the file is")
+
+    on_exit(fn ->
+      Elia.Store.delete(chat)
+      File.rm_rf!(worktree)
+      File.rm_rf!(in_root("inner"))
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat}}")
+    assert has_element?(view, "#project-name", "Elia")
+    assert has_element?(view, "#workspace-note", "Where the file is")
+
+    view |> element("[data-entry='inner']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{chat: chat, path: "inner"}}")
+    assert has_element?(view, "[data-entry='inner/only_in_worktree.ex']")
+    refute has_element?(view, "[data-entry='inner/live_only.txt']")
+
+    view |> element("[data-entry='inner/only_in_worktree.ex']") |> render_click()
+    assert has_element?(view, "#file-content", "defmodule OnlyHere do")
+    refute has_element?(view, "#file-content", "the live tree's copy")
+
+    # Back to the directory, so the picker's current path is one the project has
+    # too (EXPL-16, EXPL-18): it browses that project's folder and leaves the
+    # chat behind.
+    view |> element("#breadcrumbs a", "inner") |> render_click()
+    assert_patch(view, ~p"/files?#{%{chat: chat, path: "inner"}}")
+
+    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    assert_patch(view, "/files?path=inner")
+    refute has_element?(view, "#workspace-note")
+    assert has_element?(view, "[data-entry='inner/live_only.txt']")
+    refute has_element?(view, "[data-entry='inner/only_in_worktree.ex']")
+  end
+
+  # EXPL-17: a chat that isn't a saved one is ignored, and the project decides.
+  test "an unknown chat browses the project", %{conn: conn} do
+    for url <- [~p"/files?#{%{chat: "nosuchchat12"}}", ~p"/files?#{%{chat: "not an id"}}"] do
+      {:ok, view, _} = live(conn, url)
+      assert has_element?(view, "[data-entry='#{@dir}']")
+      refute has_element?(view, "#workspace-note")
+    end
+  end
 end

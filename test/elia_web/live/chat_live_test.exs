@@ -587,6 +587,40 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#transcript .markdown li strong", "item")
   end
 
+  # FLINK-1, FLINK-4: a file the agent mentions in a reply, and the path on a
+  # file tool's card, link to that file's own Files page — that of the workspace
+  # the chat works in (FLINK-5).
+  test "a mentioned file links to the Files page", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    file = "chat_live_mention_fixture.txt"
+    File.write!(Path.join(Workspace.root(), file), "hi\n")
+    on_exit(fn -> File.rm!(Path.join(Workspace.root(), file)) end)
+
+    Elia.Store.save(id, [
+      Message.user("where is it?"),
+      %Message{
+        role: :assistant,
+        content: [
+          Message.text("It is in `#{file}`, at line 3. Not in `nowhere_file.txt`."),
+          %{type: :tool_call, id: "call-flink", name: "read_file", input: %{"path" => file}}
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("call-flink", "hi\n")]}
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    href = "/files?chat=#{id}&path=#{file}"
+
+    # FLINK-1: the mention links, and still reads as code (FLINK-7).
+    assert has_element?(view, "#transcript .markdown a[href='#{href}'] code", file)
+    # FLINK-4: so does the card's path.
+    assert has_element?(view, "#tool-path-call-flink[href='#{href}']", file)
+    # FLINK-5: a path the workspace doesn't have is no link at all.
+    refute has_element?(view, "#transcript .markdown a code", "nowhere_file.txt")
+  end
+
   # UI-29: saved reasoning is collapsed behind a header with its word count.
   test "saved reasoning is collapsed by default", %{conn: conn} do
     id = Agent.new_id()

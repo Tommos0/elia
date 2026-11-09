@@ -165,8 +165,15 @@ defmodule Elia.PreviewTest do
 
       assistant = Enum.find(messages, &(&1.role == :assistant))
       assert Enum.any?(assistant.content, &(&1.type == :reasoning))
-      # TITLE-5, UI-74: the set_title call is one of them.
-      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 3
+
+      # TITLE-5, UI-74: the set_title call is one of them; FLINK-4: a read_file
+      # call for a file of the workspace is another, so its card links it.
+      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 4
+
+      assert Enum.any?(
+               assistant.content,
+               &(&1.type == :tool_call and Map.get(&1, :name) == "read_file")
+             )
 
       text = Enum.find_value(assistant.content, &(&1.type == :text && &1.text))
       assert text =~ "## "
@@ -177,7 +184,7 @@ defmodule Elia.PreviewTest do
 
       results = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.flat_map(& &1.content)
       assert Enum.count(results, & &1.is_error) == 1
-      assert Enum.count(results, &(not &1.is_error)) == 2
+      assert Enum.count(results, &(not &1.is_error)) == 3
     end
 
     # PREVIEW-10, TITLE-1: it is a named chat, so a preview shows the title a
