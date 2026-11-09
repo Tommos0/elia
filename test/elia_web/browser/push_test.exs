@@ -194,6 +194,26 @@ defmodule EliaWeb.PushBrowserTest do
     assert await_visible?(id)
   end
 
+  # PUSH-24
+  test "a chat page stops counting when its window loses the focus, and counts again when it returns",
+       %{conn: conn} do
+    id = Agent.new_id()
+    :ok = Store.save(id, [])
+    on_exit(fn -> Store.delete(id) end)
+
+    conn |> visit("/c/#{id}") |> assert_has("#chat-shell")
+    assert await_visible?(id)
+
+    # Another window takes the focus. The page is still "visible" to
+    # `visibilityState`, so nothing but the event itself can say so, and the turn
+    # it is showing may now be notified as `Elia.Push.Viewers` sees it.
+    evaluate(conn, "window.dispatchEvent(new Event('blur'))")
+    assert await_state?(id, false)
+
+    evaluate(conn, "window.dispatchEvent(new Event('focus'))")
+    assert await_state?(id, true)
+  end
+
   # PUSH-20: the marker the server renders is what the section says before
   # anything has been read, and the hook takes it away with its first answer —
   # whatever that answer is.
@@ -224,11 +244,15 @@ defmodule EliaWeb.PushBrowserTest do
     """)
   end
 
-  defp await_visible?(id, tries \\ 40) do
+  defp await_visible?(id, tries \\ 40), do: await_state?(id, true, tries)
+
+  # PUSH-24: the page's own reports, which arrive as websocket messages, so
+  # there is nothing page-visible to wait for.
+  defp await_state?(id, expected, tries \\ 40) do
     cond do
-      Push.Viewers.visible?(id) -> true
+      Push.Viewers.visible?(id) == expected -> true
       tries == 0 -> false
-      true -> Process.sleep(25) && await_visible?(id, tries - 1)
+      true -> Process.sleep(25) && await_state?(id, expected, tries - 1)
     end
   end
 

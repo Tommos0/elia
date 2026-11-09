@@ -572,21 +572,51 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatVisibility">
-        // PUSH-14: report whether this page is in front of the user, so that no
-        // notification arrives for the chat being read (PUSH-13). A page in a
-        // background tab — or behind another app on a phone — is not visible.
+        // PUSH-14, PUSH-24: report whether this page is in front of the user, so
+        // that no notification arrives for the chat being read (PUSH-13). It is
+        // reported on the events that change it — another tab, a backgrounded
+        // app or a locked screen (visibilitychange), another window (focus,
+        // blur) and the page being put away (pagehide) — and not on a heartbeat.
         // A page that goes away needs nothing of its own: LiveView disconnects
         // the socket as it is put away, and this process going is what forgets
         // it (PUSH-14).
         export default {
           mounted() {
+            this.focused = document.hasFocus()
             this.report = () =>
-              this.pushEvent("visibility", {visible: document.visibilityState === "visible"})
+              this.pushEvent("visibility", {visible: this.focused && this.visible()})
+
+            this.onVisibility = () => this.report()
+            this.onFocus = () => {
+              this.focused = true
+              this.report()
+            }
+            this.onBlur = () => {
+              this.focused = false
+              this.report()
+            }
+            this.onHide = () => {
+              this.focused = false
+              this.report()
+            }
+
             this.report()
-            document.addEventListener("visibilitychange", this.report)
+
+            document.addEventListener("visibilitychange", this.onVisibility)
+            window.addEventListener("focus", this.onFocus)
+            window.addEventListener("blur", this.onBlur)
+            window.addEventListener("pagehide", this.onHide)
           },
+
+          visible() {
+            return document.visibilityState === "visible"
+          },
+
           destroyed() {
-            document.removeEventListener("visibilitychange", this.report)
+            document.removeEventListener("visibilitychange", this.onVisibility)
+            window.removeEventListener("focus", this.onFocus)
+            window.removeEventListener("blur", this.onBlur)
+            window.removeEventListener("pagehide", this.onHide)
           }
         }
       </script>

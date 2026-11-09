@@ -113,6 +113,15 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   than about this browser. A phone whose section cannot read the browser can
   still send a test notification and clear a device that is gone.
 
+- **PUSH-24** A page is in front of the user only while it says so, and it says
+  so on the events that mean that changed — `visibilitychange` (another tab, the
+  app backgrounded, the screen locked), `focus` and `blur` (another window) and
+  `pagehide` — with no heartbeat and no grace period: a page that is hidden or
+  unfocused stops counting at once (PUSH-13), and a page that goes away leaves
+  nothing behind (PUSH-14). Walking away from a page that keeps its focus has no
+  event, so it is not detected — and a page left focused on one device keeps the
+  chat suppressed on every device, as PUSH-13 says.
+
 ## Configuration
 
 - `PUSH_SUBJECT` — the contact put in the VAPID JWT (PUSH-18), e.g.
@@ -144,10 +153,11 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   (PUSH-3), remove (PUSH-4, PUSH-7), remove-gone (PUSH-16), count (PUSH-7).
 - `Elia.Push.Notifier` — subscribes to the activity topic
   (`Elia.Agent.subscribe_activity/0`, the `{:chat_status, id, status}` of
-  SESS-19) and sends on the transitions of PUSH-11 and PUSH-12, unless a visible
-  page is on that chat (PUSH-13).
-- `Elia.Push.Viewers` — which chats have a visible page, kept from the chat
-  LiveView's mount, its visibility changes and its exit (PUSH-13, PUSH-14).
+  SESS-19) and sends on the transitions of PUSH-11 and PUSH-12, unless a page
+  that is in front of the user is on that chat (PUSH-13, PUSH-24).
+- `Elia.Push.Viewers` — which chats have a page in front of the user, kept from
+  the chat LiveView's mount, its visibility reports and its exit (PUSH-13,
+  PUSH-14, PUSH-24).
 - `EliaWeb.SettingsLive` — the push section (PUSH-2, PUSH-5–PUSH-8, PUSH-19)
   and a colocated hook (`.PushSettings`) for permission, subscribing, the test
   button and reporting, since this project keeps client code in colocated hooks
@@ -157,7 +167,7 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   before it has connected says so (PUSH-22), as only the server can tell.
 - `assets/js/app.js` — the service worker registration (PWA-5) and the failure
   it leaves behind for the section to report (PUSH-19).
-- `EliaWeb.ChatLive` — reports visibility (PUSH-14).
+- `EliaWeb.ChatLive` — reports visibility (PUSH-14) on the events of PUSH-24.
 - `priv/static/sw.js` — `push` and `notificationclick` handlers (PUSH-10).
 
 ## Tests
@@ -175,8 +185,9 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   one by endpoint, refusing an unusable one (PUSH-3), removing one (PUSH-4,
   PUSH-16), counting and clearing them (PUSH-7).
 - `test/elia/push_notifier_test.exs` — the status changes that notify and the
-  ones that don't (PUSH-11, PUSH-12), suppression by a visible page (PUSH-13)
-  and a send from a status broadcast all the way to the decrypted payload.
+  ones that don't (PUSH-11, PUSH-12), suppression by a page in front of the user
+  (PUSH-13), and a send from a status broadcast all the way to the decrypted
+  payload.
 - `test/elia_web/live/settings_live_test.exs` — the section's key (PUSH-2), a
   subscription the page reports being stored and counted, one that is refused
   (PUSH-3), unsubscribing one device (PUSH-4), "remove all" (PUSH-7), what
@@ -184,15 +195,16 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   saying so, with a reason still leaving the server's own controls in place
   (PUSH-22, PUSH-23).
 - `test/elia_web/live/push_visibility_test.exs` — a chat page reporting its
-  visibility, a page that goes away stopping, and no notification for the chat
-  the page is showing (PUSH-13, PUSH-14).
+  visibility, a page that goes away stopping, a page that reports itself
+  unfocused stopping (PUSH-24), and no notification for the chat a page is in
+  front of (PUSH-13, PUSH-14).
 - `test/elia_web/browser/push_test.exs` — the hook in a real browser: the
   switch where the browser can notify and the reason where it cannot (PUSH-2,
   PUSH-5), the section settling again once the server has rendered it again and
   reporting a reading that failed (PUSH-20, PUSH-21), what a reason leaves in
-  place (PUSH-23), the chat page's visibility (PUSH-14) and the reason a
-  service worker that never activates leaves behind (PUSH-19). Run explicitly,
-  like the other browser tests (BROWSER).
+  place (PUSH-23), the events the chat page reports on (PUSH-14, PUSH-24) and the
+  reason a service worker that never activates leaves behind (PUSH-19). Run
+  explicitly, like the other browser tests (BROWSER).
 - Not covered by an automated test, and checked by hand as PWA-5 is: making a
   real subscription and receiving a notification end to end, which needs a
   browser with notifications on and its own push service on the internet
