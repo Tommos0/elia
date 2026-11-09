@@ -117,6 +117,38 @@ defmodule EliaWeb.UserInputTest do
     assert has_element?(view, "#output-q1", "Neither, use the sandbox")
   end
 
+  # UI-83: the card reads as prose — the question and the answer the model got
+  # (ASK-5, UI-20) wrap onto as many lines as they need, while another card's
+  # summary keeps the sideways scroll a command is read by (UI-15).
+  test "a question and the answer it got wrap", %{conn: conn, id: id} do
+    Store.save(id, [
+      Message.user("set it up"),
+      FakeLLM.assistant([
+        FakeLLM.tool_call("q1", "ask_user", %{
+          "question" => "Which jail?",
+          "options" => ["Jailed"]
+        }),
+        FakeLLM.tool_call("s1", "shell", %{"command" => "mix test"})
+      ]),
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("q1", ~s(The user answered: "Neither, use the sandbox")),
+          Message.tool_result("s1", "ok")
+        ]
+      }
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#items-call-q1 pre.whitespace-pre-wrap.break-words", "Which jail?")
+    assert has_element?(view, "#output-q1 pre.whitespace-pre-wrap.break-words", "use the sandbox")
+
+    # UI-15, UI-20: every other card keeps its own layout.
+    assert has_element?(view, "#items-call-s1 pre.overflow-x-auto", "$ mix test")
+    refute has_element?(view, "#items-call-s1 pre.whitespace-pre-wrap")
+  end
+
   # UI-76, UI-59, ASK-10: a chat waiting for an answer says so, and is never
   # shown as idle.
   test "the sidebar shows a chat that is waiting for an answer", %{conn: conn, id: id} do

@@ -1121,7 +1121,15 @@ defmodule EliaWeb.ChatLive do
         </div>
         <.tool_badge status={@item.status} is_error={@item.is_error} />
       </div>
-      <pre class="overflow-x-auto px-3 py-2 font-mono text-xs leading-relaxed"><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span>{tool_summary(@item)}</pre>
+      <%!-- UI-83: a question is prose, so its card's text wraps; every other
+      card keeps the sideways scroll that keeps a command's columns readable. --%>
+      <pre class={[
+        "px-3 py-2 font-mono text-xs leading-relaxed",
+        if(@item.name == "ask_user",
+          do: "whitespace-pre-wrap break-words",
+          else: "overflow-x-auto"
+        )
+      ]}><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span>{tool_summary(@item)}</pre>
       <%!-- UI-75, ASK-4, ASK-6: a question, answered with one click or in the
       user's own words. It goes when the answer does. --%>
       <div
@@ -1285,10 +1293,14 @@ defmodule EliaWeb.ChatLive do
         <summary class="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs text-base-content/60 hover:text-base-content">
           <.icon name="hero-chevron-right" class="size-3 transition group-open:rotate-90" /> Output
         </summary>
-        <pre class={[
-          "max-h-96 overflow-auto bg-base-200/40 px-3 py-2 font-mono text-xs leading-relaxed",
-          @item.is_error && "text-error"
-        ]}>{@item.output}</pre>
+        <pre class={
+          [
+            "max-h-96 overflow-auto bg-base-200/40 px-3 py-2 font-mono text-xs leading-relaxed",
+            # UI-83: the answer a question got wraps like the question itself.
+            @item.name == "ask_user" && "whitespace-pre-wrap break-words",
+            @item.is_error && "text-error"
+          ]
+        }>{@item.output}</pre>
       </details>
     </div>
     """

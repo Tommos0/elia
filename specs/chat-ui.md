@@ -248,6 +248,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
   an earlier turn renders the same way from the saved history, without the
   buttons. The card is shown in the compact view too (UI-61, ASK-10).
 
+- **UI-83** A question card reads as prose rather than as a command line: the
+  question (UI-75) and the answer it got (UI-20's Output section, ASK-5) wrap
+  onto as many lines as they need instead of running off one line, and a word
+  too long for the line (a path, a URL) is broken rather than pushing the card
+  wider. A line the user wrote is kept as written: only the wrapping separates
+  this card from the others, whose summary and output scroll sideways when they
+  are wide (UI-15, UI-20) — a shell command or a diff is read by its columns.
+
 ### Composer
 
 - **UI-21** Enter sends the message; Shift+Enter inserts a newline. The input
@@ -519,7 +527,7 @@ UI-38, UI-39, UI-67, UI-68).
 (UI-74, the stored title and `{:title, title}`),
 `test/elia_web/live/task_ui_test.exs`,
 `test/elia_web/live/user_input_test.exs` (the question card and the indicators,
-UI-75, UI-76),
+UI-75, UI-76, UI-83),
 `test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
 UI-79, UI-80),
 `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;

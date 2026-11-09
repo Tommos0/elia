@@ -12,12 +12,15 @@ defmodule EliaWeb.SmallScreenLayoutTest do
   below it. SYS-12 is a state check rather than a regression guard: `/system`
   reads the machine's real `/proc` (SYS-1), so a test cannot hand it a value
   wide enough to trip the layout. LOG-11 is a row's: a log entry's message must
-  get a line of its own, not a column a character wide.
+  get a line of its own, not a column a character wide. UI-83 is a question
+  card's: its question and the answer it got wrap, where every other card's text
+  is a command or a diff read by its columns (UI-15, UI-20).
   """
 
   use EliaWeb.BrowserCase
 
-  alias Elia.{Logs, Store}
+  alias Elia.{Agent, Logs, Store}
+  alias Elia.LLM.Message
 
   require Logger
 
@@ -121,6 +124,85 @@ defmodule EliaWeb.SmallScreenLayoutTest do
     };
   }
   """
+
+  # UI-83: a question card reads as prose — the question and the answer it got
+  # wrap, however long they are. The card's own `<pre>` is the yardstick: the
+  # page fits either way, because such an element scrolls its own text.
+  @question "Which of the two jails should this chat use for its tests? " <>
+              String.duplicate("jail-option-", 14)
+  @answer ~s(The user answered: "Neither: use the sandbox jail, ) <>
+            String.duplicate("sandbox-", 16) <> ~s(.")
+
+  @question_geometry """
+  () => {
+    const measure = (selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const style = getComputedStyle(el);
+      return {
+        overflow: el.scrollWidth - el.clientWidth,
+        lines: el.clientHeight / parseFloat(style.lineHeight),
+        wrapping: style.whiteSpace,
+      };
+    };
+    return {
+      question: measure("#items-call-q1 pre"),
+      answer: measure("#output-q1 pre"),
+    };
+  }
+  """
+
+  @tag browser_context_opts: @phone
+  test "a question and the answer it got wrap on a phone (UI-83)", %{conn: conn} do
+    id = Agent.new_id()
+
+    :ok =
+      Store.save(id, [
+        Message.user("set it up"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{type: :tool_call, id: "q1", name: "ask_user", input: %{"question" => @question}},
+            %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "mix test"}}
+          ]
+        },
+        %Message{
+          role: :tool,
+          content: [
+            Message.tool_result("q1", @answer),
+            Message.tool_result("s1", "ok")
+          ]
+        }
+      ])
+
+    on_exit(fn -> Store.delete(id) end)
+
+    conn
+    |> visit("/c/#{id}")
+    |> assert_has("#items-call-q1")
+    |> evaluate(@question_geometry, [is_function: true], fn geometry ->
+      for {key, part, text} <- [
+            {"question", "the question", @question},
+            {"answer", "the answer it got", @answer}
+          ] do
+        measured = geometry[key]
+
+        assert measured, "#{part} is not on the page"
+
+        # UI-83: the text wraps rather than running off the card sideways. Both
+        # carry a word longer than a phone's line, so a missing break-rule shows
+        # up here as overflow.
+        assert measured["overflow"] <= 0,
+               "#{part} runs #{measured["overflow"]}px past the card's edge: #{text}"
+
+        assert measured["lines"] > 1.5,
+               "#{part} takes #{measured["lines"]} lines: it did not wrap"
+
+        assert measured["wrapping"] == "pre-wrap",
+               "#{part} is laid out with white-space: #{measured["wrapping"]}"
+      end
+    end)
+  end
 
   @tag browser_context_opts: @phone
   test "a log entry's message gets a line of its own on a phone (LOG-11)", %{conn: conn} do
