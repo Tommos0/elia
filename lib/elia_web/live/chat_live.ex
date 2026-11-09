@@ -7,6 +7,10 @@ defmodule EliaWeb.ChatLive do
   alias EliaWeb.ChatStatus
   alias EliaWeb.FileLinks
 
+  # UI-4, UI-84: the chat list's first page, and how many chats each "Load more
+  # chats" adds.
+  @chat_page 30
+
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
   def mount(%{"project_id" => project_id}, _session, %{assigns: %{live_action: :new}} = socket) do
@@ -67,7 +71,9 @@ defmodule EliaWeb.ChatLive do
     # right on first render, from the listed chats and the registry (STORE-31).
     # This chat's own record is gone by now: its session has just started and
     # cleared it (INTR-3).
-    chats = Elia.Store.list(30)
+    # UI-4, UI-84: the chat list's first page, and whether more are saved than
+    # it shows.
+    {chats, more_chats} = list_chats(@chat_page)
 
     socket =
       socket
@@ -97,6 +103,11 @@ defmodule EliaWeb.ChatLive do
         # right on first render (SESS-7).
         done: snapshot.done,
         chats: chats,
+        # UI-4, UI-84, UI-85: how many chats the list shows and whether more are
+        # saved than it shows, which is what the "Load more chats" button is
+        # there for.
+        more_chats: more_chats,
+        chat_limit: @chat_page,
         # UI-72: chats whose turn a restart cut short, kept live.
         interrupted: interrupted_ids(chats),
         projects: Elia.Projects.list(),
@@ -181,6 +192,7 @@ defmodule EliaWeb.ChatLive do
         ></button>
         <aside
           id="sidebar"
+          phx-hook=".ChatPageSize"
           phx-window-keydown={@chats_open && "close_chats"}
           phx-key="Escape"
           class={[
@@ -264,6 +276,18 @@ defmodule EliaWeb.ChatLive do
             <% end %>
             <p :if={@chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
           </nav>
+          <%!-- UI-4, UI-84: the list's next page. Below the list's scroll box
+          (`#chat-list`), not inside it, so the button is visible without
+          scrolling to the end of the list. --%>
+          <button
+            :if={@more_chats}
+            type="button"
+            id="load-more-chats"
+            phx-click="more_chats"
+            class="mx-2 mb-2 shrink-0 rounded-lg border border-base-300 px-3 py-2 text-sm font-medium text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+          >
+            Load more chats
+          </button>
         </aside>
         <div class="flex min-h-0 min-w-0 flex-1 flex-col">
           <.task_header
@@ -630,6 +654,27 @@ defmodule EliaWeb.ChatLive do
           }
         }
       </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatPageSize">
+        // UI-85: how much of the chat list this tab has loaded, so opening
+        // another chat — which mounts this page again — re-lists the same pages
+        // rather than starting from the first one (UI-4). The server decides the
+        // number (UI-84): the hook hands back what it stored and writes down
+        // what it is told. Without it, or with nothing stored, the list is the
+        // first page, as before.
+        const KEY = "elia:chat-page"
+
+        export default {
+          mounted() {
+            this.handleEvent("chat_page", ({limit}) => {
+              try { sessionStorage.setItem(KEY, String(limit)) } catch (_e) {}
+            })
+
+            let limit = null
+            try { limit = parseInt(sessionStorage.getItem(KEY), 10) } catch (_e) {}
+            if (limit) this.pushEvent("chat_page", {limit})
+          }
+        }
+      </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollBottom">
         export default {
           mounted() {
@@ -822,6 +867,35 @@ defmodule EliaWeb.ChatLive do
   # UI-72, STORE-31: the chats in the sidebar whose saved turn a restart cut
   # short, so the list is right on first render and every page shows the same.
   defp interrupted_ids(chats), do: for(%{interrupted: true} = chat <- chats, do: chat.id)
+
+  # UI-4, UI-84: the chats the sidebar lists — one page, or as many pages as the
+  # user loaded (UI-85) — and whether the store holds more than that. One chat
+  # past the page is enough to know: a page is a prefix of STORE-12 order, so
+  # the store is read once and not twice.
+  defp list_chats(limit) do
+    case Elia.Store.list(limit + 1) do
+      chats when length(chats) > limit -> {Enum.take(chats, limit), true}
+      chats -> {chats, false}
+    end
+  end
+
+  # UI-4, UI-84, UI-85: the listed chats, re-read from the store at the page
+  # size this view has loaded, with the interrupted markers that go with them
+  # (UI-72, STORE-31). Without a page size it keeps the one it has, so the
+  # refreshes the sidebar does anyway don't drop the user back to the first
+  # page (UI-85).
+  defp assign_chats(socket), do: assign_chats(socket, socket.assigns.chat_limit)
+
+  defp assign_chats(socket, limit) do
+    {chats, more_chats} = list_chats(limit)
+
+    assign(socket,
+      chats: chats,
+      more_chats: more_chats,
+      chat_limit: limit,
+      interrupted: interrupted_ids(chats)
+    )
+  end
 
   attr :task, :map, required: true
   attr :status, :string, required: true
@@ -1571,6 +1645,28 @@ defmodule EliaWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # UI-84: the sidebar's "Load more chats" button lists the next page — 30 more
+  # chats (UI-4), which is the same prefix of STORE-12 order one page longer. The
+  # open chat, the drawer (UI-36) and the list's scroll position are left where
+  # they are, so only the list's own rows change. UI-85: the size is handed to
+  # the browser, which remembers it for the tab and gives it back on the next
+  # mount, so opening another chat re-lists these pages.
+  def handle_event("more_chats", _params, socket) do
+    limit = socket.assigns.chat_limit + @chat_page
+
+    {:noreply, socket |> assign_chats(limit) |> push_event("chat_page", %{limit: limit})}
+  end
+
+  # UI-85: the size the browser remembers for this tab, pushed back by the
+  # sidebar's hook (`.ChatPageSize`) as it mounts. Below the first page (UI-4) it
+  # is ignored rather than honoured, so a hand-written event can't shrink the
+  # list, and anything that isn't a whole number of chats leaves it as it is.
+  def handle_event("chat_page", %{"limit" => limit}, socket) when is_integer(limit) do
+    {:noreply, assign_chats(socket, max(limit, @chat_page))}
+  end
+
+  def handle_event("chat_page", _params, socket), do: {:noreply, socket}
+
   # UI-64, UI-65, SESS-29: delete a chat from the sidebar — the open one or any
   # other, running or not. Deleting the open chat leaves for `/chats`, the chat
   # list's entry point (UI-77), which resumes the next chat or starts a fresh
@@ -1580,7 +1676,7 @@ defmodule EliaWeb.ChatLive do
       :ok ->
         socket =
           socket
-          |> assign(chats: Elia.Store.list(30))
+          |> assign_chats()
           |> put_flash(:info, "Chat deleted.")
 
         if id == socket.assigns.session_id do
@@ -1733,13 +1829,12 @@ defmodule EliaWeb.ChatLive do
 
   # UI-6, UI-63: the sidebar's list and this chat's page title, re-read from the
   # store. The chats are listed again with it, so the list's interrupted markers
-  # (UI-72, STORE-31) are as fresh as the list itself.
+  # (UI-72, STORE-31) are as fresh as the list itself; the page size it has
+  # loaded is kept (UI-85).
   defp refresh_listed(socket) do
-    chats = Elia.Store.list(30)
-
-    assign(socket,
-      chats: chats,
-      interrupted: interrupted_ids(chats),
+    socket
+    |> assign_chats()
+    |> assign(
       # STORE-33, TITLE-1: the chat's own title when it has one, else the
       # derivation from its first user message (STORE-7).
       page_title: Elia.Store.chat_title(socket.assigns.session_id)
@@ -1789,24 +1884,25 @@ defmodule EliaWeb.ChatLive do
     tasks = Map.put(socket.assigns.tasks, call_id, %{child_id: child_id, status: status})
 
     socket
-    |> assign(tasks: tasks, chats: Elia.Store.list(30))
+    |> assign(tasks: tasks)
+    |> assign_chats()
     |> refresh_task_card(call_id)
   end
 
   # UI-48, UI-49: this chat's own task metadata changed.
   defp apply_event({:task, task}, socket) do
-    assign(socket,
-      task: task,
-      task_status: task_status(socket.assigns.session_id, task),
-      chats: Elia.Store.list(30)
-    )
+    socket
+    |> assign(task: task, task_status: task_status(socket.assigns.session_id, task))
+    |> assign_chats()
   end
 
   # TITLE-4, UI-74: the model named this chat. Its page title and its row in the
   # list follow at once, without waiting for the turn to end (UI-6); every other
   # row follows the list, which is read again here.
   defp apply_event({:title, title}, socket) do
-    assign(socket, page_title: title, chats: Elia.Store.list(30))
+    socket
+    |> assign(page_title: title)
+    |> assign_chats()
   end
 
   # DONE-5, DONE-9, UI-79, UI-80: the chat's done flag changed — this page's

@@ -53,7 +53,35 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-4** On large screens a sidebar lists the 30 most recently started chats
   (STORE-12), newest first, grouped by project (PROJ-24), each linking to
   `/c/<id>`. The open chat is highlighted. Small screens get the same list
-  through a drawer (UI-36).
+  through a drawer (UI-36). Those 30 are the list's first page: while more chats
+  are saved than it lists, the list carries a "Load more chats" button (UI-84).
+- **UI-84** The chat list shows a "Load more chats" button
+  (`#load-more-chats`) below the list and outside the list's own scroll box
+  (`#chat-list`), so it is visible without scrolling to the end, and it is
+  shown on small screens with the drawer's list too (UI-36). It is there
+  exactly while more saved chats exist than the list shows — so never with no
+  chats saved (UI-5) and never once the list shows them all — and it never
+  replaces the "No chats yet" empty state (UI-5). Clicking it lists the next
+  30 chats in the same order (STORE-12) and grouping (PROJ-24), without a
+  reload, leaving the open chat, the drawer (UI-36) and the list's scroll
+  position where they are; the button stays while further chats remain and is
+  gone when the last page is shown. Pressing it a second time loads 30 more
+  again, and so on until every saved chat is listed.
+- **UI-85** The list keeps the size the user loaded it to. The refreshes the
+  sidebar does anyway — a turn starting or ending (UI-6), a task or title event
+  (UI-49, UI-74), a chat marked done (UI-80), a deletion (UI-65) — leave the
+  loaded pages listed, so an event never drops the user back to the first 30 and
+  hides a chat they had loaded. Opening another chat does the same, although
+  that mounts the page again (UI-2): the size a tab has loaded is kept in the
+  browser's session storage (`elia:chat-page`, as the compact view is kept in
+  local storage, UI-60) whenever UI-84's button is pressed, and the page asks
+  for it when it mounts, so browsing between chats in a tab re-lists the same
+  pages rather than starting over. It is an enhancement, not the working part:
+  with nothing stored, or with the hook absent (a page whose assets were not
+  rebuilt, HOT-8), the list is the first page (UI-4) as before, and a stored
+  value that isn't a whole number of chats, or is smaller than that first page,
+  is ignored, so the list never shrinks below it. A fresh browser session — a
+  new tab, or storage cleared — starts at the first page again (UI-4).
 - **UI-34** Each sidebar chat shows when it was started in human-readable
   relative form ("just now", "10 minutes ago", "3 hours ago", "2 days ago",
   then a date after a week), in a `<time>` element whose `datetime` is the
@@ -516,6 +544,13 @@ page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
+The chat list's page size is `EliaWeb.ChatLive`'s (`@chat_page`, 30, UI-4). It
+lists the page's chats and asks `Elia.Store.list/1` for one chat more than it
+shows, so whether more are saved is known without reading the chats twice
+(UI-84), and it keeps the page size in its state, so every refresh re-lists the
+same pages (UI-85). The store itself is unchanged: a page is a prefix of
+(STORE-12) order, so listing the next page is listing a longer prefix.
+
 ## Tests
 
 `test/elia_web/live/chat_live_test.exs` (including what `/chats` opens, UI-77),
@@ -530,6 +565,12 @@ UI-38, UI-39, UI-67, UI-68).
 UI-75, UI-76, UI-83),
 `test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
 UI-79, UI-80),
+`test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
+button, the pages that stay loaded, and a list that had no more to begin with,
+UI-4, UI-84, UI-85),
+`test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when
+another chat is opened, and the button outside the list's scroll box, UI-84,
+UI-85; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
 a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.

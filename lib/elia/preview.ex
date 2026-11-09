@@ -40,6 +40,11 @@ defmodule Elia.Preview do
 
   @extensions ~w(.png .jpg .jpeg .webp)
 
+  # PREVIEW-16: the chats seeded beyond the chat list's first page (UI-4), with
+  # a fixed id each for the same reason as the sample chat's.
+  @page_count 30
+  @page_id "preview-chat"
+
   @doc "The dir a workspace's previews are written to, under `root` (PREVIEW-4)."
   @spec dir(binary()) :: binary()
   def dir(root \\ Workspace.root()), do: Path.join(root, @dir)
@@ -182,12 +187,28 @@ defmodule Elia.Preview do
   end
 
   @doc """
-  Saves the sample chat into the app's own data, so the pages a preview takes a
-  picture of have something to render (PREVIEW-10). Its workspace is the one
-  the preview runs in (PREVIEW-2), so no other data is touched.
+  Saves the sample chats into the app's own data, so the pages a preview takes a
+  picture of have something to render (PREVIEW-10, PREVIEW-16). Their workspace
+  is the one the preview runs in (PREVIEW-2), so no other data is touched.
   """
   @spec seed() :: :ok | {:error, term()}
-  def seed, do: Store.save(@sample_id, sample_messages(), title: @sample_title)
+  def seed do
+    with :ok <- seed_page(), do: Store.save(@sample_id, sample_messages(), title: @sample_title)
+  end
+
+  # PREVIEW-16: more chats than the chat list's first page holds (UI-4), so what
+  # the list does with them — the "Load more chats" button (UI-84) and the page
+  # it loads — is in a picture. They are saved before the sample chat, so the
+  # chat a picture is of is still the newest one, at the top of the list its
+  # page opens (STORE-12).
+  defp seed_page do
+    Enum.reduce_while(1..@page_count, :ok, fn n, :ok ->
+      case Store.save("#{@page_id}-#{n}", [Message.user("Sample chat #{n}")]) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   @doc """
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply

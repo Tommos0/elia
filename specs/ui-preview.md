@@ -112,6 +112,16 @@ live tree's saved chats are never touched.
   that chat is awaiting an answer before it visits the page, so a picture never
   catches the turn mid-flight.
 
+- **PREVIEW-16** A preview also seeds more chats than the chat list's first page
+  (UI-4) holds, so what the list does with them is seen in a picture rather than
+  reasoned about: the "Load more chats" button (UI-84) where it sits below the
+  list, and the page it loads. They are ordinary sample chats, saved the same
+  way as the sample chat (PREVIEW-2, PREVIEW-10) with a fixed id and a title of
+  their own each, and they are saved *before* it, so the sample chat the picture
+  is of is still in the list its page opens (STORE-12 order, at the top of it).
+  Like the rest of the sample data they belong to the workspace the preview runs
+  in (PREVIEW-2), and no chat anybody started is involved.
+
 ### Showing a preview in the chat
 
 - **PREVIEW-7** The running app serves an image a preview wrote:
@@ -194,7 +204,7 @@ network and takes a second or two.
 
 - `test/elia/preview_test.exs` (naming and path safety, PREVIEW-4, PREVIEW-7;
   the sample chat, PREVIEW-10 - PREVIEW-11; the paused question's id, path and
-  input, PREVIEW-15).
+  input, PREVIEW-15; the chats seeded past the list's first page, PREVIEW-16).
 - `test/elia_web/controllers/preview_controller_test.exs` (PREVIEW-7), against a
   throwaway live tree with a chat worktree (`Elia.LiveTree.create/0`).
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).

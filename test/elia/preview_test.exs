@@ -206,6 +206,20 @@ defmodule Elia.PreviewTest do
 
       assert call.input["title"] == title
     end
+
+    # PREVIEW-16: more chats than the chat list's first page holds (UI-4), so the
+    # list's "Load more chats" button (UI-84) and its next page can be seen in a
+    # picture — and the sample chat is the newest of them, so the page the
+    # picture is of still lists it (STORE-12).
+    test "seeds more chats than the list's first page, the sample chat newest" do
+      assert Preview.seed() == :ok
+
+      listed = Elia.Store.list(1000)
+
+      assert length(listed) > 30
+      assert hd(listed).id == Preview.sample_id()
+      assert Enum.uniq_by(listed, & &1.id) == listed
+    end
   end
 
   defp worktree(tree) do
