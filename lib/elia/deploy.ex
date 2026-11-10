@@ -15,9 +15,11 @@ defmodule Elia.Deploy do
   (`git push . HEAD:master`, which refuses anything but a fast-forward,
   DEPLOY-13). A *deploy* is then the user's step, from the Settings page
   (`EliaWeb.SettingsLive`): it runs the full test suite in the live tree,
-  fast-forwards `live` to the trunk when the tests pass (DEPLOY-5) and loads the
-  result into the running app — by hot reload (`hot_reload/1`, DEPLOY-6) or by
-  restarting the server (`restart/1`, DEPLOY-7). Because the tree a chat edits is
+  fast-forwards `live` to the trunk when the tests pass (DEPLOY-5), makes the
+  tree's front end current — the Node packages and the bundle a browser loads
+  (DEPLOY-19) — and loads the result into the running app, by hot reload
+  (`hot_reload/1`, DEPLOY-6) or by restarting the server (`restart/1`,
+  DEPLOY-7). Because the tree a chat edits is
   never the tree that runs, an in-progress or broken edit cannot reach the
   running app at all, and no request ever reloads code (DEPLOY-8).
 
@@ -45,6 +47,11 @@ defmodule Elia.Deploy do
   # (DEPLOY-18): the same as a test run, since it is the same network and the
   # same tree (VERIFY-1).
   @deps_timeout :timer.minutes(10)
+
+  # How long installing the trunk's Node packages and building the live tree's
+  # assets may take (DEPLOY-19): the same network and the same tree again, and a
+  # first `npm install` on a cold cache is the slow one.
+  @front_end_timeout :timer.minutes(10)
 
   ## Paths and branches
 
@@ -502,7 +509,15 @@ defmodule Elia.Deploy do
     # working directory it runs in (ISOL-13).
     case Elia.Harness.run_tests([], root) do
       {:ok, _output} ->
-        {:ok, "#{commits(count)} merged into #{@live}."}
+        # DEPLOY-19: the tree is deployed, so what a browser loads from it is
+        # made current before anything loads the tree itself.
+        case front_end(root) do
+          {:ok, note} ->
+            {:ok, "#{commits(count)} merged into #{@live}.#{note}"}
+
+          {:error, reason} ->
+            {:error, front_end_failed(reason) <> rollback_note(before, root)}
+        end
 
       {:error, output} ->
         {:tests_failed, output <> rollback_note(before, root)}
@@ -529,6 +544,60 @@ defmodule Elia.Deploy do
 
   defp fetch_failed(reason) do
     "Could not fetch the trunk's dependencies (DEPLOY-18):\n" <> reason
+  end
+
+  # DEPLOY-19: the front end the tree will serve, made current before it is
+  # loaded. `{:ok, note}` — the note is what the deploy's message adds, and is
+  # empty for a tree with no front end — or `{:error, reason}`. The function is
+  # a seam tests replace (`config :elia, Elia.Deploy, front_end: fun`), the way
+  # `load:` and `stop:` are: the real one installs packages and runs a build.
+  defp front_end(root), do: front_end_step().(root)
+
+  defp front_end_step do
+    Application.get_env(:elia, __MODULE__, [])[:front_end] || (&build_front_end/1)
+  end
+
+  # A tree with no `assets/` is not a project with a front end — a test's
+  # throwaway live tree, say — and there is nothing to install or build for one.
+  defp build_front_end(root) do
+    if File.exists?(Path.join(root, "assets/package.json")) do
+      with :ok <- install_packages(root), :ok <- build_assets(root) do
+        {:ok, " The live tree's front end was rebuilt."}
+      end
+    else
+      {:ok, ""}
+    end
+  end
+
+  # DEPLOY-19: a Node package a chat added lives in that chat's own dependency
+  # layer (ISOL-7), which the live tree has never installed — and without it the
+  # tree can't build a bundle at all, since the build is what resolves the
+  # import. Run from the live tree's own directory, so it gets the live tree's
+  # profile (ISOL-13, ISOL-14) the way the fetch above does.
+  defp install_packages(root) do
+    run_step(root, "npm install --prefix assets --no-audit --no-fund")
+  end
+
+  # The build the live tree's own watchers run while the server is up (HOT-7),
+  # here by hand and before anything loads the tree: what writes `priv/static`,
+  # and so what makes the browser's live reload fire (DEPLOY-12).
+  defp build_assets(root), do: run_step(root, "mix assets.build")
+
+  defp run_step(root, command) do
+    case Elia.Shell.run(command, cd: root, timeout: @front_end_timeout) do
+      {:ok, _output, 0} ->
+        :ok
+
+      {:ok, output, status} ->
+        {:error, "#{command} exited with #{status}:\n" <> Elia.Shell.truncate(output, 2_000)}
+
+      {:timeout, output} ->
+        {:error, "#{command} timed out:\n" <> Elia.Shell.truncate(output, 2_000)}
+    end
+  end
+
+  defp front_end_failed(reason) do
+    "Could not build the live tree's front end (DEPLOY-19):\n" <> reason
   end
 
   defp commits(1), do: "1 commit from #{@trunk}"

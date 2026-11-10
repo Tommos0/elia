@@ -16,7 +16,12 @@ Files: styles in `assets/css/app.css`, JS in `assets/js/app.js`, shared componen
 
 - daisyUI is loaded as a plugin in `app.css` and is available. Prefer Tailwind utilities for custom layout, and match the existing components and styles first.
 - **Never** use `@apply` in raw CSS.
-- A class is only in the stylesheet once the assets have been rebuilt, and a deploy does not rebuild them (`mix assets.build`, or the dev watchers in `config/dev.exs`): a page that was already open also keeps the stylesheet it loaded, and a hot reload patches new markup into it (HOT-8). A *new* class therefore must never be what keeps the layout on screen — a height, a `min-height: 0` that lets a pane shrink — because the page gets the new markup and no rule for it: that belongs in the element's own markup (`style`), as `#app-shell`'s height is (UI-78). For the same reason, never hide or overlay something with a *new* rule, or keep it hidden by one (IMG-7).
+- A class is only in the stylesheet once the assets have been rebuilt
+  (`mix assets.build`, or the dev watchers in `config/dev.exs`). A deploy
+  rebuilds the live tree's front end itself — installing the trunk's Node
+  packages and running the build (DEPLOY-19) — but that reaches a *page* only
+  when the browser reloads, and a page that was already open keeps the
+  stylesheet it loaded while a hot reload patches new markup into it (HOT-8). A *new* class therefore must never be what keeps the layout on screen — a height, a `min-height: 0` that lets a pane shrink — because the page gets the new markup and no rule for it: that belongs in the element's own markup (`style`), as `#app-shell`'s height is (UI-78). For the same reason, never hide or overlay something with a *new* rule, or keep it hidden by one (IMG-7).
 - Keep the UI usable and consistent with the existing pages. Use transitions and hover states where they help (buttons, lists), and give loading and empty states.
 
 ## JS

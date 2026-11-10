@@ -166,6 +166,37 @@ defmodule Elia.DeploymentTest do
     on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
   end
 
+  # The deploy's front-end step (DEPLOY-19), replaced for a test the way `load:`
+  # and `stop:` are: the real one installs the trunk's Node packages and builds
+  # the live tree's assets, which a test doesn't run in its throwaway tree.
+  defp stub_front_end(fun) do
+    deploy = Application.get_env(:elia, Elia.Deploy, [])
+    Application.put_env(:elia, Elia.Deploy, Keyword.put(deploy, :front_end, fun))
+    on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
+  end
+
+  # A front-end step that rebuilt, saying so the way the real one does, and
+  # telling the test it ran.
+  defp rebuilt_front_end(test_pid) do
+    stub_front_end(fn root ->
+      send(test_pid, {:front_end, root})
+      {:ok, " The live tree's front end was rebuilt."}
+    end)
+  end
+
+  # What the deploy's own steps said, in the order they ran: the front-end step
+  # (DEPLOY-19) and the load are stubs in these tests and send to the test
+  # process, so the mailbox is that order.
+  defp deploy_steps do
+    {:messages, messages} = Process.info(self(), :messages)
+
+    Enum.filter(messages, fn
+      {:front_end, _root} -> true
+      :loaded -> true
+      _other -> false
+    end)
+  end
+
   # The host allows the jail for the duration of the test (ISOL-20). The suite
   # runs unjailed by default (config/test.exs), so a test that needs the jail
   # turns it on for itself, as a chat's tool call does (ISOL-1).
@@ -182,6 +213,10 @@ defmodule Elia.DeploymentTest do
                do: false,
                else: "bubblewrap is not available (ISOL-12)"
              )
+
+  # A test that runs the deploy's own front-end step for real skips where npm is
+  # missing (DEPLOY-19), as the jail's tests skip where bubblewrap is.
+  @npm_skip if(System.find_executable("npm"), do: false, else: "npm is not installed")
 
   ## Requirements
 
@@ -360,6 +395,127 @@ defmodule Elia.DeploymentTest do
     assert message =~ "Could not fetch the trunk's dependencies"
     # Nothing is deployed: `live` is where it was (DEPLOY-5).
     assert head(tree) == before
+    assert branch(tree) == "live"
+  end
+
+  # DEPLOY-19: the tree's front end is made current once the suite has passed,
+  # before anything loads the tree, and the deploy says so — what a browser loads
+  # is what the tree it just deployed says, rather than a bundle from before the
+  # change.
+  test "a deploy rebuilds the live tree's front end before it loads it (DEPLOY-19)", %{
+    tree: tree
+  } do
+    running_server()
+    rebuilt_front_end(self())
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    assert {:ok, message} = Deploy.hot_reload()
+    assert message =~ "front end was rebuilt"
+
+    # The order the deploy's own steps ran in: the front end, then the load.
+    assert [{:front_end, ^tree}, :loaded] = deploy_steps()
+  end
+
+  # DEPLOY-19: nothing is rebuilt when the deploy never reaches that step — a
+  # failed suite already means nothing is deployed (DEPLOY-5, HOT-4).
+  test "a deploy whose suite fails rebuilds no front end (DEPLOY-19)" do
+    running_server()
+    rebuilt_front_end(self())
+
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+
+    assert {:tests_failed, _output} = Deploy.hot_reload()
+    assert deploy_steps() == []
+  end
+
+  # DEPLOY-19: a front end that can't be built is a deploy failure like a failing
+  # suite: `live` is rolled back to where it was, and nothing is loaded.
+  test "a front end that can't be built deploys nothing (DEPLOY-19)", %{tree: tree} do
+    running_server()
+    stub_front_end(fn _root -> {:error, "npm install exited with 1"} end)
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    live = head(tree)
+    assert {:error, message} = Deploy.hot_reload()
+
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "npm install exited with 1"
+    assert head(tree) == live
+    assert branch(tree) == "live"
+    assert deploy_steps() == []
+  end
+
+  # DEPLOY-19: a tree with no front end has nothing to install and nothing to
+  # build, and its deploy says nothing about one.
+  test "a live tree with no front end is deployed without building one (DEPLOY-19)", %{
+    tree: tree
+  } do
+    refute File.exists?(Path.join(tree, "assets/package.json"))
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    assert {:ok, message} = Deploy.deploy()
+    refute message =~ "front end"
+  end
+
+  # DEPLOY-19: the real step runs in the live tree, and the command that fails is
+  # the one the error names — here a `package.json` npm can't read, so nothing is
+  # installed and nothing is deployed.
+  test "a front end whose Node packages can't be installed fails the deploy (DEPLOY-19)", %{
+    tree: tree
+  } do
+    {_id, path} = new_worktree()
+
+    File.mkdir_p!(Path.join(path, "assets"))
+    File.write!(Path.join(path, "assets/package.json"), "{ not json\n")
+    commit(path, "a front end whose packages can't be installed")
+    LiveTree.push_to_trunk(path)
+
+    live = head(tree)
+    assert {:error, message} = Deploy.deploy()
+
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "npm install --prefix assets --no-audit --no-fund exited with 1"
+    assert head(tree) == live
+    assert branch(tree) == "live"
+  end
+
+  # DEPLOY-19: the install is the step before the build, and the one that fails
+  # is the one reported. The tree has no `assets.build` to run, which is what a
+  # tree whose assets can't be built looks like to the deploy.
+  @tag skip: @npm_skip
+  test "a front end whose assets can't be built fails the deploy (DEPLOY-19)", %{tree: tree} do
+    {_id, path} = new_worktree()
+
+    File.mkdir_p!(Path.join(path, "assets"))
+    File.write!(Path.join(path, "assets/package.json"), ~s({"name": "tmp", "private": true}\n))
+    commit(path, "a front end with nothing to build it")
+    LiveTree.push_to_trunk(path)
+
+    live = head(tree)
+    assert {:error, message} = Deploy.deploy()
+
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "mix assets.build exited with"
+    assert head(tree) == live
     assert branch(tree) == "live"
   end
 

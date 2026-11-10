@@ -87,6 +87,22 @@ gate.
   A lock that already matches fetches nothing, and a fetch that fails is a
   deploy failure like a failing suite: `live` is rolled back to where it was and
   nothing is deployed (DEPLOY-5).
+- **DEPLOY-19** A deploy makes the live tree's front end current before it loads
+  it: after the suite passes and `live` is fast-forwarded onto the trunk it
+  installs the trunk's Node packages in the live tree's `assets/` (`npm
+  install`) and builds its assets (`mix assets.build`), in the live tree and
+  jailed the way DEPLOY-18's fetch is (ISOL-14), and says in its message when it
+  rebuilt them. What the browser loads is therefore what the tree it just
+  deployed says — the hook a new page's markup asks for, the class its markup
+  uses — rather than a bundle from before the change, or a tree that cannot
+  build one at all: a Node package a chat added is in that chat's own dependency
+  layer (ISOL-7) and the live tree has never installed it, so its asset build
+  fails and no bundle is written. A tree with no `assets/` directory has no
+  front end and is left alone. A failure is a deploy failure like a failing
+  suite: `live` is rolled back to where it was, nothing is loaded, and the error
+  carries the command's output. Building writes under `priv/static`, so the
+  browser's live reload fires (DEPLOY-12) and a page that is already open comes
+  back on the new bundle instead of keeping the one it loaded (HOT-8).
 - **DEPLOY-6** Hot reload is the soft deploy mode (HOT-1–HOT-6): after
   DEPLOY-5 the live tree is recompiled and the changed modules are loaded into
   the running app, keeping running state. Its control is on the Settings page
@@ -155,7 +171,10 @@ DEPLOY-18, ISOL-14).
 ## Implementation
 
 `Elia.Deploy` (worktrees, the trunk and `live`, the deploy, hot reload and
-restart, `deployable/1`, `status/1`, the inert request reloader),
+restart, `deployable/1`, `status/1`, the inert request reloader, and the
+front-end step a deploy runs before it loads — `npm install` in the live tree's
+`assets/` and `mix assets.build`, DEPLOY-19 — with the seam its tests replace
+the way `load:` and `stop:` are),
 `Elia.Deploy.Runner` (the deploy's own process and its result, DEPLOY-15 to
 DEPLOY-17), `Elia.Application` (starts it),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
@@ -168,8 +187,9 @@ deployment section), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
 
 ## Tests
 
-`test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, hot reload,
-restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-18),
+`test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, the front
+end it builds before it loads, hot reload, restart, the runner and the loaded
+revision, DEPLOY-1 to DEPLOY-19),
 `test/elia_web/live/settings_live_test.exs` (the deployment section, including
 a page that mounts mid-deploy and after one), `test/support/live_tree.ex` (a
 throwaway live tree).
