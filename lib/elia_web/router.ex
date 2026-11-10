@@ -36,6 +36,9 @@ defmodule EliaWeb.Router do
       # CSET-1: this chat's own settings — model, auto-approval, jail, limits
       # and context — on their own page instead of in the composer.
       live "/c/:id/settings", ChatSettingsLive
+      # TERM-19: this chat's terminal, where a shell or a terminal app runs and
+      # the user watches it.
+      live "/c/:id/terminal", TerminalLive
       live "/p/:project_id/new", ChatLive, :new
       live "/projects", ProjectsLive
       live "/sessions", SessionsLive

@@ -99,11 +99,26 @@ config :elia, Elia.Skills,
     Elia.Skills.Files,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
+    Elia.Skills.Terminal,
     Elia.Skills.Titles,
     Elia.Skills.Done,
     Elia.Skills.UserInput,
     Elia.Skills.SelfModification
   ]
+
+# The chat's own terminal (TERM): one session per chat, a tmux process tree in
+# the chat's workspace, jailed like a command (TERM-7) and niced like one
+# (TERM-8), streamed to xterm.js on the browser's side (TERM-12). `tmux` is
+# resolved from PATH when unset, and where there is none the feature says so
+# (TERM-29). `scrollback_lines` is what a joining client is sent and what
+# `terminal_read` returns (TERM-14, TERM-26); `max_sessions` bounds how many
+# ptys one server hands out.
+config :elia, Elia.Terminal,
+  tmux: nil,
+  default_command: nil,
+  scrollback_lines: 2_000,
+  max_sessions: 8,
+  max_pending: 1_000
 
 # Command isolation (ISOL): tool calls run inside a bubblewrap jail, which holds
 # the workspace and the toolchain and nothing else. `false` turns the jail off

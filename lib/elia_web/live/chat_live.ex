@@ -421,6 +421,17 @@ defmodule EliaWeb.ChatLive do
                   {@selection.name}
                 </span>
               </.link>
+              <%!-- TERM-19: this chat's terminal, where a shell or a terminal app
+              runs, next to the chat's own settings. --%>
+              <.link
+                navigate={~p"/c/#{@session_id}/terminal"}
+                id="chat-terminal-link"
+                title="Run a terminal app in this chat's workspace"
+                class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
+              >
+                <.icon name="hero-command-line" class="size-3.5 shrink-0 opacity-70" />
+                <span>Terminal</span>
+              </.link>
               <%!-- CSET-9, ISOL-17: the jail belongs where commands run. --%>
               <span
                 :if={!@jail_available}

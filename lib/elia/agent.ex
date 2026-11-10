@@ -171,9 +171,29 @@ defmodule Elia.Agent do
     if Elia.Store.valid_id?(id) do
       stop_if_started(id)
       terminate_session(id)
+      stop_terminal(id)
       Elia.Store.delete(id)
     else
       {:error, :invalid_id}
+    end
+  end
+
+  # TERM-3: a chat's terminal stops with the chat, so deleting one leaves
+  # nothing running on the machine. The session process is terminated rather
+  # than left holding the last screen of a chat that no longer exists.
+  defp stop_terminal(id) do
+    case Elia.Terminal.fetch(id) do
+      {:ok, pid} ->
+        try do
+          Elia.Terminal.stop(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        terminate_child(Elia.Terminal.Supervisor, pid)
+
+      :error ->
+        :ok
     end
   end
 
@@ -188,12 +208,14 @@ defmodule Elia.Agent do
   # SESS-29: terminate the session process, so a stale session can't save the
   # chat again. Same shape as the child cleanup in `Elia.Tasks`.
   defp terminate_session(id) do
-    for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id), do: terminate_child(pid)
+    for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id),
+        do: terminate_child(Elia.Agent.Supervisor, pid)
+
     :ok
   end
 
-  defp terminate_child(pid) do
-    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+  defp terminate_child(supervisor, pid) do
+    DynamicSupervisor.terminate_child(supervisor, pid)
   catch
     :exit, _ -> :ok
   end

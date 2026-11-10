@@ -21,6 +21,14 @@ defmodule EliaWeb.Endpoint do
     websocket: [connect_info: @connect_info, code_reloader: false],
     longpoll: [connect_info: @connect_info, code_reloader: false]
 
+  # TERM-12: a chat's terminal streams over a channel of its own — a terminal is
+  # bytes, not markup, so it does not go through a LiveView's diffing. Same
+  # connect_info as the LiveView socket, and the same rule: a socket connect
+  # never reloads code.
+  socket "/terminal", EliaWeb.TerminalSocket,
+    websocket: [connect_info: @connect_info, code_reloader: false],
+    longpoll: [connect_info: @connect_info, code_reloader: false]
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

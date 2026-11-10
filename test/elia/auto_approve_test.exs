@@ -5,7 +5,9 @@ defmodule Elia.AutoApproveTest do
   alias Elia.LLM.Message
 
   # APPR-13, APPR-14: every tool that can need approval in Elia's own project.
-  @approvable ~w(delete_file edit_file list_files read_file shell spawn_task write_file)
+  # APPR: what can need approval — every tool whose work is a change to the
+  # machine: the files, the shell, a sub-task, and starting a terminal (TERM-25).
+  @approvable ~w(delete_file edit_file list_files read_file shell spawn_task terminal_start write_file)
 
   setup do
     start_supervised!(FakeLLM)

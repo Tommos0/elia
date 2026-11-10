@@ -3,6 +3,10 @@
 
 @import "tailwindcss" source(none);
 @import "phoenix-colocated/elia/colocated.css";
+/* xterm.js draws the terminal on the terminal page (TERM-12): its own
+   stylesheet comes with the package, and it has to be imported with the rest
+   of them — a stylesheet loaded after the first rule of this file is not CSS. */
+@import "../node_modules/@xterm/xterm/css/xterm.css";
 @source "../css";
 @source "../js";
 @source "../../lib/elia_web";

@@ -4,5 +4,9 @@
   "description": "Node packages for the assets build and the real-browser tests (BROWSER-2).",
   "devDependencies": {
     "playwright": "1.64.1"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
   }
 }

@@ -25,13 +25,14 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/elia"
 import topbar from "../vendor/topbar"
 import {Highlight} from "./highlight"
+import {TerminalHook} from "./terminal"
 import {autoReconnect} from "./auto_reconnect"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Highlight},
+  hooks: {...colocatedHooks, Highlight, Terminal: TerminalHook},
 })
 
 // Show progress bar on live navigation and form submits

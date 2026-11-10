@@ -29,6 +29,11 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
+      # TERM-1: a chat's terminal session is registered by chat id, so a chat
+      # has one, and it runs under its own supervisor — a session that dies
+      # takes its process tree with it (TERM-3) and leaves the rest alone.
+      {Registry, keys: :unique, name: Elia.Terminal.Registry},
+      {DynamicSupervisor, name: Elia.Terminal.Supervisor, strategy: :one_for_one},
       Elia.Settings,
       # PUSH-13, PUSH-14: which chats have a visible page, and PUSH-11, PUSH-12:
       # the notifications sent when one needs the user.

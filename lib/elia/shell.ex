@@ -160,14 +160,19 @@ defmodule Elia.Shell do
     Enum.any?(Keyword.get(opts, :env, []), fn {key, _value} -> to_string(key) == name end)
   end
 
-  defp execute(script, cd, opts) do
-    # Spawned directly: the VM makes a port program its own session and process
-    # group leader, so `kill -PGID` in `kill/1` reaches the command and
-    # everything it started (SHELL-3). A `setsid` wrapper must not go here —
-    # `setsid` forks when it is already a group leader, and the pid the port
-    # reports would then be the wrapper's, whose group holds the command
-    # itself only (a timeout killed the server's child and leaked the command).
-    # A killed jail takes its pid namespace with it (ISOL-10).
+  @doc """
+  The program and its arguments that run `script` in `cd`: the jail where one
+  can be built (ISOL-2), otherwise the shell (SHELL-2), with the priority
+  wrapper in front (PRIO-1, PRIO-3).
+
+  `run/2` starts a command with it, and a terminal session starts its own
+  process tree with it too (TERM-7): one definition of the jail and of the
+  priority, so a change to either reaches the terminal as well, and a terminal
+  is confined exactly like a command instead of by a second copy of the same
+  arguments.
+  """
+  @spec argv(binary(), binary(), keyword()) :: {binary(), [binary()]}
+  def argv(script, cd, opts \\ []) do
     {exe, args} =
       if jailed?(opts) do
         {bwrap(), jail_args(script, cd, opts)}
@@ -183,9 +188,33 @@ defmodule Elia.Shell do
     # timeout kills (SHELL-3), and everything the command starts inherits the
     # priority. The jail is around the command either way: the prefix is set on
     # the `bwrap` process and inherited by what it starts (ISOL-10).
-    {exe, args} = Priority.spawn_argv(exe, args, Keyword.get(opts, :priority, []))
+    Priority.spawn_argv(exe, args, Keyword.get(opts, :priority, []))
+  end
 
-    env = for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}
+  @doc """
+  The environment a spawned port gets from `opts[:env]`, as the charlists
+  `Port.open/2` takes.
+
+  A jailed command's environment is built by the jail's own `--setenv`
+  arguments instead (ISOL-8); this is what an unjailed command and a terminal
+  session's port are given, so both take their environment from the same place.
+  """
+  @spec port_env(keyword()) :: [{charlist(), charlist()}]
+  def port_env(opts \\ []) do
+    for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}
+  end
+
+  defp execute(script, cd, opts) do
+    # Spawned directly: the VM makes a port program its own session and process
+    # group leader, so `kill -PGID` in `kill/1` reaches the command and
+    # everything it started (SHELL-3). A `setsid` wrapper must not go here —
+    # `setsid` forks when it is already a group leader, and the pid the port
+    # reports would then be the wrapper's, whose group holds the command
+    # itself only (a timeout killed the server's child and leaked the command).
+    # A killed jail takes its pid namespace with it (ISOL-10).
+    {exe, args} = argv(script, cd, opts)
+
+    env = port_env(opts)
 
     port =
       Port.open({:spawn_executable, exe}, [
@@ -372,17 +401,27 @@ defmodule Elia.Shell do
     end
   end
 
-  # Kills the command and everything it started (SHELL-3). `Port.info/2` gives
-  # the pid of the process the VM spawned, which is a session and process group
-  # leader (`run/2` spawns no wrapper around it), so the negative pid reaches
-  # the shell, every process of a pipeline and their children. `--` keeps the
-  # negative pid from being read as an option; the pid itself is killed too, in
-  # case the group is already gone.
-  defp kill(port) do
+  @doc """
+  Kills the process `port` started and everything it started (SHELL-3).
+
+  `Port.info/2` gives the pid of the process the VM spawned, which is a session
+  and process group leader (`run/2` spawns no wrapper around it), so the
+  negative pid reaches the shell, every process of a pipeline and their
+  children. `--` keeps the negative pid from being read as an option; the pid
+  itself is killed too, in case the group is already gone.
+
+  A terminal session stops its own tree with it (TERM-3), so the kill that ends
+  a session is the same one a timed-out command gets — and, with the jail on, it
+  takes the pid namespace with it (ISOL-10).
+  """
+  @spec kill(port()) :: :ok
+  def kill(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid) do
       System.cmd("kill", ["-KILL", "--", "-#{pid}"], stderr_to_stdout: true)
       System.cmd("kill", ["-KILL", "#{pid}"], stderr_to_stdout: true)
     end
+
+    :ok
   end
 
   @doc "Shortens `output` to `max` characters by cutting out the middle."
