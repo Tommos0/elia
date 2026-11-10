@@ -237,6 +237,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
   well as while the page is watching the turn. The session's `{:error, text}`
   event (SESS-6, SESS-38) is not a row of its own — the message is the row — so
   a stop reads once, whichever of the two arrives first (STOP-4).
+- **UI-86** A retry of a failed model call (RETRY-3) clears the drafts (UI-10) —
+  the attempt that failed is dropped and the answer starts over — and shows the
+  retry's sentence as a notice row (UI-12), e.g. "Anthropic API request failed:
+  timeout. Retrying in 15 seconds (attempt 2 of 4)." The turn keeps running, so
+  the composer and the stop control stay disabled as they are, and the row is
+  not part of the transcript: it is there while the page is watching the turn
+  and gone when the chat is loaded again. A tool call the failed attempt had
+  started is dropped with the drafts, never shown as one that ran (RETRY-2).
 
 ### Tool calls
 

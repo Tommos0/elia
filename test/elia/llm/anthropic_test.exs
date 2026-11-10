@@ -1,7 +1,7 @@
 defmodule Elia.LLM.AnthropicTest do
   use ExUnit.Case, async: false
 
-  alias Elia.LLM.{Anthropic, Message}
+  alias Elia.LLM.{Anthropic, Error, Message}
 
   setup do
     previous = Application.get_env(:elia, Anthropic)
@@ -246,7 +246,8 @@ defmodule Elia.LLM.AnthropicTest do
     assert :counters.get(counter, 1) == 2
   end
 
-  # LLM-30
+  # LLM-30, LLM-36: a closed connection is a transport failure, so the turn's
+  # own retry may pick it up where the provider's leaves it.
   test "gives up after two retries of a closed connection" do
     counter = :counters.new(1, [])
 
@@ -255,7 +256,8 @@ defmodule Elia.LLM.AnthropicTest do
       Req.Test.transport_error(conn, :closed)
     end)
 
-    assert {:error, "Anthropic API request failed: socket closed"} =
+    assert {:error,
+            %Error{transient: true, message: "Anthropic API request failed: socket closed"}} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 3
@@ -270,7 +272,7 @@ defmodule Elia.LLM.AnthropicTest do
       Req.Test.transport_error(conn, :econnrefused)
     end)
 
-    assert {:error, "Anthropic API request failed: " <> _} =
+    assert {:error, %Error{transient: true, message: "Anthropic API request failed: " <> _}} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 1
@@ -313,10 +315,58 @@ defmodule Elia.LLM.AnthropicTest do
       Req.Test.transport_error(conn, :timeout)
     end)
 
-    assert {:error, "Anthropic API request failed: timeout"} =
+    assert {:error, %Error{transient: true, message: "Anthropic API request failed: timeout"}} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 5
+  end
+
+  # LLM-36: which failures a turn's retry may fix, and which it must not.
+  test "marks the failures a retry may fix" do
+    stub_stream(self(), [
+      %{"type" => "error", "error" => %{"type" => "overloaded_error", "message" => "Overloaded"}}
+    ])
+
+    assert {:error, %Error{transient: true, message: "Anthropic stream error: Overloaded"}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    stub_stream(self(), [
+      %{
+        "type" => "error",
+        "error" => %{"type" => "invalid_request_error", "message" => "messages: bad"}
+      }
+    ])
+
+    assert {:error, "Anthropic stream error: messages: bad"} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    # A status the provider itself retries, outlasting its two retries, is
+    # marked the same way.
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      :counters.add(counter, 1, 1)
+
+      conn
+      |> Plug.Conn.put_resp_header("retry-after", "0")
+      |> Plug.Conn.put_status(529)
+      |> Req.Test.json(%{"error" => %{"message" => "overloaded"}})
+    end)
+
+    assert {:error, %Error{transient: true, message: "Anthropic API error 529: overloaded"}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert :counters.get(counter, 1) == 3
+
+    # A 4xx is the request's fault, so it is a plain message (LLM-10).
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn
+      |> Plug.Conn.put_status(422)
+      |> Req.Test.json(%{"error" => %{"message" => "no such model"}})
+    end)
+
+    assert {:error, "Anthropic API error 422: no such model"} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
 
   # LLM-31

@@ -19,13 +19,16 @@ defmodule Elia.LLM.Anthropic do
 
   require Logger
 
-  alias Elia.LLM.{Message, Retry, SSE}
+  alias Elia.LLM.{Error, Message, Retry, SSE}
 
   @api_version "2026-10-21"
   @fallback_beta "server-side-fallback-2026-07-01"
   @thinking_updates_beta "thinking-display-updates-2026-08-18"
   @thinking_binding_beta "thinking-binding-controls-2026-08-01"
   @retry_statuses [408, 429, 500, 502, 503, 504, 529]
+  # LLM-36: the stream errors the service calls its own trouble, which a retry
+  # may fix.
+  @transient_error_types ["overloaded_error", "api_error", "rate_limit_error"]
   @max_retries 2
 
   # The Models API has no prices, so the picker uses Anthropic's published
@@ -275,7 +278,11 @@ defmodule Elia.LLM.Anthropic do
         do_stream(body, api_key, config, on_event, attempt + 1)
 
       {:ok, %Req.Response{status: status} = resp} ->
-        {:error, "Anthropic API error #{status}: #{error_message(resp)}"}
+        # LLM-36: a status the provider itself retries, outlasting its retries,
+        # is a failure a turn's own retry may fix.
+        message = "Anthropic API error #{status}: #{error_message(resp)}"
+        error = if status in @retry_statuses, do: Error.transient(message), else: message
+        {:error, error}
 
       # LLM-30, LLM-35: a pooled connection that went stale while idle, or a
       # stream that stalled before any data arrived — neither has emitted an
@@ -289,7 +296,10 @@ defmodule Elia.LLM.Anthropic do
 
           do_stream(body, api_key, config, on_event, attempt + 1)
         else
-          {:error, "Anthropic API request failed: #{Exception.message(exception)}"}
+          # LLM-36: a transport failure — a stalled stream the idle timeout cut
+          # off, a connection that closed mid-answer — is what a turn retries.
+          {:error,
+           Error.transient("Anthropic API request failed: #{Exception.message(exception)}")}
         end
     end
   end
@@ -315,7 +325,17 @@ defmodule Elia.LLM.Anthropic do
   ## Stream accumulation
 
   defp new_state do
-    %{buffer: "", blocks: %{}, stop_reason: nil, model: nil, usage: %{}, error: nil}
+    %{
+      buffer: "",
+      blocks: %{},
+      stop_reason: nil,
+      model: nil,
+      usage: %{},
+      error: nil,
+      # LLM-36: the type of the error event, which is what tells a failure the
+      # service calls overload from one it calls the request's fault.
+      error_type: nil
+    }
   end
 
   defp handle_chunk(%Req.Response{status: 200} = resp, chunk, on_event) do
@@ -408,13 +428,24 @@ defmodule Elia.LLM.Anthropic do
   end
 
   defp apply_event(%{"type" => "error", "error" => error}, state, _on_event) do
-    %{state | error: error["message"] || inspect(error)}
+    %{
+      state
+      | error: error["message"] || inspect(error),
+        error_type: if(is_map(error), do: error["type"], else: nil)
+    }
   end
 
   defp apply_event(_event, state, _on_event), do: state
 
-  defp finish(%{error: error}) when is_binary(error),
-    do: {:error, "Anthropic stream error: #{error}"}
+  # LLM-13, LLM-36: an error event ends the call, and the type it carries says
+  # whether a retry may fix it.
+  defp finish(%{error: error} = state) when is_binary(error) do
+    message = "Anthropic stream error: #{error}"
+
+    if Map.get(state, :error_type) in @transient_error_types,
+      do: {:error, Error.transient(message)},
+      else: {:error, message}
+  end
 
   defp finish(state) do
     content =

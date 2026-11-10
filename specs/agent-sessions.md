@@ -33,6 +33,7 @@ progress so any number of UIs can follow it.
   `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
+  `{:retry, info}` (a failed model call is being retried, SESS-39, RETRY-3),
   `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
@@ -256,6 +257,12 @@ progress so any number of UIs can follow it.
   when the chat was done, `{:done, false}` is broadcast (SESS-6). Nothing about
   the message, the turn or the composer is different, and no confirmation is
   asked (DONE-8).
+
+- **SESS-39** A retry the loop reports (`{:loop_retry, info}`, RETRY-3) is
+  broadcast as `{:retry, info}` and changes nothing else: the turn keeps running
+  (SESS-4), no message is appended and nothing is saved (RETRY-3), so the
+  history holds only what the turn completed. A report from a loop the session
+  no longer runs (SESS-9) is ignored, like its other late messages.
 
 ## Out of scope
 

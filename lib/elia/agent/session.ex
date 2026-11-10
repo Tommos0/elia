@@ -14,7 +14,8 @@ defmodule Elia.Agent.Session do
 
   Events: `{:message, message}`, `{:delta, :text | :reasoning, text}`,
   `{:notice, text}`, `{:status, status}`, `{:tool_status, call_id, status}`,
-  `{:usage, usage}`, `{:compaction, state}`, `{:error, text}` (a stop, whose
+  `{:usage, usage}`, `{:compaction, state}`, `{:retry, info}` (a failed model
+  call is being retried, RETRY-3), `{:error, text}` (a stop, whose
   transcript message is STOP-1's, STOP-4),
   `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
   `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:done, on?}`,
@@ -531,7 +532,7 @@ defmodule Elia.Agent.Session do
   # Messages a stopped loop sent before it died.
   @impl true
   def handle_info({tag, _}, %{task: nil} = state)
-      when tag in [:loop_event, :loop_append, :loop_compaction] do
+      when tag in [:loop_event, :loop_append, :loop_compaction, :loop_retry] do
     {:noreply, state}
   end
 
@@ -577,6 +578,14 @@ defmodule Elia.Agent.Session do
 
   def handle_info({:loop_tool_status, call_id, status}, state) do
     {:noreply, put_tool_status(state, call_id, status)}
+  end
+
+  # SESS-39, RETRY-3: a failed model call is being retried. Nothing is
+  # appended or saved — a turn that recovered reads as one that ran without
+  # interruption — and the turn keeps running.
+  def handle_info({:loop_retry, info}, state) do
+    broadcast(state, {:retry, info})
+    {:noreply, state}
   end
 
   def handle_info({:loop_await_approval, pid, calls}, state) do

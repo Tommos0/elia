@@ -12,7 +12,9 @@ access to many other models.
 ### Neutral interface
 
 - **LLM-1** A provider implements `stream(request, on_event)` and returns
-  `{:ok, %{message, stop_reason, model, usage}}` or `{:error, reason}`.
+  `{:ok, %{message, stop_reason, model, usage}}` or `{:error, reason}`, where
+  `reason` is the message to show (a binary) or an `Elia.LLM.Error` when the
+  failure is one a retry may fix (LLM-36, RETRY-6).
 - **LLM-2** A request has `messages` and optionally `system`, `tools`, `model`
   and `max_tokens`. A request can override the configured provider with
   `:provider`.
@@ -150,6 +152,19 @@ access to many other models.
   follow this rule; its two decisions (retry a stall that received nothing,
   retry nothing once data has arrived) live in `Elia.LLM.Retry`.
 
+### Transient failures
+
+- **LLM-36** A streaming call's failure is marked transient — returned as
+  `{:error, %Elia.LLM.Error{transient: true}}` (LLM-1) so a turn may try again
+  (RETRY-6) — when a retry could fix it: a transport error (`Req.TransportError`,
+  which is what a stalled or closed connection raises), a status in the
+  provider's own retry list once those retries are spent (LLM-10, LLM-23), and
+  an in-stream `error` event the service reports as its own trouble — Anthropic's
+  `overloaded_error`, `api_error` and `rate_limit_error`, OpenRouter's `error`
+  object with a code in its retry list. Every other failure stays a plain
+  message, including the one a stream error names as the request's fault. The
+  `GET` calls (LLM-31) keep their messages as they are.
+
 ### Credits
 
 - **LLM-25** Providers may implement `balance/1`, which makes one
@@ -204,8 +219,8 @@ Tests use `Elia.FakeLLM`.
 
 ## Implementation
 
-`Elia.LLM`, `Elia.LLM.Provider`, `Elia.LLM.Message`, `Elia.LLM.Anthropic`,
-`Elia.LLM.OpenRouter`, `Elia.LLM.Retry`, `Elia.LLM.SSE`.
+`Elia.LLM`, `Elia.LLM.Provider`, `Elia.LLM.Message`, `Elia.LLM.Error`,
+`Elia.LLM.Anthropic`, `Elia.LLM.OpenRouter`, `Elia.LLM.Retry`, `Elia.LLM.SSE`.
 
 ## Tests
 

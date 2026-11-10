@@ -3,7 +3,7 @@ defmodule Elia.LLM.OpenRouterTest do
 
   import Elia.LLMCase
 
-  alias Elia.LLM.{Message, OpenRouter}
+  alias Elia.LLM.{Error, Message, OpenRouter}
 
   setup do
     reset_settings()
@@ -202,14 +202,23 @@ defmodule Elia.LLM.OpenRouterTest do
     end
   end
 
-  # LLM-22
+  # LLM-22, LLM-36: an error chunk ends the call, and the code it names says
+  # whether a turn's retry may fix it.
   test "an error chunk or error finish reason fails the call" do
     stub_openrouter_stream(self(), [
       delta(%{"content" => "par"}),
       %{"error" => %{"code" => 502, "message" => "Provider disconnected"}}
     ])
 
-    assert {:error, "OpenRouter stream error: Provider disconnected"} =
+    assert {:error,
+            %Error{transient: true, message: "OpenRouter stream error: Provider disconnected"}} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    stub_openrouter_stream(self(), [
+      %{"error" => %{"code" => 400, "message" => "Provider returned an error"}}
+    ])
+
+    assert {:error, "OpenRouter stream error: Provider returned an error"} =
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     stub_openrouter_stream(self(), [finish("error")])
@@ -218,7 +227,7 @@ defmodule Elia.LLM.OpenRouterTest do
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
 
-  # LLM-23
+  # LLM-23, LLM-36
   test "retries transient statuses and reports API errors" do
     {:ok, attempts} = Agent.start_link(fn -> 0 end)
 
@@ -241,6 +250,19 @@ defmodule Elia.LLM.OpenRouterTest do
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert Agent.get(attempts, & &1) == 2
+
+    # A status that keeps failing after the provider's own retries is marked
+    # for the turn's retry (LLM-36); a 4xx is the request's fault and is not.
+    Req.Test.stub(OpenRouter, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_header("retry-after", "0")
+      |> Plug.Conn.put_status(503)
+      |> Req.Test.json(%{"error" => %{"message" => "no healthy upstream"}})
+    end)
+
+    assert {:error,
+            %Error{transient: true, message: "OpenRouter API error 503: no healthy upstream"}} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     Req.Test.stub(OpenRouter, fn conn ->
       conn
@@ -356,7 +378,10 @@ defmodule Elia.LLM.OpenRouterTest do
       Req.Test.transport_error(conn, :closed)
     end)
 
-    assert {:error, "OpenRouter API request failed: socket closed"} =
+    # LLM-31, LLM-36: a closed connection is a transport failure, so the turn's
+    # own retry may pick it up where the provider's leaves it.
+    assert {:error,
+            %Error{transient: true, message: "OpenRouter API request failed: socket closed"}} =
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 5
@@ -397,7 +422,7 @@ defmodule Elia.LLM.OpenRouterTest do
       Req.Test.transport_error(conn, :timeout)
     end)
 
-    assert {:error, "OpenRouter API request failed: timeout"} =
+    assert {:error, %Error{transient: true, message: "OpenRouter API request failed: timeout"}} =
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
 
     assert :counters.get(counter, 1) == 5

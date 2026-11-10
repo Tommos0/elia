@@ -16,7 +16,7 @@ defmodule Elia.LLM.OpenRouter do
 
   require Logger
 
-  alias Elia.LLM.{Message, Retry, SSE}
+  alias Elia.LLM.{Error, Message, Retry, SSE}
 
   @retry_statuses [408, 429, 500, 502, 503, 504]
   @max_retries 2
@@ -275,7 +275,10 @@ defmodule Elia.LLM.OpenRouter do
         do_stream(body, api_key, config, on_event, attempt + 1)
 
       {:ok, %Req.Response{status: status} = resp} ->
-        {:error, "OpenRouter API error #{status}: #{error_message(resp)}"}
+        # LLM-36: a status the provider retries itself, outlasting its retries,
+        # is a failure a turn's own retry may fix.
+        message = "OpenRouter API error #{status}: #{error_message(resp)}"
+        {:error, if(status in @retry_statuses, do: Error.transient(message), else: message)}
 
       # LLM-31, LLM-35: a pooled connection that went stale while idle, or a
       # stream that stalled before any data arrived — neither has emitted an
@@ -289,7 +292,10 @@ defmodule Elia.LLM.OpenRouter do
 
           do_stream(body, api_key, config, on_event, attempt + 1)
         else
-          {:error, "OpenRouter API request failed: #{Exception.message(exception)}"}
+          # LLM-36: a transport failure — a stalled stream the idle timeout cut
+          # off, a connection that closed mid-answer — is what a turn retries.
+          {:error,
+           Error.transient("OpenRouter API request failed: #{Exception.message(exception)}")}
         end
     end
   end
@@ -325,7 +331,9 @@ defmodule Elia.LLM.OpenRouter do
       finish_reason: nil,
       model: nil,
       usage: %{},
-      error: nil
+      error: nil,
+      # LLM-36: the status an error chunk named, if it named one.
+      error_code: nil
     }
   end
 
@@ -359,7 +367,8 @@ defmodule Elia.LLM.OpenRouter do
 
   defp apply_chunk(%{"error" => error}, state, _on_event) do
     message = if is_map(error), do: error["message"], else: nil
-    %{state | error: message || inspect(error)}
+    # LLM-36: the code the error object carries says whether a retry may fix it.
+    %{state | error: message || inspect(error), error_code: error_code(error)}
   end
 
   defp apply_chunk(chunk, state, on_event) do
@@ -450,8 +459,26 @@ defmodule Elia.LLM.OpenRouter do
 
   defp generated_id(index), do: "call_#{System.unique_integer([:positive])}_#{index}"
 
-  defp finish(%{error: error}) when is_binary(error),
-    do: {:error, "OpenRouter stream error: #{error}"}
+  # An error object's code is a status number, or the same number as a string.
+  defp error_code(error) when is_map(error) do
+    case error["code"] do
+      code when is_integer(code) -> code
+      code when is_binary(code) -> elem(Integer.parse(code), 0)
+      _ -> nil
+    end
+  end
+
+  defp error_code(_error), do: nil
+
+  defp finish(%{error: error} = state) when is_binary(error) do
+    message = "OpenRouter stream error: #{error}"
+
+    # LLM-22, LLM-36: the code the service named tells a failure a retry may fix
+    # from one it says is the request's.
+    if Map.get(state, :error_code) in @retry_statuses,
+      do: {:error, Error.transient(message)},
+      else: {:error, message}
+  end
 
   defp finish(%{finish_reason: "error"}), do: {:error, "OpenRouter stream error"}
 

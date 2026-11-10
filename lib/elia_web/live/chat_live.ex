@@ -2018,6 +2018,16 @@ defmodule EliaWeb.ChatLive do
 
   defp apply_event({:error, _text}, socket), do: socket
 
+  # RETRY-3, UI-86: the model call failed transiently and is being tried
+  # again, so the attempt that failed is dropped — its drafts go with it,
+  # since the answer starts over — and the wait is a notice row. Nothing is
+  # written to the transcript and the turn keeps running.
+  defp apply_event({:retry, info}, socket) do
+    socket = assign(socket, draft: "", draft_reasoning: "", activity: nil)
+    item = %{id: "notice-#{System.unique_integer([:positive])}", kind: :notice, text: info.text}
+    stream_insert(socket, :items, item)
+  end
+
   defp apply_event({:reset, messages}, socket) do
     socket
     |> assign(last_usage: nil)

@@ -36,7 +36,9 @@ and saved, so the chat says why it stopped whenever it is opened again.
     holds both: that the turn waited, and that it was ended.
   - `:error` — the loop's reason, as the text the loop returned, e.g. "OpenRouter
     stream failed: socket closed" (LOOP-5's output limit, a provider that failed
-    after its retries, LLM-13).
+    after its retries, LLM-13) — and, for a failure the turn retried before it
+    gave up (LOOP-23, RETRY-5), the same text followed by what was done about it,
+    "(retried 3 times)".
   - `:refused` — "The model declined this request." (LOOP-4), appended after the
     rollback (SESS-10), so it is the last thing the transcript holds rather than
     the request the model declined.
@@ -70,7 +72,9 @@ and saved, so the chat says why it stopped whenever it is opened again.
 
 ## Out of scope
 
-- Running a stopped turn again, or retrying what it was doing.
+- Running a turn again once it has stopped: a failure inside a running turn is
+  retried there (RETRY-1), but a stop is a stop, and carrying on is a message
+  the user sends.
 - What a stop leaves in the chat list: the chat is idle, as before (SESS-4,
   UI-59).
 

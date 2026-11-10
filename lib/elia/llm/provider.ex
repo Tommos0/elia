@@ -45,7 +45,7 @@ defmodule Elia.LLM.Provider do
         }
 
   @callback stream(request(), on_event :: (event() -> any())) ::
-              {:ok, response()} | {:error, term()}
+              {:ok, response()} | {:error, binary() | Elia.LLM.Error.t()}
 
   @doc "The model used when a request names none."
   @callback default_model() :: binary()

@@ -17,6 +17,8 @@ defmodule Elia.Agent.Loop do
       (LOOP-21); reply with `{:input_answers, %{call_id => answer}}
     * `{:loop_compaction, state}` - the compaction state advanced mid-turn,
       after the ladder elided more of the cold prefix (COMPACT-29)
+    * `{:loop_retry, info}` - the step's model call failed transiently and is
+      being tried again after a wait (RETRY-1, RETRY-3)
 
   The loop is given the chat's **full** history and keeps it growing as the turn
   runs; the messages it *sends* are the request view of that history under the
@@ -27,7 +29,8 @@ defmodule Elia.Agent.Loop do
   function returning one, instead of the project's), `:max_steps` (default 100),
   `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
   LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:token_budget` (a
-  token budget for the turn, LOOP-22, LIMIT-12), `:llm` (extra request
+  token budget for the turn, LOOP-22, LIMIT-12), `:step_retry` (the waits before
+  each retry of a failed model call, RETRY-4), `:llm` (extra request
   fields), `:project` (the chat's project),
   `:workspace` (the chat's workspace root: its own git
   worktree in Elia's own project, DEPLOY-1, else the project's folder, PROJ-12),
@@ -41,6 +44,11 @@ defmodule Elia.Agent.Loop do
   alias Elia.Tool
 
   @max_steps 100
+
+  # RETRY-4: the waits before each retry of a model call that failed
+  # transiently, unless the turn's option or `config :elia, :step_retry` says
+  # otherwise. Its length is how many retries a step gets.
+  @default_retry_delays [15_000, 30_000, 60_000]
 
   @type limit ::
           {:steps, pos_integer()} | {:time, non_neg_integer()} | {:tokens, non_neg_integer()}
@@ -66,6 +74,9 @@ defmodule Elia.Agent.Loop do
       # LOOP-22, LIMIT-12: the tokens the provider has reported for this turn so
       # far — what its steps cost, input and output together.
       tokens: 0,
+      # RETRY-1, RETRY-4: the waits before each retry of a failed model call;
+      # [] retries nothing.
+      retry_delays: retry_delays(Keyword.get(opts, :step_retry)),
       # COMPACT-29: the chat's compaction state and the trigger, target and
       # overhead of the mid-turn pass (COMPACT-6, COMPACT-8, CTX-1).
       compaction: Keyword.get(opts, :compaction),
@@ -132,6 +143,18 @@ defmodule Elia.Agent.Loop do
 
   defp now_ms, do: System.monotonic_time(:millisecond)
 
+  # RETRY-4: the schedule this turn retries on — the `:step_retry` option's
+  # `delays_ms` when the loop was given one, else the host's config, else the
+  # default.
+  defp retry_delays(nil) do
+    :elia
+    |> Application.get_env(:step_retry, [])
+    |> Keyword.get(:delays_ms, @default_retry_delays)
+  end
+
+  defp retry_delays(step_retry) when is_list(step_retry),
+    do: Keyword.get(step_retry, :delays_ms, @default_retry_delays)
+
   @doc "A duration in milliseconds as \"30 minutes\" (LOOP-20)."
   @spec minutes(number()) :: binary()
   def minutes(ms) do
@@ -162,9 +185,24 @@ defmodule Elia.Agent.Loop do
         messages: request_messages(ctx, history)
       })
 
+    ask(ctx, request, history, step, tools, 0)
+  end
+
+  # RETRY-1, LOOP-23: the step's model call. A failure the provider marked
+  # transient (RETRY-6) is asked again after a wait, until the turn's retry
+  # schedule is spent; anything else ends the turn with the error. Nothing from
+  # a failed attempt is kept (RETRY-2): the request is the same one, built from
+  # the history, and the step count doesn't move.
+  defp ask(ctx, request, history, step, tools, retries) do
     case Elia.LLM.stream(request, &send(ctx.session, {:loop_event, &1})) do
+      {:error, %Elia.LLM.Error{transient: true} = error} ->
+        case Enum.at(ctx.retry_delays, retries) do
+          nil -> {:error, exhausted(error, retries)}
+          delay -> retry(ctx, request, history, step, tools, retries, delay, error)
+        end
+
       {:error, reason} ->
-        {:error, reason}
+        {:error, to_string(reason)}
 
       # A refusal can cut a tool call off mid-input; never run that turn's tools.
       {:ok, %{stop_reason: :refusal}} ->
@@ -202,6 +240,56 @@ defmodule Elia.Agent.Loop do
         end
     end
   end
+
+  # RETRY-3: report the wait, then wait it and try the same step again. The
+  # wait doesn't count against the wall-clock budget (RETRY-4, LOOP-20): the
+  # loop wasn't working, and the schedule is what bounds the waiting.
+  defp retry(ctx, request, history, step, tools, retries, delay, error) do
+    send(ctx.session, {:loop_retry, retry_info(ctx, retries, delay, error)})
+    if delay > 0, do: Process.sleep(delay)
+
+    ask(
+      %{ctx | approved_ms: ctx.approved_ms + delay},
+      request,
+      history,
+      step,
+      tools,
+      retries + 1
+    )
+  end
+
+  # RETRY-3: what the session broadcasts and the page shows. `attempt` counts
+  # the attempt about to be made, so the first retry is attempt 2.
+  defp retry_info(ctx, retries, delay, error) do
+    attempt = retries + 2
+    of = length(ctx.retry_delays) + 1
+    reason = error |> to_string() |> String.trim_trailing(".")
+
+    %{
+      attempt: attempt,
+      of: of,
+      delay_ms: delay,
+      reason: reason,
+      text: "#{reason}. Retrying #{wait_text(delay)} (attempt #{attempt} of #{of})."
+    }
+  end
+
+  defp wait_text(0), do: "at once"
+
+  defp wait_text(ms) when ms < 60_000 do
+    seconds = div(ms + 999, 1000)
+    "in #{seconds} #{if seconds == 1, do: "second", else: "seconds"}"
+  end
+
+  defp wait_text(ms), do: "in #{minutes(ms)}"
+
+  # RETRY-5: the failure outlasted the schedule, so the turn ends with it —
+  # saying what was done about it, unless nothing was.
+  defp exhausted(error, 0), do: to_string(error)
+  defp exhausted(error, retries), do: "#{error} (retried #{times(retries)})"
+
+  defp times(1), do: "once"
+  defp times(retries), do: "#{retries} times"
 
   # COMPACT-29: the mid-turn pass. The ladder may run deeper (COMPACT-14..16)
   # towards the target, eliding the cold prefix only — never the turn being run

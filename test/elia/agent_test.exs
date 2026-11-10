@@ -468,6 +468,144 @@ defmodule Elia.AgentTest do
     assert Message.text_content(stopped) =~ "Stopped after 600 tokens: the token budget ran out"
   end
 
+  # RETRY-1, RETRY-2, RETRY-3
+  test "a model call that fails transiently is retried, and the turn carries on", %{} do
+    id = start_fake_skill_session(step_retry: [delays_ms: [0, 0]])
+
+    # The first attempt streams half an answer, then the stream times out.
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "Half an ans"})
+      {:error, Elia.LLM.Error.transient("Anthropic API request failed: timeout")}
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("A whole answer.")]))
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:agent, ^id, {:delta, :text, "Half an ans"}}, 5000
+
+    # RETRY-3: the retry is reported, with what failed and how long the wait is.
+    assert_receive {:agent, ^id, {:retry, info}}, 5000
+
+    assert %{attempt: 2, of: 3, delay_ms: 0, reason: "Anthropic API request failed: timeout"} =
+             info
+
+    assert info.text ==
+             "Anthropic API request failed: timeout. Retrying at once (attempt 2 of 3)."
+
+    await_status(id, :idle)
+
+    # RETRY-2: the failed attempt left nothing behind — the history holds the
+    # question and the answer that replaced it, never the half answer — and the
+    # retry was sent the same request as the attempt it replaced.
+    assert [%Message{role: :user}, %Message{role: :assistant} = reply] =
+             Agent.snapshot(id).messages
+
+    assert Message.text_content(reply) == "A whole answer."
+    assert [first, second] = FakeLLM.requests()
+    assert first.messages == second.messages
+  end
+
+  # RETRY-4, RETRY-5, STOP-1, STOP-2
+  test "a failure that outlasts the schedule ends the turn, saying it was retried", %{} do
+    id = start_fake_skill_session(step_retry: [delays_ms: [0, 0]])
+    for _ <- 1..3, do: FakeLLM.push(transient_failure())
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:retry, %{attempt: 2, of: 3}}}, 5000
+    assert_receive {:agent, ^id, {:retry, %{attempt: 3, of: 3}}}, 5000
+
+    assert_receive {:agent, ^id, {:error, text}}, 5000
+    assert text == "Anthropic API request failed: timeout (retried 2 times)"
+    await_status(id, :idle)
+
+    # The stop is in the transcript, marked as a stop, and says what was done.
+    assert %Message{role: :user, meta: %{harness: true, stopped: :error}} =
+             stopped =
+             List.last(Elia.Store.load(id))
+
+    assert Message.text_content(stopped) =~ "(retried 2 times)"
+    assert length(FakeLLM.requests()) == 3
+  end
+
+  # RETRY-1, RETRY-6
+  test "a failure a retry cannot fix ends the turn at once", %{} do
+    id = start_fake_skill_session(step_retry: [delays_ms: [0, 0]])
+
+    FakeLLM.push(fn _request, _on_event ->
+      {:error, Elia.LLM.Error.permanent("Anthropic API error 401: invalid x-api-key")}
+    end)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:error, "Anthropic API error 401: invalid x-api-key"}}, 5000
+    refute_received {:agent, ^id, {:retry, _}}
+    await_status(id, :idle)
+    assert length(FakeLLM.requests()) == 1
+  end
+
+  # RETRY-4
+  test "with no schedule a transient failure ends the turn as before", %{} do
+    id = start_fake_skill_session(step_retry: [delays_ms: []])
+    FakeLLM.push(transient_failure())
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:error, "Anthropic API request failed: timeout"}}, 5000
+    refute_received {:agent, ^id, {:retry, _}}
+    await_status(id, :idle)
+    assert length(FakeLLM.requests()) == 1
+  end
+
+  # RETRY-2, LOOP-3
+  test "a retry is the same step, not another one", %{} do
+    # Two steps allowed: the first fails once and is retried, and the tool call
+    # its retried answer asks for runs; the second step finishes the turn. A
+    # retry counted as a step would end it at the limit instead.
+    id = start_fake_skill_session(max_steps: 2, step_retry: [delays_ms: [0]])
+
+    FakeLLM.push(transient_failure())
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "go")
+
+    await_status(id, :idle)
+
+    messages = Elia.Store.load(id)
+    refute Enum.any?(messages, & &1.meta[:stopped])
+    assert Enum.any?(messages, &(&1.role == :tool))
+    assert length(FakeLLM.requests()) == 3
+  end
+
+  # RETRY-4, LOOP-20
+  test "the wait before a retry doesn't count against the turn's time budget", %{} do
+    # The wait is longer than the whole budget: if it counted, the next step
+    # would pause the turn at the budget instead of finishing it.
+    id =
+      start_fake_skill_session(
+        budget_ms: 500,
+        pause_on_limit: true,
+        step_retry: [delays_ms: [700]]
+      )
+
+    FakeLLM.push(transient_failure())
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "go")
+
+    await_status(id, :idle)
+    refute_received {:agent, ^id, {:paused, _}}
+  end
+
+  # RETRY-1: a model call that fails in a way a retry may fix (RETRY-6).
+  defp transient_failure do
+    fn _request, _on_event ->
+      {:error, Elia.LLM.Error.transient("Anthropic API request failed: timeout")}
+    end
+  end
+
   # Starts a session whose only skill is `fake_skill/1`, plus the given loop
   # options, subscribed like the setup's (LOOP-3, LOOP-16).
   defp start_fake_skill_session(loop_opts) do

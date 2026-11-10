@@ -65,6 +65,13 @@ config :phoenix, :json_library, Jason
 # AI harness. Swap the provider module to use another LLM backend.
 config :elia, Elia.LLM, provider: Elia.LLM.Anthropic
 
+# Turn retries (RETRY): a model call that failed transiently — a stream cut off
+# by its idle timeout, a connection dropped mid-answer, an overloaded provider —
+# is asked again after each of these waits, so the turn carries on by itself.
+# The list's length is how many retries a step gets; [] turns retrying off and a
+# transient failure then ends the turn (RETRY-4).
+config :elia, :step_retry, delays_ms: [15_000, 30_000, 60_000]
+
 # Compaction (COMPACT-6, COMPACT-8, COMPACT-9, COMPACT-11, COMPACT-12, COMPACT-28):
 # a turn compacts first when the estimated request exceeds `min(budget, fraction *
 # window)`, and reduces it to `target_fraction` of that, keeping the last

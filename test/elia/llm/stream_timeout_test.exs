@@ -10,7 +10,7 @@ defmodule Elia.LLM.StreamTimeoutTest do
   """
   use ExUnit.Case, async: false
 
-  alias Elia.LLM.{Anthropic, Message, OpenRouter}
+  alias Elia.LLM.{Anthropic, Error, Message, OpenRouter}
 
   # The idle timeout these tests run under, and the pacing of the "live" answer:
   # one piece every @gap_ms, @pieces of them, so the whole stream takes longer
@@ -45,7 +45,10 @@ defmodule Elia.LLM.StreamTimeoutTest do
 
       started = System.monotonic_time(:millisecond)
 
-      assert {:error, "API request failed: timeout"} = fail_stream(provider)
+      # LLM-36: a stalled stream that already sent data is a transport
+      # failure, so the turn's own retry may ask again.
+      assert {:error, %Error{transient: true} = error} = stream(provider)
+      assert to_string(error) =~ "API request failed: timeout"
       assert System.monotonic_time(:millisecond) - started < 2_000
       # It already sent a byte, so a fresh attempt could repeat its events.
       assert :counters.get(counter, 1) == 1
@@ -170,18 +173,6 @@ defmodule Elia.LLM.StreamTimeoutTest do
 
   defp stream(provider),
     do: provider.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
-
-  # A plain error matcher, since each provider writes its own prefix.
-  defp fail_stream(provider) do
-    case stream(provider) do
-      {:error, message} when is_binary(message) ->
-        suffix = message |> String.split("API request failed: ") |> List.last()
-        {:error, "API request failed: " <> suffix}
-
-      other ->
-        other
-    end
-  end
 
   defp configure(provider, port) do
     previous = Application.get_env(:elia, provider)

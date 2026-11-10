@@ -1034,6 +1034,41 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "FakeLLM: no scripted turn"
   end
 
+  # UI-86, RETRY-2, RETRY-3
+  test "a retry clears the drafts and shows why it is waiting", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # RETRY-4: a wait short enough for a test, long enough to look at.
+    {:ok, pid} = Agent.ensure_started(id, loop_opts: [step_retry: [delays_ms: [1000]]])
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    # The first attempt streams half an answer and times out; the retry answers.
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "Half an ans"})
+      {:error, Elia.LLM.Error.transient("Anthropic API request failed: timeout")}
+    end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("A whole answer.")]))
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:agent, ^id, {:retry, _info}}, 5000
+
+    # While it waits: the row says why and for how long (UI-86), and the half
+    # answer the failed attempt streamed is gone — the drafts clear, since the
+    # answer starts over (RETRY-2) — with the new answer not in yet.
+    html = render(view)
+    assert html =~ "Anthropic API request failed: timeout. Retrying in 1 second (attempt 2 of 2)."
+    refute html =~ "Half an ans"
+    refute html =~ "A whole answer."
+
+    assert_receive {:agent, ^id, {:status, :idle}}, 10_000
+    assert render(view) =~ "A whole answer."
+  end
+
   # UI-77: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
   # the chats other tests leave behind.

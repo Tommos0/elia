@@ -78,8 +78,9 @@ results back, and repeat until the model answers without calling a tool.
 - **LOOP-20** The `:budget_ms` option (default nil) is a wall-clock budget for
   the turn. The loop checks it at the start of each step: when the time spent
   exceeds it, it is a limit like LOOP-3. Time spent waiting for the user's
-  approval decisions (LOOP-9), for an answer to a question (LOOP-21) and time
-  spent paused (LOOP-19) don't count.
+  approval decisions (LOOP-9), for an answer to a question (LOOP-21), time
+  spent paused (LOOP-19) and time spent waiting to retry a failed step
+  (RETRY-4) don't count.
 
 - **LOOP-21** A call to a tool that asks the user (`asks_user`, ASK-1) is put to
   the user instead of being run: the loop sends the session
@@ -98,6 +99,15 @@ results back, and repeat until the model answers without calling a tool.
   is a limit like LOOP-3, reported as `{:tokens, n}` (LOOP-19) and ended with
   the same option's choice of pause or stop. A usage report that carries no
   counts adds nothing to the total. A resume starts the total over (LOOP-19).
+
+- **LOOP-23** A step whose model call returns an error ends the turn with that
+  error: the loop returns `{:error, text}` and the session writes why the turn
+  stopped (STOP-1, STOP-2). Before it gets there, a failure the provider marks
+  transient is tried again as the turn's retry schedule allows (RETRY-1 to
+  RETRY-5): the loop waits and repeats that step's request, and only a failure
+  that outlasts the schedule ends the turn. Nothing from a failed attempt is
+  kept — not its text, reasoning or tool calls, and not its place in the step
+  count (RETRY-2) — so a turn that recovered holds only its completed steps.
 
 ## Implementation
 
