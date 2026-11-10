@@ -228,6 +228,138 @@ defmodule EliaWeb.ChatBrowserTest do
     |> history_clean()
   end
 
+  # UI-87 (specs/chat-ui.md): the jump-to-the-end button at the top of the chat
+  # brings a reader who scrolled up back to the last message — and the follow
+  # state of UI-14 comes back with it, so the content arriving afterwards is
+  # followed again. It is a `JS.dispatch` rather than an event, so the server
+  # never sees the press: only a browser does.
+  test "the jump-to-the-end button scrolls back to the last message (UI-87)", %{conn: conn} do
+    id = long_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      # UI-14: scrolled up, the way the reader this button is for left it.
+      |> evaluate("document.querySelector('#transcript-scroll').scrollTop = 0")
+      |> assert_scrolled_up()
+
+    # UI-87: it is there beside the context indicator (CTX-1).
+    assert_has(conn, "#jump-to-end")
+
+    # UI-87: pressing it puts the transcript's end back on screen — no round
+    # trip, so nothing has to come back from the server first.
+    conn = conn |> click("#jump-to-end") |> assert_scrolled_to_end()
+
+    # UI-87, UI-14: and the follow state came back with it, so a reply that
+    # arrives afterwards leaves the list at its end rather than where it was.
+    FakeLLM.push(FakeLLM.assistant([Message.text(long_reply())]))
+
+    conn
+    |> type("#chat-input", "one more")
+    |> press("#chat-input", "Enter")
+    |> assert_has("#transcript", text: "Answer from the fake model.")
+    |> assert_scrolled_to_end()
+  end
+
+  # UI-87: the button is on any chat, and on one with nothing in it pressing it
+  # scrolls nothing — and it is on screen on a phone, beside the context
+  # indicator (CTX-1) rather than pushed off the edge by it. What a chat with
+  # nothing to scroll asserts is that nothing went wrong: a hook that threw
+  # there would fail this test through the case's logger (BROWSER-8).
+  @tag browser_context_opts: [viewport: %{width: 390, height: 660}]
+  test "the jump-to-the-end button is on screen on a phone, on an empty chat (UI-87)", %{
+    conn: conn
+  } do
+    id = empty_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      |> assert_has("#jump-to-end")
+      |> click("#jump-to-end")
+      |> assert_has("#jump-to-end")
+
+    assert_button_on_screen(conn)
+  end
+
+  # UI-87: a chat far longer than any screen shows at once, so the transcript
+  # has an end to be away from and to jump back to.
+  defp long_chat do
+    id = Agent.new_id()
+
+    messages =
+      for n <- 1..40 do
+        Message.user("Message #{n}: " <> String.duplicate("a long line of text. ", 6))
+      end
+
+    :ok = Store.save(id, messages, project: "harness")
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
+
+  defp empty_chat do
+    id = Agent.new_id()
+    :ok = Store.save(id, [], project: "harness")
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
+
+  # Long enough that a list which stopped following the end would be plainly
+  # more than the hook's 80px away from it (UI-14, UI-87).
+  defp long_reply, do: "Answer from the fake model. " <> String.duplicate("a long line. ", 20)
+
+  # How far the transcript is from its end, by the hook's own measure (UI-14).
+  defp scroll_gap do
+    """
+    (() => {
+      const transcript = document.querySelector("#transcript-scroll")
+      return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight
+    })()
+    """
+  end
+
+  defp assert_scrolled_up(conn) do
+    evaluate(conn, scroll_gap(), fn gap ->
+      assert gap > 80, "the transcript is only #{gap}px from its end, not scrolled up"
+    end)
+  end
+
+  # UI-87: within the hook's own tolerance of the end, which a patch
+  # reaches a moment after the click or after the reply streams in.
+  defp assert_scrolled_to_end(conn) do
+    wait_until(conn, "(#{scroll_gap()}) < 80", "the transcript never reached its end")
+  end
+
+  # UI-87: the whole button inside the viewport — a row that let the context
+  # indicator push it off the edge would leave a control nobody can press.
+  defp assert_button_on_screen(conn) do
+    evaluate(
+      conn,
+      """
+      (() => {
+        const box = document.querySelector("#jump-to-end").getBoundingClientRect()
+        return {
+          left: Math.round(box.left),
+          right: Math.round(box.right),
+          top: Math.round(box.top),
+          bottom: Math.round(box.bottom),
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
+      })()
+      """,
+      fn box ->
+        assert box["left"] >= 0 and box["right"] <= box["width"],
+               "the jump-to-the-end button is off the side of the screen: #{inspect(box)}"
+
+        assert box["top"] >= 0 and box["bottom"] <= box["height"],
+               "the jump-to-the-end button is off the top or bottom: #{inspect(box)}"
+      end
+    )
+  end
+
   # IMG-1: a chat with a picture in an assistant message. It is one of the app's
   # own static files, so the test needs nothing else served.
   defp image_chat do

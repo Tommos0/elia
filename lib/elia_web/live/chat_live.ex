@@ -723,6 +723,13 @@ defmodule EliaWeb.ChatLive do
             this.el.addEventListener("scroll", () => {
               this.stick = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 80
             })
+            // UI-87: the jump-to-the-end button (phx-click's JS.dispatch) asks
+            // for the end, and the follow state comes back with it, so content
+            // arriving afterwards is followed again (UI-14).
+            this.el.addEventListener("elia:scroll-bottom", () => {
+              this.stick = true
+              this.el.scrollTop = this.el.scrollHeight
+            })
             new MutationObserver(() => {
               if (this.stick) this.el.scrollTop = this.el.scrollHeight
             }).observe(this.el, {childList: true, subtree: true, characterData: true})
@@ -1007,46 +1014,60 @@ defmodule EliaWeb.ChatLive do
     ~H"""
     <div class="border-b border-base-300 bg-base-200/40">
       <div class="mx-auto max-w-3xl px-4 pt-2 sm:px-6">
-        <button
-          type="button"
-          id="context-indicator"
-          phx-click="toggle_context"
-          aria-expanded={to_string(@show)}
-          title="What makes up the context?"
-          class="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:bg-base-300/60"
-        >
-          <.icon name="hero-cube" class="size-3.5 text-base-content/50" />
-          <span class="font-medium text-base-content/70">Context</span>
-          <span id="context-size" class="tabular-nums font-semibold">{format_tokens(@total)}</span>
-          <span
-            :if={@elided > 0}
-            id="context-elided-badge"
-            title={"#{@elided} tokens of this chat were elided by compaction and are not sent"}
-            class="tabular-nums text-base-content/40"
+        <div class="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            id="context-indicator"
+            phx-click="toggle_context"
+            aria-expanded={to_string(@show)}
+            title="What makes up the context?"
+            class="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:bg-base-300/60"
           >
-            (−{format_tokens(@elided)})
-          </span>
-          <span :if={@context_length} id="context-window" class="tabular-nums text-base-content/50">
-            / {format_tokens(@context_length)}
-          </span>
-          <span :if={@percent} id="context-percent" class="tabular-nums text-base-content/50">
-            {@percent}%
-          </span>
-          <span
-            :if={@context_length}
-            class="block h-1.5 w-16 overflow-hidden rounded-full bg-base-300/80"
-          >
+            <.icon name="hero-cube" class="size-3.5 text-base-content/50" />
+            <span class="font-medium text-base-content/70">Context</span>
+            <span id="context-size" class="tabular-nums font-semibold">{format_tokens(@total)}</span>
             <span
-              id="context-bar"
-              class={["block h-full rounded-full transition-all", context_bar_class(@percent)]}
-              style={"width: #{@percent}%"}
+              :if={@elided > 0}
+              id="context-elided-badge"
+              title={"#{@elided} tokens of this chat were elided by compaction and are not sent"}
+              class="tabular-nums text-base-content/40"
+            >
+              (−{format_tokens(@elided)})
+            </span>
+            <span :if={@context_length} id="context-window" class="tabular-nums text-base-content/50">
+              / {format_tokens(@context_length)}
+            </span>
+            <span :if={@percent} id="context-percent" class="tabular-nums text-base-content/50">
+              {@percent}%
+            </span>
+            <span
+              :if={@context_length}
+              class="block h-1.5 w-16 overflow-hidden rounded-full bg-base-300/80"
+            >
+              <span
+                id="context-bar"
+                class={["block h-full rounded-full transition-all", context_bar_class(@percent)]}
+                style={"width: #{@percent}%"}
+              />
+            </span>
+            <.icon
+              name={if @show, do: "hero-chevron-up", else: "hero-chevron-down"}
+              class="size-3.5 text-base-content/40 transition group-hover:text-base-content"
             />
-          </span>
-          <.icon
-            name={if @show, do: "hero-chevron-up", else: "hero-chevron-down"}
-            class="size-3.5 text-base-content/40 transition group-hover:text-base-content"
-          />
-        </button>
+          </button>
+          <%!-- UI-87: back to the last message. The browser's own action: no
+                event, so it acts at once and needs no server state. --%>
+          <button
+            type="button"
+            id="jump-to-end"
+            phx-click={JS.dispatch("elia:scroll-bottom", to: "#transcript-scroll")}
+            title="Jump to the latest message"
+            aria-label="Jump to the latest message"
+            class="shrink-0 rounded-lg p-1.5 text-base-content/50 transition hover:bg-base-300/60 hover:text-base-content"
+          >
+            <.icon name="hero-arrow-down-circle" class="size-4" />
+          </button>
+        </div>
 
         <div :if={@show} id="context-breakdown" class="space-y-2 pb-3 pt-2 text-xs">
           <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/40">

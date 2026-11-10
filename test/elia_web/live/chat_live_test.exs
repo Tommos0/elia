@@ -501,6 +501,22 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#context-breakdown")
   end
 
+  # UI-87: the top of the chat carries a jump-to-the-end button beside the
+  # context indicator (CTX-1) on any chat, whatever the transcript holds. What
+  # pressing it does is the browser's own: the scroll and the follow state it
+  # restores (UI-14) are covered in the browser suite, since a JS command pushes
+  # no event for a LiveView test to see.
+  test "the chat top shows the jump-to-the-end button", %{conn: conn} do
+    id = Agent.new_id()
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "button#jump-to-end")
+    assert has_element?(view, "#jump-to-end[title='Jump to the latest message']")
+    assert has_element?(view, "#jump-to-end[aria-label='Jump to the latest message']")
+    assert has_element?(view, "#context-indicator")
+  end
+
   # CTX-4: clicking the indicator toggles the breakdown.
   test "clicking the context indicator toggles the breakdown", %{conn: conn} do
     id = Agent.new_id()

@@ -217,6 +217,17 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `messages`.
 - **UI-14** The transcript stays scrolled to the bottom as content arrives,
   unless the user has scrolled more than 80px up.
+- **UI-87** The top of the chat page carries a jump-to-the-end control
+  (`#jump-to-end`): a small button at the right of the context indicator
+  (CTX-1), the transcript's own counterpart to it. Pressing it scrolls the
+  transcript (`#transcript-scroll`) to its last message and puts the list back
+  into the follow state UI-14 describes, so content arriving afterwards is
+  followed again — the reader it is for is one who scrolled up and wants to come
+  back. It is the browser's own action, not an event: no round trip, so it acts
+  at once and needs no server state. It is there on first render, whatever the
+  transcript holds — pressing it on a chat with nothing in it scrolls nothing —
+  and without its hook (a page whose assets were not rebuilt, HOT-8) it does
+  nothing rather than leaving the page broken.
 - **UI-73** The notice a session writes after a restart cut the turn short
   (INTR-3) renders as an error row (UI-12), not as a plain harness notice
   (UI-9), so a turn the app killed is not mistaken for one that ended normally.
@@ -581,4 +592,7 @@ another chat is opened, and the button outside the list's scroll box, UI-84,
 UI-85; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
 a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
+`test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
+browser: the transcript at its end and the jump-to-the-end button, UI-14,
+UI-87; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
 `test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.
