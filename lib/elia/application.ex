@@ -40,6 +40,9 @@ defmodule Elia.Application do
       Elia.Push.Viewers,
       Elia.Push.Notifier,
       Elia.LLM.Catalog,
+      # LOCAL-11, LOCAL-19: the local llama-server Elia can start, one at most,
+      # owned by the app so it goes down with it.
+      Elia.LLM.LlamaServer,
       Elia.Skills,
       # DEPLOY-15, DEPLOY-16: a deploy runs here, not in the Settings page that
       # started it.

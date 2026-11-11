@@ -93,6 +93,31 @@ config :elia, Elia.LLM.Anthropic,
   effort: "high",
   thinking_display: "summarized"
 
+# The local llama.cpp server (LOCAL): a third provider, with no key and no
+# network. `base_url` says where the server is, is overridden by `LLAMA_CPP_BASE_URL`
+# and by a URL saved in Settings (LOCAL-3); `model` is used when a request names
+# none. Elia can start the server itself from a `.gguf` (LOCAL-11) — every field
+# of Elia.LLM.LlamaServer can also be saved in Settings, which wins (LOCAL-14).
+config :elia, Elia.LLM.LlamaCpp,
+  base_url: nil,
+  model: nil,
+  max_tokens: nil,
+  api_key: nil
+
+config :elia, Elia.LLM.LlamaServer,
+  binary: nil,
+  models_dir: nil,
+  model: nil,
+  host: "127.0.0.1",
+  port: 8080,
+  context: nil,
+  threads: nil,
+  jinja: true,
+  api_key: nil,
+  extra_args: [],
+  log_lines: 200,
+  startup_timeout: 60_000
+
 config :elia, Elia.Skills,
   builtin: [
     Elia.Skills.Shell,

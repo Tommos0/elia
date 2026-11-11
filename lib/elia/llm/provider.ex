@@ -53,6 +53,12 @@ defmodule Elia.LLM.Provider do
   @doc "Makes one authenticated request to verify `api_key`."
   @callback check_key(api_key :: binary()) :: :ok | {:error, binary()}
 
+  @doc """
+  Whether a provider that needs no API key answers at `url` (LOCAL-24) — the
+  check the card of a keyless provider offers instead of a key check.
+  """
+  @callback check_base_url(url :: binary()) :: :ok | {:error, binary()}
+
   @doc "Models available with `api_key` (which may be `nil`)."
   @callback list_models(api_key :: binary() | nil) :: {:ok, [model()]} | {:error, binary()}
 
@@ -71,5 +77,9 @@ defmodule Elia.LLM.Provider do
   @doc "The credit balance for `api_key`, when the provider exposes one."
   @callback balance(api_key :: binary()) :: {:ok, balance()} | {:error, binary()}
 
-  @optional_callbacks default_model: 0, check_key: 1, list_models: 1, balance: 1
+  @optional_callbacks default_model: 0,
+                      check_key: 1,
+                      list_models: 1,
+                      balance: 1,
+                      check_base_url: 1
 end

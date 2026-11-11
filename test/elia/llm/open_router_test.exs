@@ -466,8 +466,13 @@ defmodule Elia.LLM.OpenRouterTest do
     refute Elia.LLM.balance_supported?("anthropic")
   end
 
-  # LLM-27
-  test "every provider has a billing URL" do
-    assert Enum.all?(Elia.LLM.providers(), &String.starts_with?(&1.billing_url, "https://"))
+  # LLM-27, LOCAL-7: every provider that bills has a billing URL; one that runs
+  # on this machine has none, and nothing to bill (LOCAL-7, CONF-14).
+  test "every billed provider has a billing URL" do
+    for info <- Elia.LLM.providers(), info.billing_url do
+      assert String.starts_with?(info.billing_url, "https://")
+    end
+
+    assert Elia.LLM.provider_info("llamacpp").billing_url == nil
   end
 end

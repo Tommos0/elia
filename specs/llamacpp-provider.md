@@ -110,17 +110,22 @@ it was launched is visible when it fails.
 ### Settings page
 
 - **LOCAL-24** The local provider's card (CONF-9) holds the base URL as a text
-  field and a Check button (`#check-llamacpp`) that makes `GET
+  field, a Check button (`#check-llamacpp`) that makes `GET
   <base_url>/health` and reports the server it found — how many models it
-  lists (LOCAL-4) — or the connection error. It has no API-key field, no Save
-  and no Remove: there is no key to store (LOCAL-2).
+  lists (LOCAL-4) — or the connection error, a Save button (`#save-llamacpp`)
+  that stores the URL once a server answers there, and a Remove button
+  (`#remove-url-llamacpp`) that puts the configured URL back. It has no
+  API-key field and no key Remove: there is no key to store (LOCAL-2), and its
+  status reads "No key needed".
 - **LOCAL-25** `/settings` has a "Local model server" section
-  (`#local-server`) with a field for each of binary, model, host, port, context,
-  threads and extra args, an "Apply/Start" button (`#start-local-server`) and a
-  Stop button (`#stop-local-server`), each shown only where it applies.
-- **LOCAL-26** The section shows the status (`#local-server-status`): the state
-  (LOCAL-16), the URL Elia would talk to, the model, and the command it runs,
-  so a refused start or a crash is explained by what is on the page.
+  (`#local-server`) with a field for each of binary, models directory, model,
+  host, port, context, threads, extra args and jinja, a Start button
+  (`#start-local-server`), a Stop button (`#stop-local-server`), a Save button
+  and a Reset button (`#reset-local-server`), each shown only where it applies.
+- **LOCAL-26** The section shows the status: the state as a badge
+  (`#local-server-badge`), and (`#local-server-status`) the URL Elia would talk
+  to, the model, and the command it runs, so a refused start or a crash is
+  explained by what is on the page.
 - **LOCAL-27** The section shows the server's last output lines
   (`#local-server-log`), refreshed while it runs, truncated to a bounded
   number of lines (config `log_lines`, default 200).

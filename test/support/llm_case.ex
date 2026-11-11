@@ -41,13 +41,23 @@ defmodule Elia.LLMCase do
 
   @doc "Streams OpenAI-style chunks as SSE, recording each request body."
   def stub_openrouter_stream(test_pid, chunks) do
-    Req.Test.stub(Elia.LLM.OpenRouter, fn conn ->
+    stub_openai_stream(Elia.LLM.OpenRouter, test_pid, chunks)
+  end
+
+  @doc """
+  Streams OpenAI-style chunks as SSE from `module`, recording each request body.
+
+  The shape is the one OpenRouter and the local llama.cpp server both speak
+  (LOCAL-10), so one helper covers either.
+  """
+  def stub_openai_stream(module, test_pid, chunks) do
+    Req.Test.stub(module, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:request, conn.request_path, conn.req_headers, Jason.decode!(body)})
 
       data =
         Enum.map_join(chunks, fn chunk -> "data: #{Jason.encode!(chunk)}\n\n" end) <>
-          ": OPENROUTER PROCESSING\n\ndata: [DONE]\n\n"
+          ": PROCESSING\n\ndata: [DONE]\n\n"
 
       conn
       |> Plug.Conn.put_resp_content_type("text/event-stream")

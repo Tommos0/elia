@@ -4,7 +4,7 @@ defmodule Elia.LLM.CatalogTest do
   import Elia.LLMCase
 
   alias Elia.LLM
-  alias Elia.LLM.{Anthropic, OpenRouter}
+  alias Elia.LLM.{Anthropic, LlamaCpp, OpenRouter}
 
   setup do
     reset_settings()
@@ -35,10 +35,18 @@ defmodule Elia.LLM.CatalogTest do
     }
   end
 
-  # LLM-15
-  test "registers Anthropic and OpenRouter" do
-    assert [%{key: "anthropic", module: Anthropic}, %{key: "openrouter", module: OpenRouter}] =
-             LLM.providers()
+  # LLM-15, LOCAL-1, LOCAL-2: the local llama.cpp server is the third provider,
+  # and the only one that needs no key.
+  test "registers Anthropic, OpenRouter and the local llama.cpp server" do
+    assert [
+             %{key: "anthropic", module: Anthropic},
+             %{key: "openrouter", module: OpenRouter},
+             %{key: "llamacpp", module: LlamaCpp, billing_url: nil, keyless: true}
+           ] = LLM.providers()
+
+    refute LLM.keyless?("anthropic")
+    refute LLM.keyless?("openrouter")
+    assert LLM.keyless?("llamacpp")
   end
 
   # MODEL-5, MODEL-7

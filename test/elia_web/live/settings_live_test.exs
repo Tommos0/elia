@@ -6,7 +6,7 @@ defmodule EliaWeb.SettingsLiveTest do
   import Elia.PushCase
 
   alias Elia.LLM
-  alias Elia.LLM.{Anthropic, OpenRouter}
+  alias Elia.LLM.{Anthropic, LlamaCpp, LlamaServer, LlamaServerStub, OpenRouter}
   alias Elia.{Deploy, LiveTree, Push}
   alias Elia.Deploy.Runner
 
@@ -109,17 +109,247 @@ defmodule EliaWeb.SettingsLiveTest do
     refute has_element?(view, "#remove-openrouter")
   end
 
-  # CONF-15
-  test "every card links to the provider's billing page", %{conn: conn} do
+  # CONF-15, LOCAL-7: every provider that bills links to its billing page; the
+  # one that runs on this machine has none to link to.
+  test "every billed card links to the provider's billing page", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/settings")
 
-    for info <- LLM.providers() do
+    for info <- LLM.providers(), info.billing_url do
       assert has_element?(view, ~s|a#topup-#{info.key}[href="#{info.billing_url}"]|)
       assert has_element?(view, ~s|a#topup-#{info.key}[target="_blank"][rel~="noopener"]|)
     end
 
+    refute has_element?(view, "#topup-llamacpp")
+    assert has_element?(view, "#balance-llamacpp", "Nothing to bill")
+
     refute has_element?(view, "#refresh-balance-openrouter")
     assert has_element?(view, "#balance-openrouter", "Add a key")
+  end
+
+  # LOCAL-24: a provider that needs no key gets a base URL to check and save
+  # instead of a key field.
+  test "the local provider's card holds a base URL, not a key", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(view, "#provider-llamacpp")
+    assert has_element?(view, "#base-url-form-llamacpp input[name='llamacpp[base_url]']")
+    assert has_element?(view, "#check-llamacpp")
+    assert has_element?(view, "#save-llamacpp")
+    assert has_element?(view, "#key-status-llamacpp", "No key needed")
+
+    refute has_element?(view, "#key-form-llamacpp")
+    refute has_element?(view, "#remove-llamacpp")
+    refute has_element?(view, "#remove-url-llamacpp")
+    refute has_element?(view, "#topup-llamacpp")
+
+    # The providers that bill keep their key form and their credits.
+    assert has_element?(view, "#key-form-openrouter")
+    assert has_element?(view, "#topup-openrouter")
+  end
+
+  # LOCAL-24, LOCAL-3: Check asks the server without storing anything, Save
+  # stores the URL the server answered on.
+  test "the card's Check and Save use the server that answers", %{conn: conn} do
+    {port, port_ref} = start_stub_server()
+    on_exit(fn -> Elia.Shell.kill(port_ref) end)
+    # A real socket, not Req.Test: this is the health check (LOCAL-24).
+    configure(LlamaCpp, req_options: [])
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    url = "http://127.0.0.1:#{port}"
+
+    view
+    |> form("#base-url-form-llamacpp", %{llamacpp: %{"base_url" => url}})
+    |> render_submit(%{"action" => "check"})
+
+    render_async(view)
+
+    assert has_element?(view, "#result-llamacpp", "A server answers there.")
+    assert LlamaCpp.base_url() == "http://127.0.0.1:8080"
+
+    view
+    |> form("#base-url-form-llamacpp", %{llamacpp: %{"base_url" => url}})
+    |> render_submit(%{"action" => "save"})
+
+    render_async(view)
+
+    assert has_element?(view, "#result-llamacpp", "the URL is saved")
+    assert LlamaCpp.base_url() == url
+    assert has_element?(view, "#remove-url-llamacpp")
+
+    view |> element("#remove-url-llamacpp") |> render_click()
+    assert LlamaCpp.base_url() == "http://127.0.0.1:8080"
+  end
+
+  # LOCAL-24: a server that isn't there says so, and nothing is saved.
+  test "the card's Check reports a server that isn't there", %{conn: conn} do
+    configure(LlamaCpp, req_options: [])
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    port = LlamaServerStub.free_port()
+
+    view
+    |> form("#base-url-form-llamacpp", %{llamacpp: %{"base_url" => "http://127.0.0.1:#{port}"}})
+    |> render_submit(%{"action" => "save"})
+
+    render_async(view)
+
+    assert has_element?(view, "#result-llamacpp", "No llama.cpp server at")
+    assert LlamaCpp.base_url() == "http://127.0.0.1:8080"
+  end
+
+  # LOCAL-25, LOCAL-26, LOCAL-27: the section starts a server with its fields,
+  # shows the command, the status and the output, and stops it again.
+  test "the local model server section starts and stops a server", %{conn: conn} do
+    stub = LlamaServerStub.install!()
+    configure(LlamaServer, binary: stub, startup_timeout: 15_000)
+    port = LlamaServerStub.free_port()
+    model = model_file()
+    on_exit(fn -> LlamaServer.stop_server() end)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(view, "#local-server")
+    assert has_element?(view, "#local-server-form")
+    assert has_element?(view, "#local-server-badge", "Stopped")
+    assert has_element?(view, "#stop-local-server[disabled]")
+
+    view
+    |> form("#local-server-form", %{
+      server: %{
+        binary: stub,
+        model: model,
+        models_dir: Path.dirname(model),
+        host: "127.0.0.1",
+        port: to_string(port),
+        context: "4096",
+        threads: "4",
+        extra_args: "--stub healthy",
+        jinja: "true"
+      }
+    })
+    |> render_submit(%{"action" => "start"})
+
+    # LOCAL-25, LOCAL-26: what it runs, where, and with which model.
+    assert render(view) =~ "--port #{port}"
+    assert render(view) =~ "-c 4096 -t 4 --jinja"
+    assert has_element?(view, "#local-server-status", model)
+
+    await_element(view, "#local-server-badge", "Running")
+
+    # LOCAL-27: the output it wrote while it started, and that it is up.
+    assert has_element?(view, "#local-server-log")
+    assert render(view) =~ "stub: listening on #{port}"
+    assert LlamaServerStub.listening?(port)
+
+    view |> element("#stop-local-server") |> render_click()
+
+    assert has_element?(view, "#local-server-result", "Server stopped.")
+    await_element(view, "#local-server-badge", "Stopped")
+    assert LlamaServerStub.wait_until(fn -> not LlamaServerStub.listening?(port) end)
+  end
+
+  # LOCAL-20, LOCAL-25: starting without a llama-server on the machine says what
+  # to do about it, in the section.
+  test "the section says what to do without a llama-server", %{conn: conn} do
+    configure(LlamaServer, binary: nil)
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    view
+    |> form("#local-server-form", %{server: %{model: model_file(), port: "8080"}})
+    |> render_submit(%{"action" => "start"})
+
+    assert has_element?(view, "#local-server-result", "No llama-server was found")
+    assert has_element?(view, "#local-server-badge", "Stopped")
+  end
+
+  # LOCAL-21, LOCAL-28: the fields are stored, the models directory offers the
+  # .gguf files in it, and Reset puts the configuration back.
+  test "the section's fields are saved, and Reset clears them", %{conn: conn} do
+    configure(LlamaServer, binary: nil, port: 8080)
+
+    dir = Path.join(System.tmp_dir!(), "elia-settings-models")
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "tiny.gguf"), "x")
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    view
+    |> form("#local-server-form", %{
+      server: %{
+        binary: "",
+        models_dir: dir,
+        model: Path.join(dir, "tiny.gguf"),
+        host: "127.0.0.1",
+        port: "9123",
+        context: "2048",
+        threads: "",
+        extra_args: "",
+        jinja: "true"
+      }
+    })
+    |> render_submit(%{"action" => "save"})
+
+    assert has_element?(view, "#local-server-result", "Saved.")
+
+    settings = LlamaServer.settings()
+    assert settings[:port] == 9123
+    assert settings[:context] == 2048
+    assert settings[:model] == Path.join(dir, "tiny.gguf")
+
+    # LOCAL-21: the models directory offers the .gguf files in it, read when the
+    # page mounts.
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(
+             view,
+             "#local-server-models option[value='#{Path.join(dir, "tiny.gguf")}']"
+           )
+
+    view |> element("#reset-local-server") |> render_click()
+
+    assert has_element?(view, "#local-server-result", "Reset")
+    assert LlamaServer.settings()[:port] == 8080
+    assert LlamaServer.settings()[:context] == nil
+  end
+
+  # LOCAL-24: a stub llama-server, listening and healthy, for the tests above.
+  defp start_stub_server do
+    stub = LlamaServerStub.install!()
+    port = LlamaServerStub.free_port()
+
+    port_ref =
+      Port.open({:spawn_executable, stub}, [
+        :binary,
+        :exit_status,
+        :hide,
+        args: ["--port", to_string(port), "--stub", "healthy"]
+      ])
+
+    assert LlamaServerStub.wait_until(fn ->
+             LlamaCpp.check_base_url("http://127.0.0.1:#{port}") == :ok
+           end)
+
+    {port, port_ref}
+  end
+
+  defp model_file do
+    path = Path.join(System.tmp_dir!(), "elia-settings-model.gguf")
+    unless File.exists?(path), do: File.write!(path, "not really a model")
+    path
+  end
+
+  defp await_element(view, selector, text, tries \\ 100) do
+    cond do
+      tries == 0 ->
+        flunk("#{selector} never showed #{inspect(text)}")
+
+      has_element?(view, selector, text) ->
+        :ok
+
+      true ->
+        Process.sleep(50)
+        await_element(view, selector, text, tries - 1)
+    end
   end
 
   # CONF-14, CONF-16

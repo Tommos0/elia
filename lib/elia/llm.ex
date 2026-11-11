@@ -17,13 +17,24 @@ defmodule Elia.LLM do
       key: "anthropic",
       name: "Anthropic",
       module: Elia.LLM.Anthropic,
-      billing_url: "https://console.anthropic.com/settings/billing"
+      billing_url: "https://console.anthropic.com/settings/billing",
+      keyless: false
     },
     %{
       key: "openrouter",
       name: "OpenRouter",
       module: Elia.LLM.OpenRouter,
-      billing_url: "https://openrouter.ai/settings/credits"
+      billing_url: "https://openrouter.ai/settings/credits",
+      keyless: false
+    },
+    # LOCAL: a llama-server on this machine. No key, no credits (LOCAL-2,
+    # LOCAL-7), and nothing to bill, so no `billing_url` (LLM-27).
+    %{
+      key: "llamacpp",
+      name: "llama.cpp (local)",
+      module: Elia.LLM.LlamaCpp,
+      billing_url: nil,
+      keyless: true
     }
   ]
 
@@ -41,6 +52,16 @@ defmodule Elia.LLM do
   def providers, do: @providers
 
   def provider_info(key), do: Enum.find(@providers, &(&1.key == key))
+
+  @doc """
+  Whether a provider needs no API key (LOCAL-2, LLM-15).
+
+  A keyless provider is used as easily with none as any other is with one: the
+  model picker offers its models (MODEL-13), and the Settings page gives it the
+  card of LOCAL-24 instead of a key field (CONF-9).
+  """
+  @spec keyless?(binary()) :: boolean()
+  def keyless?(key), do: provider_info(key)[:keyless] == true
 
   ## API keys
 
@@ -81,6 +102,47 @@ defmodule Elia.LLM do
 
   def delete_key(key) do
     with :ok <- Settings.delete({:api_key, key}), do: Catalog.clear(key)
+  end
+
+  ## Base URLs (a keyless provider's version of a key)
+
+  @doc """
+  The base URL a keyless provider talks to (LOCAL-3): the saved one, else the
+  configured one. `nil` for a provider that has no such thing.
+  """
+  @spec base_url(binary()) :: binary() | nil
+  def base_url(key) do
+    with %{keyless: true, module: module} <- provider_info(key),
+         true <- Code.ensure_loaded?(module) and function_exported?(module, :base_url, 0) do
+      module.base_url()
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "Verifies `url` against a keyless provider without storing it (LOCAL-24)."
+  @spec check_base_url(binary(), binary()) :: :ok | {:error, binary()}
+  def check_base_url(key, url) do
+    case {provider_info(key), String.trim(url || "")} do
+      {nil, _} -> {:error, "Unknown provider"}
+      {_, ""} -> {:error, "Enter a base URL"}
+      {%{module: module}, url} -> module.check_base_url(url)
+    end
+  end
+
+  @doc "Checks `url` and stores it if the check passes (LOCAL-24)."
+  @spec save_base_url(binary(), binary()) :: :ok | {:error, binary()}
+  def save_base_url(key, url) do
+    url = String.trim(url || "")
+
+    with :ok <- check_base_url(key, url),
+         :ok <- Settings.put({:base_url, key}, url) do
+      Catalog.clear(key)
+    end
+  end
+
+  def delete_base_url(key) do
+    with :ok <- Settings.delete({:base_url, key}), do: Catalog.clear(key)
   end
 
   ## Credits

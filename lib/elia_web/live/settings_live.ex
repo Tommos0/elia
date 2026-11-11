@@ -2,6 +2,7 @@ defmodule EliaWeb.SettingsLive do
   use EliaWeb, :live_view
 
   alias Elia.{Deploy, LLM, Push}
+  alias Elia.LLM.LlamaServer
 
   @impl true
   def mount(_params, _session, socket) do
@@ -10,6 +11,9 @@ defmodule EliaWeb.SettingsLive do
       # a deploy that starts or ends between the two can't slip past: the read
       # sees it, or the broadcast that follows does.
       Deploy.Runner.subscribe()
+      # LOCAL-26: the local server's status is broadcast, so every start, ready,
+      # failure and stop reaches this page without polling.
+      LlamaServer.subscribe()
     end
 
     providers = LLM.providers()
@@ -50,6 +54,14 @@ defmodule EliaWeb.SettingsLive do
         push_connected: connected?(socket)
       )
       |> assign(forms: Map.new(providers, &{&1.key, empty_form(&1.key)}))
+      # LOCAL-24: the base URL a keyless provider talks to, and whether it is a
+      # saved one; the local server's own section (LOCAL-25 to LOCAL-28).
+      |> assign(
+        base_urls: Map.new(providers, &{&1.key, LLM.base_url(&1.key)}),
+        stored_base_urls: Map.new(providers, &{&1.key, stored_base_url?(&1.key)}),
+        base_forms: Map.new(providers, &{&1.key, base_url_form(&1.key)})
+      )
+      |> assign_server()
       |> refresh_keys()
 
     if connected?(socket) do
@@ -80,6 +92,107 @@ defmodule EliaWeb.SettingsLive do
 
   defp refresh_keys(socket) do
     assign(socket, keys: Map.new(socket.assigns.providers, &{&1.key, LLM.api_key(&1.key)}))
+  end
+
+  # LOCAL-24: a keyless provider's card holds a base URL instead of a key.
+  defp base_url_form(key, url \\ nil) do
+    to_form(%{"base_url" => url || LLM.base_url(key) || ""}, as: key)
+  end
+
+  defp stored_base_url?(key), do: is_binary(Elia.Settings.get({:base_url, key}))
+
+  defp refresh_base_urls(socket) do
+    providers = socket.assigns.providers
+
+    assign(socket,
+      base_urls: Map.new(providers, &{&1.key, LLM.base_url(&1.key)}),
+      stored_base_urls: Map.new(providers, &{&1.key, stored_base_url?(&1.key)}),
+      base_forms: Map.new(providers, &{&1.key, base_url_form(&1.key)})
+    )
+  end
+
+  # LOCAL-25 to LOCAL-28: the local model server's section.
+  defp assign_server(socket) do
+    assign(socket,
+      server: LlamaServer.status(),
+      server_settings: LlamaServer.settings(),
+      server_form: server_form(),
+      server_models: LlamaServer.models(),
+      server_result: nil
+    )
+  end
+
+  defp refresh_server(socket) do
+    assign(socket,
+      server: LlamaServer.status(),
+      server_settings: LlamaServer.settings(),
+      server_form: server_form(),
+      server_models: LlamaServer.models()
+    )
+  end
+
+  defp server_form(overrides \\ %{}) do
+    settings = LlamaServer.settings()
+
+    %{
+      "binary" => settings[:binary] || "",
+      "models_dir" => settings[:models_dir] || "",
+      "model" => settings[:model] || "",
+      "host" => settings[:host] || "",
+      "port" => text(settings[:port]),
+      "context" => text(settings[:context]),
+      "threads" => text(settings[:threads]),
+      "extra_args" => Enum.join(settings[:extra_args] || [], " "),
+      "jinja" => settings[:jinja] == true
+    }
+    |> Map.merge(overrides)
+    |> to_form(as: :server)
+  end
+
+  defp text(nil), do: ""
+  defp text(value), do: to_string(value)
+
+  defp server_attrs(params) do
+    %{
+      binary: params["binary"],
+      models_dir: params["models_dir"],
+      model: params["model"],
+      host: params["host"],
+      port: params["port"],
+      context: params["context"],
+      threads: params["threads"],
+      extra_args: params["extra_args"],
+      jinja: params["jinja"]
+    }
+  end
+
+  defp put_server_result(socket, result), do: assign(socket, server_result: result)
+
+  # LOCAL-17: a start returns at once with the status `:starting`; what happens
+  # next arrives over the subscription (LOCAL-26).
+  defp start_local_server(socket) do
+    case LlamaServer.start_server() do
+      {:ok, _status} ->
+        socket
+        |> refresh_server()
+        |> put_server_result({:ok, "Starting the server…"})
+
+      {:error, message} ->
+        socket
+        |> refresh_server()
+        |> put_server_result({:error, message})
+    end
+  end
+
+  defp run_base_url(socket, key, action, fun) do
+    if Map.has_key?(socket.assigns.pending, key) or LLM.provider_info(key) == nil do
+      socket
+    else
+      socket
+      |> assign(pending: Map.put(socket.assigns.pending, key, action))
+      |> assign(results: Map.delete(socket.assigns.results, key))
+      |> start_async({:base_url, key, action}, fun)
+    end
   end
 
   @impl true
@@ -120,10 +233,68 @@ defmodule EliaWeb.SettingsLive do
                     <p class="text-xs text-base-content/50">{provider_blurb(info.key)}</p>
                   </div>
                 </div>
-                <.key_status key={@keys[info.key]} provider={info.key} />
+                <.key_status key={@keys[info.key]} provider={info.key} keyless={info.keyless} />
+              </div>
+
+              <div :if={info.keyless} class="mt-5">
+                <.form
+                  for={@base_forms[info.key]}
+                  id={"base-url-form-#{info.key}"}
+                  phx-submit="submit_base_url"
+                  class="flex flex-col gap-2 sm:flex-row sm:items-start"
+                >
+                  <input type="hidden" name="provider" value={info.key} />
+                  <div class="flex-1">
+                    <.input
+                      field={@base_forms[info.key][:base_url]}
+                      type="text"
+                      autocomplete="off"
+                      placeholder="http://127.0.0.1:8080"
+                      class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans focus:border-primary focus:bg-base-100"
+                    />
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      type="submit"
+                      name="action"
+                      value="check"
+                      id={"check-#{info.key}"}
+                      disabled={@pending[info.key] != nil}
+                      class="flex h-11 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                    >
+                      <.spinner :if={@pending[info.key] == :check} />
+                      <.icon
+                        :if={@pending[info.key] != :check}
+                        name="hero-shield-check"
+                        class="size-4"
+                      /> Check
+                    </button>
+                    <button
+                      type="submit"
+                      name="action"
+                      value="save"
+                      id={"save-#{info.key}"}
+                      disabled={@pending[info.key] != nil}
+                      class="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      <.spinner :if={@pending[info.key] == :save} /> Save
+                    </button>
+                  </div>
+                </.form>
+                <button
+                  :if={@stored_base_urls[info.key]}
+                  type="button"
+                  id={"remove-url-#{info.key}"}
+                  phx-click="remove_base_url"
+                  phx-value-provider={info.key}
+                  class="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-error transition hover:bg-error/10"
+                >
+                  <.icon name="hero-trash" class="size-3.5" /> Remove saved URL
+                </button>
               </div>
 
               <.form
+                :if={!info.keyless}
                 for={@forms[info.key]}
                 id={"key-form-#{info.key}"}
                 phx-submit="submit"
@@ -188,17 +359,20 @@ defmodule EliaWeb.SettingsLive do
               <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-4">
                 <div class="flex items-center gap-2 text-xs text-base-content/70">
                   <.icon name="hero-banknotes" class="size-4 shrink-0" />
+                  <span :if={info.keyless} id={"balance-#{info.key}"}>
+                    Nothing to bill: it runs on this machine.
+                  </span>
                   <.balance_line
-                    :if={@keys[info.key]}
+                    :if={!info.keyless && @keys[info.key]}
                     provider={info.key}
                     supported={LLM.balance_supported?(info.key)}
                     balance={@balances[info.key]}
                   />
-                  <span :if={!@keys[info.key]} id={"balance-#{info.key}"}>
+                  <span :if={!info.keyless && !@keys[info.key]} id={"balance-#{info.key}"}>
                     Add a key to see credits.
                   </span>
                   <button
-                    :if={@keys[info.key] && LLM.balance_supported?(info.key)}
+                    :if={!info.keyless && @keys[info.key] && LLM.balance_supported?(info.key)}
                     type="button"
                     id={"refresh-balance-#{info.key}"}
                     phx-click="refresh_balance"
@@ -211,6 +385,7 @@ defmodule EliaWeb.SettingsLive do
                   </button>
                 </div>
                 <a
+                  :if={info.billing_url}
                   id={"topup-#{info.key}"}
                   href={info.billing_url}
                   target="_blank"
@@ -249,6 +424,196 @@ defmodule EliaWeb.SettingsLive do
               </div>
             </section>
           </div>
+
+          <%!-- LOCAL-25 to LOCAL-28: the llama-server Elia can start for you,
+          from a .gguf on this machine. --%>
+          <section
+            id="local-server"
+            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                  <.icon name="hero-cpu-chip" class="size-5" />
+                </div>
+                <div>
+                  <h2 class="font-medium">Local model server</h2>
+                  <p class="text-xs text-base-content/50">
+                    A llama-server Elia starts for you from a .gguf on this machine.
+                  </p>
+                </div>
+              </div>
+              <.status_badge status={@server.status} />
+            </div>
+
+            <.form
+              for={@server_form}
+              id="local-server-form"
+              phx-submit="save_local_server"
+              class="contents"
+            >
+              <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                  <.input
+                    field={@server_form[:binary]}
+                    type="text"
+                    label="llama-server binary"
+                    placeholder="/path/to/llama.cpp/build/bin/llama-server"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <.input
+                    field={@server_form[:model]}
+                    type="text"
+                    label="Model (.gguf)"
+                    list="local-server-models"
+                    placeholder="/path/to/model.gguf"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                  <datalist id="local-server-models">
+                    <option :for={path <- @server_models} value={path} />
+                  </datalist>
+                  <p :if={@server_models == []} class="mt-1 text-xs text-base-content/50">
+                    No .gguf files found — set a models directory to pick one from a list.
+                  </p>
+                </div>
+                <div class="sm:col-span-2">
+                  <.input
+                    field={@server_form[:models_dir]}
+                    type="text"
+                    label="Models directory"
+                    placeholder="/path/to/models"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                </div>
+                <.input
+                  field={@server_form[:host]}
+                  type="text"
+                  label="Host"
+                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                />
+                <.input
+                  field={@server_form[:port]}
+                  type="text"
+                  inputmode="numeric"
+                  label="Port"
+                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                />
+                <.input
+                  field={@server_form[:context]}
+                  type="text"
+                  inputmode="numeric"
+                  label="Context (-c)"
+                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                />
+                <.input
+                  field={@server_form[:threads]}
+                  type="text"
+                  inputmode="numeric"
+                  label="Threads (-t)"
+                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                />
+                <div class="sm:col-span-2">
+                  <.input
+                    field={@server_form[:extra_args]}
+                    type="text"
+                    label="Extra arguments"
+                    placeholder="--flash-attn"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                </div>
+                <label class="flex items-center gap-2 text-xs text-base-content/70 sm:col-span-2">
+                  <.input
+                    field={@server_form[:jinja]}
+                    type="checkbox"
+                    label="Apply the chat template (--jinja, needed for tool calls)"
+                  />
+                </label>
+
+                <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
+                  <button
+                    type="submit"
+                    name="action"
+                    value="save"
+                    id="save-local-server"
+                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
+                  >
+                    <.icon name="hero-check" class="size-4" /> Save
+                  </button>
+                  <button
+                    type="submit"
+                    name="action"
+                    value="start"
+                    id="start-local-server"
+                    disabled={@server.status in [:starting, :running]}
+                    class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
+                  >
+                    <.icon name="hero-play" class="size-4" /> Start
+                  </button>
+                  <button
+                    type="button"
+                    id="stop-local-server"
+                    phx-click="stop_local_server"
+                    disabled={@server.status not in [:starting, :running]}
+                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                  >
+                    <.icon name="hero-stop" class="size-4" /> Stop
+                  </button>
+                  <button
+                    type="button"
+                    id="reset-local-server"
+                    phx-click="reset_local_server"
+                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
+                  >
+                    <.icon name="hero-arrow-uturn-left" class="size-4" /> Reset
+                  </button>
+                </div>
+              </div>
+            </.form>
+
+            <div
+              :if={result = @server_result}
+              id="local-server-result"
+              class={[
+                "mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
+                elem(result, 0) == :ok && "bg-success/10 text-success",
+                elem(result, 0) == :error && "bg-error/10 text-error"
+              ]}
+            >
+              <.icon
+                name={
+                  if elem(result, 0) == :ok,
+                    do: "hero-check-circle",
+                    else: "hero-exclamation-triangle"
+                }
+                class="mt-px size-4 shrink-0"
+              />
+              <span class="break-words">{elem(result, 1)}</span>
+            </div>
+
+            <div id="local-server-status" class="mt-4 rounded-xl bg-base-200/50 p-3 text-xs">
+              <div class="flex flex-wrap items-center gap-2">
+                <.status_badge id="local-server-badge" status={@server.status} />
+                <span class="font-mono">{@server.url}</span>
+                <span :if={@server.os_pid} class="text-base-content/60">
+                  pid {@server.os_pid}
+                </span>
+              </div>
+              <p :if={@server.model} class="mt-1 break-all text-base-content/70">
+                {@server.model}
+              </p>
+              <p :if={@server.command} class="mt-1 break-all font-mono text-base-content/50">
+                $ {@server.command}
+              </p>
+              <p :if={@server.error} class="mt-2 text-error">{@server.error}</p>
+              <pre
+                :if={@server.output != []}
+                id="local-server-log"
+                class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-base-content/60"
+              ><%= Enum.join(@server.output, "\n") %></pre>
+            </div>
+          </section>
 
           <%!-- CONF-19, CONF-20, DEPLOY-5..DEPLOY-7: deployment means bringing
           the trunk `master` to `live` and loading it here. --%>
@@ -706,6 +1071,7 @@ defmodule EliaWeb.SettingsLive do
 
   attr :key, :any, required: true
   attr :provider, :string, required: true
+  attr :keyless, :boolean, default: false
 
   defp key_status(assigns) do
     ~H"""
@@ -715,22 +1081,59 @@ defmodule EliaWeb.SettingsLive do
         "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
         match?({:stored, _}, @key) && "bg-success/15 text-success",
         match?({:env, _}, @key) && "bg-info/15 text-info",
-        @key == nil && "bg-base-300 text-base-content/60"
+        (@key == nil or @keyless) && "bg-base-300 text-base-content/60"
       ]}
     >
-      <%= case @key do %>
-        <% {:stored, key} -> %>
+      <%= cond do %>
+        <% @keyless -> %>
+          <.icon name="hero-cpu-chip" class="size-3.5" /> No key needed
+        <% match?({:stored, _}, @key) -> %>
+          <% key = elem(@key, 1) %>
           <.icon name="hero-key" class="size-3.5" /> Saved
           <span class="font-mono opacity-70">{mask(key)}</span>
-        <% {:env, key} -> %>
+        <% match?({:env, _}, @key) -> %>
+          <% key = elem(@key, 1) %>
           <.icon name="hero-command-line" class="size-3.5" /> From environment
           <span class="font-mono opacity-70">{mask(key)}</span>
-        <% nil -> %>
+        <% true -> %>
           Not set
       <% end %>
     </span>
     """
   end
+
+  # LOCAL-16, LOCAL-26: what state the local server is in, as the page shows it.
+  attr :status, :atom, required: true
+  attr :id, :string, default: nil
+
+  defp status_badge(assigns) do
+    assigns = assign(assigns, :label, status_label(assigns.status))
+
+    ~H"""
+    <span
+      id={@id}
+      class={[
+        "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+        status_class(@status)
+      ]}
+    >
+      {@label}
+    </span>
+    """
+  end
+
+  defp status_label(:running), do: "Running"
+  defp status_label(:starting), do: "Starting…"
+  defp status_label(:stopping), do: "Stopping…"
+  defp status_label(:external), do: "Running (started outside Elia)"
+  defp status_label(:failed), do: "Failed"
+  defp status_label(_status), do: "Stopped"
+
+  defp status_class(:running), do: "bg-success/15 text-success"
+  defp status_class(:external), do: "bg-info/15 text-info"
+  defp status_class(:starting), do: "bg-info/15 text-info"
+  defp status_class(:failed), do: "bg-error/15 text-error"
+  defp status_class(_status), do: "bg-base-300 text-base-content/60"
 
   attr :provider, :string, required: true
   attr :supported, :boolean, required: true
@@ -859,6 +1262,74 @@ defmodule EliaWeb.SettingsLive do
      |> refresh_keys()
      |> assign(balances: Map.delete(socket.assigns.balances, key))
      |> load_balance(key)}
+  end
+
+  # LOCAL-24: a keyless provider's card checks and saves a base URL instead of
+  # a key, since it has none (LOCAL-2).
+  def handle_event("submit_base_url", %{"provider" => key} = params, socket) do
+    url = get_in(params, [key, "base_url"]) || ""
+    action = if params["action"] == "save", do: :save, else: :check
+
+    socket =
+      socket
+      |> assign(base_forms: Map.put(socket.assigns.base_forms, key, base_url_form(key, url)))
+      |> run_base_url(key, action, fn ->
+        if action == :save, do: LLM.save_base_url(key, url), else: LLM.check_base_url(key, url)
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_base_url", %{"provider" => key}, socket) do
+    socket =
+      case LLM.delete_base_url(key) do
+        :ok ->
+          put_result(socket, key, {:ok, "Saved base URL removed."})
+
+        {:error, reason} ->
+          put_result(socket, key, {:error, "Could not remove: #{inspect(reason)}"})
+      end
+
+    {:noreply, refresh_base_urls(socket)}
+  end
+
+  # LOCAL-25, LOCAL-28: the fields are stored; "Start" stores them and then
+  # starts the server with them.
+  def handle_event("save_local_server", %{"server" => params} = event, socket) do
+    action = if event["action"] == "start", do: :start, else: :save
+
+    case LlamaServer.save(server_attrs(params)) do
+      :ok when action == :start ->
+        {:noreply, start_local_server(socket)}
+
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(server_settings: LlamaServer.settings())
+         |> put_server_result({:ok, "Saved."})}
+
+      {:error, reason} ->
+        {:noreply, put_server_result(socket, {:error, "Could not save: #{inspect(reason)}"})}
+    end
+  end
+
+  def handle_event("stop_local_server", _params, socket) do
+    {:ok, _status} = LlamaServer.stop_server()
+
+    {:noreply, socket |> refresh_server() |> put_server_result({:ok, "Server stopped."})}
+  end
+
+  def handle_event("reset_local_server", _params, socket) do
+    socket =
+      case LlamaServer.reset() do
+        :ok ->
+          put_server_result(socket, {:ok, "Reset: the configured settings apply again."})
+
+        {:error, reason} ->
+          put_server_result(socket, {:error, "Could not reset: #{inspect(reason)}"})
+      end
+
+    {:noreply, refresh_server(socket)}
   end
 
   # CONF-19, CONF-20, DEPLOY-6, DEPLOY-7, DEPLOY-15: ask the runner for a deploy.
@@ -1044,6 +1515,27 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, socket}
   end
 
+  def handle_async({:base_url, key, action}, result, socket) do
+    socket = assign(socket, pending: Map.delete(socket.assigns.pending, key))
+
+    socket =
+      case {result, action} do
+        {{:ok, :ok}, :save} ->
+          put_result(socket, key, {:ok, "A server answers there; the URL is saved."})
+
+        {{:ok, :ok}, _check} ->
+          put_result(socket, key, {:ok, "A server answers there."})
+
+        {{:ok, {:error, message}}, _action} ->
+          put_result(socket, key, {:error, message})
+
+        {{:exit, reason}, _action} ->
+          put_result(socket, key, {:error, "Check failed: #{Exception.format_exit(reason)}"})
+      end
+
+    {:noreply, refresh_base_urls(socket)}
+  end
+
   # CONF-20, DEPLOY-16: the deploy's events come from the runner, so they reach
   # this page even when another page started the deploy — and a page that mounts
   # while one runs or after one finished reads the same state in mount/3.
@@ -1054,6 +1546,12 @@ defmodule EliaWeb.SettingsLive do
 
   def handle_info({:deploy_finished, %{result: result}}, socket) do
     {:noreply, refresh_deploy(assign(socket, deploy_result: deploy_result(result)))}
+  end
+
+  # LOCAL-26: the local server's own state changes reach this page the moment
+  # they happen — a start, ready, a failure, a stop.
+  def handle_info({:llama_server, status}, socket) do
+    {:noreply, assign(socket, server: status)}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}

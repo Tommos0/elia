@@ -985,8 +985,12 @@ defmodule EliaWeb.ChatSettingsLive do
   end
 
   def handle_event("open_picker", _params, socket) do
+    # MODEL-13: a provider with a key, or one that needs none (LOCAL-2), offers
+    # its models; the rest say a key is needed.
     catalogs =
-      for info <- LLM.providers(), LLM.api_key(info.key) != nil, into: %{} do
+      for info <- LLM.providers(),
+          LLM.api_key(info.key) != nil or LLM.keyless?(info.key),
+          into: %{} do
         case socket.assigns.catalogs[info.key] do
           {:ok, _} = loaded -> {info.key, loaded}
           _ -> {info.key, :loading}
