@@ -232,6 +232,60 @@ defmodule Elia.TerminalTest do
     assert Terminal.unavailable_message() =~ "apt install tmux"
   end
 
+  # TERM-30, TERM-31: what is sent reaches the app's stdin the way a keyboard
+  # would send it — text as its own bytes, and a name handed to tmux to expand
+  # rather than bytes guessed here.
+  test "keys reach the app as the bytes a keyboard sends", %{id: id, dir: dir} do
+    assert {:ok, _} =
+             Terminal.start(id,
+               command: "stty raw -echo; : > ready; cat > typed",
+               workspace: dir,
+               jail: false
+             )
+
+    wait_for_file(Path.join(dir, "ready"))
+
+    assert {:ok, segments} = Terminal.keys(id, "ab<Up><C-x><Enter>")
+    assert segments == [{:text, "ab"}, {:key, "Up"}, {:key, "C-x"}, {:key, "Enter"}]
+
+    assert typed_bytes(Path.join(dir, "typed"), "ab\e[A\x18\r") == "ab\e[A\x18\r"
+  end
+
+  # TERM-31: the reason a name goes to tmux instead of bytes being mapped here:
+  # this app turned on application cursor keys (`ESC [ ? 1 h`), so `<Up>` has to
+  # arrive as `ESC O A` where the plain app above gets `ESC [ A`.
+  test "a name is expanded for the mode the app has set", %{id: id, dir: dir} do
+    assert {:ok, _} =
+             Terminal.start(id,
+               command: "printf '\\033[?1h'; stty raw -echo; : > ready; cat > typed",
+               workspace: dir,
+               jail: false
+             )
+
+    wait_for_file(Path.join(dir, "ready"))
+
+    assert {:ok, _segments} = Terminal.keys(id, "<Up>")
+    assert typed_bytes(Path.join(dir, "typed"), "\eOA") == "\eOA"
+  end
+
+  # TERM-34: a send to a chat with no terminal says so rather than typing into
+  # nothing; the session that has ended is the next test.
+  test "sending to a chat with no terminal is an error that says so" do
+    assert {:error, message} = Terminal.keys("no-such-chat", "x")
+    assert message =~ "no terminal"
+  end
+
+  # TERM-34: a session that has ended is never typed into.
+  test "sending to a session that has ended is refused", %{id: id, dir: dir} do
+    :ok = Terminal.subscribe_status(id)
+    assert {:ok, _} = Terminal.start(id, command: "exit 7", workspace: dir, jail: false)
+
+    assert_receive {:terminal_status, ^id, %{running: false}}, 15_000
+
+    assert {:error, message} = Terminal.keys(id, "x")
+    assert message =~ "ended"
+  end
+
   ## Helpers
 
   defp stop_session(id) do
@@ -296,6 +350,36 @@ defmodule Elia.TerminalTest do
       {:error, _} ->
         Process.sleep(10)
         wait_for_pid(path, tries - 1)
+    end
+  end
+
+  # TERM-30: the app of a send test is ready when it has said so — a pane that
+  # has not put its pty in raw mode yet would buffer what is typed.
+  defp wait_for_file(path, tries \\ 200)
+  defp wait_for_file(path, 0), do: flunk("the app never wrote #{path}")
+
+  defp wait_for_file(path, tries) do
+    if File.exists?(path) do
+      :ok
+    else
+      Process.sleep(10)
+      wait_for_file(path, tries - 1)
+    end
+  end
+
+  # The bytes the app has been sent, once they have arrived: a send returns when
+  # tmux has been told, and the app writes them when it reads them. What is
+  # there when the wait runs out is returned, so a failure shows what arrived.
+  defp typed_bytes(path, expected, tries \\ 300)
+
+  defp typed_bytes(path, _expected, 0), do: File.read!(path)
+
+  defp typed_bytes(path, expected, tries) do
+    if File.read(path) == {:ok, expected} do
+      expected
+    else
+      Process.sleep(10)
+      typed_bytes(path, expected, tries - 1)
     end
   end
 

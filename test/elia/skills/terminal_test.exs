@@ -35,28 +35,36 @@ defmodule Elia.Skills.TerminalTest do
   defp tool(name), do: Enum.find(TerminalSkill.tools(), &(&1.name == name))
 
   # TERM-24: the skill is a terminal, in the chat the turn belongs to.
-  test "the skill offers starting, reading and stopping" do
+  test "the skill offers starting, sending to, reading and stopping" do
     assert TerminalSkill.name() == "terminal"
 
     assert Enum.map(TerminalSkill.tools(), & &1.name) ==
-             ["terminal_start", "terminal_read", "terminal_stop"]
+             ["terminal_start", "terminal_send", "terminal_read", "terminal_stop"]
 
     # TERM-28: what the model is told is when a terminal — not the shell tool —
-    # is the thing to reach for.
+    # is the thing to reach for, and that it can type into one itself.
     assert TerminalSkill.instructions() =~ "keep running"
+    assert TerminalSkill.instructions() =~ "terminal_send"
     assert tool("terminal_start").description =~ "watch"
+    assert tool("terminal_send").description =~ "keyboard"
   end
 
-  # TERM-10, TERM-25: starting needs the user's approval, and what they approve
-  # is the command; reading and stopping are controls they have themselves
-  # (TERM-26, TERM-27).
-  test "starting needs approval, reading and stopping do not" do
+  # TERM-10, TERM-25, TERM-32: starting and sending need the user's approval —
+  # the command, and the keys — where reading and stopping are controls the user
+  # has themselves (TERM-26, TERM-27).
+  test "starting and sending need approval, reading and stopping do not" do
     assert Elia.Tool.approval(tool("terminal_start"), %{"command" => "htop"}, %{}) == :required
+    assert Elia.Tool.approval(tool("terminal_send"), %{"keys" => "ls<Enter>"}, %{}) == :required
     assert Elia.Tool.approval(tool("terminal_read"), %{}, %{}) == :never
     assert Elia.Tool.approval(tool("terminal_stop"), %{}, %{}) == :never
 
     # TERM-25: the command is optional — with none the user's own shell runs.
     assert Elia.Tool.validate(tool("terminal_start"), %{}) == :ok
+
+    # TERM-30: what to type is not.
+    assert Elia.Tool.validate(tool("terminal_send"), %{"keys" => "x"}) == :ok
+    assert {:error, message} = Elia.Tool.validate(tool("terminal_send"), %{})
+    assert message =~ "keys is required"
   end
 
   # TERM-11, TERM-25: the tool starts the command in the chat's workspace, in
@@ -130,6 +138,45 @@ defmodule Elia.Skills.TerminalTest do
       Process.sleep(50)
       eventually(fun, tries - 1)
     end
+  end
+
+  # TERM-30, TERM-32, TERM-33: the tool types into a running terminal and says
+  # what it sent — and, when the call asks for it, hands the screen back in the
+  # same result once the keys have had their wait.
+  test "sending types into the terminal and can read the screen back", %{ctx: ctx} do
+    assert {:ok, _} = TerminalSkill.run_start(%{"command" => "sleep 60"}, ctx)
+
+    assert {:ok, output} = TerminalSkill.run_send(%{"keys" => "echo typed-42<Enter>"}, ctx)
+    assert output =~ "Sent to the terminal"
+    assert output =~ "echo typed-42"
+    assert output =~ "<Enter>"
+
+    # The output, not the echo: what was typed does not contain the answer.
+    assert {:ok, output} =
+             TerminalSkill.run_send(
+               %{"keys" => "echo $((6*7))<Enter>", "read" => true, "wait_ms" => 800},
+               ctx
+             )
+
+    assert output =~ "Then, 800 ms later"
+    assert output =~ "[terminal: running"
+    assert output =~ "42"
+  end
+
+  # TERM-31, TERM-34: a key name tmux does not know, and a chat with no
+  # terminal, are refused with what to do about it rather than typed.
+  test "sending refuses an unknown key name and a chat with no terminal", %{ctx: ctx} do
+    assert {:ok, _} = TerminalSkill.run_start(%{"command" => "sleep 60"}, ctx)
+
+    assert {:error, message} = TerminalSkill.run_send(%{"keys" => "<Entr><Enter>"}, ctx)
+    assert message =~ "not a key name"
+
+    assert {:error, message} =
+             TerminalSkill.run_send(%{"keys" => "ls"}, %{
+               session_id: "no-such-chat"
+             })
+
+    assert message =~ "no terminal"
   end
 
   # TERM-27: stopping ends the session, and a chat with none says so.

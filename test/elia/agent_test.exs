@@ -34,7 +34,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(ask_user await_task delete_file edit_file list_files list_tasks mark_done read_file reload_skills run_tests set_title shell spawn_task terminal_read terminal_start terminal_stop update_ledger write_file)
+             ~w(ask_user await_task delete_file edit_file list_files list_tasks mark_done read_file reload_skills run_tests set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger write_file)
   end
 
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do

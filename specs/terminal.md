@@ -168,7 +168,51 @@ guardrails: it is the same confinement as a command, held open.
   `shell` tool's finish-and-return shape is wrong — that starting one needs
   approval and that the user can then type into it, that it runs jailed and at
   lower priority like a command (TERM-7, TERM-8), that its output is not in the
-  transcript, and that reading the screen is `terminal_read`, not `shell`.
+  transcript, that reading the screen is `terminal_read`, not `shell`, and that
+  the agent can type into a running session with `terminal_send` (TERM-30),
+  which needs approval of its own (TERM-32).
+
+#### Typing in
+
+- **TERM-30** `terminal_send` types into the chat's terminal, so the agent can
+  drive an app the user is watching: `keys` is a short notation in which text
+  goes as it is and `<Name>` names a key in *tmux's* vocabulary — `<C-x>`,
+  `<C-s>`, `<Escape>`, `<Enter>`, `<Tab>`, `<Up>`, `<BSpace>`, `<F5>` — so the
+  model uses key names it already knows, and the familiar spellings of the same
+  keys (`<Esc>`, `<CR>`, `<PgUp>`) are taken as those keys. A `<...>` that does
+  not look like a key name — prose, `<b>`, a single character, `<foo bar>` — is
+  still literal text, so a `<` needs no escaping, where one that does look like
+  a key name and is not one tmux knows is refused rather than typed (TERM-31).
+  What reaches
+  the app is what a keyboard would send, as bytes, in order (TERM-13) — the same
+  door the browser's keystrokes come through, in the same session, jail and
+  priority as everything else (TERM-2, TERM-7, TERM-8).
+- **TERM-31** A named key goes to tmux *by name* and is expanded there, never
+  mapped to bytes by Elia: tmux knows the pane's current mode, so an app that
+  turned on application cursor keys (`ESC [ ? 1 h`, DECCKM) gets `ESC O A` for
+  `<Up>` where one that did not gets `ESC [ A` (verified against tmux 3.5a). A
+  name is accepted only if it is one tmux itself knows — or one of the aliases
+  of TERM-30 — optionally with `C-`, `M-` or `S-` in front; an unknown name is
+  refused with an error rather than passed on, because tmux would take it for
+  literal text and type a typo into someone's shell, and because the name is
+  spliced into a command line tmux parses. Text goes as `send-keys -H` hex, so
+  nothing a model sends can be read as a tmux command (TERM-13).
+- **TERM-32** `terminal_send` needs the user's approval, like `shell` (APPR-7),
+  and the call shows the keys it would send; the chat's auto-approval switch
+  waives it as it does for any tool (APPR-8). This does not touch TERM-10: what
+  the *user* types on the page is still never approved, because that is the user
+  acting, where this is the agent acting.
+- **TERM-33** Sending reads the screen back only when the call asks for it:
+  `read: true` waits `wait_ms` (default 300, clamped to a few seconds) and
+  returns the screen the way `terminal_read` returns it (TERM-26); without it
+  the call returns as soon as the keys are sent, and a send that reads nothing
+  puts no screen text in the transcript (TERM-11). The wait is what makes the
+  read see the effect of the keys: a step's tools run concurrently (LOOP-10), so
+  a `terminal_read` called alongside a `terminal_send` can read the screen as it
+  was before them.
+- **TERM-34** Sending is refused, saying which, when the chat has no terminal
+  and when its command has ended: there is nothing to type into, and a send
+  never starts or restarts a session (TERM-1, TERM-23, TERM-26).
 
 ### Availability
 
@@ -190,10 +234,14 @@ config :elia, Elia.Terminal,
 
 ## Out of scope
 
-- **Typing into a session from the agent** (`terminal_send`). Driving a TUI —
-  menus, a REPL, an interactive installer — is the obvious next step, and it is
-  a trust decision of its own: the model would be typing into a shell the user
-  approved to *watch*. It wants its own answer, not a quiet addition here.
+- **~~Typing into a session from the agent~~** (`terminal_send`). Removed:
+  `terminal_send` is in the spec now (TERM-30..TERM-34), with the answer this
+  entry was waiting for — the agent's keystrokes get the approval the agent's
+  commands get, and no more (TERM-32).
+- **Pasting as a paste.** A send arrives as keystrokes, the way a user typing
+  them would, so an app that asks for bracketed paste (`ESC [ 200 ~`) sees a
+  fast typist rather than a paste. tmux's own `paste-buffer` is the way to a
+  real one if that turns out to matter (TERM-30).
 - **A session that survives a restart or a deploy** (TERM-6). It would need the
   process tree to sit outside the jail, or a detached namespace the next server
   can re-enter, which is the thing the jail is for.
@@ -217,11 +265,13 @@ config :elia, Elia.Terminal,
 ## Implementation
 
 `Elia.Terminal` (the session registry and its supervisor, one per chat),
-`Elia.Terminal.Session` (the port, control mode's notifications, the screen and
-resize commands, the stop), `Elia.Shell` (the jail argv exposed for TERM-7 —
-the terminal must not carry a second copy of it), `Elia.Priority` (the
-wrapper), `Elia.Skills.Terminal` (the tools and the instructions),
-`EliaWeb.TerminalLive` (the page), `EliaWeb.TerminalSocket` and
+`Elia.Terminal.Session` (the port, control mode's notifications, the screen,
+the resize, the keys and the stop), `Elia.Terminal.Keys` (the `<Name>` notation,
+the aliases and the key-name whitelist, TERM-30, TERM-31), `Elia.Shell` (the
+jail argv
+exposed for TERM-7 — the terminal must not carry a second copy of it),
+`Elia.Priority` (the wrapper), `Elia.Skills.Terminal` (the tools and the
+instructions), `EliaWeb.TerminalLive` (the page), `EliaWeb.TerminalSocket` and
 `EliaWeb.TerminalChannel` (the stream), `assets/js/terminal.js` (the xterm.js
 hook), the router and the endpoint (the socket), `assets/package.json`
 (xterm.js and its fit addon).
@@ -230,20 +280,24 @@ The exact tmux interface is settled in the implementation against the tmux the
 host has, and the spec follows if it moves: control mode's notifications
 (`%output` with escaped bytes, `%begin`/`%end` around a command's reply) for the
 stream, `capture-pane` for TERM-14 and TERM-26, `refresh-client -C` for
-TERM-15, `send-keys` for TERM-13. A tmux whose control mode doesn't hold up
-would mean the session layer moves — to the app under a pty allocated by
-`script`, at the cost of TERM-15 — and that is a spec change, not a silent
-substitution.
+TERM-15, `send-keys` for TERM-13 and TERM-30 — by name for a key, `-H` with hex
+bytes for text, so nothing a model sends can be read as a tmux command
+(TERM-31). A tmux whose control mode doesn't hold up would mean the session
+layer moves — to the app under a pty allocated by `script`, at the cost of
+TERM-15 — and that is a spec change, not a silent substitution.
 
 ## Tests
 
 `test/elia/terminal_test.exs` (the argv: jail and priority, one session per
 chat, the stop leaving nothing running, the missing tmux, the screen and resize
-commands), `test/elia_web/live/terminal_live_test.exs` (the page's states,
+commands, and the keys reaching a real app — a name expanded by tmux for the
+pane's own mode), `test/elia/terminal/keys_test.exs` (the notation, its aliases
+and the whitelist, TERM-30, TERM-31),
+`test/elia_web/live/terminal_live_test.exs` (the page's states,
 TERM-19..TERM-23), `test/elia_web/channels/terminal_channel_test.exs` (join,
 keystrokes to the command's stdin, output to the client, resize, a join for an
 ended session, TERM-12..TERM-18), `test/elia/skills/terminal_test.exs` (the
-tools, TERM-25..TERM-28), and
+tools, TERM-25..TERM-28 and TERM-30..TERM-34), and
 `test/elia_web/browser/terminal_test.exs` for the parts that are a browser:
 typing into a running shell and seeing its echo, and a resize that reaches the
 pty (BROWSER-1). A test that needs tmux skips where it isn't installed

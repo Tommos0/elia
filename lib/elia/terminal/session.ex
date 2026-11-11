@@ -8,7 +8,7 @@ defmodule Elia.Terminal.Session do
   line discipline, no window size and no `SIGWINCH`, so a full-screen app drawn
   through one is wrong from the first redraw. Control mode is what makes tmux
   usable from a port with no terminal of its own: the client reads commands on
-  stdin — `send-keys` for what the user types (TERM-13), `refresh-client -C` for
+  stdin — `send-keys` for what the user or the agent types (TERM-13, TERM-30), `refresh-client -C` for
   the size (TERM-15), `capture-pane` for the screen (TERM-14, TERM-26) — and
   writes notifications on stdout: `%output %<pane> <bytes>` for the app's output
   (TERM-12) and `%subscription-changed` for the one thing tmux must say
@@ -99,6 +99,12 @@ defmodule Elia.Terminal.Session do
 
   @doc "Sends bytes to the app as if typed (TERM-13)."
   def input(pid, bytes), do: GenServer.call(pid, {:input, bytes})
+
+  @doc """
+  Sends what `Elia.Terminal.Keys.parse/1` made of a notation: text as bytes and
+  a named key by name, in order (TERM-30).
+  """
+  def keys(pid, segments), do: GenServer.call(pid, {:keys, segments})
 
   @doc "Resizes the app's pty (TERM-15)."
   def resize(pid, cols, rows), do: GenServer.call(pid, {:resize, cols, rows})
@@ -220,14 +226,26 @@ defmodule Elia.Terminal.Session do
   def handle_call({:input, ""}, _from, state), do: {:reply, :ok, state}
 
   def handle_call({:input, bytes}, _from, state) do
-    state =
-      bytes
-      |> chunks(@input_chunk)
-      |> Enum.reduce(state, fn chunk, state ->
-        send_command(state, "send-keys -H #{hex(chunk)}")
-      end)
+    {:reply, :ok, send_segment({:text, bytes}, state)}
+  end
 
-    {:reply, :ok, state}
+  # TERM-30: the agent's keystrokes, through the same door as the user's
+  # (TERM-13) — a named key by name, so that tmux expands it for the pane's own
+  # mode, and text as bytes.
+  def handle_call({:keys, _segments}, _from, %{status: status} = state)
+      when status != :running do
+    {:reply, {:error, "This terminal's command has ended, so there is nothing to type into."},
+     state}
+  end
+
+  def handle_call({:keys, segments}, _from, state) do
+    # TERM-31: a name reaches a line tmux parses, so only what `Keys.parse/1`
+    # guarantees — and `valid?/1` re-checks — may be sent.
+    if Enum.all?(segments, &Terminal.Keys.valid?/1) do
+      {:reply, :ok, Enum.reduce(segments, state, &send_segment/2)}
+    else
+      {:reply, {:error, "That is not something this terminal can send."}, state}
+    end
   end
 
   # TERM-15: the app's pty takes the size of the box the browser draws in.
@@ -478,6 +496,22 @@ defmodule Elia.Terminal.Session do
   end
 
   ## Commands
+
+  # TERM-13, TERM-30: text goes as bytes, so nothing in it — a space, a quote, a
+  # `;` — can be read as part of the command tmux runs.
+  defp send_segment({:text, text}, state) do
+    text
+    |> chunks(@input_chunk)
+    |> Enum.reduce(state, fn chunk, state ->
+      send_command(state, "send-keys -H #{hex(chunk)}")
+    end)
+  end
+
+  # TERM-30, TERM-31: a key goes to tmux by name, so tmux sends the bytes the
+  # pane's mode asks for — `ESC O A` for `<Up>` in an app that turned on
+  # application cursor keys, `ESC [ A` in one that did not. The name is a word
+  # of `Keys.parse/1`'s alphabet and nothing else (TERM-31).
+  defp send_segment({:key, name}, state), do: send_command(state, "send-keys #{name}")
 
   # Every command sent gets one reply, so one pending entry is pushed for each
   # and the order of the queue is the order of the replies. An entry with no

@@ -191,6 +191,28 @@ defmodule Elia.Terminal do
   end
 
   @doc """
+  Types `keys` into `chat_id`'s terminal (TERM-30): the notation of
+  `Elia.Terminal.Keys`, in which text goes as it is and `<Name>` names a key.
+
+  Returns what was sent, in order, so that a result can say so. An error says
+  which of the three it is: the notation names a key tmux does not know
+  (TERM-31), the chat has no terminal, or its command has ended (TERM-34).
+  """
+  @spec keys(binary(), binary()) :: {:ok, [Elia.Terminal.Keys.segment()]} | {:error, binary()}
+  def keys(chat_id, keys) do
+    case fetch(chat_id) do
+      {:ok, pid} ->
+        with {:ok, segments} <- Elia.Terminal.Keys.parse(keys),
+             :ok <- Session.keys(pid, segments) do
+          {:ok, segments}
+        end
+
+      :error ->
+        {:error, "This chat has no terminal: start one with terminal_start."}
+    end
+  end
+
+  @doc """
   Resizes `chat_id`'s terminal to `cols` by `rows` (TERM-15), so the app's pty
   is the size the browser can draw.
   """
