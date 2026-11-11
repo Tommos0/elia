@@ -529,6 +529,42 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == live
   end
 
+  # DEPLOY-20, DEPLOY-19: with nothing to merge no suite runs (DEPLOY-5), but the
+  # live tree's front end is still made current before the load — what a deploy
+  # loads is what the tree it loads builds — and the deploy says it rebuilt it.
+  test "a deploy with nothing to merge still rebuilds the live tree's front end (DEPLOY-20)",
+       %{tree: tree} do
+    running_server()
+    rebuilt_front_end(self())
+
+    assert {:ok, %{pending: 0}} = Deploy.status()
+    assert {:ok, message} = Deploy.hot_reload()
+
+    assert message =~ "Nothing to deploy"
+    assert message =~ "front end was rebuilt"
+
+    # The front end first, then the load: the order DEPLOY-19 and DEPLOY-20 ask
+    # for.
+    assert [{:front_end, ^tree}, :loaded] = deploy_steps()
+  end
+
+  # DEPLOY-20: a front end that can't be built fails a deploy with nothing to
+  # merge the way it fails one that merged (DEPLOY-19): nothing is loaded.
+  test "a front end that can't be built deploys nothing when there is nothing to merge (DEPLOY-20)",
+       %{tree: tree} do
+    running_server()
+    stub_front_end(fn _root -> {:error, "npm install exited with 1"} end)
+
+    live = head(tree)
+    assert {:error, message} = Deploy.hot_reload()
+
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "npm install exited with 1"
+    assert head(tree) == live
+    assert branch(tree) == "live"
+    assert deploy_steps() == []
+  end
+
   # DEPLOY-17: what the app has loaded is recorded, so a deploy that merged and
   # never reached the load is reported rather than looking up to date.
   test "a merge that never loaded is reported", %{tree: tree} do

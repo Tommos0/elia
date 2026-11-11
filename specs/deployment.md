@@ -78,7 +78,8 @@ gate.
   `master` when the tests pass; when they fail it rolls `live` back to where it
   was, so nothing is deployed and the running app is unaffected, and it returns
   the test output. When `live` is already at `master` there is nothing to
-  deploy: no tests run and only the load (DEPLOY-6, DEPLOY-7) happens.
+  *merge*: no tests run, the live tree's front end is still made current before
+  the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens.
 - **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
   test in the live tree itself — `mix deps.get`, jailed with `:live_tree`
   (ISOL-14) — before the suite runs. A dependency a chat added lives in that
@@ -103,6 +104,15 @@ gate.
   carries the command's output. Building writes under `priv/static`, so the
   browser's live reload fires (DEPLOY-12) and a page that is already open comes
   back on the new bundle instead of keeping the one it loaded (HOT-8).
+- **DEPLOY-20** The front-end step of a deploy (DEPLOY-19) runs on every deploy,
+  including one whose `live` is already at the trunk and so has nothing to merge
+  (DEPLOY-5): what a deploy loads is then always what the tree it loads builds.
+  A bundle that is missing or stale for any other reason — an earlier build of a
+  different tree, a Node package the live tree never installed — is therefore
+  repaired by deploying, rather than only by a deploy that happens to have
+  something to merge. A front end that can't be built fails the deploy the way
+  it does after a merge: nothing is loaded, and the error carries the command's
+  output.
 - **DEPLOY-6** Hot reload is the soft deploy mode (HOT-1–HOT-6): after
   DEPLOY-5 the live tree is recompiled and the changed modules are loaded into
   the running app, keeping running state. Its control is on the Settings page

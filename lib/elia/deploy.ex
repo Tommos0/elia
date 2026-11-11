@@ -17,7 +17,8 @@ defmodule Elia.Deploy do
   (`EliaWeb.SettingsLive`): it runs the full test suite in the live tree,
   fast-forwards `live` to the trunk when the tests pass (DEPLOY-5), makes the
   tree's front end current — the Node packages and the bundle a browser loads
-  (DEPLOY-19) — and loads the result into the running app, by hot reload
+  (DEPLOY-19) — on every deploy, merge or not (DEPLOY-20) — and loads the result
+  into the running app, by hot reload
   (`hot_reload/1`, DEPLOY-6) or by restarting the server (`restart/1`,
   DEPLOY-7). Because the tree a chat edits is
   never the tree that runs, an in-progress or broken edit cannot reach the
@@ -337,8 +338,8 @@ defmodule Elia.Deploy do
   fail, so nothing is deployed and the running app is unaffected (HOT-4).
 
   `{:ok, message}`, `{:tests_failed, output}` or `{:error, reason}`. Nothing to
-  deploy when `live` is already at the trunk: no tests run, and the message says
-  so.
+  merge when `live` is already at the trunk: no tests run, but the tree's front
+  end is still made current before the load (DEPLOY-20), and the message says so.
   """
   @spec deploy(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
   def deploy(root \\ Workspace.runtime_root()) do
@@ -346,9 +347,26 @@ defmodule Elia.Deploy do
          :ok <- clean?(root),
          {:ok, %{pending: pending}} <- status(root) do
       case pending do
-        0 -> {:ok, "Nothing to deploy: #{@live} is already #{@trunk}."}
+        0 -> nothing_to_merge(root)
         _ -> merge_and_test(pending, root)
       end
+    end
+  end
+
+  # DEPLOY-5, DEPLOY-20: the trunk is already deployed, so there is nothing to
+  # merge and no suite to run — but the tree's front end is still made current
+  # before the load. What a deploy loads is then always what the tree it loads
+  # builds: a bundle that is missing or stale for any other reason (the live
+  # tree never installed a Node package a chat added, so its own watchers can't
+  # build one) is repaired by deploying, rather than only by a deploy that
+  # happens to have something to merge. A front end that can't be built fails
+  # the deploy as it does after a merge: nothing is loaded.
+  defp nothing_to_merge(root) do
+    nothing = "Nothing to deploy: #{@live} is already #{@trunk}."
+
+    case front_end(root) do
+      {:ok, note} -> {:ok, nothing <> note}
+      {:error, reason} -> {:error, front_end_failed(reason)}
     end
   end
 
