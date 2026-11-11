@@ -5,8 +5,9 @@ Status: Implemented
 Provider API keys and the selected model are user settings, not workspace
 data, so they live in a small on-disk database in the user's data directory
 rather than in the repository. A Settings page lets the user enter, check and
-remove a key for each provider, and deploy Elia's own code (DEPLOY-5): it is
-where the running server is brought up to date with the trunk `master`.
+remove a key for each provider, start and stop the local llama.cpp server
+(LOCAL-25), and deploy Elia's own code (DEPLOY-5): it is where the running
+server is brought up to date with the trunk `master`.
 
 ## Requirements
 
@@ -27,7 +28,9 @@ where the running server is brought up to date with the trunk `master`.
 
 - **CONF-5** A provider's key is the stored key if there is one, otherwise
   the key from the provider's configuration (e.g. `ANTHROPIC_API_KEY`).
-  `Elia.LLM.api_key/1` returns `{:stored | :env, key}` or `nil`.
+  `Elia.LLM.api_key/1` returns `{:stored | :env, key}` or `nil`. A provider
+  that needs no key — the local server of LOCAL-2 — reports `nil` and is used
+  anyway: nothing refuses it for lack of a key.
 - **CONF-6** Checking a key makes one authenticated request to the provider
   (Anthropic: `GET /v1/models`; OpenRouter: `GET /api/v1/key`) and returns
   `:ok` or `{:error, message}`. A blank key is rejected without a request.
@@ -40,7 +43,8 @@ where the running server is brought up to date with the trunk `master`.
 
 - **CONF-9** `/settings` shows a card per provider (`#provider-<key>`) with
   its status: "Saved" with the key masked to its last 4 characters, "From
-  environment", or "Not set".
+  environment", or "Not set". A provider that needs no key (LOCAL-2) has the
+  card of LOCAL-24 instead, since there is no key to enter or to check.
 - **CONF-10** Each card has a password field and two submit buttons: Check
   (`#check-<key>`) verifies the entered key without storing it, Save
   (`#save-<key>`) verifies and stores it (CONF-7). The result shows inline as
@@ -60,10 +64,13 @@ where the running server is brought up to date with the trunk `master`.
   or the error message. An `:account` balance reads "$R remaining ($U used of
   $T)"; a `:key` balance reads "$U used" plus " · $R left of $L key limit"
   when the key has a limit. For a provider without `balance/1` it says the
-  balance isn't available through the API and to see the billing page.
+  balance isn't available through the API and to see the billing page; one
+  with no `billing_url` at all (LOCAL-7) says there is nothing to bill, since
+  it runs on this machine.
 - **CONF-15** Every card has an "Add credits" link (`#topup-<key>`) to the
   provider's `billing_url` (LLM-27) that opens in a new tab with
-  `rel="noopener noreferrer"`. It shows whether or not a key is set.
+  `rel="noopener noreferrer"`. It shows whether or not a key is set. A
+  provider with no `billing_url` (LOCAL-7) has no such link.
 - **CONF-16** A "Refresh" button (`#refresh-balance-<key>`) next to the credit
   line of a provider with `balance/1` reloads the balance.
 

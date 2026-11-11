@@ -5,7 +5,8 @@ Status: Implemented
 Model calls go through a provider-neutral interface, so the agent loop never
 depends on one vendor's API. The default provider is Anthropic's Messages API,
 streamed over SSE. OpenRouter's OpenAI-compatible Chat Completions API gives
-access to many other models.
+access to many other models. A `llama-server` on the machine is a third
+provider, with no key and no network at all (LOCAL).
 
 ## Requirements
 
@@ -97,8 +98,10 @@ access to many other models.
 ### Registry
 
 - **LLM-15** `Elia.LLM.providers/0` lists the registered providers as
-  `%{key, name, module, billing_url}`: `"anthropic"` (`Elia.LLM.Anthropic`) and
-  `"openrouter"` (`Elia.LLM.OpenRouter`).
+  `%{key, name, module, billing_url}`: `"anthropic"` (`Elia.LLM.Anthropic`),
+  `"openrouter"` (`Elia.LLM.OpenRouter`) and `"llamacpp"`
+  (`Elia.LLM.LlamaCpp`, the local server of LOCAL). `billing_url` is the page
+  where credits are added, and is `nil` for a provider that has none (LOCAL-7).
 - **LLM-16** Providers may implement `check_key/1` (CONF-6),
   `list_models/1` (MODEL-5, MODEL-6) and `balance/1` (LLM-25).
 
@@ -181,9 +184,11 @@ access to many other models.
   (`total` and `remaining` are `nil` for a key without a limit). Other
   failures return `{:error, message}` like LLM-23.
 - **LLM-27** Anthropic has no balance endpoint, so it doesn't implement
-  `balance/1`. Each registry entry (LLM-15) has a `billing_url`, the web page
-  where credits are added: `https://console.anthropic.com/settings/billing`
-  and `https://openrouter.ai/settings/credits`.
+  `balance/1`. Each registry entry (LLM-15) with credits has a `billing_url`,
+  the web page where they are added:
+  `https://console.anthropic.com/settings/billing` and
+  `https://openrouter.ai/settings/credits`. A provider with none — the local
+  server of LOCAL-7 — has a `nil` one.
 
 ### Encoding
 
@@ -220,15 +225,20 @@ Tests use `Elia.FakeLLM`.
 ## Implementation
 
 `Elia.LLM`, `Elia.LLM.Provider`, `Elia.LLM.Message`, `Elia.LLM.Error`,
-`Elia.LLM.Anthropic`, `Elia.LLM.OpenRouter`, `Elia.LLM.Retry`, `Elia.LLM.SSE`.
+`Elia.LLM.Anthropic`, `Elia.LLM.OpenRouter`, `Elia.LLM.OpenAI` (the
+OpenAI-compatible encoding that both of them share, LOCAL-10),
+`Elia.LLM.LlamaCpp` and `Elia.LLM.LlamaServer` (LOCAL), `Elia.LLM.Retry`,
+`Elia.LLM.SSE`.
 
 ## Tests
 
 `test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`,
-`test/elia/llm/retry_test.exs`, `test/elia/llm/message_test.exs`. The stream
-idle timeout and the stalled-stream retry (LLM-34, LLM-35) are also exercised
-over a real socket in `test/elia/llm/stream_timeout_test.exs`, since a
-`Req.Test` plug never applies `receive_timeout`. The pairing rule (LLM-33) is
+`test/elia/llm/open_ai_test.exs` (the shared encoding, LOCAL-10),
+`test/elia/llm/llama_cpp_test.exs` (the local provider, LOCAL-1 to LOCAL-9),
+`test/elia/llm/retry_test.exs`, `test/elia/llm/message_test.exs`. The
+stream idle timeout and the stalled-stream retry (LLM-34, LLM-35) are also
+exercised over a real socket in `test/elia/llm/stream_timeout_test.exs`, since
+a `Req.Test` plug never applies `receive_timeout`. The pairing rule (LLM-33) is
 covered where it is kept: `test/elia/llm/compaction_test.exs` (a call and its
 result are kept or dropped together) and `test/elia/agent_test.exs` (a stopped
 turn, a crash and an app restart each close every unanswered call, SESS-8,

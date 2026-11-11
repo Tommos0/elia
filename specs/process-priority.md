@@ -68,6 +68,10 @@ low I/O class are what an unprivileged process may set for itself.
   server (SHELL-8, SHELL-9), so a command that seems slow while a compile runs
   is expected rather than broken, and a test of wall-clock speed is not run
   this way.
+- **PRIO-9** A long-running process Elia spawns directly, rather than through
+  `Elia.Shell`, is started through `Elia.Priority.spawn_argv/3` too, so PRIO-1
+  and PRIO-4 hold for it as they do for a command: the terminal's tmux
+  (TERM-8) and the local model server (LOCAL-12) are both started that way.
 
 ## Configuration
 

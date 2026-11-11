@@ -76,7 +76,8 @@ code change.
   the popover.
   Escape or clicking outside closes it without changing the selection.
 - **MODEL-13** A provider without an active key (CONF-5) shows a link to
-  `/settings` instead of selectable models.
+  `/settings` instead of selectable models — except one that needs no key at
+  all (LOCAL-2), which offers its models with none.
 
 ## Implementation
 

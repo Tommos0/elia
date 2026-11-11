@@ -71,7 +71,8 @@ deleting it.
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, how decisions apply, per-chat auto-approval |
 | [Structured user input](user-input.md) | `ASK` | `ask_user` puts a question with options to the user as a card of buttons; the turn waits and the answer comes back as the call's result |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
-| [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic and OpenRouter backends |
+| [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic, OpenRouter and a local llama.cpp server backends |
+| [llama.cpp local provider](llamacpp-provider.md) | `LOCAL` | A local `llama-server` as a third provider: no API key, and Elia starts and stops it from a `.gguf` |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
 | [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks |
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
