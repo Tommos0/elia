@@ -102,6 +102,25 @@ server is brought up to date with the trunk `master`.
   or a refusal — is shown in the section as `#deploy-result`, and is still
   there for a page that mounts after the deploy ended; the deploy status
   (CONF-19) is refreshed when it changes.
+- **CONF-21** While an operation runs the section shows what it is doing, from
+  the runner (DEPLOY-21, DEPLOY-22): the steps that have finished, with how long
+  each took, the step it is on now, and how long the whole operation has been
+  running. A page that mounts or is reloaded in the middle of one — including
+  by the deploy's own asset change (DEPLOY-12, HOT-9) — shows the same, rather
+  than only a spinner on the button (CONF-20).
+- **CONF-22** The section reports the last operation from the record
+  (DEPLOY-23) as well as from the runner (CONF-20), so a page that comes back
+  after a **restart** deploy (DEPLOY-7) — whose result died with the process
+  the runner lived in — still says what the deploy did, and where it stopped
+  when it did not finish. The runner's own result, when there is one, is the
+  newer of the two.
+- **CONF-23** The section offers going back to a revision the app has run
+  (DEPLOY-25, DEPLOY-26): as `#deploy-rollback` it names the newest kept
+  revision that is not the one running — its short sha and when it was loaded —
+  and has a control per load mode ("Hot reload", "Restart"), each disabled
+  while an operation runs, the way the deploy buttons are (CONF-20). The
+  section also says `#recover-note` the address of the recovery page
+  (`/recover`, RECOVER-10), for when this page's own UI is what a deploy broke.
 
 ## Configuration
 
@@ -119,8 +138,9 @@ Tests use a scratch file under the system temp directory.
 ## Implementation
 
 `Elia.Settings`, `Elia.LLM` (`api_key/1`, `check_key/2`, `save_key/2`,
-`delete_key/1`, `balance/1`), `Elia.Deploy` (the deploy, DEPLOY-5),
-`EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
+`delete_key/1`, `balance/1`), `Elia.Deploy` (the deploy, DEPLOY-5; its steps,
+record and rollback, DEPLOY-21–DEPLOY-26), `Elia.Deploy.Runner` (the operation
+in flight, DEPLOY-22), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
 
 ## Tests
 
