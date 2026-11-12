@@ -1,6 +1,6 @@
 # Reading earlier chats
 
-Status: Draft
+Status: Implemented
 
 The agent can look at chats other than the one it is running in: list them,
 read one's transcript, and search across them. Everything the user and the
@@ -68,7 +68,8 @@ jailed, and without a command or an approval prompt.
 - **HIST-7** When messages are left out, the result ends with `[+<n> more
   messages: read again with offset=<next>]`. An `offset` that isn't the index of
   a message in the chat — including one past the end — is a tool error naming
-  the chat's message count.
+  the chat's message count, and a chat that holds no message reads as its
+  header and `[messages 0-0 of 0]` alone.
 - **HIST-8** `read_chat` is a tool error, naming what it was given and changing
   nothing, when its `id` isn't a valid chat id (STORE-4) or has no saved chat
   (STORE-24), and when its `query` matches no chat or more than one — the error
@@ -104,6 +105,14 @@ jailed, and without a command or an approval prompt.
   what they may read is Elia's own saved chats and nothing else — not the
   settings database and not a file outside `.elia/sessions`.
 
+## Data
+
+Old data: nothing stored changes shape. The three tools only read the saved
+chats (STORE-1, HIST-10) — a chat saved by an older version lists and reads the
+same way, and none of the tools writes a chat, a turn record or a setting — and
+`Elia.Store.entry/1` (STORE-36) derives the same fields `list/1` already did,
+from the same file. No migration is needed.
+
 ## Implementation
 
 `Elia.Skills.Chats` (the three tools — the skill's own module, like
@@ -115,4 +124,6 @@ jailed, and without a command or an approval prompt.
 
 `test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
 filtering and statuses, reading a chat with paging and truncation, reading by
-query and the errors, searching and the cap).
+query and the errors, searching and the cap), `test/elia/store_test.exs`
+(`entry/1`, STORE-36), `test/elia/agent_test.exs` (a session's tool list names
+the three, HIST-1).
