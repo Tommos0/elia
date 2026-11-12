@@ -167,6 +167,43 @@ genuinely needs the rest of the machine (ISOL-16).
   they run in. A caller with no chat — the deploy (ISOL-14) — gets the default,
   which is on.
 
+### One jail for a step's commands
+
+ISOL-7 has every command mount the worktree's dependency layer itself, so two
+commands that a step runs at once mount the same layer at the same instant and
+one of them fails before it runs: 35 such commands across 11 chats, every one of
+them in a step that ran two or three shell commands (33 and 2), and never in a
+step that ran one — 8.8% of the steps that run two or more lose one of their
+commands. The model is told one of its commands failed and no command ran, which
+costs the round trip as well as the command.
+
+- **ISOL-26** The commands of one step share one jail. The command calls of a
+  step (LOOP-10) — the `shell` tool (SHELL-1), `run_tests` (VERIFY-1), a folder
+  skill's script tools (FOLDER) — that need the same profile (ISOL-13) run under
+  one bubblewrap process, which mounts the worktree's dependency layer (ISOL-7)
+  once instead of once per command. Each command is still its own process inside
+  it, with its own `cd`, environment, output, `[exit: …]` result, truncation and
+  timeout (SHELL-2..SHELL-5): a command that reaches its own timeout is killed on
+  its own and its step-mates still report what they did. A killing that belongs
+  to the turn rather than to one command — the user's stop (SESS-22), or the
+  jail's own outer deadline (SHELL-3, VERIFY-1) — ends every command in it, and
+  the results say so. The step's commands therefore share one `/tmp` tmpfs
+  (ISOL-2) and one pid namespace, seeing each other's processes and files there
+  for as long as the step runs; nothing survives into a later step, so the
+  isolation between steps is unchanged. A call that needs another profile —
+  `:deps_sync`, `:live_tree`, another project (PROJ-12), an unjailed call
+  (ISOL-16) — can't share the jail and keeps one of its own.
+
+- **ISOL-27** A jail that can't mount the worktree's dependency layer (ISOL-7)
+  is tried once more, and then runs with the shared `deps` bound read-only — the
+  fallback ISOL-7 already takes when the layer can't be made — with its result
+  saying the shared tree was read-only, as a skipped jail says it wasn't jailed
+  (ISOL-12). A command that could not be run at all is never reported as one that
+  ran and failed. This is what covers a layer another jail in the same worktree
+  holds — a chat's terminal session (TERM-7) — and any other mount failure: the
+  command then fails on its own write and says what it could not write, exactly
+  as it does where the layer can't be made at all.
+
 ### The per-chat setting
 
 - **ISOL-16** Every chat has a jail setting, on by default: a chat whose file
@@ -278,6 +315,14 @@ bubblewrap is missing (ISOL-12).
   overlay mounts here (bubblewrap 0.12 on kernel 6.12, verified by mounting one
   in a namespace), and a host where it doesn't deserves a deliberate answer
   rather than a silent fallback.
+- **One jail per chat, shared with its terminal** (the next step if a jail per
+  step, ISOL-26, is not enough). One bubblewrap process for a chat's whole life
+  would mount the layer once and cover the terminal session too (TERM-7), and
+  save a bubblewrap start and mount per command. It needs supervision (a jail
+  that dies is the whole chat's commands failing), a lifecycle tied to the
+  worktree (DEPLOY-10), a way to end one command without ending the jail, and a
+  decision about what the chat's commands may see of each other across steps —
+  which ISOL-26 deliberately keeps out of reach.
 - Seccomp filters, cgroup limits, and capping what a jailed command may write
   inside its own workspace.
 
@@ -285,7 +330,10 @@ bubblewrap is missing (ISOL-12).
 
 `Elia.Shell` (the bubblewrap argv, the profiles, the environment allowlist, and
 what a jailed command can reach — ISOL-25; `run/2` takes `:jail` and
-`:profile`), `Elia.Skills.Shell`, `Elia.Skills.Folder`
+`:profile`; and the shared jail of ISOL-26: one bubblewrap per step's commands,
+with a protocol inside it giving each command its own output, status, deadline
+and exit, `Elia.Agent.Loop` starting it with the step and ending it with the
+step), `Elia.Skills.Shell`, `Elia.Skills.Folder`
 and `Elia.Harness` (pass the chat's setting from the tool context),
 `Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
@@ -299,14 +347,19 @@ lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
 ## Tests
 
 `test/elia/shell_test.exs` (the argv, the profiles, the environment allowlist,
-what a jailed command can reach, the fallback when bubblewrap is missing),
+what a jailed command can reach, the fallback when bubblewrap is missing, and
+the shared jail of ISOL-26: two commands of one step run under one jail with a
+result each, one command's timeout doesn't end its step-mate, a step's jail is
+gone before the next step runs, and a jail that can't mount the layer says the
+shared tree was read-only — ISOL-27),
 `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
 and its removal, ISOL-7, DEPLOY-10),
 `test/elia/command_isolation_test.exs`
 (the settings path and `$HOME` absent, the browser cache and the user-wide
 Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
 workspace writable, a command writing inside the shared `deps` and leaving it
-unchanged, a timeout still cleaning up), `test/elia/harness_test.exs`
+unchanged, a timeout still cleaning up, and the two shell commands of one step
+both running under one jail — ISOL-26), `test/elia/harness_test.exs`
 (`run_tests` jailed), `test/elia/deployment_test.exs` (the worktree
 administration and the deploy's fetch, DEPLOY-18),
 `test/elia/tasks_git_test.exs` (the harness's git calls),
