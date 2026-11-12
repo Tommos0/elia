@@ -32,6 +32,15 @@ config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
   root_tag_attribute: "phx-r"
 
+# The user-wide Playwright CLI that the real-browser tests and a UI preview
+# drive (BROWSER-2). It belongs to the user, not to a workspace: one install
+# serves Elia and any other project on the machine. The browser driver is
+# pointed at the directory that holds `node_modules/playwright`, and the jail
+# binds the same directory read-only, so a jailed browser run reaches the copy
+# the driver was told to use (ISOL-26).
+config :elia,
+  playwright_dir: System.get_env("ELIA_PLAYWRIGHT_DIR", Path.expand("~/.local/lib"))
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",

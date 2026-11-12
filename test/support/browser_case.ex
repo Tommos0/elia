@@ -10,8 +10,8 @@ defmodule EliaWeb.BrowserCase do
       end
 
   The browser talks to the test env server over HTTP, so a browser run needs
-  the server (BROWSER-3), the Playwright CLI in `assets/node_modules`
-  (BROWSER-2) and built assets (BROWSER-6):
+  the server (BROWSER-3), the user-wide Playwright CLI (BROWSER-2) and built
+  assets (BROWSER-6):
 
       mix assets.build
       ELIA_BROWSER_TESTS=1 mix test --only browser

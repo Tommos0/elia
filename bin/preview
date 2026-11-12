@@ -21,12 +21,15 @@
 
 cd "$(dirname "$0")/.." || exit 1
 
-# The browser layer's Node packages (PREVIEW-14, BROWSER-2): assets/node_modules
-# is gitignored, so a fresh chat worktree has none, and the Playwright driver
-# refuses to start without it. Install them once per worktree, skipping it when
-# they are already there, so a preview never pays for this twice.
-if [ ! -f assets/node_modules/playwright/package.json ]; then
-  echo "preview: installing the browser layer's packages (npm install)"
+# The workspace's own Node packages (PREVIEW-14): the bundle imports @xterm/*
+# and assets/node_modules is gitignored, so a fresh chat worktree has none and
+# the assets build would fail on an unresolved import. Install them once per
+# worktree, skipping it when they are already there, so a preview never pays
+# for this twice. The Playwright CLI is not among them: it is a user-wide
+# install, not a workspace dependency (BROWSER-2), so a preview in a new
+# worktree installs no CLI and downloads no browser.
+if [ ! -f assets/node_modules/@xterm/xterm/package.json ]; then
+  echo "preview: installing the workspace's packages (npm install)"
   npm install --prefix assets --no-audit --no-fund || {
     echo "preview: npm install failed in $PWD/assets — run it yourself (Node >= 20, network)" >&2
     exit 1

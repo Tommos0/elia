@@ -13,11 +13,12 @@ config :elia, EliaWeb.Endpoint,
   code_reloader: false,
   server: System.get_env("ELIA_BROWSER_TESTS") == "1"
 
-# PhoenixTest drives that endpoint from a real browser (BROWSER-3). The
-# Playwright CLI sits in assets/node_modules (BROWSER-2); errors the page logs
-# are recorded and fail the test that caused them (BROWSER-8). A UI preview
-# writes its pictures into its own dir, where the chat that asked for them looks
-# for them (PREVIEW-4, PREVIEW-7).
+# PhoenixTest drives that endpoint from a real browser (BROWSER-3). Errors the
+# page logs are recorded and fail the test that caused them (BROWSER-8). A UI
+# preview writes its pictures into its own dir, where the chat that asked for
+# them looks for them (PREVIEW-4, PREVIEW-7). The driver's `assets_dir` — the
+# user-wide Playwright CLI (BROWSER-2) — is set in `test/test_helper.exs`, just
+# before the driver starts.
 config :phoenix_test,
   otp_app: :elia
 

@@ -53,11 +53,20 @@ Playwright.
       ELIA_BROWSER_TESTS=1 mix test --only real_browser
 
 - `assets/node_modules` is gitignored, so a fresh worktree has none: install it
-  once with `npm install` in `assets/`. Playwright is pinned in
-  `assets/package.json` to a version whose Chromium revision is already in
-  `~/.cache/ms-playwright`, so nothing large downloads; it needs Node ≥ 20. A
-  browser run that finds it missing says exactly that instead of failing inside
-  the driver (BROWSER-10), and `bin/preview` installs it for you (PREVIEW-14).
+  once with `npm install` in `assets/` for the packages the bundle imports
+  (`@xterm/*`). The Playwright CLI is not one of them — it is user-wide, not a
+  workspace dependency: install it once for the user with `npm install -g
+  --prefix ~/.local playwright@1.64.1`, which puts the CLI in
+  `~/.local/lib/node_modules/playwright` and `playwright` on your `PATH` (so
+  any project on the machine can drive it). `config/config.exs` names that
+  directory once (`:elia, :playwright_dir`), the test helper points the driver
+  at it, and the jail binds it read-only, so a jailed browser run reaches it
+  too (ISOL-26). The version is pinned to one whose Chromium revision is
+  already in `~/.cache/ms-playwright`, so `playwright install chromium` reuses
+  the cached browser and nothing large downloads; it needs Node ≥ 20. A browser
+  run that finds the user-wide CLI missing says exactly that instead of failing
+  inside the driver (BROWSER-10), and `bin/preview` installs the workspace's own
+  packages for you (PREVIEW-14).
 - Console errors and page errors fail the test that caused them
   (`EliaWeb.BrowserJsLogger`), so a broken hook doesn't pass quietly. Lower
   levels are logged as usual.

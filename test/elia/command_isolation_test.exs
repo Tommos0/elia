@@ -29,12 +29,12 @@ defmodule Elia.CommandIsolationTest do
     assert {:ok, "hi\n", 0} = jailed("echo hi")
   end
 
-  test "the home directory is stripped to mix and the browser cache (ISOL-4, ISOL-5, ISOL-8)" do
+  test "the home directory is stripped to mix, the browser cache and the Playwright CLI (ISOL-4, ISOL-5, ISOL-26, ISOL-8)" do
     assert {:ok, output, 0} = jailed("ls -A $HOME")
 
     assert output
            |> String.split("\n", trim: true)
-           |> Enum.all?(&(&1 in [".cache", ".mix"]))
+           |> Enum.all?(&(&1 in [".cache", ".local", ".mix"]))
   end
 
   test "the browser the real-browser tests drive is there, read-only (ISOL-4)" do
@@ -49,6 +49,34 @@ defmodule Elia.CommandIsolationTest do
 
       assert {:ok, _output, status} = jailed("touch $HOME/.cache/ms-playwright/probe")
       assert status != 0, "the browser cache must be read-only"
+    end
+  end
+
+  test "the user-wide Playwright CLI is there, read-only, and nothing else of ~/.local is (ISOL-26)" do
+    dir = Elia.Shell.playwright_dir()
+    package = Path.join([dir, "node_modules", "playwright"])
+
+    if File.dir?(package) do
+      # What the driver starts is reachable inside the jail, at the same
+      # absolute path it was told to use (ISOL-3).
+      assert {:ok, output, 0} = jailed("ls #{package}/cli.js")
+      assert output =~ "cli.js"
+
+      assert {:ok, _output, status} = jailed("touch #{package}/probe")
+      assert status != 0, "the Playwright CLI must be read-only"
+
+      # Only the package is bound: the rest of ~/.local is absent, so nothing
+      # else the user keeps there is reachable (ISOL-5).
+      assert {:ok, output, 0} = jailed("ls -A $HOME/.local")
+      assert String.split(output, "\n", trim: true) == ["lib"]
+
+      assert {:ok, output, 0} = jailed("ls -A $HOME/.local/lib")
+      assert String.split(output, "\n", trim: true) == ["node_modules"]
+
+      for path <- ["$HOME/.local/bin", "$HOME/.local/share"] do
+        assert {:ok, _output, status} = jailed("ls -d #{path} 2>/dev/null")
+        assert status != 0, "#{path} must not be reachable inside the jail"
+      end
     end
   end
 

@@ -1,8 +1,9 @@
 defmodule EliaWeb.BrowserAssetsTest do
   @moduledoc """
   The check a browser run does before it starts the Playwright driver
-  (BROWSER-10): where the CLI is looked for, and the message that says what to
-  install when it isn't there, instead of the driver's own `:assets_dir` error.
+  (BROWSER-10): where the user-wide CLI is looked for, and the message that says
+  what to install when it isn't there, instead of the driver's own `:assets_dir`
+  error.
   """
 
   use ExUnit.Case, async: true
@@ -18,41 +19,54 @@ defmodule EliaWeb.BrowserAssetsTest do
     {:ok, dir: dir}
   end
 
-  # BROWSER-2: the workspace's own assets hold the pinned Playwright CLI.
-  test "looks for Playwright in the workspace's own assets", %{dir: dir} do
-    assert BrowserAssets.assets_dir(dir) == Path.join(dir, "assets")
-    refute BrowserAssets.installed?(BrowserAssets.assets_dir(dir))
+  # BROWSER-2: the CLI is a user-wide install, and the driver is pointed at the
+  # directory that holds it — the same one the jail binds read-only (ISOL-26).
+  test "the CLI is looked for where the config names it" do
+    assert BrowserAssets.dir() == Elia.Shell.playwright_dir()
+    assert Application.get_env(:phoenix_test, :playwright)[:assets_dir] == BrowserAssets.dir()
   end
 
-  # BROWSER-10: a fresh chat worktree has no assets/node_modules, and the
-  # message names the install there rather than the driver's config error.
-  test "names npm install in the workspace's assets when Playwright is missing", %{dir: dir} do
-    assets = BrowserAssets.assets_dir(dir)
-
-    error = assert_raise(RuntimeError, fn -> BrowserAssets.check!(assets) end)
-
-    assert error.message =~ "npm install"
-    assert error.message =~ assets
-    assert error.message =~ "gitignored"
-    assert error.message =~ "bin/preview"
+  # BROWSER-2: with no override the install is the npm user prefix's lib, which
+  # is what `npm install -g --prefix ~/.local` writes.
+  test "the default is the user prefix's lib" do
+    if System.get_env("ELIA_PLAYWRIGHT_DIR") == nil do
+      assert BrowserAssets.dir() == Path.expand("~/.local/lib")
+    end
   end
 
-  # BROWSER-10: where it is installed the check passes, so a browser run
-  # carries on to the driver.
+  test "a directory with no Playwright package is not installed", %{dir: dir} do
+    refute BrowserAssets.installed?(dir)
+  end
+
+  # BROWSER-10: a machine that never installed the CLI gets a message naming the
+  # user-wide install, not a workspace one.
+  test "names the user-wide install when Playwright is missing", %{dir: dir} do
+    error = assert_raise(RuntimeError, fn -> BrowserAssets.check!(dir) end)
+
+    assert error.message =~ "user-wide"
+    assert error.message =~ "npm install -g --prefix"
+    assert error.message =~ dir
+    assert error.message =~ "playwright@"
+  end
+
+  # BROWSER-10: where it is installed the check passes, so a browser run carries
+  # on to the driver.
   test "passes where the Playwright CLI is installed", %{dir: dir} do
-    assets = BrowserAssets.assets_dir(dir)
-    File.mkdir_p!(Path.join([assets, "node_modules", "playwright"]))
-    File.write!(Path.join([assets, "node_modules", "playwright", "package.json"]), "{}")
+    File.mkdir_p!(Path.join([dir, "node_modules", "playwright"]))
+    File.write!(Path.join([dir, "node_modules", "playwright", "package.json"]), "{}")
 
-    assert BrowserAssets.installed?(assets)
-    assert :ok = BrowserAssets.check!(assets)
+    assert BrowserAssets.installed?(dir)
+    assert :ok = BrowserAssets.check!(dir)
   end
 
-  # PREVIEW-14: the command `bin/preview` runs is the one the message names.
-  test "the install command installs into that assets directory", %{dir: dir} do
-    assets = BrowserAssets.assets_dir(dir)
+  # BROWSER-2: the command installs into that directory — the npm prefix is its
+  # parent, so `~/.local/lib` comes from `--prefix ~/.local` — and it is pinned
+  # to the version whose Chromium is cached.
+  test "the install command installs into the directory's parent prefix", %{dir: dir} do
+    assert ["npm", "install", "-g", "--prefix", prefix, package] =
+             BrowserAssets.install_command(dir)
 
-    assert ["npm", "install" | _] = BrowserAssets.install_command(assets)
-    assert Enum.member?(BrowserAssets.install_command(assets), assets)
+    assert prefix == Path.dirname(dir)
+    assert package == "playwright@1.64.1"
   end
 end

@@ -122,6 +122,19 @@ defmodule Elia.Shell do
   end
 
   @doc """
+  The directory the user-wide Playwright CLI is installed in: it holds
+  `node_modules/playwright` (BROWSER-2, ISOL-26).
+
+  `:elia, :playwright_dir` names it (`ELIA_PLAYWRIGHT_DIR` to override it), and
+  the browser driver is pointed at the same value, so the path a jailed run
+  resolves is the path the driver was told to use.
+  """
+  @spec playwright_dir() :: Path.t()
+  def playwright_dir do
+    Application.get_env(:elia, :playwright_dir, Path.expand("~/.local/lib"))
+  end
+
+  @doc """
   Runs `command` with the shell from `shell/1`.
 
   Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
@@ -278,12 +291,13 @@ defmodule Elia.Shell do
   # writable (ISOL-4). The browser the real-browser tests drive lives in the
   # user's cache, bound read-only so a jailed `mix test --only real_browser`
   # works; it holds browsers, not secrets, and nothing else in the cache is
-  # bound. Nothing else under the home directory is bound either, so a
-  # credential store anywhere else in it doesn't exist inside the jail (ISOL-5).
+  # bound. Nothing else under the home directory is bound either — only what
+  # these two and `playwright_args/0` name — so a credential store anywhere else
+  # in it doesn't exist inside the jail (ISOL-5).
   defp home_args do
     case System.get_env("HOME") do
       nil -> []
-      home -> ["--dir", home] ++ mix_args(home) ++ browser_args(home)
+      home -> ["--dir", home] ++ mix_args(home) ++ browser_args(home) ++ playwright_args()
     end
   end
 
@@ -293,6 +307,20 @@ defmodule Elia.Shell do
     cache = Path.join([home, ".cache", "ms-playwright"])
 
     if File.dir?(cache), do: ["--ro-bind", cache, cache], else: []
+  end
+
+  # The Playwright CLI is user-wide (BROWSER-2), so a jailed browser run has to
+  # reach it: the package the driver starts (`playwright/cli.js`), and
+  # `playwright-core` beside it for the install that hoisted it there rather
+  # than nesting it inside the package. Both are bound read-only — packages, not
+  # secrets — and nothing else of `~/.local` is bound, so `~/.local/bin`,
+  # `~/.local/share` and the rest stay absent (ISOL-5, ISOL-26).
+  defp playwright_args do
+    Enum.flat_map(["playwright", "playwright-core"], fn package ->
+      path = Path.join([playwright_dir(), "node_modules", package])
+
+      if File.dir?(path), do: ["--ro-bind", path, path], else: []
+    end)
   end
 
   defp profile(cd, opts) do

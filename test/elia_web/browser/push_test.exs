@@ -7,7 +7,7 @@ defmodule EliaWeb.PushBrowserTest do
   reason leaves in place (PUSH-23) and the chat page's visibility reporting
   (PUSH-14), none of which `Phoenix.LiveViewTest` runs.
 
-  A browser run needs built assets and `assets/node_modules` (BROWSER-2,
+  A browser run needs built assets and the user-wide Playwright CLI (BROWSER-2,
   BROWSER-6), and is excluded from a plain `mix test` (BROWSER-5):
 
       mix assets.build

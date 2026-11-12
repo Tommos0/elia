@@ -60,17 +60,21 @@ have something to render.
   case, tagged `:preview`, so `mix test`, `run_tests`, `mix precommit` and a
   deploy's suite never start a browser. Failures say what to fix instead of
   reading as assertions: a missing `assets/node_modules` is installed first
-  (PREVIEW-14) and, if that is not possible, names `npm install` (BROWSER-10,
-  BROWSER-2), and a missing asset says to build it (BROWSER-6).
-- **PREVIEW-14** `bin/preview` installs what the browser layer needs before it
-  builds the assets: when the workspace has no `assets/node_modules/playwright`
-  — which a fresh chat worktree never has, since `assets/node_modules` is
-  gitignored (BROWSER-2) — it runs the package install for *that* workspace's
-  own `assets/package.json` (`npm install`, Node ≥ 20), so a new chat previews
-  with no separate setup step. It installs only when it is missing and needs
-  the network to do so, like the asset toolchain a fresh worktree downloads
-  (PREVIEW-1); an install that fails ends the run with the command it ran and
-  the workspace it ran in.
+  (PREVIEW-14) and, if that is not possible, names `npm install` in that
+  workspace, a missing user-wide Playwright CLI is named by the browser layer's
+  own check before the driver starts (BROWSER-10, BROWSER-2), and a missing
+  asset says to build it (BROWSER-6).
+- **PREVIEW-14** `bin/preview` installs the workspace's own packages before it
+  builds the assets: when the workspace's `assets/node_modules` lacks what the
+  bundle imports — which a fresh chat worktree always does, since
+  `assets/node_modules` is gitignored (BROWSER-2) — it runs the package install
+  for *that* workspace's own `assets/package.json` (`npm install`, Node ≥ 20),
+  so a new chat previews with no separate setup step. Playwright is not part of
+  that install: the CLI is user-wide (BROWSER-2), so a preview neither
+  installs nor downloads one per worktree. It installs only when it is missing
+  and needs the network to do so, like the asset toolchain a fresh worktree
+  downloads (PREVIEW-1); an install that fails ends the run with the command it
+  ran and the workspace it ran in.
 
 ### The sample chats the preview seeds
 
@@ -173,8 +177,10 @@ ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 
 `tmp/preview/` is gitignored, so a preview is never committed and never reaches
 a deploy. `assets/node_modules` is gitignored too, so a fresh chat worktree has
-none: `bin/preview` installs it on the first run (PREVIEW-14), which needs the
-network and takes a second or two.
+none: `bin/preview` installs the workspace's own packages on the first run
+(PREVIEW-14), which needs the network and takes a second or two. The Playwright
+CLI is not among them — it is user-wide, installed once for the user
+(BROWSER-2) — so a preview in a new worktree installs no browser and no CLI.
 
 ## Out of scope
 

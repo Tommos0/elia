@@ -42,16 +42,18 @@ genuinely needs the rest of the machine (ISOL-16).
   outside.
 - **ISOL-4** The jail holds exactly what ISOL-13's profile lists, and, next to
   the workspace, only the read-only toolchain (`/usr`, `/lib`, `/lib64`, `/bin`,
-  `/sbin`, `/etc`), `$HOME/.mix` read-write (mix archives live there) and the
+  `/sbin`, `/etc`), `$HOME/.mix` read-write (mix archives live there), the
   browser cache the real-browser tests drive (`$HOME/.cache/ms-playwright`,
-  read-only, when it exists) — browsers, not secrets. For a
+  read-only, when it exists) — browsers, not secrets — and the user-wide
+  Playwright CLI (read-only, when it exists, ISOL-26). For a
   chat worktree it also holds the repository's git directory read-write, which
   commits need: the worktree's `.git` is a pointer file into
   `<live>/.git/worktrees/<id>`, whose common dir is `<live>/.git` (ISOL-3).
 - **ISOL-5** Nothing else is bound, so nothing else exists inside. In
   particular the settings database (CONF-1) and everything under `$HOME` but
-  `~/.mix` are never bound, so a credential store is absent whatever path it
-  has, and no command can reach it by a path of its own choosing.
+  what ISOL-4 lists — `~/.mix`, the browser cache and the Playwright CLI — are
+  never bound, so a credential store is absent whatever path it has, and no
+  command can reach it by a path of its own choosing.
 - **ISOL-6** A workspace's *parent* isn't bound either: a chat's worktree is
   bound on its own, so `.elia/sessions` and the other chats' worktrees aren't in
   the jail. When the workspace is the live tree itself (DEPLOY-14) the tree is
@@ -134,6 +136,17 @@ genuinely needs the rest of the machine (ISOL-16).
   ISOL-20) and not whether bubblewrap can build one (ISOL-12): a host that can't
   build the jail is still confined, and the chat's own setting is what turns the
   confinement off. A caller with no chat gets the default, which is on (ISOL-15).
+- **ISOL-26** The jail reaches the user-wide Playwright CLI, so a jailed
+  `mix test --only real_browser` and `bin/preview` work (BROWSER-2): the npm
+  global packages `$HOME/.local/lib/node_modules/playwright` and
+  `playwright-core` beside it — the CLI and the library it loads — are bound
+  read-only, each when it exists, at the same absolute path as outside
+  (ISOL-3). The directory that holds them (`$HOME/.local/lib`, from
+  `:elia, :playwright_dir`) is where the config points the driver too, so the
+  path a jailed run resolves is the path the driver was told to use. Nothing
+  else of `$HOME/.local` is bound: `~/.local/bin`, `~/.local/share` and the
+  rest stay absent, as ISOL-5 says. A host with no such install binds nothing
+  and a browser run fails with the message BROWSER-10 names.
 
 ### Profiles
 
@@ -290,7 +303,8 @@ what a jailed command can reach, the fallback when bubblewrap is missing),
 `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
 and its removal, ISOL-7, DEPLOY-10),
 `test/elia/command_isolation_test.exs`
-(the settings path and `$HOME` absent, the server pid not in `/proc`, the
+(the settings path and `$HOME` absent, the browser cache and the user-wide
+Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
 workspace writable, a command writing inside the shared `deps` and leaving it
 unchanged, a timeout still cleaning up), `test/elia/harness_test.exs`
 (`run_tests` jailed), `test/elia/deployment_test.exs` (the worktree
