@@ -10,14 +10,26 @@ defmodule Elia.LiveTree do
   The helpers below all take the directory and run `git` in it.
   """
 
-  @doc "Creates the live tree in a temp dir. `remove/1` when the test is done."
-  @spec create() :: binary()
-  def create do
+  @doc """
+  Creates the live tree in a temp dir. `remove/1` when the test is done.
+
+      tree = Elia.LiveTree.create()
+      on_exit(fn -> Elia.LiveTree.remove(tree) end)
+
+  `front_end: true` gives it the front end a deploy makes current (DEPLOY-19):
+  an `assets/package.json` to install and build, and the bundle the browser
+  loads (DEPLOY-24), so a test can exercise those steps without npm.
+
+  The helpers below all take the directory and run `git` in it.
+  """
+  @spec create(keyword()) :: binary()
+  def create(opts \\ []) do
     dir = Path.join(System.tmp_dir!(), "elia-live-#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(dir, "lib"))
     File.mkdir_p!(Path.join(dir, "test"))
 
     File.write!(Path.join(dir, ".gitignore"), "/_build/\n/deps/\n/.elia/\n")
+    if opts[:front_end], do: front_end(dir)
 
     write(dir, "mix.exs", """
     defmodule DeployTmp.MixProject do
@@ -109,5 +121,13 @@ defmodule Elia.LiveTree do
     full = Path.join(dir, path)
     File.mkdir_p!(Path.dirname(full))
     File.write!(full, content)
+  end
+
+  # The front end a deploy makes current (DEPLOY-19) and the bundle it checks
+  # for (DEPLOY-24), committed with the rest of the tree.
+  defp front_end(dir) do
+    write(dir, "assets/package.json", ~s({"name": "tmp", "private": true}\n))
+    write(dir, "priv/static/assets/js/app.js", "// the bundle a browser loads\n")
+    write(dir, "priv/static/assets/css/app.css", "body {}\n")
   end
 end
