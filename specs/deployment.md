@@ -15,6 +15,14 @@ tree a chat edits is never the tree that runs, an in-progress or broken edit
 cannot reach the running app at all — the isolation is the filesystem, not a
 gate.
 
+A deploy is not a black box and not a one-way door: it reports the steps it
+takes while it takes them and what it did when it is over (DEPLOY-21–DEPLOY-23,
+CONF-21, CONF-22), it refuses to load a tree whose front end it could not make
+current (DEPLOY-24), and the app can be sent back to a revision it has run
+before (DEPLOY-25, DEPLOY-26) — from the Settings page or, when a deploy has
+left that page's own UI unusable, from a plain HTML page that needs none of the
+tree's front end (`/recover`, RECOVER-10).
+
 ## Terms
 
 - **live tree** — the tree the server runs from, where Elia's data lives
@@ -150,6 +158,73 @@ gate.
   state a deploy leaves when it merges (DEPLOY-5) and never reaches the load is
   reported rather than looking up to date (CONF-19).
 
+### What a deploy is doing
+
+- **DEPLOY-21** A deploy takes a known sequence of steps and reports each one
+  as it takes it, in the order it takes them: merging the trunk into `live`
+  (DEPLOY-5) and fetching its dependencies there (DEPLOY-18), running the suite
+  in the live tree, installing the trunk's Node packages and building the front
+  end (DEPLOY-19), and the load (DEPLOY-6) or the restart (DEPLOY-7). Each step
+  reports when it starts and
+  when it ends, how long it took and whether it succeeded; a step that is never
+  reached is never reported, so where a deploy stopped is what its report
+  shows. A deploy that dies, or that merges and never reaches the load
+  (DEPLOY-15), therefore leaves a record that says so rather than one that
+  looks finished. A rollback (DEPLOY-26) reports its steps the same way.
+- **DEPLOY-22** A deploy's steps belong to the runner (DEPLOY-16), not to the
+  page that asked for it: `Elia.Deploy.Runner` holds the step in flight and the
+  steps that have finished, so a page that mounts while a deploy runs — or is
+  reloaded by the deploy's own asset change (DEPLOY-12, HOT-9) — shows where
+  the deploy is rather than only that something runs.
+- **DEPLOY-23** What a deploy is doing is written down as it goes: the runner
+  records the operation in flight — its mode, when it started and the step it
+  has reached — and the last one's steps and outcome in the live tree's data
+  dir (DEPLOY-2), so the record outlives the process that made it. A deploy
+  that restarts the server (DEPLOY-7) therefore still reports what it did to
+  the page that comes up afterwards: the record is written before the server
+  stops, the way the loaded revision is (DEPLOY-17). `Elia.Deploy.last_deploy/1`
+  reads it back, and it is what the Settings section (CONF-22) and the recovery
+  page (RECOVER-11) show; `Elia.Deploy.status/1` goes on answering from git and
+  the loaded revision as before (CONF-19).
+
+### Losing nothing to a bad deploy
+
+- **DEPLOY-24** A deploy never loads a tree whose front end it could not make
+  current: after the build (DEPLOY-19) it checks that the bundle the browser
+  loads is there — `priv/static/assets/js/app.js` and
+  `priv/static/assets/css/app.css`, the two entry points the endpoint serves —
+  and a bundle that is missing or empty fails the deploy the way a failing
+  suite does (DEPLOY-5): `live` is rolled back to where it was, nothing is
+  loaded, and the error names the file. A build that exits 0 having written
+  nothing — a wiped `priv/static`, a misconfigured `esbuild` or `tailwind` — is
+  therefore a failed deploy rather than a running app with no stylesheet or no
+  hook. A tree with no front end (DEPLOY-19) has nothing to check.
+- **DEPLOY-25** The revisions the running app has loaded are kept, not only the
+  newest (DEPLOY-17): the record (DEPLOY-23) keeps the last few revisions the
+  app has run, newest first, each with when it was loaded and by what — a
+  deploy, a rollback or a restart. `Elia.Deploy.loaded_revisions/1` reads them
+  back and `Elia.Deploy.status/1` goes on naming the newest as the revision the
+  app is running. Keeping a few rather than one means a revision the app has
+  run and no longer is can still be named and gone back to.
+- **DEPLOY-26** Going back is a load, not a merge:
+  `Elia.Deploy.rollback(sha, mode, root)` moves `live` to a kept revision — a
+  `git reset --hard`, since a deploy only ever fast-forwards forward
+  (DEPLOY-5) — makes that revision's front end current (DEPLOY-19, checked as
+  DEPLOY-24 checks it) and loads it the way a deploy does (hot reload, DEPLOY-6,
+  or restart, DEPLOY-7), recording it as loaded (DEPLOY-17, DEPLOY-25). It runs
+  in the runner, one operation at a time (DEPLOY-15, DEPLOY-16), reports its
+  steps (DEPLOY-21) and records what it did (DEPLOY-23). It is refused, changing
+  nothing, for a revision that is not one the app has run (DEPLOY-25), for the
+  revision the app is running now — there is nothing to go back to — or for a
+  live tree with uncommitted changes (DEPLOY-5); a rollback that fails after it
+  has moved `live` (a front end it cannot build, DEPLOY-24) puts `live` back
+  where it was and loads nothing, so the tree it leaves is the one the app is
+  running. Afterwards `live` is behind the
+  trunk, so the section offers a deploy again (CONF-19), and what the app runs
+  is what the rollback loaded (DEPLOY-17). A hot reload back to an older
+  revision loads the modules that revision has and cannot unload one it does not
+  (HOT-10): the message says so, and a restart is the clean way back.
+
 ### Sub-tasks and lifecycle
 
 - **DEPLOY-9** A sub-task in Elia's own project works in its own worktree,
@@ -172,34 +247,45 @@ gate.
 ## Specs to amend
 
 HOT (hot reload is a deploy mode, with no tool), CONF (the Settings page's
-deployment section), RESTART (the restart control), PROJ (per-chat worktrees
+deployment section: the steps a deploy reports, the deploy that outlives its
+result, and going back to a revision the app has run, CONF-21–CONF-23),
+RESTART (the restart control), PROJ (per-chat worktrees
 for Elia's own project; the live tree), SKILL and APPR (the
-`self-modification` skill's tools), CKPT and RECOVER (both retired), SUBTASK
+`self-modification` skill's tools), CKPT and RECOVER (both retired — RECOVER is
+revived for a different job, the page that reaches the app when a deploy has
+broken its UI: RECOVER-10), SUBTASK
 (the sub-task's own worktree), ISOL (the deploy's own fetch and suite run,
 DEPLOY-18, ISOL-14).
 
 ## Implementation
 
 `Elia.Deploy` (worktrees, the trunk and `live`, the deploy, hot reload and
-restart, `deployable/1`, `status/1`, the inert request reloader, and the
-front-end step a deploy runs before it loads — `npm install` in the live tree's
-`assets/` and `mix assets.build`, DEPLOY-19 — with the seam its tests replace
-the way `load:` and `stop:` are),
-`Elia.Deploy.Runner` (the deploy's own process and its result, DEPLOY-15 to
-DEPLOY-17), `Elia.Application` (starts it),
+restart, `deployable/1`, `status/1`, the inert request reloader, the steps a
+deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
+`last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), the front-end step
+a deploy runs before it loads — `npm install` in the live tree's `assets/` and
+`mix assets.build`, DEPLOY-19 — with the check that the bundle is there
+(DEPLOY-24) and the seam its tests replace the way `load:` and `stop:` are, and
+`rollback/3`, DEPLOY-26),
+`Elia.Deploy.Runner` (the deploy's own process, its step and its result,
+DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23),
+`Elia.Application` (starts it),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop`, `Elia.Harness` (running the tests in that
 workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}`,
 `Elia.Tasks` (the sub-task's worktree, the repository it runs git in),
 `Elia.Store.delete/1` (removes the worktree), `EliaWeb.SettingsLive` (the
-deployment section), `EliaWeb.Endpoint` (inert request reloader), `bin/serve`.
+deployment section: the steps, the record, going back), `EliaWeb.Endpoint`
+(inert request reloader, the recovery plug, RECOVER-10), `bin/serve`.
 
 ## Tests
 
 `test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, the front
-end it builds before it loads, hot reload, restart, the runner and the loaded
-revision, DEPLOY-1 to DEPLOY-19),
+end it builds before it loads and the bundle it checks for, the steps it
+reports and the record it writes, going back to a kept revision, hot reload,
+restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-26),
 `test/elia_web/live/settings_live_test.exs` (the deployment section, including
-a page that mounts mid-deploy and after one), `test/support/live_tree.ex` (a
-throwaway live tree).
+a page that mounts mid-deploy, a page that comes back after a restart and after
+one), `test/elia_web/recovery_test.exs` (the recovery page, RECOVER-10 to
+RECOVER-15), `test/support/live_tree.ex` (a throwaway live tree).

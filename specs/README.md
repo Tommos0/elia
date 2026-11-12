@@ -76,7 +76,7 @@ deleting it.
 | [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic, OpenRouter and a local llama.cpp server backends |
 | [llama.cpp local provider](llamacpp-provider.md) | `LOCAL` | A local `llama-server` as a third provider: no API key, and Elia starts and stops it from a `.gguf` |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
-| [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks |
+| [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks, and the Deployment section: what a deploy is doing, what it did, and going back |
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
@@ -93,10 +93,10 @@ deleting it.
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons and service worker so the app installs on a phone |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
-| [Recovery](recovery.md) | `RECOVER` | Retired: per-chat worktrees and the deploy gate replaced `/recover` |
+| [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat; `list_tasks`/`await_task` report its status and result; `finish_task` returns a structured result |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
-| [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart |
+| [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |
