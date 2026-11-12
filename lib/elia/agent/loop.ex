@@ -19,14 +19,18 @@ defmodule Elia.Agent.Loop do
       after the ladder elided more of the cold prefix (COMPACT-29)
     * `{:loop_retry, info}` - the step's model call failed transiently and is
       being tried again after a wait (RETRY-1, RETRY-3)
+    * `{:loop_step_timing, record}` - the measurements of a finished step, for
+      the session to record beside the chat (TIME-1, TIME-2)
 
   The loop is given the chat's **full** history and keeps it growing as the turn
   runs; the messages it *sends* are the request view of that history under the
   chat's compaction state, derived again at every step (COMPACT-2, COMPACT-5,
   COMPACT-29), so the view can shrink while the history does not.
 
-  Options: `:session_id`, `:turn_id`, `:skills` (a fixed skill list, or a
-  function returning one, instead of the project's), `:max_steps` (default 100),
+  Options: `:session_id`, `:turn_id`, `:turn_started_at` (the chat's turn as it
+  started, STORE-30: both go into a step's timing record, TIME-2), `:skills` (a
+  fixed skill list, or a function returning one, instead of the project's),
+  `:max_steps` (default 100),
   `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
   LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:token_budget` (a
   token budget for the turn, LOOP-22, LIMIT-12), `:step_retry` (the waits before
@@ -62,6 +66,9 @@ defmodule Elia.Agent.Loop do
 
     ctx = %{
       session: session,
+      # TIME-2: what identifies the turn a step's record belongs to.
+      turn_id: opts[:turn_id],
+      turn_started_at: opts[:turn_started_at],
       skills: Keyword.get(opts, :skills),
       max_steps: Keyword.get(opts, :max_steps, @max_steps),
       # LOOP-19, LOOP-20, LOOP-22: whether a limit pauses the turn, the
@@ -185,30 +192,46 @@ defmodule Elia.Agent.Loop do
         messages: request_messages(ctx, history)
       })
 
-    ask(ctx, request, history, step, tools, 0)
+    ask(ctx, request, history, step, tools, 0, 0)
   end
 
-  # RETRY-1, LOOP-23: the step's model call. A failure the provider marked
-  # transient (RETRY-6) is asked again after a wait, until the turn's retry
-  # schedule is spent; anything else ends the turn with the error. Nothing from
-  # a failed attempt is kept (RETRY-2): the request is the same one, built from
-  # the history, and the step count doesn't move.
-  defp ask(ctx, request, history, step, tools, retries) do
+  # RETRY-1, LOOP-23, TIME-1 to TIME-3: the step's model call, measured. A
+  # failure the provider marked transient (RETRY-6) is asked again after a wait,
+  # until the turn's retry schedule is spent; anything else ends the turn with
+  # the error. Nothing from a failed attempt is kept (RETRY-2): the request is
+  # the same one, built from the history, and the step count doesn't move. Every
+  # request is recorded — `retries` is the attempt's number, `retry_wait_ms` the
+  # wait that preceded it (0 for the first).
+  defp ask(ctx, request, history, step, tools, retries, retry_wait_ms) do
+    attempt = retries + 1
+    started_at = DateTime.utc_now()
+    started_ms = now_ms()
+
     case Elia.LLM.stream(request, &send(ctx.session, {:loop_event, &1})) do
       {:error, %Elia.LLM.Error{transient: true} = error} ->
+        elapsed = now_ms() - started_ms
+
         case Enum.at(ctx.retry_delays, retries) do
-          nil -> {:error, exhausted(error, retries)}
-          delay -> retry(ctx, request, history, step, tools, retries, delay, error)
+          nil ->
+            record(ctx, step, attempt, :error, started_at, retry_wait_ms, elapsed)
+            {:error, exhausted(error, retries)}
+
+          delay ->
+            record(ctx, step, attempt, :error, started_at, retry_wait_ms, elapsed)
+            retry(ctx, request, history, step, tools, retries, delay, error)
         end
 
       {:error, reason} ->
+        record(ctx, step, attempt, :error, started_at, retry_wait_ms, now_ms() - started_ms)
         {:error, to_string(reason)}
 
       # A refusal can cut a tool call off mid-input; never run that turn's tools.
       {:ok, %{stop_reason: :refusal}} ->
+        record(ctx, step, attempt, :refused, started_at, retry_wait_ms, now_ms() - started_ms)
         :refused
 
       {:ok, %{message: message, stop_reason: stop_reason, usage: usage}} ->
+        model_ms = now_ms() - started_ms
         # The provider's real input count for this request; the session keeps
         # the latest so the context indicator can show it (CTX-6).
         send(ctx.session, {:loop_usage, usage})
@@ -220,20 +243,35 @@ defmodule Elia.Agent.Loop do
 
         case Message.tool_calls(message) do
           [] when stop_reason == :max_tokens ->
+            record(ctx, step, attempt, :ok, started_at, retry_wait_ms, model_ms, usage)
             {:error, "The response hit the output token limit"}
 
           [] ->
+            record(ctx, step, attempt, :ok, started_at, retry_wait_ms, model_ms, usage)
             :done
 
           calls ->
-            {results, waited} = run_tools(ctx, tools, calls, stop_reason)
+            {results, waits} = run_tools(ctx, tools, calls, stop_reason)
             tool_message = %Message{role: :tool, content: results}
 
             append(ctx, tool_message)
+
+            record(
+              ctx,
+              step,
+              attempt,
+              :ok,
+              started_at,
+              retry_wait_ms,
+              model_ms,
+              usage,
+              waits
+            )
+
             # LOOP-20: time spent waiting for the user's decisions doesn't count
             # against the wall-clock budget.
             step(
-              %{ctx | approved_ms: ctx.approved_ms + waited},
+              %{ctx | approved_ms: ctx.approved_ms + waits.approval_ms + waits.answer_ms},
               history ++ [tool_message],
               step + 1
             )
@@ -241,9 +279,64 @@ defmodule Elia.Agent.Loop do
     end
   end
 
+  # TIME-1 to TIME-5: the step's record — the identity of what it measured, its
+  # wall-clock stamps, its monotonic durations (TIME-3), the calls that ran
+  # (TIME-4) and the tokens the provider reported (TIME-5). `waits` is
+  # `run_tools/4`'s report of a step with tools; a step without them has none.
+  defp record(
+         ctx,
+         step,
+         attempt,
+         outcome,
+         started_at,
+         retry_wait_ms,
+         model_ms,
+         usage \\ nil,
+         waits \\ nil
+       ) do
+    waits = waits || %{tool_ms: 0, approval_ms: 0, answer_ms: 0, calls: []}
+
+    entry = %{
+      turn: ctx.turn_id,
+      turn_started_at: stamp(ctx.turn_started_at),
+      step: step,
+      attempt: attempt,
+      outcome: outcome,
+      started_at: DateTime.to_iso8601(started_at),
+      finished_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      model_ms: model_ms,
+      tool_ms: waits.tool_ms,
+      approval_wait_ms: waits.approval_ms,
+      answer_wait_ms: waits.answer_ms,
+      retry_wait_ms: retry_wait_ms,
+      tools: waits.calls
+    }
+
+    send(ctx.session, {:loop_step_timing, Map.merge(entry, usage_counts(usage))})
+  end
+
+  defp stamp(%DateTime{} = at), do: DateTime.to_iso8601(at)
+  defp stamp(other), do: other
+
+  # TIME-5, CTX-6: input and output as the context indicator counts them, so the
+  # same field means the same thing on any provider. A usage report that carries
+  # neither records no counts (LOOP-22).
+  defp usage_counts(usage) do
+    counts =
+      %{}
+      |> put_count(:input_tokens, Context.provider_input_tokens(usage))
+      |> put_count(:output_tokens, Context.provider_output_tokens(usage))
+
+    if map_size(counts) == 0, do: %{}, else: counts
+  end
+
+  defp put_count(counts, _key, count) when not is_integer(count), do: counts
+  defp put_count(counts, key, count), do: Map.put(counts, key, count)
+
   # RETRY-3: report the wait, then wait it and try the same step again. The
   # wait doesn't count against the wall-clock budget (RETRY-4, LOOP-20): the
-  # loop wasn't working, and the schedule is what bounds the waiting.
+  # loop wasn't working, and the schedule is what bounds the waiting. The next
+  # attempt records the wait it followed (TIME-3).
   defp retry(ctx, request, history, step, tools, retries, delay, error) do
     send(ctx.session, {:loop_retry, retry_info(ctx, retries, delay, error)})
     if delay > 0, do: Process.sleep(delay)
@@ -254,7 +347,8 @@ defmodule Elia.Agent.Loop do
       history,
       step,
       tools,
-      retries + 1
+      retries + 1,
+      delay
     )
   end
 
@@ -325,9 +419,10 @@ defmodule Elia.Agent.Loop do
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
 
-  # LOOP-10, LOOP-20, LOOP-21: returns the step's tool results and how long the
-  # loop waited for the user — for their approval decisions and for an answer to
-  # a question — which doesn't count against the wall-clock budget.
+  # LOOP-10, LOOP-20, LOOP-21, TIME-3: returns the step's tool results and what
+  # the step cost — how long the loop waited for the user (their approval
+  # decisions and an answer to a question, which don't count against the
+  # wall-clock budget) and how long running the tools took.
   defp run_tools(ctx, tools, calls, stop_reason) do
     checked = Enum.map(calls, &{&1, check(ctx, tools, &1, stop_reason)})
 
@@ -345,27 +440,57 @@ defmodule Elia.Agent.Loop do
 
     {answers, asked_ms} = await_input(ctx, asking)
 
-    results =
+    # TIME-3: the tools themselves, apart from the waiting above.
+    started_ms = now_ms()
+
+    ran =
       checked
       |> Task.async_stream(
-        fn
-          {call, {:ok, tool, _approval}} ->
-            if Map.get(decisions, call.id, :approve) == :approve do
-              execute(ctx, call, tool, Map.get(answers, call.id))
-            else
-              Message.tool_result(call.id, "The user denied this tool call.", true)
-            end
-
-          {call, {:error, reason}} ->
-            Message.tool_result(call.id, reason, true)
-        end,
+        fn {call, checked_call} -> run_checked(ctx, call, checked_call, decisions, answers) end,
         timeout: :infinity,
         ordered: true
       )
-      |> Enum.map(fn {:ok, result} -> result end)
+      |> Enum.map(fn {:ok, ran} -> ran end)
 
-    {results, approved_ms + asked_ms}
+    waits = %{
+      tool_ms: now_ms() - started_ms,
+      approval_ms: approved_ms,
+      answer_ms: asked_ms,
+      calls: for(%{timing: %{} = timing} <- ran, do: timing)
+    }
+
+    {Enum.map(ran, & &1.result), waits}
   end
+
+  # LOOP-10, TIME-4: one of the step's calls. A call that runs is timed; a call
+  # the user denied, or one that never got past its check (LOOP-4, LOOP-5,
+  # LOOP-7, LOOP-8, APPR-6), records no duration.
+  defp run_checked(ctx, call, {:ok, tool, _approval}, decisions, answers) do
+    if Map.get(decisions, call.id, :approve) == :approve do
+      started_ms = now_ms()
+
+      result = execute(ctx, call, tool, Map.get(answers, call.id))
+
+      %{
+        result: result,
+        timing: %{name: call.name, ms: now_ms() - started_ms, failed: failed?(result)}
+      }
+    else
+      %{
+        result: Message.tool_result(call.id, "The user denied this tool call.", true),
+        timing: nil
+      }
+    end
+  end
+
+  defp run_checked(_ctx, call, {:error, reason}, _decisions, _answers) do
+    %{result: Message.tool_result(call.id, reason, true), timing: nil}
+  end
+
+  # TIME-4: a call failed when its result is an error — what LOOP-12 answers a
+  # crash with, and what a tool that returns `{:error, output}` gives.
+  defp failed?(%{is_error: is_error}), do: is_error == true
+  defp failed?(_result), do: false
 
   defp check(_ctx, _tools, _call, :max_tokens) do
     {:error, "Not run: your output hit the token limit, so this tool call may be incomplete."}

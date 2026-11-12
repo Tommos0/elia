@@ -415,12 +415,14 @@ defmodule Elia.Store do
   Deletes a saved chat. A chat's worktree goes with it — removed, and its branch
   pruned (DEPLOY-10) — and a chat that has no saved file yet is deleted too
   (STORE-23). Only that chat goes: a parent's task chats, and a task chat's
-  parent, are left saved (UI-66).
+  parent, are left saved (UI-66). Its step records go too, so no `.timing` file
+  outlives its chat (TIME-10).
   """
   @spec delete(binary()) :: :ok | {:error, term()}
   def delete(id) do
     if valid_id?(id) do
       Elia.Deploy.remove_worktree(id)
+      Elia.StepTiming.delete(id)
 
       case File.rm(path(id)) do
         :ok -> :ok

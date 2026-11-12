@@ -280,6 +280,10 @@ defmodule Elia.Agent.Session do
         # ISOL-15: the tool context carries this chat's jail setting, so the
         # shell tools and `run_tests` follow it.
         jail: Map.get(state, :jail, true),
+        # TIME-2: the turn's start goes into every step's timing record, so the
+        # record needs nothing from the chat's saved term, whose turn entry is
+        # taken off when the turn ends (STORE-30, INTR-1).
+        turn_started_at: state.turn.started_at,
         # COMPACT-2, COMPACT-29: the loop is given the full history and derives
         # the request view from it at every step, with the trigger, target and
         # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
@@ -578,6 +582,15 @@ defmodule Elia.Agent.Session do
 
   def handle_info({:loop_tool_status, call_id, status}, state) do
     {:noreply, put_tool_status(state, call_id, status)}
+  end
+
+  # TIME-1, TIME-6, TIME-7: a step's measurements, written beside the chat as
+  # the step finishes. Nothing is broadcast or saved: the transcript, the chat
+  # and the page are unaffected, and a record that can't be written is dropped
+  # (TIME-8, `Elia.StepTiming.record/2`).
+  def handle_info({:loop_step_timing, entry}, state) when is_map(entry) do
+    Elia.StepTiming.record(state.id, entry)
+    {:noreply, state}
   end
 
   # SESS-39, RETRY-3: a failed model call is being retried. Nothing is
