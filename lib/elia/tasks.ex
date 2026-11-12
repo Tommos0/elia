@@ -121,19 +121,29 @@ defmodule Elia.Tasks do
   def release(child_id), do: call({:release, child_id})
 
   @doc """
-  What the entry holds about a child: its `finish` record (SUBTASK-3) and
-  whether it was `cancelled` (SUBTASK-16), or `nil` when it doesn't hold an
-  entry.
+  Consumes the mark a stop leaves on a running child (SUBTASK-16): `true` once
+  per turn of this child that the user stopped, `false` when the child holds no
+  entry or its last turn wasn't stopped. A stopped turn ends the turn, not the
+  task, so the child's watcher (SUBTASK-28) asks this before it takes an idle
+  session for the child's end.
   """
-  @spec take_state(binary()) :: %{finish: map() | nil, cancelled: boolean()} | nil
-  def take_state(child_id), do: call({:take_state, child_id})
+  @spec take_stop(binary()) :: boolean()
+  def take_stop(child_id), do: call({:take_stop, child_id})
+
+  @doc """
+  What the child reported with `finish_task` (SUBTASK-3), or `nil` when it
+  hasn't called it or holds no entry.
+  """
+  @spec finish_record(binary()) :: map() | nil
+  def finish_record(child_id), do: call({:finish_record, child_id})
 
   @doc """
   Called by a session when its running turn is stopped (SESS-22). If it is a
-  running child, that child is marked cancelled, so it ends as `"cancelled"`
-  (SUBTASK-16). If it is the parent of running children, they are all marked
-  cancelled and their turns are stopped too (SUBTASK-17). Does nothing when the
-  chat isn't involved in a sub-task.
+  running child, the stop is recorded as the stop of that turn, so its task goes
+  on running rather than ending as its result (SUBTASK-16). If it is the parent
+  of running children, their turns are stopped too (SUBTASK-17), and each is
+  recorded the same way by its own session. Does nothing when the chat isn't
+  involved in a sub-task.
   """
   @spec note_stop(binary()) :: :ok
   def note_stop(session_id) do
@@ -472,8 +482,9 @@ defmodule Elia.Tasks do
   # parent told.
   defp finish(child_id, meta, task, monitor) do
     outcome = await(child_id, monitor, nil)
-    state = take_state(child_id) || %{finish: nil, cancelled: false}
-    result = build_result(child_id, meta.start_commit, outcome, state, meta.root)
+
+    result =
+      build_result(child_id, meta.start_commit, outcome, finish_record(child_id), meta.root)
 
     update_saved(child_id, task, %{status: result["status"], result: result})
     release(child_id)
@@ -485,10 +496,15 @@ defmodule Elia.Tasks do
   # child paused at a limit (SUBTASK-24) keeps this waiting, with no deadline of
   # its own; the child's own loop enforces the step limit and the time budget
   # (LOOP-3, LOOP-20).
+  #
+  # SUBTASK-16: a turn the user stopped is not the child's end — the task goes
+  # on, and the user can send the child another turn — so the stop is consumed
+  # here and the wait goes on, carrying nothing over from that turn, not even a
+  # failure it had reported before it was stopped.
   defp await(child_id, monitor, error) do
     receive do
       {:agent, ^child_id, {:status, :idle}} ->
-        {:ended, error}
+        if take_stop(child_id), do: await(child_id, monitor, nil), else: {:ended, error}
 
       {:agent, ^child_id, {:error, text}} ->
         await(child_id, monitor, text)
@@ -501,19 +517,14 @@ defmodule Elia.Tasks do
     end
   end
 
-  # `state` is what the registry holds about the child: `finish` (SUBTASK-3) and
-  # `cancelled` (SUBTASK-16). `root` is the child's own workspace: its worktree
-  # in Elia's own project (SUBTASK-23), the parent's workspace otherwise.
-  defp build_result(child_id, start_commit, outcome, state, root) do
-    finish = state.finish
-
+  # `finish` is what the child reported with `finish_task` (SUBTASK-3), or nil.
+  # `root` is the child's own workspace: its worktree in Elia's own project
+  # (SUBTASK-23), the parent's workspace otherwise.
+  defp build_result(child_id, start_commit, outcome, finish, root) do
     {status, reason, summary} =
       case outcome do
         {:crashed, text} ->
           {"failed", "crashed", text}
-
-        {:ended, _error} when state.cancelled ->
-          {"cancelled", "cancelled", "The sub-task was stopped by the user."}
 
         {:ended, error} when is_binary(error) ->
           reason = if String.starts_with?(error, "Stopped after "), do: "budget", else: "error"
@@ -740,17 +751,16 @@ defmodule Elia.Tasks do
     result =
       case Store.load_task(child_id) do
         %{status: "running"} = task ->
-          outcome =
-            if entry.cancelled,
-              do: {:ended, nil},
-              else: {:crashed, "The process waiting for this sub-task stopped."}
+          # SUBTASK-19: the watcher the child's end belonged to is gone, so the
+          # task ends here as crashed, whatever the child's last turn was.
+          outcome = {:crashed, "The process waiting for this sub-task stopped."}
 
           result =
             build_result(
               child_id,
               task[:start_commit] || entry[:start_commit],
               outcome,
-              Map.take(entry, [:finish, :cancelled]),
+              entry[:finish],
               root
             )
 
@@ -864,7 +874,7 @@ defmodule Elia.Tasks do
           call_id: meta[:call_id],
           start_commit: meta[:start_commit],
           finish: nil,
-          cancelled: false
+          stopped: false
         }
 
         {:reply, :ok, put_entry(state, entry)}
@@ -888,20 +898,36 @@ defmodule Elia.Tasks do
   def handle_call({:note_stop, id}, _from, state) do
     case state.active do
       %{^id => entry} ->
-        # SUBTASK-16: this chat's own turn is being stopped, so it is cancelled.
-        {:reply, :ok, put_entry(state, %{entry | cancelled: true})}
+        # SUBTASK-16: this chat's own turn is being stopped. A stop ends that
+        # turn and not the child's task, so it is recorded for the child's
+        # watcher, which consumes it when the session goes idle (SUBTASK-28).
+        {:reply, :ok, put_entry(state, %{entry | stopped: true})}
 
       _ ->
-        # SUBTASK-17: stop every child of this chat, so each is cancelled too.
+        # SUBTASK-17: stop the turn of every child of this chat that is running
+        # one. Nothing is marked here: each child's own session records its own
+        # stop when it stops (SUBTASK-16), and a child that isn't running a turn
+        # has no turn to stop.
         children = for {child_id, entry} <- state.active, entry.parent_id == id, do: child_id
-        active = Map.new(state.active, &cancel(&1, children))
-        {:reply, {:stop_children, children}, %{state | active: active}}
+        {:reply, {:stop_children, children}, state}
     end
   end
 
-  def handle_call({:take_state, child_id}, _from, state) do
+  # SUBTASK-16: the child's watcher consumes this when the session goes idle, so
+  # one stopped turn doesn't end the task.
+  def handle_call({:take_stop, child_id}, _from, state) do
     case state.active do
-      %{^child_id => entry} -> {:reply, Map.take(entry, [:finish, :cancelled]), state}
+      %{^child_id => entry} ->
+        {:reply, entry.stopped, put_entry(state, %{entry | stopped: false})}
+
+      _ ->
+        {:reply, false, state}
+    end
+  end
+
+  def handle_call({:finish_record, child_id}, _from, state) do
+    case state.active do
+      %{^child_id => entry} -> {:reply, entry.finish, state}
       _ -> {:reply, nil, state}
     end
   end
@@ -928,10 +954,6 @@ defmodule Elia.Tasks do
     Enum.find_value(state.active, fn {child_id, entry} ->
       if entry.root == root, do: child_id
     end)
-  end
-
-  defp cancel({child_id, entry}, children) do
-    if child_id in children, do: {child_id, %{entry | cancelled: true}}, else: {child_id, entry}
   end
 
   defp find_by_ref(state, ref) do

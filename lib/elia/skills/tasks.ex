@@ -32,16 +32,19 @@ defmodule Elia.Skills.Tasks do
     The sub-task runs on its own, so carry on with your own work: `list_tasks` \
     shows the sub-tasks this chat started and how each is doing, and \
     `await_task` with a `task_id` waits for one to finish and returns its \
-    result (and returns it at once for one that has already finished). Waiting \
-    for two sub-tasks in the order that suits means one `await_task` per spawn. \
-    Sub-tasks that share a workspace (outside Elia's own project, where they \
-    have no worktree) run one at a time.
+    result (and returns it at once for one that has already finished). The user \
+    can stop a sub-task's turn from its own chat: that ends that turn, not the \
+    task, so the sub-task stays running and the wait goes on until a later turn \
+    of it ends. Waiting for two sub-tasks in the order that suits means one \
+    `await_task` per spawn. Sub-tasks that share a workspace (outside Elia's \
+    own project, where they have no worktree) run one at a time.
 
-    The result is JSON: `status` (`done`, `blocked`, `failed`, `unfinished` or \
-    `cancelled`), `reason` (`budget`, `cancelled`, `crashed`, `error` or null), \
-    `summary`, `task_id`, `commit` (new HEAD, or null), `files` (changed paths) \
-    and `questions`. Check it before relying on it, for example by reading the \
-    changed files, and tell the user what happened.
+    The result is JSON: `status` (`done`, `blocked`, `failed` or `unfinished`), \
+    `reason` (`budget`, `cancelled`, `crashed`, `error` or null — `cancelled` \
+    only on a task saved before an older version of Elia stopped meaning the \
+    same thing), `summary`, `task_id`, `commit` (new HEAD, or null), `files` \
+    (changed paths) and `questions`. Check it before relying on it, for example \
+    by reading the changed files, and tell the user what happened.
 
     A sub-task in Elia's own project works in its own worktree, so its \
     committed work stays on branch `chat/<task_id>` and is NOT merged into this \

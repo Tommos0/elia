@@ -61,8 +61,8 @@ and saved, so the chat says why it stopped whenever it is opened again.
   parent reads a child's failure from it (SUBTASK-13), while the message is what
   the page renders (UI-82). A stop the user asked for is not reported as an
   error: SESS-8's "Stopped." notice is gone and its message is the record, and a
-  parent whose child was cancelled still learns that its own way (SUBTASK-16,
-  SESS-22).
+  parent waiting on a child whose turn the user stopped goes on waiting
+  (SUBTASK-16, SUBTASK-31, SESS-22).
 
 - **STOP-5** Only a stop is written: a tool call's own error is the tool result
   it is (LOOP-6, LOOP-7), the rollback before `:refused` is the reset it is

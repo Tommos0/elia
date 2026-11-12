@@ -122,9 +122,10 @@ progress so any number of UIs can follow it.
   restarted while this tool was running.") and the history is saved, as in
   SESS-12, so the chat can go on (SUBTASK-20).
 - **SESS-22** Stopping a running turn (SESS-8) first tells `Elia.Tasks`
-  (SUBTASK-16, SUBTASK-17): if this chat is a running sub-task it is marked
-  cancelled, and if it is the parent of running sub-tasks, each of their turns
-  is stopped too.
+  (SUBTASK-16, SUBTASK-17): if this chat is a running sub-task, the stop is
+  recorded as the stop of that turn, so its task goes on running (SUBTASK-16),
+  and if it is the parent of running sub-tasks, each of their turns is stopped
+  too, with the same result (they stop, their tasks go on).
 
 - **SESS-23** A turn runs in the chat's project: `send_message` puts the chat's
   `project` and its folder as the `workspace` into the loop options, overriding
@@ -169,7 +170,7 @@ progress so any number of UIs can follow it.
   (SESS-19), so a chat list can show which chats are working on first render.
 
 - **SESS-29** `Elia.Agent.delete/1` deletes a chat: it stops the chat's turn if
-  one is running (SESS-8, which also cancels or stops its sub-tasks, SESS-22),
+  one is running (SESS-8, which also stops its sub-tasks' turns, SESS-22),
   terminates its session process so no stale session can later save it again,
   then removes the saved chat (STORE-23). A chat with no session is simply
   removed. It returns `:ok`, and `{:error, :invalid_id}` for an invalid id

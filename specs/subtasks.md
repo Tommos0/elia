@@ -1,9 +1,9 @@
 # Sub-tasks
 
 Status: Implemented (phases 1 to 3 of [the plan](plans/subagents.md): core,
-task cards, a nested chat list and a task header in the chat UI, cancel, budget
-and crash recovery; the reset tool is retired, SUBTASK-22. Phase 4: concurrent
-sub-tasks)
+task cards, a nested chat list and a task header in the chat UI, stopped turns,
+budget and crash recovery; the reset tool is retired, SUBTASK-22. Phase 4:
+concurrent sub-tasks)
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context and get back a short structured result. The child is an
@@ -78,12 +78,13 @@ its own workspace; children that would share one workspace are serialized
 
 ### Finishing
 
-- **SUBTASK-8** The child's turn has ended when its session goes idle. A
-  watcher process, started at the spawn (SUBTASK-28), watches for that, builds
-  the result and records it; the parent's `spawn_task` call doesn't wait. If the
-  child session dies first, the result is `status: "failed"` with a summary
-  saying so. The child's turn is an ordinary turn (LOOP), so nothing
-  else happens at its end.
+- **SUBTASK-8** The child's turn has ended when its session goes idle — unless
+  the user stopped that turn, which ends the turn but not the task (SUBTASK-16),
+  so the watcher waits for the next one. A watcher process, started at the spawn
+  (SUBTASK-28), watches for the end, builds the result and records it; the
+  parent's `spawn_task` call doesn't wait. If the child session dies first, the
+  result is `status: "failed"` with a summary saying so. The child's turn is an
+  ordinary turn (LOOP), so nothing else happens at its end.
 - **SUBTASK-9** The result is a JSON object
   `{"status", "summary", "commit", "files", "questions"}`. `status` is what
   `finish_task` recorded, `"unfinished"` (SUBTASK-10) or `"failed"`. The
@@ -132,17 +133,30 @@ its own workspace; children that would share one workspace are serialized
 
 ### Control and robustness (phase 3)
 
-- **SUBTASK-16** Stopping a running child's turn (SESS-8) ends that child with
-  status `"cancelled"` and reason `"cancelled"` (SUBTASK-21), whatever
-  `finish_task` said. The summary says the user stopped it. Its entry is
-  released and the saved task metadata gets the status (SUBTASK-13).
+- **SUBTASK-16** Stopping a running child's turn (SESS-8) ends that turn and
+  nothing more. The turn ends as any stop does — the transcript says the user
+  stopped it (STOP-1, STOP-2), open tool calls get their error results and the
+  chat's status goes idle — but the sub-task doesn't end: no result is built or
+  saved, its saved task metadata stays `"running"`, and a `finish_task` record
+  the child made before the stop is kept for whenever the task does end
+  (SUBTASK-9). Its entry stays held (SUBTASK-11), so the child is still a
+  running child (and still holds its workspace: a spawn into that tree is
+  refused, SUBTASK-4), and no final `{:subtask, …}` event is broadcast
+  (SUBTASK-7, SUBTASK-13). What the stopped turn had reported before it was
+  stopped is not its result either (STOP-4). The task ends later, at the end of
+  a turn the user did not stop (SUBTASK-8): the child runs again when the user
+  sends it a message — its history holds the stop (STOP-3) — and ends with what
+  that turn gives (SUBTASK-9, SUBTASK-10). *Changed:* it used to end the child
+  as `"cancelled"`, so that is no longer a status the harness gives a task (a
+  task saved by an older version may still have one, UI-44, UI-50).
 - **SUBTASK-17** Stopping the parent's turn (SESS-8) first stops the turn of
-  every child of that parent that is still running, so each is also
-  `"cancelled"` (SUBTASK-16). An `await_task` call in that turn (SUBTASK-27)
-  gets the usual "Cancelled by the user." result, since the process running it
-  is killed. Each child's final metadata, entry release and final
-  `{:subtask, …}` event (SUBTASK-7, SUBTASK-13) are then done by `Elia.Tasks`
-  itself (SUBTASK-19), not by that process.
+  every child of that parent that is still running, so the user's stop really
+  stops the work, but each of those children then goes on as a sub-task
+  (SUBTASK-16): its turn ends, the task doesn't. An `await_task` call in that
+  turn (SUBTASK-27) gets the usual "Cancelled by the user." result, since the
+  process running it is killed; the children keep their entries and their own
+  watchers (SUBTASK-28) finish them later, when a turn of theirs ends
+  (SUBTASK-8) — not the killed parent process.
 - **SUBTASK-18** Budget: besides `max_steps` (SUBTASK-12), `spawn_task` takes
   `max_minutes`, a positive number of minutes of wall-clock time (default 30,
   at most 120; the application setting `:task_minutes` changes the default). The
@@ -154,10 +168,10 @@ its own workspace; children that would share one workspace are serialized
 - **SUBTASK-19** If a child's watcher process (SUBTASK-28) dies while the child
   is still running (it crashed), `Elia.Tasks` finishes the job itself without
   blocking the server: the child's turn is stopped, the saved status becomes
-  `"failed"` (or `"cancelled"` when the user stopped it, SUBTASK-16/17) and the
-  result is saved (only if the saved status is still `"running"`), the entry is
-  released and the final `{:subtask, …}` event is broadcast. The server never
-  calls a session itself, so it can't deadlock with one.
+  `"failed"` with reason `"crashed"` (SUBTASK-21) and the result is saved (only
+  if the saved status is still `"running"`), the entry is released and the final
+  `{:subtask, …}` event is broadcast. The server never calls a session itself,
+  so it can't deadlock with one.
 - **SUBTASK-20** After an app restart, a task saved as `"running"` is shown as
   `"interrupted"` (STORE-17), and a parent whose `await_task` call was still
   waiting gets that call closed with an error result when its session starts
@@ -165,7 +179,9 @@ its own workspace; children that would share one workspace are serialized
 - **SUBTASK-21** The result (SUBTASK-9) also has `task_id` (the child's chat id)
   and `reason`, which is `null` unless the status is not `"done"` because of
   `"budget"`, `"cancelled"`, `"crashed"` (the child session died, SUBTASK-8) or
-  `"error"` (the turn ended with another error). When the status isn't `"done"`
+  `"error"` (the turn ended with another error). (`"cancelled"` was what a
+  stopped turn gave before SUBTASK-16 changed, so a task saved by an older
+  version may still have it.) When the status isn't `"done"`
   it also has `start_commit` and `tree_clean` (`git status --porcelain` is
   empty), so the parent knows whether uncommitted changes were left behind.
 - ~~**SUBTASK-22** The tool `reset_task` (parent only, in the skill `tasks`,
@@ -215,7 +231,9 @@ its own workspace; children that would share one workspace are serialized
   and the budget over and the child goes on; Fail (`Elia.Agent.fail_task/1`)
   ends the turn with the limit's error, so the result is `"failed"` with reason
   `"budget"` (SUBTASK-9, SUBTASK-21) and a summary naming the limit. Stopping
-  the paused turn (SESS-8) instead cancels the child (SUBTASK-16).
+  the paused turn (SESS-8) instead ends that turn with no result — the child
+  goes on running (SUBTASK-16), with its limits unchanged (LIMIT-5), so a later
+  turn of it pauses at the limit again unless the user continues that one.
 
 ### Concurrency (phase 4)
 
@@ -223,19 +241,22 @@ its own workspace; children that would share one workspace are serialized
   approval `:never`) reports this chat's sub-tasks, newest first, as a JSON
   array of `{"task_id", "title", "status", "reason", "started_at"}`. `status`
   is `"running"` while the task's entry is held (SUBTASK-11), otherwise its
-  final saved status (STORE-17; `"interrupted"` after a restart, SUBTASK-20).
+  final saved status (STORE-17; `"interrupted"` after a restart, SUBTASK-20). A
+  child whose turn the user stopped still holds its entry, so it is still
+  reported as `"running"` (SUBTASK-16, SUBTASK-31).
   With `task_id` it reports just that one, as an object, and adds `result`
   (SUBTASK-9) once it has finished. It is an error when `task_id` is given and
   isn't a sub-task of this chat.
 - **SUBTASK-27** The tool `await_task` (parent only, in the skill `tasks`,
   approval `:never`) takes `task_id` and waits until that sub-task is no longer
-  running (SUBTASK-8), then returns its `result` (SUBTASK-9) as JSON. A task
-  that has already finished returns at once, from its saved metadata. It is a
-  tool error when `task_id` isn't a sub-task of this chat, and when the wait is
-  interrupted (the parent's turn is stopped, SUBTASK-17, or the app restarts,
-  SUBTASK-20). One `await_task` per spawn lets the parent wait for several
-  children in whatever order it likes; it can also carry on without waiting and
-  check later with `list_tasks`.
+  running (SUBTASK-8), then returns its `result` (SUBTASK-9) as JSON. A turn of
+  it that the user stopped is not an end (SUBTASK-16), so the wait goes on. A
+  task that has already finished returns at once, from its saved metadata. It
+  is a tool error when `task_id` isn't a sub-task of this chat, and when the
+  wait is interrupted (the parent's turn is stopped, SUBTASK-17, or the app
+  restarts, SUBTASK-20). One `await_task` per spawn lets the parent wait for
+  several children in whatever order it likes; it can also carry on without
+  waiting and check later with `list_tasks`.
 - **SUBTASK-28** The watcher: a process the harness starts per child, in the
   task supervisor (like the process running a tool call, LOOP-10), that owns
   the wait for that child's turn to end (SUBTASK-8). It is the child's entry
@@ -261,13 +282,23 @@ its own workspace; children that would share one workspace are serialized
   child's own from then on (ISOL-18): changing either chat's setting afterwards
   never affects the other.
 
+- **SUBTASK-31** From everywhere but the child's own chat, a sub-task whose turn
+  the user stopped is an ordinary running task (SUBTASK-16): `list_tasks`
+  reports it as `"running"` (SUBTASK-26), `await_task` on it keeps waiting with
+  no deadline of its own (SUBTASK-27), and its card in the parent's page stays
+  the running card it was (UI-44). It still ends the ordinary ways: a later turn
+  of the child ends (SUBTASK-8 to SUBTASK-10), a limit the user fails
+  (SUBTASK-24), its session dies (SUBTASK-8, SUBTASK-19), or the user deletes
+  the child's chat (SESS-29, SUBTASK-29).
+
 ## Out of scope (later phases of the plan)
 
 Read-only children (phase 5).
 
 ## Implementation
 
-`Elia.Tasks` (the registry of running children, spawn, await, cancel),
+`Elia.Tasks` (the registry of running children, spawn, await, and the mark a
+stopped turn leaves so the child's watcher doesn't finish its task),
 `Elia.Skills.Tasks` (the skills and tools), `Elia.Store` (metadata),
 `Elia.Agent.Session` (task metadata, `selection` option, stop, dangling calls),
 `Elia.Agent.Loop` (`max_steps`, skill functions, tool context),

@@ -502,7 +502,9 @@ defmodule Elia.Agent.Session do
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:stop, _from, state) do
-    # SESS-22: a stopped sub-task is cancelled; stopping its parent stops it.
+    # SESS-22, SUBTASK-16, SUBTASK-17: a stopped turn is recorded for the
+    # sub-task machinery — the child's own task goes on, and stopping a parent
+    # stops its children's turns — before this session goes idle.
     Elia.Tasks.note_stop(state.id)
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])

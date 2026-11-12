@@ -499,8 +499,9 @@ so it opens at `/c/<child id>` like any chat.
   arrives, so a new task chat and its final status show without waiting for the
   turn to end (UI-6).
 
-- **UI-50** The status `cancelled` (SUBTASK-16) has its own icon, wherever a
-  task status is shown (UI-44, UI-46, UI-48), with `data-status="cancelled"`.
+- **UI-50** The status `cancelled` — one a task saved before SUBTASK-16 changed
+  may still have — has its own icon, wherever a task status is shown (UI-44,
+  UI-46, UI-48), with `data-status="cancelled"`.
 
 - **UI-57** A chat whose turn is paused at a limit (SESS-27) shows a banner
   (`#pause-banner`) above the transcript with the pause message

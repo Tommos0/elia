@@ -209,6 +209,16 @@ defmodule Elia.TasksTest do
     child
   end
 
+  # SUBTASK-16: a turn the user stopped is not a child's end, so a child whose
+  # turn was stopped ends when its next turn does. This runs that turn — the
+  # child's model call blocks again (blocked_child/1) — and lets it through, so
+  # the turn ends with its text and the task with that (SUBTASK-10).
+  defp carry_on(child) do
+    :ok = Agent.send_message(child, "carry on")
+    assert_receive {:child_blocked, ^child, loop}, 20_000
+    send(loop, :never)
+  end
+
   # Runs the parent through one turn, approving each call id in turn.
   defp run_parent(parent, call_ids, text \\ "go") do
     :ok = Agent.send_message(parent, text)
@@ -457,8 +467,15 @@ defmodule Elia.TasksTest do
     assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "running"}}
     refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
 
+    # SUBTASK-16: stopping the child's own turn doesn't end its task either, so
+    # what ends it is a turn of it that ends.
     :ok = Agent.stop(child)
-    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}, 20_000
+    assert Agent.snapshot(child).status == :idle
+    assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
+    refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
+
+    carry_on(child)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "unfinished"}}, 20_000
     assert Tasks.active() == []
   end
 
@@ -621,8 +638,8 @@ defmodule Elia.TasksTest do
     assert [%{task_status: "done"}] = children_of(parent)
   end
 
-  # SUBTASK-24, SUBTASK-16
-  test "stopping a paused child cancels it", %{parent: parent} do
+  # SUBTASK-24, SUBTASK-16, SUBTASK-31
+  test "stopping a paused child's turn leaves its task running", %{parent: parent} do
     Agent.subscribe_activity()
 
     push_turns(
@@ -639,10 +656,23 @@ defmodule Elia.TasksTest do
     assert_receive {:agent, ^parent, {:subtask, "s1", child, "running"}}, 20_000
     assert_receive {:chat_status, ^child, :paused}, 20_000
 
+    # SUBTASK-16: stopping the paused turn ends that turn, not the task — no
+    # result is recorded, the child keeps its entry and the parent waits on.
     :ok = Agent.stop(child)
+    assert Agent.snapshot(child).status == :idle
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    assert %{status: "running"} = Store.load_task(child)
+    assert Agent.snapshot(parent).status == :running
+    refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
+
+    # SUBTASK-24: its limits are unchanged, so the next turn it runs pauses at
+    # the step limit again — and failing that turn ends the task (SUBTASK-31).
+    :ok = Agent.send_message(child, "carry on")
+    assert_receive {:chat_status, ^child, :paused}, 20_000
+    :ok = Agent.fail_task(child)
     await_status(parent, :idle)
 
-    assert %{"status" => "cancelled", "reason" => "cancelled"} =
+    assert %{"status" => "failed", "reason" => "budget", "task_id" => ^child} =
              session_json(parent, "await_task", 0)
 
     assert Tasks.active() == []
@@ -707,7 +737,10 @@ defmodule Elia.TasksTest do
     assert children_of(other) == []
     assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
 
-    :ok = Agent.stop(child)
+    # A stop only ends the child's turn now (SUBTASK-16), so the test ends its
+    # task the way the user does: deleting the child's chat (SESS-29) takes its
+    # session away, which is what its watcher reports (SUBTASK-8).
+    :ok = Agent.delete(child)
     await_status(parent, :idle)
     assert Tasks.active() == []
   end
@@ -741,33 +774,51 @@ defmodule Elia.TasksTest do
     assert Tasks.active() == []
   end
 
-  # SUBTASK-16
-  test "stopping the child cancels it and the parent gets that as a result", %{parent: parent} do
+  # SUBTASK-16, SUBTASK-31, STOP-1
+  test "stopping the child's turn leaves its task running", %{parent: parent} do
     child = spawn_blocked_child(parent, self())
 
+    # SUBTASK-16: the stop ends that turn, not the task, so nothing is recorded
+    # and the parent is not told the child ended.
     :ok = Agent.stop(child)
+    assert Agent.snapshot(child).status == :idle
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    assert %{status: "running"} = Store.load_task(child)
+    assert Agent.snapshot(parent).status == :running
+    refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
+
+    # STOP-2: the stop is what the child's own transcript says happened.
+    assert %Message{role: :user, meta: %{stopped: :stopped}} =
+             List.last(Agent.snapshot(child).messages)
+
+    # SUBTASK-31: the wait goes on, and the child's next turn is what ends it and
+    # gives the parent its result.
+    carry_on(child)
     await_status(parent, :idle)
 
     {content, false} = session_result(parent)
 
-    assert %{"status" => "cancelled", "reason" => "cancelled", "task_id" => ^child} =
+    assert %{"status" => "unfinished", "summary" => "Never.", "task_id" => ^child} =
              Jason.decode!(content)
 
     assert Tasks.active() == []
-    assert %{status: "cancelled"} = Store.load_task(child)
-    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}
+    assert %{status: "unfinished"} = Store.load_task(child)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "unfinished"}}
   end
 
-  # SUBTASK-17, SESS-22
-  test "stopping the parent stops and cancels its child", %{parent: parent} do
+  # SUBTASK-17, SESS-22, SUBTASK-16
+  test "stopping the parent stops its child's turn, not its task", %{parent: parent} do
     child = spawn_blocked_child(parent, self())
 
     :ok = Agent.stop(parent)
-    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "cancelled"}}, 20_000
 
-    assert Tasks.active() == []
-    assert %{status: "cancelled", result: %{"reason" => "cancelled"}} = Store.load_task(child)
+    # SUBTASK-17: the child's turn is stopped — the user's stop stops the work.
     assert Agent.snapshot(child).status == :idle
+
+    # SUBTASK-16: but its task goes on, so nothing is released or reported.
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    assert %{status: "running"} = Store.load_task(child)
+    refute_received {:agent, ^parent, {:subtask, "s1", ^child, _status}}
 
     # SESS-22, STOP-1: the stop the user asked for is in the parent's transcript
     # too, under the cancelled call.
@@ -777,6 +828,13 @@ defmodule Elia.TasksTest do
              Enum.at(messages, -2)
 
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
+
+    # SUBTASK-31: the child ends when a turn of it ends, and reports that.
+    carry_on(child)
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^child, "unfinished"}}, 20_000
+
+    assert Tasks.active() == []
+    assert %{status: "unfinished"} = Store.load_task(child)
   end
 
   # SUBTASK-29, SESS-29
@@ -964,18 +1022,21 @@ defmodule Elia.TasksTest do
     refute Tasks.running?("c1")
     assert Tasks.active() == [%{child_id: "c2", parent_id: "p2"}]
 
-    # SUBTASK-16: stopping a child marks only that child.
+    # SUBTASK-16: a stop is recorded on the child whose turn it stopped, and
+    # consumed once — one stopped turn doesn't end the task, a later turn can.
     assert :ok = Tasks.note_stop("c1")
     assert :ok = Tasks.note_stop("c2")
-    assert Tasks.take_state("c2") == %{finish: nil, cancelled: true}
-    assert Tasks.take_state("c1") == nil
+    assert Tasks.take_stop("c2")
+    refute Tasks.take_stop("c2")
+    refute Tasks.take_stop("c1")
 
-    # SUBTASK-17: stopping a parent marks each child it has running, which the
-    # caller then stops.
+    # SUBTASK-17: stopping a parent stops the turns of the children it has
+    # running. Nothing is marked for them here: each child's own session records
+    # its own stop when it stops (SUBTASK-16).
     assert :ok = Tasks.acquire("p2", "c3", "/three")
     assert :ok = Tasks.note_stop("p2")
-    assert Tasks.take_state("c2").cancelled
-    assert Tasks.take_state("c3").cancelled
+    refute Tasks.take_stop("c2")
+    refute Tasks.take_stop("c3")
 
     assert :ok = Tasks.release("c2")
     assert :ok = Tasks.release("c3")
@@ -1001,7 +1062,7 @@ defmodule Elia.TasksTest do
     # Calling it again replaces the earlier record.
     assert :ok = Tasks.finish("c1", %{"status" => "failed", "summary" => "x"})
     assert :ok = Tasks.finish("c1", %{"status" => "done", "summary" => "y"})
-    assert %{finish: %{status: "done", summary: "y"}} = Tasks.take_state("c1")
+    assert %{status: "done", summary: "y"} = Tasks.finish_record("c1")
 
     assert :ok = Tasks.release("c1")
     assert Tasks.active() == []

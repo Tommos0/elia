@@ -257,7 +257,7 @@ defmodule Elia.TasksConcurrencyTest do
 
     child_turn = fn request ->
       {child, _task} = child_of(request)
-      send(test_pid, {:child_running, child})
+      send(test_pid, {:child_running, child, self()})
       receive do: (:never -> reply([Message.text("Never.")]))
     end
 
@@ -271,8 +271,8 @@ defmodule Elia.TasksConcurrencyTest do
     await_status(parent, :awaiting_approval)
     :ok = Agent.approve(parent, "s2")
 
-    assert_receive {:child_running, alpha}, 30_000
-    assert_receive {:child_running, beta}, 30_000
+    assert_receive {:child_running, alpha, _alpha_loop}, 30_000
+    assert_receive {:child_running, beta, _beta_loop}, 30_000
     assert alpha != beta
     assert length(Tasks.active()) == 2
 
@@ -280,16 +280,22 @@ defmodule Elia.TasksConcurrencyTest do
     assert_receive {:agent, ^parent, {:tool_status, "a1", :running}}, 30_000
     assert Agent.snapshot(parent).status == :running
 
+    # SUBTASK-7: both starts were announced.
+    assert_receive {:agent, ^parent, {:subtask, "s1", ^alpha, "running"}}, 30_000
+    assert_receive {:agent, ^parent, {:subtask, "s2", ^beta, "running"}}, 30_000
+
     :ok = Agent.stop(parent)
 
-    # SUBTASK-17: each child is stopped, cancelled, released and reported.
+    # SUBTASK-17, SUBTASK-16: each child's turn is stopped — the user's stop
+    # stops the work — but each task goes on running, so nothing is released or
+    # reported.
     for child <- [alpha, beta] do
-      assert_receive {:agent, ^parent, {:subtask, _, ^child, "cancelled"}}, 30_000
-      assert %{status: "cancelled", result: %{"reason" => "cancelled"}} = Store.load_task(child)
       assert Agent.snapshot(child).status == :idle
+      assert %{status: "running"} = Store.load_task(child)
     end
 
-    assert Tasks.active() == []
+    assert length(Tasks.active()) == 2
+    refute_received {:agent, ^parent, {:subtask, _, _, _}}
 
     # SESS-22, STOP-1: the cancelled call, and then the stop the user asked for.
     messages = Agent.snapshot(parent).messages
@@ -298,5 +304,17 @@ defmodule Elia.TasksConcurrencyTest do
              Enum.at(messages, -2)
 
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
+
+    # SUBTASK-16, SUBTASK-31: each child ends when a turn of it ends, and that is
+    # what the parent's topic is told.
+    for child <- [alpha, beta] do
+      :ok = Agent.send_message(child, "carry on")
+      assert_receive {:child_running, ^child, loop}, 30_000
+      send(loop, :never)
+      assert_receive {:agent, ^parent, {:subtask, _, ^child, "unfinished"}}, 30_000
+      assert %{status: "unfinished"} = Store.load_task(child)
+    end
+
+    assert Tasks.active() == []
   end
 end
