@@ -54,6 +54,24 @@ defmodule Elia.Deploy do
   # first `npm install` on a cold cache is the slow one.
   @front_end_timeout :timer.minutes(10)
 
+  # The bundle the browser loads, checked after the build (DEPLOY-24): the two
+  # entry points the endpoint serves.
+  @bundle ~w(priv/static/assets/js/app.js priv/static/assets/css/app.css)
+
+  # The steps a deploy or a rollback takes (DEPLOY-21): the order a deploy takes
+  # them is the order they are reported in, and what the record can hold. A
+  # rollback takes the reset and then the front end and the load (DEPLOY-26).
+  @steps [:merge, :deps, :tests, :packages, :assets, :reset, :load, :restart]
+
+  # How much of a step's failure and of an operation's result the record keeps
+  # (DEPLOY-23): a page renders them, so a whole test suite's output does not
+  # belong in a file read on every mount.
+  @record_text 20_000
+
+  # How many revisions the record keeps (DEPLOY-25): a few, so a revision the
+  # app has run and no longer is can still be named and gone back to.
+  @keep_revisions 10
+
   ## Paths and branches
 
   @doc "The dir holding the chats' worktrees: under the live tree's data dir (DEPLOY-1)."
@@ -169,20 +187,352 @@ defmodule Elia.Deploy do
 
   @doc """
   Records the revision the running app runs (DEPLOY-17): the one a deploy just
-  loaded (DEPLOY-6) or one a restart is about to come up on (DEPLOY-7). The
-  server's first start in the live tree counts too — it runs what the tree has
-  checked out — so `Elia.Deploy.Runner` records that at boot. A tree that isn't
-  set up for deployment (DEPLOY-14) is left alone, and failing to record is
-  never a deploy failure.
+  loaded (DEPLOY-6), one a rollback went back to (DEPLOY-26), or one a restart
+  is about to come up on (DEPLOY-7). The server's first start in the live tree
+  counts too — it runs what the tree has checked out — so `Elia.Deploy.Runner`
+  records that at boot. A tree that isn't set up for deployment (DEPLOY-14) is
+  left alone, and failing to record is never a deploy failure.
   """
-  @spec record_loaded(binary()) :: :ok
-  def record_loaded(root \\ Workspace.runtime_root()) do
+  @spec record_loaded(binary(), :deploy | :rollback, :reload | :restart) :: :ok
+  def record_loaded(root \\ Workspace.runtime_root(), by \\ :deploy, mode \\ :reload) do
     with :ok <- deployable(root),
          {:ok, sha} <- git(root, ["rev-parse", @live]) do
+      File.mkdir_p(Workspace.data_dir(root))
       File.write(loaded_path(root), sha <> "\n")
+      # DEPLOY-25: the record keeps the revisions the app has run, so one it has
+      # run and no longer is can still be named and gone back to (DEPLOY-26).
+      record_revision(root, sha, by, mode)
     end
 
     :ok
+  end
+
+  ## What a deploy is doing, and what it did (DEPLOY-21 to DEPLOY-25)
+
+  @doc """
+  A short human label for a step of a deploy or of a rollback (DEPLOY-21).
+
+  The two pages that render the steps — the Settings section (CONF-21) and the
+  recovery page (RECOVER-11) — take their wording from here, so they cannot
+  disagree about it.
+  """
+  @spec step_label(atom()) :: binary()
+  def step_label(:merge), do: "Merging the trunk into the live tree"
+  def step_label(:deps), do: "Fetching the trunk's dependencies in the live tree"
+  def step_label(:tests), do: "Running the tests in the live tree"
+  def step_label(:packages), do: "Installing the live tree's Node packages"
+  def step_label(:assets), do: "Building the live tree's assets"
+  def step_label(:reset), do: "Moving the live tree back to that revision"
+  def step_label(:load), do: "Hot reloading the running app"
+  def step_label(:restart), do: "Restarting the server"
+  def step_label(step), do: to_string(step)
+
+  @doc "Where the record of what a deploy is doing and has done is kept (DEPLOY-23)."
+  @spec record_path(binary()) :: binary()
+  def record_path(root \\ Workspace.runtime_root()),
+    do: Path.join(Workspace.data_dir(root), "deploy.json")
+
+  @doc """
+  The last operation, from the record (DEPLOY-23): the deploy or rollback in
+  flight, or the last one that ended.
+
+  `%{kind: :deploy | :rollback, mode: :reload | :restart, sha: binary | nil,
+  started: DateTime.t(), finished: DateTime.t() | nil, step: atom | nil,
+  steps: [%{step: atom, ms: non_neg_integer | nil, status: :ok | {:failed,
+  binary}}], result: term | nil}`, and `nil` when there is no record at all.
+
+  `finished` and `result` are `nil` for an operation that never ended — the VM
+  died under it, which is what a restart deploy leaves behind (DEPLOY-23,
+  CONF-22) — and `step` is the step it is on now (DEPLOY-21). A record that
+  cannot be read reads as `nil` rather than crashing a page.
+  """
+  @spec last_deploy(binary()) :: map() | nil
+  def last_deploy(root \\ Workspace.runtime_root()) do
+    case read_file(root) do
+      {:ok, %{running: running}} when is_map(running) -> running
+      {:ok, %{last: last}} when is_map(last) -> last
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The revisions the app has run (DEPLOY-25), newest first: `%{sha, at, by, mode}`
+  for each — when it was loaded, and by a deploy or a rollback, hot reloaded or
+  restarted. The newest is the revision `loaded_revision/1` and `status/1`
+  report (DEPLOY-17).
+
+  A tree that has only the loaded-revision file and no record reports that one
+  revision, so a tree deployed before the record existed still has a rollback
+  target (DEPLOY-26); a record that cannot be read reports nothing, and nothing
+  crashes a page that renders it.
+  """
+  @spec loaded_revisions(binary()) :: [map()]
+  def loaded_revisions(root \\ Workspace.runtime_root()) do
+    case read_file(root) do
+      {:ok, %{loaded: [_ | _] = loaded}} -> loaded
+      {:ok, _record} -> from_deployed(root)
+      :missing -> from_deployed(root)
+      :corrupt -> []
+    end
+  end
+
+  # The upgrade path (DEPLOY-25): a tree deployed before the record existed has
+  # the revision the app runs in `.elia/deployed` and nothing else.
+  defp from_deployed(root) do
+    case loaded_revision(root) do
+      nil -> []
+      sha -> [%{sha: sha, at: loaded_at(root), by: :deploy, mode: :reload}]
+    end
+  end
+
+  # When that revision was loaded is not recorded; the file's own time is the
+  # closest thing to it, and a file that has none reads as just now.
+  defp loaded_at(root) do
+    with {:ok, %File.Stat{mtime: mtime}} <- File.stat(loaded_path(root), time: :posix),
+         {:ok, at} <- DateTime.from_unix(mtime) do
+      at
+    else
+      _ -> DateTime.utc_now()
+    end
+  end
+
+  @doc false
+  # The record as it is on disk, or an empty one. What the runner seeds itself
+  # from (DEPLOY-22, DEPLOY-23) and what the readers answer from.
+  @spec read_record(binary()) :: %{running: map() | nil, last: map() | nil, loaded: [map()]}
+  def read_record(root \\ Workspace.runtime_root()) do
+    case read_file(root) do
+      {:ok, record} -> record
+      _ -> %{running: nil, last: nil, loaded: []}
+    end
+  end
+
+  defp read_file(root) do
+    case File.read(record_path(root)) do
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, record} when is_map(record) -> {:ok, decode_record(record)}
+          _ -> :corrupt
+        end
+
+      {:error, _reason} ->
+        :missing
+    end
+  end
+
+  @doc false
+  # Writes the record (DEPLOY-23). The runner is its only writer, so what a page
+  # reads back is what the runner holds: the operation in flight, the last one,
+  # and the revisions the app has run (DEPLOY-25). A record that cannot be
+  # written is never a deploy failure — the page that reads it is one that
+  # already lost the process that made it.
+  @spec write_record(binary(), map()) :: :ok
+  def write_record(root, record) do
+    if File.dir?(root) do
+      path = record_path(root)
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, Jason.encode!(encode_record(record), pretty: true))
+    end
+
+    :ok
+  rescue
+    e -> Logger.warning("Could not write the deploy record: #{Exception.message(e)}")
+  end
+
+  @doc false
+  # Adds a revision to the ones the app has run (DEPLOY-25): newest first, the
+  # same revision not twice, and only the last few kept.
+  @spec append_revision([map()], map()) :: [map()]
+  def append_revision(loaded, revision) do
+    [revision | Enum.reject(loaded, &(&1.sha == revision.sha))] |> Enum.take(@keep_revisions)
+  end
+
+  # The record's shape on disk. Everything a page reads comes back through
+  # `last_deploy/1` and `loaded_revisions/1`, so the encoding is the module's
+  # own business.
+  defp encode_record(record) do
+    %{
+      "running" => encode_operation(record.running),
+      "last" => encode_operation(record.last),
+      "loaded" => Enum.map(record.loaded, &encode_revision/1)
+    }
+  end
+
+  defp encode_operation(nil), do: nil
+
+  defp encode_operation(operation) do
+    %{
+      "kind" => to_string(operation.kind),
+      "mode" => to_string(operation.mode),
+      "sha" => operation.sha,
+      "started" => DateTime.to_iso8601(operation.started),
+      "finished" => operation.finished && DateTime.to_iso8601(operation.finished),
+      "step" => operation.step && to_string(operation.step),
+      "steps" => Enum.map(operation.steps, &encode_step/1),
+      "result" => encode_result(operation.result)
+    }
+  end
+
+  defp encode_step(%{step: step, ms: ms, status: status}) do
+    %{"step" => to_string(step), "ms" => ms, "status" => encode_status(status)}
+  end
+
+  defp encode_status(:ok), do: "ok"
+  defp encode_status({:failed, reason}), do: %{"failed" => text(reason)}
+  defp encode_status(nil), do: nil
+
+  defp encode_result(nil), do: nil
+  defp encode_result({:ok, message}), do: %{"ok" => text(message)}
+  defp encode_result({:tests_failed, output}), do: %{"tests_failed" => text(output)}
+  defp encode_result({:error, reason}), do: %{"error" => text(reason)}
+  defp encode_result({:exit, reason}), do: %{"exit" => text(reason)}
+  defp encode_result(other), do: %{"other" => inspect(other)}
+
+  defp encode_revision(%{sha: sha, at: at, by: by, mode: mode}) do
+    %{
+      "sha" => sha,
+      "at" => DateTime.to_iso8601(at),
+      "by" => to_string(by),
+      "mode" => to_string(mode)
+    }
+  end
+
+  # A message the record keeps: a page renders it, so it is cut to size the way
+  # a command's output is (SHELL-4).
+  defp text(value) when is_binary(value), do: Elia.Shell.truncate(value, @record_text)
+  defp text(value), do: value |> inspect() |> Elia.Shell.truncate(@record_text)
+
+  defp decode_record(record) do
+    %{
+      running: decode_operation(record["running"]),
+      last: decode_operation(record["last"]),
+      loaded: decode_revisions(record["loaded"])
+    }
+  end
+
+  defp decode_operation(operation) when is_map(operation) do
+    %{
+      kind: name(operation["kind"], [:deploy, :rollback], :deploy),
+      mode: name(operation["mode"], [:reload, :restart], :reload),
+      sha: operation["sha"],
+      started: datetime(operation["started"]),
+      finished: datetime(operation["finished"]),
+      step: name(operation["step"], @steps, nil),
+      steps: decode_steps(operation["steps"]),
+      result: decode_result(operation["result"])
+    }
+  end
+
+  defp decode_operation(_other), do: nil
+
+  defp decode_steps(steps) when is_list(steps), do: Enum.flat_map(steps, &decode_step/1)
+  defp decode_steps(_other), do: []
+
+  defp decode_step(%{"step" => step} = entry) when is_binary(step) do
+    case name(step, @steps, nil) do
+      nil -> []
+      step -> [%{step: step, ms: entry["ms"], status: decode_status(entry["status"])}]
+    end
+  end
+
+  defp decode_step(_other), do: []
+
+  defp decode_status("ok"), do: :ok
+  defp decode_status(%{"failed" => reason}), do: {:failed, reason}
+  defp decode_status(_other), do: nil
+
+  defp decode_result(%{"ok" => message}), do: {:ok, message}
+  defp decode_result(%{"tests_failed" => output}), do: {:tests_failed, output}
+  defp decode_result(%{"error" => reason}), do: {:error, reason}
+  defp decode_result(%{"exit" => reason}), do: {:exit, reason}
+  defp decode_result(%{"other" => other}), do: other
+  defp decode_result(_other), do: nil
+
+  defp decode_revisions(revisions) when is_list(revisions),
+    do: Enum.flat_map(revisions, &decode_revision/1)
+
+  defp decode_revisions(_other), do: []
+
+  defp decode_revision(%{"sha" => sha, "at" => at} = revision) when is_binary(sha) do
+    case datetime(at) do
+      nil ->
+        []
+
+      at ->
+        [
+          %{
+            sha: sha,
+            at: at,
+            by: name(revision["by"], [:deploy, :rollback], :deploy),
+            mode: name(revision["mode"], [:reload, :restart], :reload)
+          }
+        ]
+    end
+  end
+
+  defp decode_revision(_other), do: []
+
+  # A name the record wrote: the atom it stands for, never a new atom made from
+  # a file's contents (DEPLOY-23).
+  defp name(value, known, default) when is_binary(value),
+    do: Enum.find(known, default, &(to_string(&1) == value))
+
+  defp name(_value, _known, default), do: default
+
+  defp datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, at, _offset} -> at
+      _ -> nil
+    end
+  end
+
+  defp datetime(_value), do: nil
+
+  # DEPLOY-25: the revision the app has loaded, kept in the record. The runner
+  # is the record's only writer (DEPLOY-23), so this goes through it — the
+  # operation process is the runner's own child, and the call is done before a
+  # restart stops the server (DEPLOY-17).
+  defp record_revision(root, sha, by, mode) do
+    revision = %{sha: sha, at: DateTime.utc_now(), by: by, mode: mode}
+
+    case Process.whereis(Elia.Deploy.Runner) do
+      nil ->
+        record = read_record(root)
+        write_record(root, %{record | loaded: append_revision(loaded_revisions(root), revision)})
+
+      _pid ->
+        Elia.Deploy.Runner.loaded(root, sha, by, mode)
+    end
+  end
+
+  ## A step of an operation (DEPLOY-21)
+
+  # Runs one step of an operation, reporting when it started and when it ended,
+  # how long it took and whether it succeeded (DEPLOY-21), and returns what the
+  # step returned: `{:ok, _}`, `{:tests_failed, output}` or `{:error, reason}`,
+  # which is what the operation does next.
+  defp step(name, root, fun) do
+    report(root, name, :started, nil, nil)
+    started = System.monotonic_time(:millisecond)
+    outcome = fun.()
+    ms = System.monotonic_time(:millisecond) - started
+    report(root, name, :finished, ms, step_status(outcome))
+    outcome
+  end
+
+  defp step_status({:ok, _value}), do: :ok
+  defp step_status({:tests_failed, output}), do: {:failed, text(output)}
+  defp step_status({:error, reason}), do: {:failed, text(reason)}
+
+  # DEPLOY-22: a step belongs to the runner, which holds it and tells the pages
+  # (CONF-21, RECOVER-12). An operation run outside the runner — a test calling
+  # `deploy/1` — has no operation to report to, and the runner ignores a report
+  # that is not its own operation's.
+  defp report(root, step, phase, ms, status) do
+    case Process.whereis(Elia.Deploy.Runner) do
+      nil -> :ok
+      _pid -> Elia.Deploy.Runner.step(root, step, phase, ms, status)
+    end
   end
 
   ## Worktree per chat
@@ -395,17 +745,24 @@ defmodule Elia.Deploy do
   (HOT-2, HOT-7).
   """
   @spec hot_reload(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def hot_reload(root \\ Workspace.runtime_root()) do
+  def hot_reload(root \\ Workspace.runtime_root()), do: deploy_and_load(root, :deploy)
+
+  # Both modes report the load as the operation's last step (DEPLOY-21): `:load`
+  # for the hot reload, `:restart` for the restart.
+  defp deploy_and_load(root, by) do
     if hot_reload_available?() do
       case deploy(root) do
-        {:ok, deployed} -> load(deployed, root)
+        {:ok, deployed} -> load(deployed, root, by)
         other -> other
       end
     else
-      {:error,
-       "Hot reload is only available when the endpoint's code reloader is on " <>
-         "(`code_reloader: true`)."}
+      {:error, hot_reload_unavailable()}
     end
+  end
+
+  defp hot_reload_unavailable do
+    "Hot reload is only available when the endpoint's code reloader is on " <>
+      "(`code_reloader: true`)."
   end
 
   @doc """
@@ -420,18 +777,143 @@ defmodule Elia.Deploy do
   def restart(root \\ Workspace.runtime_root()) do
     with :ok <- restartable?() do
       case deploy(root) do
-        {:ok, deployed} ->
-          # DEPLOY-17: the server comes back on this revision, so record it
-          # before it stops.
-          record_loaded(root)
-          stop()
-          {:ok, "#{deployed} Restarting the server on the deployed code."}
-
-        other ->
-          other
+        {:ok, deployed} -> stop_for(deployed, root, :deploy)
+        other -> other
       end
     end
   end
+
+  # DEPLOY-7: the server stops, and `bin/serve` starts it again on the tree it
+  # left. DEPLOY-17 records the revision it comes back on before it stops, and
+  # DEPLOY-23's record is written the same way, so the page that comes up
+  # afterwards says what the deploy did — the step is never reported as
+  # finished, because the VM this process runs in is gone.
+  defp stop_for(prefix, root, by) do
+    message =
+      if by == :rollback,
+        do: "Restarting the server on the code it went back to.",
+        else: "Restarting the server on the deployed code."
+
+    case step(:restart, root, fn -> stopping(root, by, message) end) do
+      {:ok, note} -> {:ok, "#{prefix} #{note}"}
+      other -> other
+    end
+  end
+
+  defp stopping(root, by, message) do
+    record_loaded(root, by, :restart)
+    stop()
+    {:ok, message}
+  end
+
+  @doc """
+  Goes back to a revision the app has run (DEPLOY-26): a load, not a merge.
+
+  `live` is moved to `sha` — a `git reset --hard`, since a deploy only ever
+  fast-forwards forward (DEPLOY-5) — that revision's front end is made current
+  (DEPLOY-19) and checked (DEPLOY-24), and it is loaded the way a deploy is:
+  hot reloaded (DEPLOY-6) or restarted (DEPLOY-7), recorded as loaded by a
+  rollback (DEPLOY-17, DEPLOY-25). Its steps are reported like a deploy's
+  (DEPLOY-21) and what it did is recorded (DEPLOY-23).
+
+  Refused, changing nothing, when the live tree isn't set up for deployment
+  (DEPLOY-14), has uncommitted changes, `sha` is not one the app has run
+  (DEPLOY-25), or is the revision it is running now. A rollback that fails
+  after it has moved `live` — a front end it cannot build (DEPLOY-24) — puts
+  `live` back where it was and loads nothing. Returns what `deploy/1` does.
+  """
+  @spec rollback(binary(), :reload | :restart, binary()) ::
+          {:ok, binary()} | {:error, binary()}
+  def rollback(sha, mode, root \\ Workspace.runtime_root())
+
+  def rollback(sha, mode, root) when mode in [:reload, :restart] do
+    with :ok <- deployable(root),
+         :ok <- clean?(root),
+         {:ok, sha} <- ran?(sha, root),
+         :ok <- not_running?(sha, root),
+         :ok <- mode_available?(mode),
+         {:ok, before} <- git(root, ["rev-parse", @live]) do
+      case step(:reset, root, fn -> reset_to(sha, root) end) do
+        {:ok, _note} -> after_reset(sha, mode, before, root)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  # A rollback only goes back to a revision the app has run (DEPLOY-25), and the
+  # record is what says which those are (DEPLOY-23).
+  defp ran?(sha, root) do
+    case Enum.find(loaded_revisions(root), &same_revision?(&1.sha, sha)) do
+      nil ->
+        {:error,
+         "The app has not run #{short(sha)}, so there is nothing to go back to: " <>
+           "a rollback loads a revision it has loaded before (DEPLOY-25)."}
+
+      %{sha: full} ->
+        {:ok, full}
+    end
+  end
+
+  defp same_revision?(full, sha),
+    do: full == sha or (sha != "" and String.starts_with?(full, sha))
+
+  defp not_running?(sha, root) do
+    if running_revision(root) == sha do
+      {:error,
+       "The app is running #{short(sha)} already: there is nothing to go back to (DEPLOY-26)."}
+    else
+      :ok
+    end
+  end
+
+  # DEPLOY-17: the revision the app runs, as `status/1` reports it; the record's
+  # newest is the same revision when the loaded-revision file is missing.
+  defp running_revision(root) do
+    loaded_revision(root) ||
+      case loaded_revisions(root) do
+        [%{sha: sha} | _] -> sha
+        [] -> nil
+      end
+  end
+
+  defp mode_available?(:restart), do: restartable?()
+
+  defp mode_available?(:reload) do
+    if hot_reload_available?(), do: :ok, else: {:error, hot_reload_unavailable()}
+  end
+
+  defp reset_to(sha, root) do
+    case git(root, ["reset", "--hard", sha]) do
+      {:ok, _output} ->
+        {:ok, "#{@live} is at #{short(sha)} again."}
+
+      {:error, reason} ->
+        {:error, "Could not move #{@live} back to #{short(sha)} (DEPLOY-26):\n#{reason}"}
+    end
+  end
+
+  defp after_reset(sha, mode, before, root) do
+    case front_end(root) do
+      {:ok, note} -> go_back(sha, mode, root, note)
+      # DEPLOY-26: a rollback that fails once `live` has moved leaves the tree
+      # the app is running — nothing is loaded from a revision whose front end
+      # it could not make current (DEPLOY-24).
+      {:error, reason} -> {:error, front_end_failed(reason) <> rollback_note(before, root)}
+    end
+  end
+
+  defp go_back(sha, :reload, root, note) do
+    case step(:load, root, fn -> reload_now(root, :rollback) end) do
+      {:ok, message} -> {:ok, "#{went_back(sha)}#{note} #{message}"}
+      other -> other
+    end
+  end
+
+  defp go_back(sha, :restart, root, note), do: stop_for(went_back(sha) <> note, root, :rollback)
+
+  defp went_back(sha), do: "Rolled #{@live} back to #{short(sha)}."
+
+  defp short(sha), do: String.slice(sha, 0, 7)
 
   @doc """
   Runs a deploy in one of its modes (DEPLOY-6, DEPLOY-7): `:reload` for the hot
@@ -509,23 +991,27 @@ defmodule Elia.Deploy do
   end
 
   # DEPLOY-5: merge, fetch dependencies, test in the live tree, and undo the
-  # merge when either of those fails, so a failed deploy changes nothing.
+  # merge when either of those fails, so a failed deploy changes nothing. Each
+  # of those is a step the deploy reports (DEPLOY-21), and a step it never
+  # reaches is never reported.
   defp merge_and_test(count, root) do
-    with {:ok, before} <- git(root, ["rev-parse", @live]),
-         {:ok, _merged} <- merge(root) do
-      case fetch_deps(root) do
-        :ok -> test_merged(count, before, root)
-        {:error, reason} -> {:error, fetch_failed(reason) <> rollback_note(before, root)}
+    with {:ok, before} <- git(root, ["rev-parse", @live]) do
+      case step(:merge, root, fn -> merge(root) end) do
+        {:ok, _merged} -> deps_and_test(count, before, root)
+        {:error, reason} -> {:error, reason}
       end
     end
   end
 
+  defp deps_and_test(count, before, root) do
+    case step(:deps, root, fn -> fetch_deps(root) end) do
+      {:ok, _output} -> test_merged(count, before, root)
+      {:error, reason} -> {:error, fetch_failed(reason) <> rollback_note(before, root)}
+    end
+  end
+
   defp test_merged(count, before, root) do
-    # ISOL-14: the merged trunk's suite runs in the live tree, jailed by
-    # default — no chat's setting is involved (ISOL-15), and the live tree's
-    # `:live_tree` profile is what `Elia.Harness.run_tests/2` gets from the
-    # working directory it runs in (ISOL-13).
-    case Elia.Harness.run_tests([], root) do
+    case step(:tests, root, fn -> run_suite(root) end) do
       {:ok, _output} ->
         # DEPLOY-19: the tree is deployed, so what a browser loads from it is
         # made current before anything loads the tree itself.
@@ -537,8 +1023,22 @@ defmodule Elia.Deploy do
             {:error, front_end_failed(reason) <> rollback_note(before, root)}
         end
 
-      {:error, output} ->
+      {:tests_failed, output} ->
         {:tests_failed, output <> rollback_note(before, root)}
+
+      {:error, reason} ->
+        {:error, reason <> rollback_note(before, root)}
+    end
+  end
+
+  # ISOL-14: the merged trunk's suite runs in the live tree, jailed by default —
+  # no chat's setting is involved (ISOL-15), and the live tree's `:live_tree`
+  # profile is what `Elia.Harness.run_tests/2` gets from the working directory
+  # it runs in (ISOL-13).
+  defp run_suite(root) do
+    case Elia.Harness.run_tests([], root) do
+      {:ok, output} -> {:ok, output}
+      {:error, output} -> {:tests_failed, output}
     end
   end
 
@@ -549,8 +1049,8 @@ defmodule Elia.Deploy do
   # that is already satisfied fetches nothing.
   defp fetch_deps(root) do
     case Elia.Shell.run("mix deps.get", cd: root, timeout: @deps_timeout) do
-      {:ok, _output, 0} ->
-        :ok
+      {:ok, output, 0} ->
+        {:ok, output}
 
       {:ok, output, status} ->
         {:error, "mix deps.get exited with #{status}:\n" <> Elia.Shell.truncate(output, 2_000)}
@@ -566,24 +1066,57 @@ defmodule Elia.Deploy do
 
   # DEPLOY-19: the front end the tree will serve, made current before it is
   # loaded. `{:ok, note}` — the note is what the deploy's message adds, and is
-  # empty for a tree with no front end — or `{:error, reason}`. The function is
-  # a seam tests replace (`config :elia, Elia.Deploy, front_end: fun`), the way
-  # `load:` and `stop:` are: the real one installs packages and runs a build.
-  defp front_end(root), do: front_end_step().(root)
-
-  defp front_end_step do
-    Application.get_env(:elia, __MODULE__, [])[:front_end] || (&build_front_end/1)
+  # empty for a tree with no front end — or `{:error, reason}`.
+  #
+  # The two things it does are the operation's `:packages` and `:assets` steps
+  # (DEPLOY-21). A test replaces the whole step (`config :elia, Elia.Deploy,
+  # front_end: fun`), the way it replaces `load:` and `stop:`, or either of the
+  # two steps on its own (`packages: fun`, `assets: fun`).
+  defp front_end(root) do
+    case Application.get_env(:elia, __MODULE__, [])[:front_end] do
+      # A replaced step is not reported as a step of its own: the steps a
+      # deploy reports are the ones the code takes (DEPLOY-21).
+      nil -> build_front_end(root)
+      front_end -> front_end.(root)
+    end
   end
 
   # A tree with no `assets/` is not a project with a front end — a test's
-  # throwaway live tree, say — and there is nothing to install or build for one.
+  # throwaway live tree, say — and there is nothing to install or build for one,
+  # and so nothing to check (DEPLOY-24).
   defp build_front_end(root) do
     if File.exists?(Path.join(root, "assets/package.json")) do
-      with :ok <- install_packages(root), :ok <- build_assets(root) do
-        {:ok, " The live tree's front end was rebuilt."}
+      with {:ok, _packages} <-
+             step(:packages, root, fn -> seam(:packages, &install/1).(root) end),
+           {:ok, _assets} <- step(:assets, root, fn -> seam(:assets, &build/1).(root) end) do
+        # DEPLOY-24: after the build, and inside the step that builds.
+        case bundle?(root) do
+          :ok -> {:ok, " The live tree's front end was rebuilt."}
+          {:error, reason} -> {:error, reason}
+        end
       end
     else
       {:ok, ""}
+    end
+  end
+
+  defp seam(name, default), do: Application.get_env(:elia, __MODULE__, [])[name] || default
+
+  # DEPLOY-24: the bundle the browser loads, checked after the build. A build
+  # that exits 0 having written nothing — a wiped `priv/static`, a misconfigured
+  # `esbuild` or `tailwind` — is a failed deploy rather than a running app with
+  # no stylesheet or no hook.
+  defp bundle?(root) do
+    case Enum.find(@bundle, &missing?(Path.join(root, &1))) do
+      nil -> :ok
+      file -> {:error, "The build left no bundle: #{file} is missing or empty (DEPLOY-24)."}
+    end
+  end
+
+  defp missing?(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{size: size}} -> size == 0
+      {:error, _reason} -> true
     end
   end
 
@@ -592,19 +1125,19 @@ defmodule Elia.Deploy do
   # tree can't build a bundle at all, since the build is what resolves the
   # import. Run from the live tree's own directory, so it gets the live tree's
   # profile (ISOL-13, ISOL-14) the way the fetch above does.
-  defp install_packages(root) do
+  defp install(root) do
     run_step(root, "npm install --prefix assets --no-audit --no-fund")
   end
 
   # The build the live tree's own watchers run while the server is up (HOT-7),
   # here by hand and before anything loads the tree: what writes `priv/static`,
   # and so what makes the browser's live reload fire (DEPLOY-12).
-  defp build_assets(root), do: run_step(root, "mix assets.build")
+  defp build(root), do: run_step(root, "mix assets.build")
 
   defp run_step(root, command) do
     case Elia.Shell.run(command, cd: root, timeout: @front_end_timeout) do
-      {:ok, _output, 0} ->
-        :ok
+      {:ok, output, 0} ->
+        {:ok, output}
 
       {:ok, output, status} ->
         {:error, "#{command} exited with #{status}:\n" <> Elia.Shell.truncate(output, 2_000)}
@@ -621,16 +1154,15 @@ defmodule Elia.Deploy do
   defp commits(1), do: "1 commit from #{@trunk}"
   defp commits(count), do: "#{count} commits from #{@trunk}"
 
-  # HOT-4: the merge is undone when the tests fail, so `live` and the live tree
-  # are left exactly as they were.
+  # HOT-4, DEPLOY-26: the operation's move of `live` is undone when a later step
+  # fails, so the live tree and its branch are left exactly as they were.
   defp rollback_note(sha, root) do
     case git(root, ["reset", "--hard", sha]) do
       {:ok, _output} ->
         ""
 
       {:error, reason} ->
-        "\n\nThe tests failed and #{@live} could not be rolled back to " <>
-          "#{String.slice(sha, 0, 12)}: #{reason}"
+        "\n\n#{@live} could not be put back to #{short(sha)}: #{reason}"
     end
   end
 
@@ -651,16 +1183,25 @@ defmodule Elia.Deploy do
     end
   end
 
-  # HOT-5: recompile the live tree and load the changed modules. Loading is a
-  # function so tests can replace it (`config :elia, Elia.Deploy, load: fun`):
-  # a real recompile inside a test run would rebuild Elia's own endpoint.
-  defp load(deployed, root) do
+  # HOT-5, DEPLOY-26: recompile the live tree and load the changed modules, as
+  # the operation's `:load` step (DEPLOY-21). Loading is a function so tests can
+  # replace it (`config :elia, Elia.Deploy, load: fun`): a real recompile inside
+  # a test run would rebuild Elia's own endpoint.
+  defp load(deployed, root, by) do
+    case step(:load, root, fn -> reload_now(root, by) end) do
+      {:ok, note} -> {:ok, "#{deployed} #{note}"}
+      other -> other
+    end
+  end
+
+  defp reload_now(root, by) do
     case loader().(EliaWeb.Endpoint) do
       :ok ->
         Elia.Skills.reload()
-        # DEPLOY-17: what the app runs now, so a merge that never loads shows.
-        record_loaded(root)
-        {:ok, "#{deployed} Recompiled and reloaded the running app.#{restart_notice()}"}
+        # DEPLOY-17: what the app runs now, so a merge that never loads shows;
+        # DEPLOY-25: and it is one of the revisions the app has run.
+        record_loaded(root, by, :reload)
+        {:ok, "Recompiled and reloaded the running app.#{restart_notice()}"}
 
       {:error, output} ->
         {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}

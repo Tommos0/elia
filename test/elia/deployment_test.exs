@@ -2,6 +2,7 @@ defmodule Elia.DeploymentTest do
   use ExUnit.Case, async: false
 
   alias Elia.{Agent, Deploy, Explorer, FakeLLM, LiveTree, Projects, Store, Workspace}
+  alias Elia.Deploy.Runner
   alias Elia.LLM.Message
 
   @moduletag timeout: 120_000
@@ -14,6 +15,10 @@ defmodule Elia.DeploymentTest do
     previous = Application.get_env(:elia, :runtime_root)
     Application.put_env(:elia, :runtime_root, tree)
     start_supervised!(FakeLLM)
+
+    # DEPLOY-16: the runner belongs to Elia's application and every case here
+    # shares it, so a case starts with no operation in flight and no result.
+    settle_runner()
 
     on_exit(fn ->
       LiveTree.remove(tree)
@@ -194,6 +199,87 @@ defmodule Elia.DeploymentTest do
       {:front_end, _root} -> true
       :loaded -> true
       _other -> false
+    end)
+  end
+
+  ## The steps, the record and going back (DEPLOY-21 to DEPLOY-26)
+
+  # A case starts with no operation in flight: wait out one a failed case may
+  # have left behind (DEPLOY-16), then forget the last result. It subscribes
+  # only when there is one to wait for, since a second subscription would make
+  # every event arrive twice.
+  defp settle_runner(timeout \\ 120_000) do
+    if Runner.running() do
+      Runner.subscribe()
+      assert_receive {:deploy_finished, _}, timeout
+    end
+
+    Runner.reset()
+    :ok
+  end
+
+  # The operation started in the runner ending (DEPLOY-15): what it returned.
+  defp await_deploy(timeout \\ 120_000) do
+    assert_receive {:deploy_finished, %{result: result}}, timeout
+    result
+  end
+
+  # The steps the runner reported, in the order it reported them (DEPLOY-21).
+  defp deploy_progress do
+    {:messages, messages} = Process.info(self(), :messages)
+    for {:deploy_progress, %{step: step, phase: phase}} <- messages, do: {step, phase}
+  end
+
+  # A live tree with a front end (DEPLOY-19, DEPLOY-24): an `assets/package.json`
+  # and the bundle a browser loads, committed with the tree, so a deploy's own
+  # front-end steps run — stubbed here, since a test installs no Node packages.
+  defp front_end_tree do
+    tree = LiveTree.create(front_end: true)
+    Application.put_env(:elia, :runtime_root, tree)
+    on_exit(fn -> LiveTree.remove(tree) end)
+    tree
+  end
+
+  # The front-end step of an operation: the two things it does are seams, like
+  # the whole of it (`config :elia, Elia.Deploy, packages: fun, assets: fun`).
+  defp stub_step(name, fun) do
+    deploy = Application.get_env(:elia, Elia.Deploy, [])
+    Application.put_env(:elia, Elia.Deploy, Keyword.put(deploy, name, fun))
+    on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
+  end
+
+  # A deploy run in the runner, waited out, for a test that only needs the
+  # revision it loaded and not the steps of the deploy itself.
+  defp reload_now do
+    assert :ok = Runner.start(:reload)
+    assert_receive {:packages, operation}, 120_000
+    send(operation, :continue)
+    assert {:ok, _message} = await_deploy()
+    assert_receive :loaded
+    :ok
+  end
+
+  # Forgets the messages a test is done with, so what it looks at next is only
+  # what happened after.
+  defp flush_messages do
+    receive do
+      _message -> flush_messages()
+    after
+      0 -> :ok
+    end
+  end
+
+  # A front end that installs and builds, telling the test it ran, and writing
+  # nothing: the bundle the tree already has is what DEPLOY-24 checks.
+  defp build_front_end_with(test_pid) do
+    stub_step(:packages, fn root ->
+      send(test_pid, {:packages, root})
+      {:ok, ""}
+    end)
+
+    stub_step(:assets, fn root ->
+      send(test_pid, {:assets, root})
+      {:ok, ""}
     end)
   end
 
@@ -1074,5 +1160,639 @@ defmodule Elia.DeploymentTest do
     end)
 
     assert head(tree) == trunk(tree)
+  end
+
+  ## What a deploy is doing (DEPLOY-21 to DEPLOY-23)
+
+  # DEPLOY-21: one place names a step, so the two pages that render them cannot
+  # disagree about the wording.
+  test "a step has one short label (DEPLOY-21)" do
+    assert Deploy.step_label(:tests) == "Running the tests in the live tree"
+
+    for step <- [:merge, :deps, :tests, :packages, :assets, :front_end, :reset, :load, :restart] do
+      assert is_binary(Deploy.step_label(step))
+      assert String.length(Deploy.step_label(step)) > 5
+    end
+  end
+
+  # DEPLOY-21, DEPLOY-22: a deploy reports each step as it takes it, in the
+  # order the code takes them, and the runner holds them.
+  test "a deploy reports its steps in the order it takes them (DEPLOY-21)" do
+    running_server()
+    front_end_tree()
+    build_front_end_with(self())
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert_receive {:deploy_started, %{mode: :reload}}, 5_000
+    assert {:ok, message} = await_deploy()
+    assert message =~ "front end was rebuilt"
+
+    assert deploy_progress() == [
+             {:merge, :started},
+             {:merge, :finished},
+             {:deps, :started},
+             {:deps, :finished},
+             {:tests, :started},
+             {:tests, :finished},
+             {:packages, :started},
+             {:packages, :finished},
+             {:assets, :started},
+             {:assets, :finished},
+             {:load, :started},
+             {:load, :finished}
+           ]
+
+    # Every step it reported has a label a page can render.
+    for {step, _phase} <- deploy_progress(), do: assert(Deploy.step_label(step) != "")
+  end
+
+  # DEPLOY-21: a step that is never reached is never reported, so what a deploy
+  # reports says where it stopped — and each step says how it went.
+  test "a deploy that stops at the tests reports no step after them (DEPLOY-21)" do
+    running_server()
+    tree = front_end_tree()
+    build_front_end_with(self())
+
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+
+    before = head(tree)
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert {:tests_failed, output} = await_deploy()
+    assert output =~ "1 failure"
+
+    assert deploy_progress() == [
+             {:merge, :started},
+             {:merge, :finished},
+             {:deps, :started},
+             {:deps, :finished},
+             {:tests, :started},
+             {:tests, :finished}
+           ]
+
+    # DEPLOY-22: the runner keeps the steps that finished, with how long each
+    # took and whether it succeeded.
+    assert %{running: nil, last: %{steps: steps}} = Runner.state()
+    assert Enum.map(steps, & &1.step) == [:merge, :deps, :tests]
+    assert [%{status: :ok}, %{status: :ok}, %{status: {:failed, _}}] = steps
+    assert Enum.all?(steps, &is_integer(&1.ms))
+
+    # Nothing is deployed (DEPLOY-5).
+    assert head(tree) == before
+  end
+
+  # DEPLOY-21: with nothing to merge no suite runs, so those steps are not
+  # reported either (DEPLOY-5, DEPLOY-20).
+  test "a deploy with nothing to merge reports only the steps it takes (DEPLOY-21)" do
+    running_server()
+    front_end_tree()
+    build_front_end_with(self())
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert {:ok, message} = await_deploy()
+    assert message =~ "Nothing to deploy"
+
+    assert deploy_progress() == [
+             {:packages, :started},
+             {:packages, :finished},
+             {:assets, :started},
+             {:assets, :finished},
+             {:load, :started},
+             {:load, :finished}
+           ]
+  end
+
+  # DEPLOY-22, DEPLOY-23: the runner holds the step in flight, and the record on
+  # disk says what the operation is doing while it does it — so an operation the
+  # VM dies under leaves a record that has not finished.
+  test "the runner holds the step in flight, and the record is written as it goes (DEPLOY-22, DEPLOY-23)" do
+    running_server()
+    tree = front_end_tree()
+    test_pid = self()
+
+    # The install waits here, so the test can look at the operation mid-flight.
+    stub_step(:packages, fn _root ->
+      send(test_pid, {:packages, self()})
+
+      receive do
+        :continue -> {:ok, ""}
+      after
+        30_000 -> {:ok, ""}
+      end
+    end)
+
+    stub_step(:assets, fn _root -> {:ok, ""} end)
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert_receive {:packages, operation}, 120_000
+
+    # DEPLOY-22: the runner knows the step it is on and the ones that finished.
+    assert %{running: running, last: nil} = Runner.state()
+    assert running.kind == :deploy
+    assert running.mode == :reload
+    assert running.step == :packages
+    assert Enum.map(running.steps, & &1.step) == [:merge, :deps, :tests]
+    assert Enum.all?(running.steps, &(&1.status == :ok and is_integer(&1.ms)))
+    assert %DateTime{} = running.started
+
+    # DEPLOY-23: and so does the record, which outlives this process.
+    assert %{
+             kind: :deploy,
+             mode: :reload,
+             sha: nil,
+             step: :packages,
+             finished: nil,
+             result: nil,
+             started: %DateTime{},
+             steps: steps
+           } = Deploy.last_deploy()
+
+    assert Enum.map(steps, & &1.step) == [:merge, :deps, :tests]
+
+    send(operation, :continue)
+    assert {:ok, _message} = await_deploy()
+
+    # It finished, so the record says so, and the revision it loaded is the one
+    # the app runs now (DEPLOY-17).
+    live = head(tree)
+
+    assert %{kind: :deploy, sha: ^live, step: nil, finished: %DateTime{}, result: {:ok, _}} =
+             Deploy.last_deploy()
+
+    assert %{running: nil, last: %{steps: steps}} = Runner.state()
+    assert Enum.map(steps, & &1.step) == [:merge, :deps, :tests, :packages, :assets, :load]
+  end
+
+  # DEPLOY-23, DEPLOY-25: the record keeps what the deploy did and the revisions
+  # the app has run, newest first, each with how it was loaded.
+  test "the record says what the deploy did, and which revision it loaded (DEPLOY-23)" do
+    running_server()
+    tree = front_end_tree()
+    build_front_end_with(self())
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert {:ok, message} = await_deploy()
+    assert_receive :loaded
+
+    live = head(tree)
+
+    assert %{
+             kind: :deploy,
+             mode: :reload,
+             sha: ^live,
+             step: nil,
+             started: %DateTime{},
+             finished: %DateTime{},
+             result: {:ok, ^message},
+             steps: steps
+           } = Deploy.last_deploy()
+
+    assert Enum.map(steps, & &1.step) == [:merge, :deps, :tests, :packages, :assets, :load]
+    assert Enum.all?(steps, &(&1.status == :ok and is_integer(&1.ms)))
+
+    # DEPLOY-25, DEPLOY-17: the revision it loaded is one the app has run, with
+    # when and by what, and it is the revision `status/1` reports.
+    assert [%{sha: ^live, at: %DateTime{}, by: :deploy, mode: :reload} | _older] =
+             Deploy.loaded_revisions()
+
+    assert Deploy.loaded_revision() == live
+    assert {:ok, %{loaded: ^live, behind?: false}} = Deploy.status()
+  end
+
+  # DEPLOY-23: a record that is not there, or that cannot be read, reads as
+  # nothing at all — a page renders it.
+  test "a missing or corrupt record reads as nothing (DEPLOY-23)" do
+    assert Deploy.last_deploy() == nil
+    assert Deploy.loaded_revisions() == []
+
+    File.mkdir_p!(Workspace.data_dir())
+    File.write!(Deploy.record_path(), "{ this is not json")
+
+    assert Deploy.last_deploy() == nil
+    assert Deploy.loaded_revisions() == []
+
+    # A record a page can read renders; a page never crashes on it.
+    assert Deploy.last_deploy() == nil
+  end
+
+  # DEPLOY-25: the revisions the app has run are kept, newest first, so one it
+  # has run and no longer is can still be gone back to (DEPLOY-26).
+  test "the revisions the app has run are kept, newest first (DEPLOY-25)", %{tree: tree} do
+    running_server()
+    {_id, path} = new_worktree()
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    first = head(tree)
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    second = head(tree)
+
+    assert second != first
+
+    assert [
+             %{sha: ^second, by: :deploy, mode: :reload},
+             %{sha: ^first, by: :deploy, mode: :reload}
+           ] =
+             Deploy.loaded_revisions()
+
+    # The newest is what the app reports it is running (DEPLOY-17).
+    assert Deploy.loaded_revision() == second
+    assert {:ok, %{loaded: ^second}} = Deploy.status()
+
+    # And loading the same revision again does not list it twice.
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    assert [%{sha: ^second}, %{sha: ^first}] = Deploy.loaded_revisions()
+  end
+
+  # DEPLOY-25: a tree deployed before the record existed has the loaded revision
+  # and nothing else, and that revision is still a rollback target.
+  test "a tree with only the loaded-revision file still reports a revision to go back to (DEPLOY-25)",
+       %{tree: tree} do
+    running_server()
+    {_id, path} = new_worktree()
+
+    old = head(tree)
+    assert :ok = Deploy.record_loaded()
+
+    # The record is gone, the way a tree deployed by an older Elia has none.
+    File.rm!(Deploy.record_path())
+    assert Deploy.loaded_revision() == old
+    assert [%{sha: ^old}] = Deploy.loaded_revisions()
+
+    # A deploy loads a new revision, and the one before it is still a target.
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    live = head(tree)
+
+    assert [%{sha: ^live}, %{sha: ^old}] = Deploy.loaded_revisions()
+
+    assert {:ok, message} = Deploy.rollback(old, :reload)
+    assert message =~ "Rolled live back"
+    assert head(tree) == old
+  end
+
+  ## The bundle a deploy loads (DEPLOY-24)
+
+  # DEPLOY-24: a build that exits 0 having written nothing is a failed deploy,
+  # not a running app with no hook: `live` is rolled back and nothing is loaded,
+  # and the error names the file.
+  test "a bundle the build did not write fails the deploy (DEPLOY-24)" do
+    running_server()
+    tree = front_end_tree()
+
+    # A misconfigured `esbuild`, or a wiped `priv/static`: the build is happy and
+    # the entry point the browser loads is gone.
+    stub_step(:packages, fn _root -> {:ok, ""} end)
+
+    stub_step(:assets, fn _root ->
+      File.rm!(Path.join(tree, "priv/static/assets/js/app.js"))
+      {:ok, ""}
+    end)
+
+    {_id, path} = new_worktree()
+    file = work_on_trunk(path)
+    live = head(tree)
+
+    assert {:error, message} = Deploy.hot_reload()
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "priv/static/assets/js/app.js"
+    assert message =~ "DEPLOY-24"
+
+    # Nothing is deployed, and the live tree is the one it was (DEPLOY-5).
+    assert head(tree) == live
+    assert branch(tree) == "live"
+    refute File.exists?(Path.join(tree, file))
+    refute_received :loaded
+  end
+
+  # DEPLOY-24: a bundle that is there but empty is no bundle either.
+  test "an empty bundle fails the deploy (DEPLOY-24)" do
+    running_server()
+    tree = front_end_tree()
+
+    stub_step(:packages, fn _root -> {:ok, ""} end)
+
+    stub_step(:assets, fn _root ->
+      File.write!(Path.join(tree, "priv/static/assets/css/app.css"), "")
+      {:ok, ""}
+    end)
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+    live = head(tree)
+
+    assert {:error, message} = Deploy.hot_reload()
+    assert message =~ "priv/static/assets/css/app.css"
+    assert head(tree) == live
+    refute_received :loaded
+  end
+
+  ## Going back (DEPLOY-26)
+
+  # DEPLOY-26: going back is a load, not a merge — `live` moves back with a
+  # `git reset --hard`, that revision's front end is made current, and it is
+  # loaded and recorded.
+  test "a rollback moves live back, rebuilds the front end and loads it (DEPLOY-26)" do
+    running_server()
+    tree = front_end_tree()
+    build_front_end_with(self())
+    {_id, path} = new_worktree()
+
+    first = head(tree)
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    second = head(tree)
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    third = head(tree)
+
+    assert {:ok, message} = Deploy.rollback(second, :reload)
+    assert message =~ "Rolled live back to #{String.slice(second, 0, 7)}"
+    assert message =~ "front end was rebuilt"
+    assert_receive :loaded
+
+    assert head(tree) == second
+    assert branch(tree) == "live"
+    # The tree is behind the trunk again, so the section offers a deploy
+    # (CONF-19).
+    assert {:ok, %{pending: 1}} = Deploy.status()
+
+    # DEPLOY-17, DEPLOY-25: what a rollback loaded is recorded as loaded by a
+    # rollback.
+    assert Deploy.loaded_revision() == second
+
+    assert [%{sha: ^second, by: :rollback, mode: :reload}, %{sha: ^third} | _rest] =
+             Deploy.loaded_revisions()
+
+    refute first == second
+  end
+
+  # DEPLOY-15, DEPLOY-16, DEPLOY-21, DEPLOY-22: a rollback runs in the runner as
+  # an operation of its own — one at a time, reporting its steps the way a
+  # deploy does.
+  test "the runner runs a rollback as an operation of its own (DEPLOY-26)" do
+    running_server()
+    tree = front_end_tree()
+    test_pid = self()
+
+    # The install waits for the test, so it can look at the operation mid-flight.
+    stub_step(:packages, fn _root ->
+      send(test_pid, {:packages, self()})
+
+      receive do
+        :continue -> {:ok, ""}
+      after
+        30_000 -> {:ok, ""}
+      end
+    end)
+
+    stub_step(:assets, fn _root -> {:ok, ""} end)
+
+    {_id, path} = new_worktree()
+    Runner.subscribe()
+
+    work_on_trunk(path)
+    assert :ok = reload_now()
+    first = head(tree)
+
+    work_on_trunk(path)
+    assert :ok = reload_now()
+    second = head(tree)
+
+    # What the test has settled is done with, so what it looks at next is the
+    # rollback's own steps.
+    flush_messages()
+
+    assert :ok = Runner.rollback(first, :reload)
+    assert_receive {:deploy_started, %{mode: :reload}}, 5_000
+    assert_receive {:packages, operation}, 120_000
+
+    # DEPLOY-16: a rollback is an operation, and only one runs at a time.
+    assert Runner.rollback(first, :reload) == {:error, :busy}
+    assert Runner.start(:reload) == {:error, :busy}
+
+    # DEPLOY-22: the runner says which operation it is, and where it is.
+    assert %{
+             running: %{
+               kind: :rollback,
+               mode: :reload,
+               sha: ^first,
+               step: :packages,
+               steps: [%{step: :reset, status: :ok}]
+             }
+           } = Runner.state()
+
+    send(operation, :continue)
+    assert {:ok, message} = await_deploy()
+    assert message =~ "Rolled live back"
+    assert head(tree) == first
+    assert second != first
+
+    assert deploy_progress() == [
+             {:reset, :started},
+             {:reset, :finished},
+             {:packages, :started},
+             {:packages, :finished},
+             {:assets, :started},
+             {:assets, :finished},
+             {:load, :started},
+             {:load, :finished}
+           ]
+
+    # DEPLOY-23: the record says it was a rollback, and where it went.
+    assert %{kind: :rollback, mode: :reload, sha: ^first, result: {:ok, _}, finished: %DateTime{}} =
+             Deploy.last_deploy()
+
+    assert [%{sha: ^first, by: :rollback} | _rest] = Deploy.loaded_revisions()
+  end
+
+  # DEPLOY-25, DEPLOY-26: a rollback is refused, changing nothing, for a
+  # revision the app has not run and for the one it is running now.
+  test "a rollback refuses a revision the app has not run, or is running now (DEPLOY-26)",
+       %{tree: tree} do
+    running_server()
+    {_id, path} = new_worktree()
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    running = head(tree)
+
+    # A commit that exists but was never loaded.
+    work_on_trunk(path)
+    never_loaded = trunk(tree)
+    live = head(tree)
+
+    assert {:error, message} = Deploy.rollback(never_loaded, :reload)
+    assert message =~ "has not run"
+    assert head(tree) == live
+    refute_received :loaded
+
+    # The revision it is running now: there is nothing to go back to.
+    assert {:error, message} = Deploy.rollback(running, :reload)
+    assert message =~ "nothing to go back to"
+    assert head(tree) == live
+  end
+
+  # DEPLOY-5, DEPLOY-26: a rollback refuses a live tree with uncommitted changes
+  # rather than resetting over them.
+  test "a rollback refuses a live tree with uncommitted changes (DEPLOY-26)", %{tree: tree} do
+    running_server()
+    {_id, path} = new_worktree()
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+    first = head(tree)
+
+    work_on_trunk(path)
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert_receive :loaded
+
+    File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
+    live = head(tree)
+
+    assert {:error, message} = Deploy.rollback(first, :reload)
+    assert message =~ "uncommitted changes"
+    assert head(tree) == live
+    assert File.exists?(Path.join(tree, "lib/hand_edited.ex"))
+    refute_received :loaded
+  end
+
+  # DEPLOY-14, DEPLOY-26: a tree that isn't set up for deployment is refused
+  # before anything runs.
+  test "a rollback refuses a live tree that isn't set up for deployment (DEPLOY-26)" do
+    plain = Path.join(System.tmp_dir!(), "elia-plain-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(plain)
+    on_exit(fn -> File.rm_rf!(plain) end)
+    Application.put_env(:elia, :runtime_root, plain)
+
+    assert {:error, message} = Deploy.rollback(String.duplicate("a", 40), :reload)
+    assert message =~ "not on the branch live"
+    assert File.ls!(plain) == []
+  end
+
+  # DEPLOY-24, DEPLOY-26: a rollback that fails once `live` has moved puts it
+  # back where it was and loads nothing, so the tree it leaves is the one the
+  # app is running.
+  test "a rollback whose front end fails puts live back and loads nothing (DEPLOY-26)" do
+    running_server()
+    tree = front_end_tree()
+    test_pid = self()
+
+    # The build asks the test whether it should work, so the rollback's own
+    # build can fail where the deploys' did not.
+    stub_step(:packages, fn _root -> {:ok, ""} end)
+
+    stub_step(:assets, fn _root ->
+      send(test_pid, {:assets, self()})
+
+      receive do
+        :ok -> {:ok, ""}
+        :fail -> {:error, "mix assets.build exited with 1"}
+      after
+        30_000 -> {:error, "the test did not answer"}
+      end
+    end)
+
+    {_id, path} = new_worktree()
+
+    Runner.subscribe()
+
+    work_on_trunk(path)
+    assert :ok = Runner.start(:reload)
+    assert_receive {:assets, deploy}, 120_000
+    send(deploy, :ok)
+    assert {:ok, _message} = await_deploy()
+    assert_receive :loaded
+    first = head(tree)
+
+    work_on_trunk(path)
+    assert :ok = Runner.start(:reload)
+    assert_receive {:assets, deploy}, 120_000
+    send(deploy, :ok)
+    assert {:ok, _message} = await_deploy()
+    assert_receive :loaded
+    second = head(tree)
+
+    assert :ok = Runner.rollback(first, :reload)
+    assert_receive {:assets, rollback}, 120_000
+    send(rollback, :fail)
+
+    assert {:error, message} = await_deploy()
+    assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
+    assert message =~ "mix assets.build exited with 1"
+
+    # `live` is back where it was, and nothing was loaded.
+    assert head(tree) == second
+    assert branch(tree) == "live"
+    refute_received :loaded
+    assert Deploy.loaded_revision() == second
+
+    assert %{kind: :rollback, sha: ^first, result: {:error, _}, steps: steps} =
+             Deploy.last_deploy()
+
+    assert Enum.map(steps, & &1.step) == [:reset, :packages, :assets]
+    assert [%{status: :ok}, %{status: :ok}, %{status: {:failed, _}}] = steps
+  end
+
+  # DEPLOY-23, DEPLOY-25: a restart deploy records the revision the server comes
+  # back on, and how it loaded it, before the server stops (DEPLOY-17).
+  test "a restart deploy records what it did before the server stops (DEPLOY-23)",
+       %{tree: tree} do
+    running_server()
+    stop_server_with(self())
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:restart)
+    assert {:ok, message} = await_deploy()
+    assert message =~ "Restarting the server"
+    assert_receive {:stop, status}
+    assert status != 0
+
+    live = head(tree)
+
+    assert %{kind: :deploy, mode: :restart, sha: ^live, step: nil, steps: steps} =
+             Deploy.last_deploy()
+
+    assert List.last(steps).step == :restart
+    assert [%{sha: ^live, by: :deploy, mode: :restart} | _rest] = Deploy.loaded_revisions()
   end
 end
