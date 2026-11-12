@@ -72,6 +72,7 @@ deleting it.
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, how decisions apply, per-chat auto-approval |
 | [Structured user input](user-input.md) | `ASK` | `ask_user` puts a question with options to the user as a card of buttons; the turn waits and the answer comes back as the call's result |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
+| [Reading earlier chats](chat-history.md) | `HIST` | `list_chats`, `read_chat` and `search_chats`: the agent can consult chats other than the one it runs in, jailed or not |
 | [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic, OpenRouter and a local llama.cpp server backends |
 | [llama.cpp local provider](llamacpp-provider.md) | `LOCAL` | A local `llama-server` as a third provider: no API key, and Elia starts and stops it from a `.gguf` |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |

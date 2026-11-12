@@ -30,7 +30,9 @@ system prompt from them. It can be reloaded while the app runs.
   `await_task`, [Sub-tasks](subtasks.md)), `titles` (`set_title`,
   [Chat titles](chat-titles.md)), `done` (`mark_done`,
   [Marking a chat done](chat-done.md), DONE-6), `user-input` (`ask_user`,
-  [Structured user input](user-input.md), ASK-1) and `self-modification`
+  [Structured user input](user-input.md), ASK-1), `chats` (`list_chats`,
+  `read_chat`, `search_chats`, [Reading earlier chats](chat-history.md),
+  HIST-1) and `self-modification`
   (instructions only). The last one is a chat's only when its project is Elia's
   own (PROJ-17);
   a sub-task session, and only it, also gets the built-in `task` skill, which

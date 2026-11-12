@@ -452,6 +452,25 @@ defmodule Elia.StoreTest do
 
   defp entry(list, id), do: Enum.find(list, &(&1.id == id))
 
+  # STORE-36: one chat's listing, without listing the others.
+  test "entry/1 gives one chat the same entry list/1 would" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    assert Store.entry(id) == nil
+    assert Store.entry("../bad") == nil
+    assert Store.entry("") == nil
+
+    :ok = Store.save(id, [Message.user("what I asked")], done: true, project: "proj-1")
+
+    assert %{title: "what I asked", description: "what I asked", done: true} = Store.entry(id)
+    assert Store.entry(id) == entry(Store.list(1000), id)
+
+    # A corrupt chat has a file, so it is still an entry.
+    File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
+    assert %{id: ^id, title: "New chat"} = Store.entry(id)
+  end
+
   # A store of its own: a throwaway runtime root, since that is where Elia's
   # data and so the saved chats live (DEPLOY-2).
   defp with_empty_store(fun) do

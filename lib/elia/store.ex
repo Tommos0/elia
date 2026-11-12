@@ -284,6 +284,16 @@ defmodule Elia.Store do
   def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
 
   @doc """
+  One chat's listed entry (STORE-36) — the same fields `list/1` gives it,
+  derived the same way — without reading the other chats' files, or `nil` when
+  the id is invalid (STORE-4) or has no saved chat (STORE-24).
+  """
+  @spec entry(binary()) :: map() | nil
+  def entry(id) do
+    if valid_id?(id) and File.exists?(path(id)), do: listed(id <> ".term"), else: nil
+  end
+
+  @doc """
   The chat to resume when the user opens the chat list (STORE-29, UI-77): the most
   recently started chat (STORE-12) that isn't a task chat (STORE-17) and isn't
   done (STORE-35, DONE-10), as a listed entry, or `nil` when there is none.
@@ -314,27 +324,32 @@ defmodule Elia.Store do
       {:ok, files} ->
         files
         |> Enum.filter(&String.ends_with?(&1, ".term"))
-        |> Enum.map(&list_entry/1)
+        |> Enum.map(&listed/1)
         |> Enum.sort_by(&DateTime.to_unix(&1.created_at, :microsecond), :desc)
-        |> Enum.map(fn entry ->
-          {messages, entry} = Map.pop(entry, :messages)
-          {task, entry} = Map.pop(entry, :task)
-
-          entry
-          |> Map.merge(%{
-            # STORE-33, TITLE-1: the chat's own title when it has one, else the
-            # derivation from its first user message (STORE-7). The description
-            # is that derivation either way (STORE-10), so hovering a row still
-            # shows what was asked.
-            title: Map.get(entry, :title) || title(messages),
-            description: title(messages, 1000)
-          })
-          |> put_task(task)
-        end)
 
       {:error, _} ->
         []
     end
+  end
+
+  # A file's listed entry: the saved fields, plus the title and description the
+  # chat list shows (STORE-10, STORE-33, STORE-35) and a task chat's own listed
+  # status (STORE-17).
+  defp listed(file) do
+    entry = list_entry(file)
+    {messages, entry} = Map.pop(entry, :messages)
+    {task, entry} = Map.pop(entry, :task)
+
+    entry
+    |> Map.merge(%{
+      # STORE-33, TITLE-1: the chat's own title when it has one, else the
+      # derivation from its first user message (STORE-7). The description
+      # is that derivation either way (STORE-10), so hovering a row still
+      # shows what was asked.
+      title: Map.get(entry, :title) || title(messages),
+      description: title(messages, 1000)
+    })
+    |> put_task(task)
   end
 
   # STORE-17: a sub-task chat is listed under its task title, with its parent
