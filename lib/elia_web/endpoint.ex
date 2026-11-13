@@ -60,6 +60,13 @@ defmodule EliaWeb.Endpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
+  # RECOVER-10: `/recover`, the plain page that reaches the app when a deploy has
+  # left the app's own UI unusable. It is its own HTML (no layout, no bundle, no
+  # JavaScript), so it is answered here, after the parsers (it reads a form body)
+  # and before the router — never by the tree's front end, which is what may be
+  # broken — and in every environment.
+  plug EliaWeb.Recovery
+
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
