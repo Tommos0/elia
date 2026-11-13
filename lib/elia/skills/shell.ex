@@ -3,10 +3,11 @@ defmodule Elia.Skills.Shell do
   Runs shell commands in the workspace. Every call requires user approval.
 
   A call's timeout is bounded (SHELL-10): `timeout_seconds` is `default_timeout`
-  when the call gives none, and never more than `max_timeout`.
+  when the call gives none — 300s, because a compile or a whole test suite is an
+  ordinary command — and never more than `max_timeout`.
 
       config :elia, Elia.Skills.Shell,
-        default_timeout: 60,        # seconds, used when a call gives none
+        default_timeout: 300,       # seconds, used when a call gives none
         max_timeout: 1_800,         # seconds, the most a call may ask for
         max_output: 30_000          # characters returned to the model
   """
@@ -148,7 +149,7 @@ defmodule Elia.Skills.Shell do
 
   defp config(key) do
     Keyword.merge(
-      [default_timeout: 60, max_timeout: 1_800, max_output: 30_000],
+      [default_timeout: 300, max_timeout: 1_800, max_output: 30_000],
       Application.get_env(:elia, __MODULE__, [])
     )[key]
   end

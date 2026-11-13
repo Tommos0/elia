@@ -1,7 +1,7 @@
 # Test runs
 
-Status: Implemented (VERIFY-1, VERIFY-2); the end-of-turn verification is
-retired; VERIFY-8 to VERIFY-10 are Draft
+Status: Implemented (VERIFY-1, VERIFY-2, VERIFY-8 to VERIFY-10); the end-of-turn
+verification is retired
 
 `run_tests` runs the test suite in the workspace. There used to be an
 end-of-turn verification as well: when a turn had changed Elixir files the

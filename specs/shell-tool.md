@@ -1,9 +1,17 @@
 # Shell tool
 
-Status: Implemented; SHELL-10 and SHELL-11 are Draft
+Status: Implemented
 
 The `shell` tool runs a command on the user's machine, once the user has
 approved it.
+
+A call's timeout is a setting with a ceiling (SHELL-10): the default is 300s,
+because a compile or a whole test suite is an ordinary command rather than a
+long one, and the most a call may ask for is 1,800s. Before it was 60s with no
+ceiling — a `mix precommit` through the tool was killed while it compiled, and
+a call could equally have asked for a day. The deadline also had to hold for a
+command that keeps writing output (SHELL-11), which is the shape a stuck tool
+call takes.
 
 ## Requirements
 
@@ -14,7 +22,7 @@ approved it.
   shell can be overridden per call with the `:shell` option.
 - **SHELL-3** The command runs in its own process group where `setsid` is
   available. On timeout the whole group is killed. The timeout is
-  `timeout_seconds`, or the configured default (60s), and never more than the
+  `timeout_seconds`, or the configured default (300s), and never more than the
   configured maximum (SHELL-10).
 - **SHELL-4** The result is the combined stdout and stderr followed by
   `[exit: <status>]`. Exit status 0 is a success; anything else, including a
@@ -40,9 +48,10 @@ approved it.
   instead, and the result names both what was used and what was asked for
   (`[exit: timeout after 1800s (asked for 86400s, the most is 1800s)]`), so the
   model sees the ceiling it hit. A value below 1 is an error result and no
-  command runs. The tool's description (SHELL-8, SHELL-9) names the default and
-  the maximum, so a long build or a cold compile can be asked for on purpose —
-  the default is for the common command, not for the longest one.
+  command runs. The tool's description (SHELL-8, SHELL-9) names the default
+  (300s) and the maximum, so a command that needs longer than the default — a
+  cold compile, a whole suite — is asked for on purpose, and the result says
+  which ceiling it hit when the call was clamped to it.
 - **SHELL-11** The timeout is a deadline for the whole run, not a quiet period:
   the run ends at it whatever the command is doing, a command that keeps
   writing output included. The deadline is re-checked as output arrives, so a
@@ -55,7 +64,7 @@ approved it.
 
 ```elixir
 config :elia, Elia.Skills.Shell,
-  default_timeout: 60,        # seconds, used when a call gives none
+  default_timeout: 300,       # seconds, used when a call gives none
   max_timeout: 1_800,         # seconds, the most a call may ask for (SHELL-10)
   max_output: 30_000          # characters returned to the model
 ```

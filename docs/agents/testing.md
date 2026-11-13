@@ -103,7 +103,7 @@ a browser during `mix test`.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8).
 - A suite run through the `shell` tool needs a longer timeout than the shell's
-  default: `timeout_seconds` is 60s unless the call asks for more, and never more
+  default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four
   partitions. A `run_tests` run has its own timeouts: a per-test one handed to
   `mix test` as `--timeout`, and the run's own, 600s by default

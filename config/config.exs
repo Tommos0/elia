@@ -176,7 +176,7 @@ config :elia, Elia.Priority, nice: 10, ionice: 6
 # (SHELL-10). A test run has its own timeout, and hands `mix test` a per-test
 # one, from the harness's settings (VERIFY-8, VERIFY-9).
 config :elia, Elia.Skills.Shell,
-  default_timeout: 60,
+  default_timeout: 300,
   max_timeout: 1_800,
   max_output: 30_000
 

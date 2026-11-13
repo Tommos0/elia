@@ -98,7 +98,7 @@ defmodule Elia.Skills.ShellTest do
   test "a timeout that isn't a whole number of seconds of at least 1 is refused" do
     assert {:error, output} = Shell.run(%{"command" => "echo hi", "timeout_seconds" => 0})
     assert output =~ "timeout_seconds must be a whole number of seconds of at least 1"
-    assert output =~ "the default is 60s and the most is 1800s"
+    assert output =~ "the default is 300s and the most is 1800s"
     refute output =~ "hi"
 
     assert {:error, _} = Shell.run(%{"command" => "echo hi", "timeout_seconds" => -5})

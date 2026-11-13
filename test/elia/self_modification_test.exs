@@ -6,6 +6,13 @@ defmodule Elia.SelfModificationTest do
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
 
+  # One throwaway project for the whole module (VERIFY-8, VERIFY-9): the runs
+  # below are real `mix test` runs, and sharing one tree keeps them to a single
+  # compile — and costs the other tests in the module nothing but a temp dir.
+  setup_all do
+    %{hangs_tree: hanging_tree()}
+  end
+
   describe "workspace policy" do
     test "classifies paths" do
       assert {_, :extension} = Workspace.resolve("skills/foo/SKILL.md")
@@ -484,9 +491,7 @@ defmodule Elia.SelfModificationTest do
     # VERIFY-8: the per-test timeout is `mix test`'s own, so a test that sets no
     # timeout of its own fails the run instead of holding it. A real run in a
     # throwaway project, because the flag has to reach ExUnit.
-    test "the per-test timeout reaches ExUnit" do
-      tree = hanging_tree()
-
+    test "the per-test timeout reaches ExUnit", %{hangs_tree: tree} do
       assert {:error, output} =
                Harness.run_tests(["test/hangs_test.exs"], tree,
                  jail: false,
@@ -501,8 +506,9 @@ defmodule Elia.SelfModificationTest do
     # VERIFY-9, VERIFY-10: the run's own timeout is the configured one, a call
     # may ask for another within the ceiling — and a run stopped by it says so
     # and names the lever, rather than reading as a suite that failed.
-    test "the run's timeout is the configured one, clamped to the configured maximum" do
-      tree = hanging_tree()
+    test "the run's timeout is the configured one, clamped to the configured maximum", %{
+      hangs_tree: tree
+    } do
       previous = Application.get_env(:elia, Harness, [])
 
       Application.put_env(:elia, Harness, Keyword.merge(previous, timeout: 2, max_timeout: 3))
