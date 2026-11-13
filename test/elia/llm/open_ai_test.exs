@@ -31,6 +31,20 @@ defmodule Elia.LLM.OpenAITest do
     assert local["model"] == "local/model"
   end
 
+  # LLM-37, LOCAL-10: the breakpoint is OpenRouter's, for a model that documents
+  # it; the local server's encoding is untouched.
+  test "the local encoding carries no cache breakpoint" do
+    request = %{system: "Be brief.", messages: [Message.user("hi")]}
+
+    local = LlamaCpp.build_body(request)
+    assert [%{"role" => "system", "content" => "Be brief."} | _] = local["messages"]
+
+    openrouter = OpenRouter.build_body(request, model: "anthropic/claude-opus-5.5")
+
+    assert [%{"role" => "system", "content" => [%{"cache_control" => _}]} | _] =
+             openrouter["messages"]
+  end
+
   # LOCAL-10, LOCAL-9: one decoder too — the same stream makes the same message.
   test "the same stream decodes to the same message for both" do
     chunks = [delta(%{"content" => "Hi."}), finish("stop")]

@@ -7,7 +7,8 @@ defmodule Elia.LLM.Anthropic do
     * `:api_key` - defaults to `ANTHROPIC_API_KEY`; a key saved in Settings wins
     * `:model` - defaults to `"claude-opus-5-5"`
     * `:max_tokens` - defaults to `64_000`
-    * `:effort` - `output_config.effort`, defaults to `"high"`
+    * `:effort` - `output_config.effort`, defaults to `"medium"`; a request's
+      own `:effort` wins (LLM-39)
     * `:thinking_display` - `"updates"` (progress notes), `"summarized"` or `"omitted"`
     * `:prices` - `%{model_id => {input, output}}` USD per million tokens,
       merged over the built-in table (the Models API has no prices)
@@ -54,7 +55,7 @@ defmodule Elia.LLM.Anthropic do
     base_url: "https://api.anthropic.com",
     model: "claude-opus-5-5",
     max_tokens: 64_000,
-    effort: "high",
+    effort: "medium",
     thinking_display: "updates",
     fallbacks: "default",
     req_options: []
@@ -176,7 +177,8 @@ defmodule Elia.LLM.Anthropic do
       "stream" => true,
       "messages" => encode_messages(request.messages),
       "thinking" => thinking,
-      "output_config" => %{"effort" => config[:effort]},
+      # LLM-39: a request may name its own effort (a chat's setting, SESS-40).
+      "output_config" => %{"effort" => request[:effort] || config[:effort]},
       # Auto-place a cache breakpoint on the last cacheable block each turn.
       "cache_control" => %{"type" => "ephemeral"}
     }

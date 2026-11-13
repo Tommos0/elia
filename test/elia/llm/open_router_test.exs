@@ -115,16 +115,152 @@ defmodule Elia.LLM.OpenRouterTest do
     assert {:tool_call_started, %{id: "call_1", name: "shell"}} in emitted
   end
 
-  # LLM-18
+  # LLM-18, LLM-38
   test "sends max_tokens and reasoning effort only when set" do
     configure(OpenRouter, api_key: "k", max_tokens: 1000, effort: "high")
     stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
 
     assert {:ok, %{stop_reason: :end_turn}} =
-             OpenRouter.stream(%{messages: [Message.user("hi")], model: "x/y"}, fn _ -> :ok end)
+             OpenRouter.stream(
+               %{messages: [Message.user("hi")], model: "anthropic/x"},
+               fn _ -> :ok end
+             )
 
     assert_receive {:request, _, _, body}
-    assert %{"model" => "x/y", "max_tokens" => 1000, "reasoning" => %{"effort" => "high"}} = body
+
+    assert %{
+             "model" => "anthropic/x",
+             "max_tokens" => 1000,
+             "reasoning" => %{"effort" => "high"}
+           } = body
+  end
+
+  # LLM-37
+  test "an Anthropic-family model gets a prompt-cache breakpoint on the system message" do
+    configure(OpenRouter, api_key: "k")
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{
+                 messages: [Message.user("hi")],
+                 system: "Be brief.",
+                 model: "anthropic/claude-opus-5.5"
+               },
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+
+    assert [
+             %{
+               "role" => "system",
+               "content" => [
+                 %{
+                   "type" => "text",
+                   "text" => "Be brief.",
+                   "cache_control" => %{"type" => "ephemeral"}
+                 }
+               ]
+             },
+             %{"role" => "user", "content" => "hi"}
+           ] = body["messages"]
+  end
+
+  # LLM-37
+  test "a model of another family is sent the plain system message it was sent before" do
+    configure(OpenRouter, api_key: "k")
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{
+                 messages: [Message.user("hi")],
+                 system: "Be brief.",
+                 model: "deepseek/deepseek-chat"
+               },
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    assert [%{"role" => "system", "content" => "Be brief."} | _] = body["messages"]
+  end
+
+  # LLM-37
+  test "cache_control: false sends no breakpoint, even for an Anthropic-family model" do
+    configure(OpenRouter, api_key: "k", cache_control: false)
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{
+                 messages: [Message.user("hi")],
+                 system: "Be brief.",
+                 model: "anthropic/claude-opus-5.5"
+               },
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    assert [%{"role" => "system", "content" => "Be brief."} | _] = body["messages"]
+  end
+
+  # LLM-37
+  test "a request with no system prompt carries no breakpoint" do
+    configure(OpenRouter, api_key: "k")
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{messages: [Message.user("hi")], model: "anthropic/claude-opus-5.5"},
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    assert [%{"role" => "user", "content" => "hi"}] = body["messages"]
+  end
+
+  # LLM-38: the configured effort is a default for the family that takes one, so
+  # a model of any other family is asked exactly as it was before.
+  test "the configured effort is sent to an Anthropic-family model only" do
+    configure(OpenRouter, api_key: "k", effort: "medium")
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{messages: [Message.user("hi")], model: "anthropic/claude-opus-5.5"},
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    assert body["reasoning"] == %{"effort" => "medium"}
+
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{messages: [Message.user("hi")], model: "deepseek/deepseek-chat"},
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    refute Map.has_key?(body, "reasoning")
+  end
+
+  # LLM-38, LLM-39: an effort the request names is the caller's own choice and is
+  # sent whatever the model is (LLM-18).
+  test "an effort the request names is sent for any model" do
+    configure(OpenRouter, api_key: "k")
+    stub_openrouter_stream(self(), [delta(%{"content" => "ok"}), finish("stop")])
+
+    assert {:ok, _} =
+             OpenRouter.stream(
+               %{messages: [Message.user("hi")], model: "deepseek/deepseek-chat", effort: "low"},
+               fn _ -> :ok end
+             )
+
+    assert_receive {:request, _, _, body}
+    assert body["reasoning"] == %{"effort" => "low"}
   end
 
   # LLM-19, LLM-21, LLM-6

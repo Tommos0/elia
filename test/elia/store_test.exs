@@ -65,6 +65,51 @@ defmodule Elia.StoreTest do
     assert Store.load_jail(id) == true
   end
 
+  # STORE-37, STORE-38: a chat's own reasoning effort is stored only when it has
+  # one, and reads back as none when it hasn't.
+  test "a chat's reasoning effort is saved only when it has one of its own" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_effort(id) == nil
+    # A chat that keeps the configured default carries no entry at all.
+    chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
+    refute Map.has_key?(chat, :effort)
+
+    :ok = Store.save(id, [Message.user("hi")], effort: "high")
+    assert Store.load_effort(id) == "high"
+    assert [%Message{}] = Store.load(id)
+
+    # Giving the chat no effort of its own again drops the entry from the file.
+    :ok = Store.save(id, [Message.user("hi")], effort: nil)
+    assert Store.load_effort(id) == nil
+    chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
+    refute Map.has_key?(chat, :effort)
+
+    # Only the three efforts a request can name are stored.
+    :ok = Store.save(id, [Message.user("hi")], effort: "very high")
+    assert Store.load_effort(id) == nil
+  end
+
+  # STORE-38: an older file has no `effort` key at all, and reads as a chat with
+  # none of its own — which is why this change needs no migration.
+  test "a missing, unreadable, corrupt or valueless chat has no effort of its own" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    assert Store.load_effort("missing-chat") == nil
+    assert Store.load_effort("../bad") == nil
+    assert Store.load_effort("") == nil
+
+    File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
+    assert Store.load_effort(id) == nil
+
+    # A chat saved by an older version: no `effort` key, read as none.
+    :ok = Store.save(id, [Message.user("hi")])
+    assert Store.load_effort(id) == nil
+  end
+
   # STORE-26
   test "a missing, unreadable, corrupt or valueless chat is jailed" do
     id = Elia.Agent.new_id()
