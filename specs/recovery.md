@@ -40,14 +40,18 @@ what the Settings page's own rollback control does (CONF-23).
 - **RECOVER-11** The page says what the running app is on, which revisions it
   has run (DEPLOY-25; newest first, each with when it was loaded and by what)
   and what the last deploy or rollback did (DEPLOY-23) — the same record the
-  Settings section reports (CONF-22), read back through `Elia.Deploy`.
+  Settings section reports (CONF-22), read back through `Elia.Deploy`. The
+  revisions are `#recover-revisions`, and the last operation is
+  `#recover-last`.
 - **RECOVER-12** Every kept revision that is not the one running has a form that
   goes back to it (DEPLOY-26), with a button per load mode (hot reload,
-  DEPLOY-6; restart, DEPLOY-7). The POST hands the work to the runner rather
-  than doing it in the request (DEPLOY-15, DEPLOY-16), and the page it renders
-  then says that the operation is running and which step it is on (DEPLOY-21,
-  DEPLOY-22) — a build and a load is minutes, not a request that hangs — with a
-  link that reloads the page to follow it.
+  DEPLOY-6; restart, DEPLOY-7) — the revision in a `revision` field and the mode
+  in a `mode` field, so a test can post one without a browser. The POST hands
+  the work to the runner rather than doing it in the request (DEPLOY-15,
+  DEPLOY-16), and the page it renders then says that the operation is running
+  and which step it is on (DEPLOY-21, DEPLOY-22) — a build and a load is
+  minutes, not a request that hangs — with a link that reloads the page to
+  follow it.
 - **RECOVER-13** A POST is same-origin or it is refused: the origin rule
   RECOVER-9 stated, revived. The origin's scheme is the first `X-Forwarded-Proto`
   value if present, otherwise the scheme the server received; its host and port
