@@ -23,7 +23,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 
 ## Recovery
 
-- There is no checkpoint to roll back to and no `/recover` page (`specs/checkpoints.md`, `specs/recovery.md`): a chat's work is on its own branch, and a deploy refuses to load a tree whose suite or compile fails (DEPLOY-5, HOT-4).
+- There is no checkpoint to roll back to (`specs/checkpoints.md`, retired): a chat's work is on its own branch, and a deploy refuses to load a tree whose suite or compile fails (DEPLOY-5, HOT-4). `/recover` is back for the failure that gate does not catch — a deploy that passes its suite and still leaves the UI unusable: plain HTML, no bundle and no JavaScript, putting the app back on a revision it has already run (RECOVER-10..RECOVER-15, DEPLOY-25, DEPLOY-26, `specs/recovery.md`).
 
 ## Deploying
 
