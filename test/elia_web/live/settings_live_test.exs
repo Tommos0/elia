@@ -201,7 +201,21 @@ defmodule EliaWeb.SettingsLiveTest do
   # shows the command, the status and the output, and stops it again.
   test "the local model server section starts and stops a server", %{conn: conn} do
     stub = LlamaServerStub.install!()
-    configure(LlamaServer, binary: stub, startup_timeout: 15_000)
+
+    # A free port: this host's own llama-server may be on the default 8080, and
+    # the badge asks the configured port whether somebody else is there
+    # (LOCAL-16).
+    configure(LlamaServer,
+      binary: stub,
+      startup_timeout: 15_000,
+      port: LlamaServerStub.free_port()
+    )
+
+    # The server's cached URL is the one it started with, so the settings change
+    # has to be announced for the badge to stop reporting the external server on
+    # 8080 (LOCAL-16, LOCAL-28).
+    :ok = LlamaServer.reset()
+
     port = LlamaServerStub.free_port()
     model = model_file()
     on_exit(fn -> LlamaServer.stop_server() end)
@@ -251,11 +265,16 @@ defmodule EliaWeb.SettingsLiveTest do
   # LOCAL-20, LOCAL-25: starting without a llama-server on the machine says what
   # to do about it, in the section.
   test "the section says what to do without a llama-server", %{conn: conn} do
-    configure(LlamaServer, binary: nil)
+    # A free port: this host's own llama-server may be on the default 8080, and
+    # the badge asks the configured port whether somebody else is there
+    # (LOCAL-16).
+    port = LlamaServerStub.free_port()
+    configure(LlamaServer, binary: nil, port: port)
+
     {:ok, view, _html} = live(conn, ~p"/settings")
 
     view
-    |> form("#local-server-form", %{server: %{model: model_file(), port: "8080"}})
+    |> form("#local-server-form", %{server: %{model: model_file(), port: to_string(port)}})
     |> render_submit(%{"action" => "start"})
 
     assert has_element?(view, "#local-server-result", "No llama-server was found")

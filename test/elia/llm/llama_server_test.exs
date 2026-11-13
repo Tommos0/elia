@@ -7,7 +7,16 @@ defmodule Elia.LLM.LlamaServerTest do
 
   setup do
     reset_settings()
-    configure(LlamaServer, binary: LlamaServerStub.install!(), startup_timeout: 15_000)
+
+    # A port nothing else is on: the external-server check asks the configured
+    # port, and this host's own llama-server may be sitting on the default 8080
+    # (LOCAL-16).
+    configure(LlamaServer,
+      binary: LlamaServerStub.install!(),
+      startup_timeout: 15_000,
+      port: LlamaServerStub.free_port()
+    )
+
     configure(LlamaCpp)
     # A fresh state for each test: the server is the application's one, and a
     # previous test's failure would otherwise still be showing.
