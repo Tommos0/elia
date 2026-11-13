@@ -27,7 +27,11 @@ defmodule Elia.LLM.LlamaServerTest do
 
   defp stop_server do
     case LlamaServer.status().status do
-      status when status in [:starting, :running] -> LlamaServer.stop_server()
+      # :failed too (LOCAL-17): a start that failed leaves the status saying so
+      # until something changes it, and the server is the application's one —
+      # one process shared by every test in the run, not this file's. Left
+      # behind, a failure from a test here is what the next page to ask sees.
+      status when status in [:starting, :running, :failed] -> LlamaServer.stop_server()
       _status -> :ok
     end
   end
