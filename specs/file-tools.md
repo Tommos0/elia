@@ -24,8 +24,9 @@ tools reach no further than a jailed command does (ISOL-25).
 - **FILE-6** `write_file` creates parent directories and overwrites the
   file.
 - **FILE-7** `edit_file` replaces `old_string` with `new_string`. It fails if
-  `old_string` is empty or not found, or if it occurs more than once and
-  `replace_all` isn't set. The error says how many times it occurs.
+  `old_string` is empty, if neither the exact match nor the whitespace-tolerant
+  retry finds it (FILE-31, FILE-35), or if it occurs more than once exactly and
+  `replace_all` isn't set (FILE-36). The error says how many times it occurs.
 - **FILE-8** `edit_file` checks that `old_string` occurs as requested (FILE-7)
   before it writes anything.
 - **FILE-9** Success results name the relative path and the bytes written or
@@ -102,11 +103,12 @@ tools reach no further than a jailed command does (ISOL-25).
 - **FILE-22** `delete_file` takes the same per-file lock as `write_file` and
   `edit_file` (FILE-11), so a delete never races a write or edit of the same
   path.
-- **FILE-23** Every list of the file tools names all five: the skill's
+- **FILE-23** Every list of the file tools names each one of them, `search_files`
+  (the sixth, FILE-24) included: the skill's
   description and instructions say the tools also list a directory and delete a
   file or empty directory, and that deleting needs the same approvals as
-  writing (FILE-21); the `shell` tool's description sends file work to all five
-  (SHELL-8); and the chat's tool card gives them its document icon (UI-15).
+  writing (FILE-21); the `shell` tool's description sends file work to all of
+  them (SHELL-8); and the chat's tool card gives them its document icon (UI-15).
 - **FILE-24** `search_files` joins the file tools, so there are six: it finds
   text in the workspace and returns the matched regions, so a search doesn't
   have to be `shell` + `grep -n` followed by a `read_file` (proposal 5 of
@@ -155,6 +157,84 @@ tools reach no further than a jailed command does (ISOL-25).
 - **FILE-30** `search_files` fails, naming the path and the reason and changing
   nothing, when `path` is missing or is neither a file nor a directory. When
   nothing matches, the result is `[no matches for "<pattern>"]`.
+- **FILE-31** `edit_file` tries the exact match first (FILE-7). Only when that
+  finds no occurrence does it retry with a comparison that ignores, at the start
+  of a line, its indentation (leading spaces and tabs) and, at its end, trailing
+  whitespace and a `\r` of a `\r\n` line ending. That comparison is made line by
+  line, so a match covers whole lines and never part of a line, and it is used
+  only when it is unique (FILE-33); with no match at all it is the failure of
+  FILE-35. An exact match that is not unique is FILE-36's error, and never falls
+  through to the retry.
+- **FILE-32** A whitespace-tolerant match replaces the matched lines' own text —
+  from the start of the first matched line, its indentation included, to the end
+  of the content of the last matched line, leaving that line's trailing
+  whitespace and the line ending after it alone — with `new_string` exactly as
+  the caller wrote it. The match decides only which lines are replaced and never
+  rewrites `new_string`. The result is FILE-9's, and says the match was tolerant:
+  `Edited <path> (1 replacement, whitespace-tolerant match)`.
+- **FILE-33** A whitespace-tolerant match is used only when exactly one run of
+  lines matches it. When several runs do, nothing is written and the error names
+  the number and the lines: `old_string occurs 2 times ignoring indentation,
+  trailing whitespace and line endings (at lines 2 and 5); add context to make it
+  unique or set replace_all`. The tool never picks one candidate among several:
+  an ambiguity that is not uniquely resolvable is an error, never a guess.
+- **FILE-34** With `replace_all` set, a whitespace-tolerant match replaces every
+  candidate, non-overlapping and left to right in the order they appear in the
+  file, and the count in the result is the number of runs replaced.
+- **FILE-35** When neither match finds anything, the error names both attempts:
+  `old_string not found in file (no exact match, and no match ignoring
+  indentation, trailing whitespace and line endings)`. An empty `old_string` is
+  still FILE-7's own error.
+- **FILE-36** When `old_string` occurs more than once exactly and `replace_all`
+  isn't set (FILE-7), nothing is written and the error names the number of
+  occurrences and the line each one starts on, and the two ways out:
+  `old_string occurs 2 times (at lines 2 and 5); add context to make it unique or
+  set replace_all`.
+- **FILE-37** No argument of `edit_file` defaults: `path`, `old_string` and
+  `new_string` are required, so a call that omits one writes nothing and is
+  answered by `Elia.Tool.validate/2`'s missing-key error (LOOP-8) instead.
+  `new_string` in particular does not default to empty, because the
+  missing-argument calls it would rescue are calls whose replacement text went
+  out under a misspelled key (`new_text`, `new_str`): a default would turn each
+  into a deletion the caller never asked for. Removing text is said explicitly,
+  with an empty `new_string`, and the `new_string` property's description says
+  so. `replace_all` stays the only optional argument, defaulting to false.
+- **FILE-38** The `edit_file` tool's description and the skill's instructions
+  (FILE-10) say that the exact string is tried first, that a match ignoring
+  indentation, trailing whitespace and line endings is used only when it is
+  unique, and that an `old_string` matching more than once is an error rather
+  than a guess — context must be added or `replace_all` set. The description also
+  says that an empty `new_string` is how text is removed.
+
+## Out of scope
+
+FILE-31–FILE-38 change `edit_file`'s matching and its messages, and nothing else.
+The exact match stays the first and preferred path; approval (FILE-5), the
+per-file lock (FILE-11), path resolution (FILE-1) and the
+`Edited <path> (N replacements)` result (FILE-9) are as they were; and a
+whitespace-tolerant match is a plain success like any other edit, not a warning
+or a partial application. The other four file tools are untouched, and no
+persisted shape changes: what lands in a file is the caller's `new_string`, and
+nothing outside the edited file is read or written.
+
+Also out of scope is any tolerance beyond a line's own leading and trailing
+whitespace. An `old_string` that is re-wrapped, reordered, or whose lines differ
+from the file's in any other way is not matched: it is a bounded retry for an
+indentation or line-ending mismatch, not a fuzzy match. Two of the
+`old_string not found in file` failures sampled while writing this spec were of
+exactly that excluded kind — one `old_string` pasted twice over, one whose line
+breaks sat elsewhere than the file's — so the retry is expected to rescue a
+share of them, not all. And nothing here re-indents or otherwise rewrites
+`new_string` to fit the file: in a language where indentation is code (Python),
+the run that is replaced is identified by its line contents, not its
+indentation, and the text written in its place is the caller's, character for
+character, so the tool cannot silently change a block's meaning by moving it.
+An ambiguity that is not uniquely resolvable — two candidate runs, whatever
+their indentation — is always an error (FILE-33), never a pick.
+The tool card shows `search_files` with the default icon and the generic summary
+(UI-15), its calls count under "Other tools" rather than Files in the context
+breakdown (CTX-5), and a `path:line` in its result is not turned into a file
+link (FLINK).
 
 ## Implementation
 
@@ -165,16 +245,10 @@ Elixir: no new dependency, and no `grep` or `git grep` process. `Elia.Explorer`
 (EXPL-3) lists directories for the `/files` page with its own rules — protected
 paths filtered out, symlinks refused — so `list_files` doesn't share it.
 
-## Out of scope
-
-The tool card shows `search_files` with the default icon and the generic summary
-(UI-15), its calls count under "Other tools" rather than Files in the context
-breakdown (CTX-5), and a `path:line` in its result is not turned into a file
-link (FLINK).
-
 ## Tests
 
 `test/elia/self_modification_test.exs` (the policies, jail on and off, the
-symlink escape, and the tools, including `search_files`),
-`test/elia/shell_test.exs` (the jail's reach), `test/elia/skills/files_test.exs`
-(the instructions and the naming of FILE-24).
+symlink escape, and the tools, including `search_files` and `edit_file`'s
+matching), `test/elia/shell_test.exs` (the jail's reach),
+`test/elia/skills/files_test.exs` (the instructions, the tool descriptions and
+schemas, and the naming of FILE-24).
