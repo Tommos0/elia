@@ -45,7 +45,9 @@ tree's front end (`/recover`, RECOVER-10).
   branch `chat/<chat id>`, forked from the trunk `master` when the chat starts.
   That worktree is the chat's workspace root: the file and shell tools operate
   there (PROJ-12), and it holds no dependency tree of its own — it shares the
-  live tree's `deps` (ISOL-7).
+  live tree's `deps` (ISOL-7). Creating it also seeds it with a private copy of
+  the live tree's build output, so its first compile reuses the dependencies'
+  artifacts (BUILD-1).
 - **DEPLOY-2** The live tree is where the server runs, where the code reloader
   reloads, and where Elia's data lives: `.elia` sits directly under it, so
   chats are the same across a chat's worktrees and across a deploy. It is `config :elia, :runtime_root` (default: the server's working

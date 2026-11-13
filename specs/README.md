@@ -97,6 +97,7 @@ deleting it.
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat; `list_tasks`/`await_task` report its status and result; `finish_task` returns a structured result |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
 | [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
+| [Worktree build cache](worktree-build-cache.md) | `BUILD` | A chat's worktree is seeded with a private copy of the live tree's build output, so its first compile reuses the dependencies' artifacts instead of building them from source |
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |

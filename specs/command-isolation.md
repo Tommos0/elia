@@ -74,9 +74,11 @@ genuinely needs the rest of the machine (ISOL-16).
   the masked `.elia` (ISOL-6), so nothing inside the jail can reach it, and it
   goes when the worktree goes (DEPLOY-10).
 
-  Nothing runs ahead of a command: there is no pre-compile and no `mix.lock`
-  bookkeeping, nothing starts when a chat opens, and a chat that runs no command
-  in its worktree compiles nothing at all. The first command that compiles the
+  Nothing compiles ahead of a command: there is no pre-compile and no `mix.lock`
+  bookkeeping, nothing compiles when a chat opens, and a chat that runs no
+  command in its worktree compiles nothing at all. (Creating a worktree does
+  copy the live tree's build output into it — a copy, not a compile, and the
+  worktree's own: BUILD-1, BUILD-2.) The first command that compiles the
   dependencies pays for it, as part of that command: it is a tool call the chat
   already shows as running (FEED), it needs no approval of its own, and it
   answers to the command's own timeout (SHELL-3) — ten minutes for `run_tests`
