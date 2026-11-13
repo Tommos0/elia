@@ -17,10 +17,6 @@ defmodule EliaWeb.SettingsLive do
     end
 
     providers = LLM.providers()
-    # CONF-20, DEPLOY-16: the deploy in flight and the last one's result live in
-    # the runner, not in this page, so a page that mounts while a deploy runs or
-    # after one finished shows both.
-    deploy = Deploy.Runner.state()
 
     socket =
       socket
@@ -33,15 +29,14 @@ defmodule EliaWeb.SettingsLive do
         # key => :check | :save | :check_current while a request is in flight
         pending: %{},
         # key => :loading | {:ok, balance} | {:error, message}
-        balances: %{},
-        # CONF-19: the deploy state (DEPLOY-14, DEPLOY-17), and "reload" |
-        # "restart" while a deploy runs
-        deployment: Deploy.status(),
-        deploying: deploy.running && to_string(deploy.running.mode),
-        # CONF-20: the last deploy's result, still shown for a page that arrives
-        # after it ended
-        deploy_result: deploy.last && deploy_result(deploy.last.result)
+        balances: %{}
       )
+      # CONF-19..CONF-23, DEPLOY-16: the Deployment section's state — what the
+      # live tree needs, the operation in flight and the steps it has finished,
+      # the last operation and the revision it offers to go back to — comes from
+      # the runner and the record rather than from this page, so a page that
+      # mounts while one runs or after it finished shows it.
+      |> deploy_assigns()
       # PUSH-2: the key the section's hook subscribes with; PUSH-7: how many
       # devices are subscribed; PUSH-8: how the last test notification went;
       # PUSH-22: whether this page has reached the server yet, which only the
@@ -659,34 +654,79 @@ defmodule EliaWeb.SettingsLive do
                 id="deploy-reload"
                 phx-click="deploy"
                 phx-value-mode="reload"
-                disabled={@deploying != nil}
+                disabled={@deploy_op != nil}
                 title="Run the tests, merge master into live and reload the running app, keeping its state"
                 class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
               >
-                <.spinner :if={@deploying == "reload"} />
-                <.icon :if={@deploying != "reload"} name="hero-arrow-path" class="size-4" />
-                Hot reload
+                <.spinner :if={operation_running?(@deploy_op, :deploy, :reload)} />
+                <.icon
+                  :if={!operation_running?(@deploy_op, :deploy, :reload)}
+                  name="hero-arrow-path"
+                  class="size-4"
+                /> Hot reload
               </button>
               <button
                 type="button"
                 id="deploy-restart"
                 phx-click="deploy"
                 phx-value-mode="restart"
-                disabled={@deploying != nil}
+                disabled={@deploy_op != nil}
                 title="Run the tests, merge master into live and restart the server on the deployed code"
                 class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
               >
-                <.spinner :if={@deploying == "restart"} />
+                <.spinner :if={operation_running?(@deploy_op, :deploy, :restart)} />
                 <.icon
-                  :if={@deploying != "restart"}
+                  :if={!operation_running?(@deploy_op, :deploy, :restart)}
                   name="hero-arrow-path-rounded-square"
                   class="size-4"
                 /> Restart
               </button>
             </div>
 
-            <%!-- CONF-20, DEPLOY-16: the last deploy's result stays here, so a
-            page that arrives after the deploy ended still reports what it did. --%>
+            <%!-- CONF-21, CONF-22, DEPLOY-21, DEPLOY-22: what an operation is
+            doing, and what the last one did — from the runner, and from the
+            record when the runner has nothing (a page that comes back after a
+            restart deploy). A page that mounts or is reloaded while one runs,
+            including by the deploy's own asset change, reads the same. --%>
+            <div
+              :if={@deploy_op || deploy_steps(@deploy_op, @deploy_last) != []}
+              id="deploy-steps"
+              class="mt-4 space-y-1.5 rounded-xl bg-base-200/50 p-3 text-xs"
+            >
+              <div
+                :if={@deploy_op}
+                class="flex flex-wrap items-center justify-between gap-2 font-medium"
+              >
+                <span class="flex items-center gap-1.5">
+                  <.spinner />
+                  <span id="deploy-step">{step_in_flight(@deploy_op)}</span>
+                </span>
+                <span id="deploy-elapsed" class="font-mono font-normal text-base-content/60">
+                  {elapsed(@deploy_op.started)}
+                </span>
+              </div>
+              <div
+                :for={step <- deploy_steps(@deploy_op, @deploy_last)}
+                class="flex flex-wrap items-center justify-between gap-2 text-base-content/60"
+              >
+                <span class="flex items-center gap-1.5">
+                  <.icon
+                    :if={step_icon(step.status)}
+                    name={step_icon(step.status)}
+                    class="size-3.5 shrink-0"
+                  />
+                  {Deploy.step_label(step.step)}
+                </span>
+                <span class="font-mono">{duration(step.ms)}</span>
+              </div>
+              <p :if={@deploy_op && @deploy_op.steps == []} class="text-base-content/60">
+                Starting…
+              </p>
+            </div>
+
+            <%!-- CONF-20, CONF-22: the last operation's result stays here, from
+            the runner or from the record, so a page that arrives after it ended
+            still reports what it did. --%>
             <p
               :if={@deploy_result}
               id="deploy-result"
@@ -705,6 +745,76 @@ defmodule EliaWeb.SettingsLive do
                 class="mt-px size-4 shrink-0"
               />
               <span>{@deploy_result.text}</span>
+            </p>
+
+            <%!-- CONF-23, DEPLOY-25, DEPLOY-26: going back to a revision the app
+            has run — a load, not a merge — run in the runner one operation at a
+            time. Nothing to offer when there is no earlier revision, or when
+            the live tree isn't set up for deployment. --%>
+            <div
+              :if={@rollback}
+              id="deploy-rollback"
+              class="mt-4 rounded-xl border border-base-300 p-3"
+            >
+              <div class="flex flex-wrap items-center gap-2 text-xs text-base-content/70">
+                <.icon name="hero-arrow-uturn-left" class="size-4 shrink-0" />
+                <span>
+                  Go back to <code class="font-mono text-base-content/90">{short(@rollback.sha)}</code>,
+                  loaded {ago(@rollback.at)}: <code class="font-mono">live</code>
+                  moves back to it and the app loads it again — a load, not a merge.
+                </span>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  id="deploy-rollback-reload"
+                  phx-click="rollback"
+                  phx-value-sha={@rollback.sha}
+                  phx-value-mode="reload"
+                  disabled={@deploy_op != nil}
+                  title="Move live back to that revision and hot reload the running app, keeping its state"
+                  class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                >
+                  <.spinner :if={operation_running?(@deploy_op, :rollback, :reload)} />
+                  <.icon
+                    :if={!operation_running?(@deploy_op, :rollback, :reload)}
+                    name="hero-arrow-uturn-left"
+                    class="size-4"
+                  /> Hot reload
+                </button>
+                <button
+                  type="button"
+                  id="deploy-rollback-restart"
+                  phx-click="rollback"
+                  phx-value-sha={@rollback.sha}
+                  phx-value-mode="restart"
+                  disabled={@deploy_op != nil}
+                  title="Move live back to that revision and restart the server on it"
+                  class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                >
+                  <.spinner :if={operation_running?(@deploy_op, :rollback, :restart)} />
+                  <.icon
+                    :if={!operation_running?(@deploy_op, :rollback, :restart)}
+                    name="hero-arrow-uturn-left"
+                    class="size-4"
+                  /> Restart
+                </button>
+              </div>
+            </div>
+
+            <%!-- CONF-23, RECOVER-10: the page that needs none of the live
+            tree's front end, for when a deploy is what broke this one's UI.
+            Plain markup and a plain address on purpose: the route belongs to
+            the recovery page. --%>
+            <p id="recover-note" class="mt-4 flex items-start gap-2 text-xs text-base-content/50">
+              <.icon name="hero-lifebuoy" class="mt-px size-4 shrink-0" />
+              <span>
+                If a deploy leaves this page unusable, the recovery page is at
+                <a href="/recover" class="font-mono underline hover:text-base-content/80">
+                  /recover
+                </a>
+                — it needs none of the app's own front end.
+              </span>
             </p>
           </section>
 
@@ -1332,24 +1442,23 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, refresh_server(socket)}
   end
 
-  # CONF-19, CONF-20, DEPLOY-6, DEPLOY-7, DEPLOY-15: ask the runner for a deploy.
-  # It runs in its own process, so navigating away, closing the tab or this page
-  # reloading itself (DEPLOY-12) doesn't abort it.
+  # CONF-19, CONF-20, CONF-23, DEPLOY-6, DEPLOY-7, DEPLOY-15, DEPLOY-16: ask the
+  # runner for a deploy. It runs in its own process, so navigating away, closing
+  # the tab or this page reloading itself (DEPLOY-12) doesn't abort it. A click
+  # while an operation runs is refused there (DEPLOY-16), and either way the
+  # section goes on showing what the runner holds.
   def handle_event("deploy", %{"mode" => mode}, socket) when mode in ~w(reload restart) do
-    socket =
-      case Deploy.Runner.start(deploy_mode(mode)) do
-        :ok ->
-          socket
-          |> assign(deploying: mode, deploy_result: nil)
-          |> assign(deployment: Deploy.status())
+    _result = Deploy.Runner.start(deploy_mode(mode))
+    {:noreply, deploy_assigns(socket)}
+  end
 
-        # CONF-20, DEPLOY-16: a click while a deploy runs is ignored, and the
-        # page shows the deploy that is already running.
-        {:error, :busy} ->
-          refresh_deploy(socket)
-      end
-
-    {:noreply, socket}
+  # CONF-23, DEPLOY-26: going back to a revision the app has run is an operation
+  # of its own, run in the runner the way a deploy is: one at a time (DEPLOY-16),
+  # and a click while one runs changes nothing.
+  def handle_event("rollback", %{"sha" => sha, "mode" => mode}, socket)
+      when mode in ~w(reload restart) do
+    _result = Deploy.Runner.rollback(sha, deploy_mode(mode))
+    {:noreply, deploy_assigns(socket)}
   end
 
   # PUSH-3: the page subscribed and reports the subscription it made, so that
@@ -1434,17 +1543,6 @@ defmodule EliaWeb.SettingsLive do
 
   defp subscriptions(1), do: "1 subscription"
   defp subscriptions(count), do: "#{count} subscriptions"
-
-  # CONF-20, DEPLOY-16: what the runner holds right now.
-  defp refresh_deploy(socket) do
-    deploy = Deploy.Runner.state()
-
-    assign(socket,
-      deploying: deploy.running && to_string(deploy.running.mode),
-      deploy_result: deploy.last && deploy_result(deploy.last.result),
-      deployment: Deploy.status()
-    )
-  end
 
   defp run(socket, key, action, fun) do
     if Map.has_key?(socket.assigns.pending, key) or LLM.provider_info(key) == nil do
@@ -1536,16 +1634,33 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, refresh_base_urls(socket)}
   end
 
-  # CONF-20, DEPLOY-16: the deploy's events come from the runner, so they reach
-  # this page even when another page started the deploy — and a page that mounts
-  # while one runs or after one finished reads the same state in mount/3.
+  # CONF-19..CONF-23, DEPLOY-16: the deploy's events come from the runner, so
+  # they reach this page even when another page started the operation — and a
+  # page that mounts while one runs or after one finished reads the same state
+  # in mount/3.
   @impl true
-  def handle_info({:deploy_started, %{mode: mode}}, socket) do
-    {:noreply, assign(socket, deploying: to_string(mode))}
+  def handle_info({:deploy_started, %{mode: mode, started: started}}, socket) do
+    # CONF-21: the operation's steps belong to the runner; this page only needs
+    # to know one is on, so that it shows where it is rather than the last
+    # result.
+    operation = Deploy.Runner.state().running || started_operation(mode, started)
+
+    {:noreply, assign(socket, deploy_op: operation, deploy_result: nil)}
   end
 
-  def handle_info({:deploy_finished, %{result: result}}, socket) do
-    {:noreply, refresh_deploy(assign(socket, deploy_result: deploy_result(result)))}
+  def handle_info({:deploy_finished, _event}, socket) do
+    {:noreply, deploy_assigns(socket)}
+  end
+
+  # CONF-21, DEPLOY-21, DEPLOY-22: a step of the operation in flight started or
+  # finished, so the section moves with it — the finished steps with how long
+  # each took, the step it is on now, and how long it has been running.
+  def handle_info({:deploy_progress, %{step: step, phase: :started}}, socket) do
+    {:noreply, progress(socket, :started, step, nil)}
+  end
+
+  def handle_info({:deploy_progress, %{step: step, phase: :finished, ms: ms}}, socket) do
+    {:noreply, progress(socket, :finished, step, ms)}
   end
 
   # LOCAL-26: the local server's own state changes reach this page the moment
@@ -1556,8 +1671,176 @@ defmodule EliaWeb.SettingsLive do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # CONF-20, DEPLOY-5..DEPLOY-7, DEPLOY-17: report what the deploy did, and how
-  # the live tree stands now.
+  # CONF-21: a step event, applied to the operation this page is showing. A page
+  # that never saw the operation start — it mounted before the event did — reads
+  # the runner instead, which holds the same thing (DEPLOY-22).
+  defp progress(socket, phase, step, ms) do
+    case socket.assigns.deploy_op do
+      nil -> deploy_assigns(socket)
+      operation -> assign(socket, deploy_op: apply_step(operation, phase, step, ms))
+    end
+  end
+
+  defp apply_step(operation, :started, step, _ms), do: %{operation | step: step}
+
+  defp apply_step(operation, :finished, step, ms) do
+    # The event carries no outcome; the runner's own copy of the step does, and
+    # this page reads it once the operation has ended.
+    %{operation | step: nil, steps: operation.steps ++ [%{step: step, ms: ms, status: nil}]}
+  end
+
+  defp started_operation(mode, started) do
+    %{
+      kind: :deploy,
+      mode: mode,
+      sha: nil,
+      started: started,
+      finished: nil,
+      step: nil,
+      steps: [],
+      result: nil
+    }
+  end
+
+  # CONF-19, CONF-20, CONF-21, CONF-22, CONF-23, DEPLOY-16: everything the
+  # Deployment section shows, read fresh: how the live tree stands (CONF-19),
+  # the operation in flight and the steps it has finished (CONF-20, CONF-21),
+  # the last operation — from the runner, or from the record when the runner has
+  # nothing (CONF-22) — and the revision it offers to go back to (CONF-23).
+  defp deploy_assigns(socket) do
+    state = Deploy.Runner.state()
+    deployment = Deploy.status()
+    last = last_operation(state)
+
+    assign(socket,
+      deployment: deployment,
+      deploy_op: state.running,
+      deploy_last: last,
+      # CONF-21: while an operation runs, the section shows where it is rather
+      # than the outcome of the one before it.
+      deploy_result: if(state.running, do: nil, else: last_result(last)),
+      rollback: rollback_target(deployment)
+    )
+  end
+
+  # CONF-22, DEPLOY-23: the last operation. The runner knows the one it ran; the
+  # record also reports one that never ended — what a restart deploy leaves when
+  # the server went away under it — so the newer of the two is what is reported.
+  # While an operation is in flight the runner's last one is the answer: the
+  # record's operation in flight is that one.
+  defp last_operation(%{running: running, last: last}) do
+    newer(last, if(running, do: nil, else: Deploy.last_deploy()))
+  end
+
+  defp newer(nil, operation), do: operation
+  defp newer(operation, nil), do: operation
+
+  # DEPLOY-16: one operation runs at a time, so the one that started later is
+  # the one that happened later.
+  defp newer(
+         %{started: %DateTime{} = runner} = runner_op,
+         %{started: %DateTime{} = record} = record_op
+       ) do
+    if DateTime.compare(record, runner) == :gt, do: record_op, else: runner_op
+  end
+
+  defp newer(runner_op, _record_op), do: runner_op
+
+  # CONF-22, DEPLOY-23: what the last operation did. One that never ended says
+  # where it stopped instead of leaving the section looking finished.
+  defp last_result(nil), do: nil
+  defp last_result(%{finished: nil} = operation), do: unfinished_result(operation)
+  defp last_result(%{result: nil}), do: nil
+  defp last_result(%{result: result}), do: deploy_result(result)
+
+  defp unfinished_result(operation) do
+    where =
+      case operation.step do
+        nil -> "it stopped between two of its steps"
+        step -> "it stopped at \"#{Deploy.step_label(step)}\""
+      end
+
+    %{
+      kind: :error,
+      text:
+        "The #{operation_name(operation)} that started #{ago(operation.started)} never " <>
+          "finished: #{where}. The server went away while it ran, so nothing after that " <>
+          "was reported."
+    }
+  end
+
+  defp operation_name(%{kind: :rollback}), do: "rollback"
+  defp operation_name(%{kind: :deploy, mode: :restart}), do: "restart deploy"
+  defp operation_name(_operation), do: "deploy"
+
+  # CONF-23, DEPLOY-25, DEPLOY-26: the revision the section offers to go back
+  # to — the newest the app has run that is not the one it is running now. With
+  # no earlier revision there is nothing to offer, and a live tree that isn't
+  # set up for deployment (DEPLOY-14) has no rollback to make.
+  defp rollback_target({:error, _reason}), do: nil
+
+  defp rollback_target({:ok, status}) do
+    revisions = Deploy.loaded_revisions()
+    running = status.loaded || newest(revisions)
+
+    Enum.find(revisions, &(&1.sha != running))
+  end
+
+  defp newest([%{sha: sha} | _revisions]), do: sha
+  defp newest(_revisions), do: nil
+
+  # CONF-21, CONF-22: the steps the section lists: the ones the operation in
+  # flight has finished, or the ones the last operation finished, so a page that
+  # comes back after a restart deploy still says what it did.
+  defp deploy_steps(running, _last) when running != nil, do: running.steps
+  defp deploy_steps(_running, last) when last != nil, do: last.steps
+  defp deploy_steps(_running, _last), do: []
+
+  defp step_in_flight(%{step: nil, steps: []}), do: "Starting…"
+  defp step_in_flight(%{step: nil}), do: "Finishing…"
+  defp step_in_flight(%{step: step}), do: Deploy.step_label(step)
+
+  defp step_icon(:ok), do: "hero-check"
+  defp step_icon({:failed, _reason}), do: "hero-x-mark"
+  defp step_icon(_status), do: nil
+
+  # CONF-21: how long an operation has been running — from the runner's own
+  # start time (DEPLOY-22), so a page that mounts mid-operation says the same.
+  defp elapsed(%DateTime{} = started),
+    do: duration(DateTime.diff(DateTime.utc_now(), started, :millisecond))
+
+  defp duration(nil), do: "—"
+  defp duration(ms) when ms < 1000, do: "#{ms} ms"
+  defp duration(ms) when ms < 60_000, do: "#{Float.round(ms / 1000, 1)}s"
+  defp duration(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)}m #{div(rem(ms, 60_000), 1000)}s"
+  defp duration(ms), do: "#{div(ms, 3_600_000)}h #{div(rem(ms, 3_600_000), 60_000)}m"
+
+  # CONF-22, CONF-23: when something happened, as the section says it.
+  defp ago(%DateTime{} = at) do
+    seconds = DateTime.diff(DateTime.utc_now(), at)
+
+    cond do
+      seconds < 60 -> "just now"
+      seconds < 120 -> "a minute ago"
+      seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
+      seconds < 7200 -> "an hour ago"
+      seconds < 86_400 -> "#{div(seconds, 3600)} hours ago"
+      true -> "#{div(seconds, 86_400)} days ago"
+    end
+  end
+
+  defp ago(_at), do: "at an unknown time"
+
+  # CONF-20, CONF-21, CONF-23: whether the operation in flight is the one this
+  # control would start — its own, and in its own mode — so only that control
+  # spins (CONF-20).
+  defp operation_running?(nil, _kind, _mode), do: false
+  defp operation_running?(%{kind: kind, mode: mode}, kind, mode), do: true
+  defp operation_running?(_operation, _kind, _mode), do: false
+
+  # CONF-20, CONF-22, DEPLOY-5..DEPLOY-7, DEPLOY-17: what an operation did. A
+  # record a page reads may hold anything, so an unknown outcome is reported
+  # rather than crashing the page that found it (DEPLOY-23).
   defp deploy_result({:ok, message}), do: %{kind: :ok, text: message}
 
   defp deploy_result({:tests_failed, output}),
@@ -1570,6 +1853,8 @@ defmodule EliaWeb.SettingsLive do
 
   defp deploy_result({:exit, reason}),
     do: %{kind: :error, text: "The deploy failed: #{Exception.format_exit(reason)}"}
+
+  defp deploy_result(other), do: %{kind: :error, text: inspect(other)}
 
   defp put_result(socket, key, result) do
     assign(socket, results: Map.put(socket.assigns.results, key, result))

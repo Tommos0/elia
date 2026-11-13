@@ -456,8 +456,8 @@ defmodule EliaWeb.SettingsLiveTest do
   ## Deployment (CONF-19, CONF-20)
 
   # A live tree set up for deployment (DEPLOY-14), as Elia's own is.
-  defp live_tree do
-    tree = LiveTree.create()
+  defp live_tree(opts \\ []) do
+    tree = LiveTree.create(opts)
     previous = Application.get_env(:elia, :runtime_root)
     Application.put_env(:elia, :runtime_root, tree)
     on_exit(fn -> LiveTree.remove(tree) end)
@@ -527,6 +527,27 @@ defmodule EliaWeb.SettingsLiveTest do
 
     Application.put_env(:elia, Deploy, Keyword.put(deploy, :stop, &send(test_pid, {:stop, &1})))
     on_exit(fn -> Application.put_env(:elia, Deploy, deploy) end)
+  end
+
+  # A step of an operation whose two parts are seams, like the whole of it
+  # (`config :elia, Elia.Deploy, packages: fun, assets: fun`; DEPLOY-19).
+  defp stub_step(name, fun) do
+    deploy = Application.get_env(:elia, Deploy, [])
+    Application.put_env(:elia, Deploy, Keyword.put(deploy, name, fun))
+    on_exit(fn -> Application.put_env(:elia, Deploy, deploy) end)
+  end
+
+  # The server going away under an operation (DEPLOY-15, DEPLOY-23): the runner
+  # and the operation it holds die together, and the record is what is left
+  # behind — the state a restart deploy leaves for the page that comes up after
+  # it (CONF-22).
+  defp restart_runner do
+    pid = Process.whereis(Runner)
+    ref = Process.monitor(pid)
+    :ok = Supervisor.terminate_child(Elia.Supervisor, Runner)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    {:ok, _pid} = Supervisor.restart_child(Elia.Supervisor, Runner)
+    :ok
   end
 
   # DEPLOY-15, DEPLOY-16: a deploy runs in the runner's own process, so a test
@@ -726,6 +747,189 @@ defmodule EliaWeb.SettingsLiveTest do
     assert {:ok, %{behind?: false}} = Deploy.status()
     assert has_element?(view, "#deploy-status", "nothing to deploy")
     assert LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
+  end
+
+  # CONF-21, DEPLOY-21, DEPLOY-22: while an operation runs the section shows the
+  # steps that have finished with how long each took, the step it is on now and
+  # how long it has been running — from the runner, so a page that mounts in the
+  # middle of one shows the same.
+  test "an operation in flight shows its steps and the step it is on", %{conn: conn} do
+    running_server()
+    tree = live_tree()
+    work_on_trunk()
+    assert {:ok, _message} = Deploy.hot_reload()
+    earlier = LiveTree.head(tree)
+    work_on_trunk()
+    assert {:ok, _message} = Deploy.hot_reload()
+    work_on_trunk()
+
+    # The deploy is held in its load step, so the test looks at a real operation
+    # in flight rather than at one that may have ended already (DEPLOY-22).
+    running_server(true)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    Runner.subscribe()
+    view |> element("#deploy-reload") |> render_click()
+
+    assert_receive {:loading, operation}, 120_000
+
+    # CONF-21: the finished steps, each with how long it took — never the
+    # unknown-duration placeholder — the step in flight and the elapsed time.
+    assert has_element?(view, "#deploy-steps", "Merging the trunk into the live tree")
+    assert has_element?(view, "#deploy-steps", "Running the tests in the live tree")
+    refute has_element?(view, "#deploy-steps", "—")
+    assert has_element?(view, "#deploy-step", "Hot reloading the running app")
+    assert has_element?(view, "#deploy-elapsed")
+
+    # CONF-21: a page that mounts mid-operation shows the same — the deploy's own
+    # asset change reloads a page, and this is what it comes back to.
+    {:ok, during, _html} = live(conn, ~p"/settings")
+    assert has_element?(during, "#deploy-steps", "Running the tests in the live tree")
+    assert has_element?(during, "#deploy-step", "Hot reloading the running app")
+    assert has_element?(during, "#deploy-elapsed")
+
+    # CONF-23: going back is offered, and its controls are disabled while an
+    # operation runs, the way the deploy buttons are (CONF-20).
+    assert has_element?(during, "#deploy-rollback", String.slice(earlier, 0, 12))
+    assert has_element?(during, "#deploy-rollback-reload[disabled]")
+    assert has_element?(during, "#deploy-rollback-restart[disabled]")
+
+    # CONF-21: a step event advances the section on its own, rather than only
+    # when the runner's next report arrives.
+    send(
+      view.pid,
+      {:deploy_progress, %{step: :assets, phase: :started, at: DateTime.utc_now(), ms: nil}}
+    )
+
+    assert has_element?(view, "#deploy-step", "Building the live tree's assets")
+
+    send(
+      view.pid,
+      {:deploy_progress, %{step: :assets, phase: :finished, at: DateTime.utc_now(), ms: 1_500}}
+    )
+
+    assert has_element?(view, "#deploy-steps", "Building the live tree's assets")
+    assert has_element?(view, "#deploy-steps", "1.5s")
+    # CONF-21: the section is no longer on the load step.
+    refute has_element?(view, "#deploy-step", "Hot reloading the running app")
+
+    send(operation, :continue)
+    assert {:ok, message} = await_deploy()
+    assert message =~ "Recompiled and reloaded"
+
+    # CONF-21: the steps it took are still there once it has ended, so the
+    # section says what it did rather than only how it turned out.
+    assert has_element?(view, "#deploy-steps", "Running the tests in the live tree")
+    refute has_element?(view, "#deploy-step")
+  end
+
+  # CONF-22, DEPLOY-23: a page that comes back after a restart deploy — whose
+  # result died with the process the runner lived in — still says what the
+  # deploy did, and where it stopped when it did not finish.
+  test "a page that comes back after a restart deploy shows the record", %{conn: conn} do
+    running_server()
+    live_tree(front_end: true)
+    work_on_trunk()
+    test = self()
+
+    # The front-end step waits, so the deploy is held in it while the server
+    # goes away under it (DEPLOY-15, DEPLOY-23).
+    stub_step(:packages, fn _root ->
+      send(test, {:packages, self()})
+
+      receive do
+        :continue -> {:ok, ""}
+      after
+        30_000 -> {:ok, ""}
+      end
+    end)
+
+    stub_step(:assets, fn _root -> {:ok, ""} end)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:restart)
+    assert_receive {:packages, _operation}, 120_000
+
+    # The server going away under the operation: the runner and the operation it
+    # holds die together, and the record is what is left behind (DEPLOY-23).
+    :ok = restart_runner()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-22: what the deploy did, and where it stopped when it did not finish.
+    assert has_element?(view, "#deploy-result", "never finished")
+    assert has_element?(view, "#deploy-result", "Installing the live tree's Node packages")
+    assert has_element?(view, "#deploy-steps", "Running the tests in the live tree")
+
+    # CONF-20, CONF-22: nothing is in flight any more, so the section says so
+    # and the controls are usable again.
+    refute has_element?(view, "#deploy-step")
+    refute has_element?(view, "#deploy-reload[disabled]")
+  end
+
+  # CONF-23, DEPLOY-25, DEPLOY-26: the section offers going back to the newest
+  # revision the app has run that is not the one it is running now, and the
+  # control goes through the runner — one operation at a time.
+  test "the rollback control names the earlier revision and goes back to it", %{conn: conn} do
+    running_server()
+    tree = live_tree()
+    work_on_trunk()
+    assert {:ok, _message} = Deploy.hot_reload()
+    earlier = LiveTree.head(tree)
+    work_on_trunk()
+    assert {:ok, _message} = Deploy.hot_reload()
+    running_now = LiveTree.head(tree)
+
+    # The rollback is held in its load step, so the test sees it in flight.
+    running_server(true)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-23: the revision to go back to, named by its short sha and when it
+    # was loaded — and not the one the app is running now (DEPLOY-26).
+    assert has_element?(view, "#deploy-rollback", String.slice(earlier, 0, 12))
+    assert has_element?(view, "#deploy-rollback", "loaded")
+    refute has_element?(view, "#deploy-rollback", String.slice(running_now, 0, 12))
+
+    Runner.subscribe()
+    view |> element("#deploy-rollback-reload") |> render_click()
+    assert_receive {:loading, operation}, 30_000
+
+    # CONF-23, CONF-20: a control is disabled while an operation runs.
+    assert has_element?(view, "#deploy-rollback-reload[disabled]")
+    assert has_element?(view, "#deploy-rollback-restart[disabled]")
+
+    send(operation, :continue)
+    assert {:ok, message} = await_deploy(30_000)
+    assert message =~ "Rolled"
+
+    # DEPLOY-26: `live` is back at that revision, it is what the app runs, and
+    # the operation is recorded as a rollback rather than a deploy.
+    assert LiveTree.head(tree) == earlier
+    assert %{kind: :rollback, sha: ^earlier} = Deploy.last_deploy()
+    assert has_element?(view, "#deploy-result", "Rolled")
+
+    # CONF-23: what is left to go back to is the revision it came from.
+    assert has_element?(view, "#deploy-rollback", String.slice(running_now, 0, 12))
+  end
+
+  # CONF-23, DEPLOY-26: nothing to go back to when the app has only ever run the
+  # revision it is running now.
+  test "the rollback control is absent when there is no earlier revision", %{conn: conn} do
+    running_server()
+    live_tree()
+    assert {:ok, _message} = Deploy.hot_reload()
+    assert [%{sha: sha}] = Deploy.loaded_revisions()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert has_element?(view, "#deploy-reload")
+    refute has_element?(view, "#deploy-rollback")
+    assert {:ok, %{loaded: ^sha, behind?: false}} = Deploy.status()
+
+    # CONF-23, RECOVER-10: the recovery page's address is said anyway, for when
+    # this page's own UI is what a deploy broke.
+    assert has_element?(view, "#recover-note", "/recover")
+    assert has_element?(view, ~s|#recover-note a[href="/recover"]|)
   end
 
   # PUSH-2
