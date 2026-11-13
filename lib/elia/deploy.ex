@@ -611,6 +611,7 @@ defmodule Elia.Deploy do
     case git(root, args, profile: :deps_sync) do
       {:ok, _output} ->
         link_deps(path, root)
+        seed_build(path, root)
         {:ok, path}
 
       {:error, reason} ->
@@ -650,6 +651,42 @@ defmodule Elia.Deploy do
 
     if File.dir?(deps) and not File.exists?(link), do: File.ln_s(deps, link)
     :ok
+  end
+
+  # BUILD-1: a fresh worktree has no build output of its own either, so its
+  # first compile would build every dependency from source — 29 s of a 35 s cold
+  # `mix compile`, and 28 s of 33 s under `MIX_ENV=test`, measured. Seed it with
+  # a copy of the live tree's: a dependency's sources are the same files at the
+  # same path in both trees (ISOL-7), so Mix finds its artifacts current in the
+  # worktree and skips them (BUILD-4), while the worktree's own modules are
+  # always compiled from the worktree's own sources. A copy and not a compile
+  # (BUILD-3), taken once, with the worktree (BUILD-1) — and the worktree's own,
+  # so a deploy rewriting the live tree's `_build` while a command reads the
+  # worktree's cannot be read through it, and no chat's compile writes the
+  # artifacts the server runs from (BUILD-2). A copy that fails leaves the
+  # worktree usable, with no build output, as it was before (BUILD-5).
+  defp seed_build(path, root) do
+    build = Path.join(root, "_build")
+    target = Path.join(path, "_build")
+
+    if File.dir?(build) and not File.exists?(target) do
+      command = "cp -a #{quote_arg(build)} #{quote_arg(target)}"
+
+      # The harness's own step in the live tree, the same profile the worktree's
+      # `git worktree add` runs with (ISOL-13): the tree is bound as it is, so
+      # the worktree inside it is writable too.
+      case Elia.Shell.run(command, cd: root, profile: :deps_sync, timeout: :timer.minutes(2)) do
+        {:ok, _output, 0} ->
+          :ok
+
+        other ->
+          Logger.debug("could not seed #{target}: #{Elia.Shell.truncate(inspect(other), 500)}")
+      end
+    end
+
+    :ok
+  rescue
+    e -> Logger.debug("could not seed #{path}/_build: #{Exception.message(e)}")
   end
 
   @doc """

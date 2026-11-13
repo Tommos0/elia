@@ -56,6 +56,18 @@ defmodule Elia.DeploymentTest do
     {id, path}
   end
 
+  # Build output in the live tree, the way a real one has it (BUILD-1).
+  defp seed_build(tree, path) do
+    file = Path.join([tree, "_build", path])
+    File.mkdir_p!(Path.dirname(file))
+    File.write!(file, "beam")
+  end
+
+  # `mix compile` in a tree, as a command runs it (BUILD-2, BUILD-4).
+  defp compile(dir) do
+    System.cmd("mix", ["compile"], cd: dir, env: [{"MIX_ENV", "dev"}], stderr_to_stdout: true)
+  end
+
   # DEPLOY-1: the file tools and `mix test` for a chat in Elia's own project run
   # in its own worktree, not in the tree the server runs from.
   defp chat do
@@ -418,6 +430,88 @@ defmodule Elia.DeploymentTest do
 
     assert File.read_link!(Path.join(path, "deps")) == Path.join(tree, "deps")
     refute File.exists?(Elia.Deps.layer(path, tree))
+  end
+
+  # BUILD-1: creating a worktree seeds it with the live tree's build output, so
+  # its first compile reuses the dependencies' artifacts instead of building
+  # them from source.
+  test "a new worktree is seeded with the live tree's build output (BUILD-1)", %{tree: tree} do
+    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
+
+    {_id, path} = new_worktree()
+
+    assert File.read!(Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])) == "beam"
+  end
+
+  # BUILD-1: taken once, when the worktree is created — a worktree that already
+  # exists keeps the build output it has.
+  test "seeding happens once, with the worktree (BUILD-1)", %{tree: tree} do
+    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
+    {id, path} = new_worktree()
+    beam = Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])
+
+    File.write!(Path.join([tree, "_build", "dev/lib/req/ebin/Elixir.Req.beam"]), "rebuilt")
+    assert {:ok, ^path} = Deploy.ensure_worktree(id)
+
+    assert File.read!(beam) == "beam"
+  end
+
+  # BUILD-2: the copy is the worktree's own, so nothing a chat compiles reaches
+  # the live tree's build output — the artifacts the running server runs from.
+  test "a worktree's build output is its own copy (BUILD-2)", %{tree: tree} do
+    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"]), "worktree")
+
+    assert File.read!(Path.join([tree, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])) == "beam"
+  end
+
+  # BUILD-3, BUILD-5: seeding is a copy, not a compile, and a live tree with no
+  # build output gives a worktree with none — the worktree is still created and
+  # the command that needed it runs as it does today.
+  test "a live tree with no build output still gives a worktree (BUILD-3, BUILD-5)", %{tree: tree} do
+    refute File.exists?(Path.join(tree, "_build"))
+
+    {_id, path} = new_worktree()
+
+    refute File.exists?(Path.join(path, "_build"))
+    assert branch(path) == "chat/" <> Path.basename(path)
+  end
+
+  # BUILD-6: the seeded copy lives inside the worktree, so it goes with it.
+  test "removing a worktree takes its seeded build output with it (BUILD-6)", %{tree: tree} do
+    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
+    {id, path} = new_worktree()
+    assert File.dir?(Path.join(path, "_build"))
+
+    Deploy.remove_worktree(id)
+
+    refute File.exists?(path)
+  end
+
+  # BUILD-2, BUILD-4: a command that compiles in a worktree writes only the
+  # worktree's own build output — the live tree's is left as it was — and a
+  # module the worktree changed is compiled there, from the worktree's sources.
+  test "a worktree compiles on its own build output (BUILD-2, BUILD-4)", %{tree: tree} do
+    assert {_, 0} = compile(tree)
+    live_beam = Path.join([tree, "_build", "dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"])
+    live = File.read!(live_beam)
+
+    {_id, path} = new_worktree()
+    assert File.exists?(Path.join(path, "_build/dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"))
+
+    File.write!(Path.join(path, "lib/deploy_tmp.ex"), """
+    defmodule DeployTmp do
+      def hello, do: :changed
+    end
+    """)
+
+    assert {_, 0} = compile(path)
+
+    worktree_beam = Path.join([path, "_build", "dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"])
+    assert File.read!(live_beam) == live
+    refute File.read!(worktree_beam) == live
   end
 
   # DEPLOY-10: a worktree's dependency layer goes with it.
