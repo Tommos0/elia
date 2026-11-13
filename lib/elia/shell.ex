@@ -19,6 +19,9 @@ defmodule Elia.Shell do
   loops: see `Elia.Priority` and `run/2`'s `:priority`.
   """
   alias Elia.{Priority, Workspace}
+  alias Elia.Shell.Lock
+
+  require Logger
 
   @type result :: {:ok, binary(), non_neg_integer()} | {:timeout, binary()}
   @type profile :: :worktree | :deps_sync | :live_tree
@@ -33,6 +36,12 @@ defmodule Elia.Shell do
   # ISOL-12: a run that wanted a jail and didn't get one says so, so it never
   # looks like one that was isolated.
   @jail_skipped_notice "[jail: skipped, bubblewrap is unavailable]"
+
+  # ISOL-27: the jail couldn't mount the worktree's dependency layer, so the
+  # command ran against the shared tree read-only. Said out loud for the same
+  # reason as the notice above: a run that could not write inside a dependency
+  # never looks like one that could.
+  @deps_read_only_notice "[jail: the worktree's deps layer could not be mounted, the shared deps tree was read-only]"
 
   @doc """
   The shell that runs commands: bash when it is installed, otherwise POSIX
@@ -59,6 +68,27 @@ defmodule Elia.Shell do
   """
   @spec jail_skipped_notice() :: binary()
   def jail_skipped_notice, do: @jail_skipped_notice
+
+  @doc """
+  What a run says when its jail couldn't mount the worktree's dependency layer
+  and it ran against the shared `deps` read-only instead (ISOL-27). Prepended to
+  the command's own output, like `jail_skipped_notice/0`, so a caller that reads
+  that output as a value takes it off first.
+  """
+  @spec deps_read_only_notice() :: binary()
+  def deps_read_only_notice, do: @deps_read_only_notice
+
+  @doc """
+  Takes the notices a run may have put in front of its output off it (ISOL-12,
+  ISOL-27), for a caller that reads that output as a value — a ref, a path, a
+  NUL-separated list — rather than showing it.
+  """
+  @spec strip_notices(binary()) :: binary()
+  def strip_notices(output) do
+    output
+    |> String.replace_leading(@jail_skipped_notice <> "\n", "")
+    |> String.replace_leading(@deps_read_only_notice <> "\n", "")
+  end
 
   @doc """
   Whether a command would run jailed: the host allows it (ISOL-20), the caller
@@ -218,6 +248,78 @@ defmodule Elia.Shell do
   end
 
   defp execute(script, cd, opts) do
+    timeout = Keyword.get(opts, :timeout, :timer.seconds(60))
+    deadline = System.monotonic_time(:millisecond) + timeout
+    {_exe, args} = argv(script, cd, opts)
+
+    if "--overlay" in args do
+      # ISOL-26: this jail mounts the worktree's dependency layer itself, and two
+      # jails that mount the same layer at the same instant collide. The lock is
+      # held only until the jail reports that it is up, not for the command.
+      key = Elia.Deps.layer(cd)
+
+      case Lock.acquire(key) do
+        :ok ->
+          try do
+            run_jail(script, cd, opts, deadline)
+          after
+            Lock.release(key)
+          end
+
+        # No lock in time: run anyway, as before this requirement. A rare
+        # collision is better than a command that never runs.
+        :timeout ->
+          run_jail(script, cd, opts, deadline)
+      end
+    else
+      run_jail(script, cd, opts, deadline)
+    end
+  end
+
+  # ISOL-27: a jail that can't mount the layer is tried once more, and then runs
+  # with the shared `deps` read-only, saying so.
+  defp run_jail(script, cd, opts, deadline) do
+    case attempt(script, cd, opts, deadline) do
+      {:setup_failed, _reason} ->
+        case attempt(script, cd, opts, deadline) do
+          {:setup_failed, reason} -> read_only(script, cd, opts, deadline, reason)
+          result -> result
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp attempt(script, cd, opts, deadline) do
+    {exe, args} = argv(script, cd, opts)
+    port = open(exe, args, cd, opts)
+
+    if "--info-fd" in args do
+      case await_ready(port, "", deadline) do
+        {:ready, rest} -> collect(port, [rest], deadline) |> skipped(opts)
+        {:failed, reason} -> {:setup_failed, reason}
+      end
+    else
+      collect(port, [], deadline) |> skipped(opts)
+    end
+  end
+
+  defp read_only(script, cd, opts, deadline, reason) do
+    Logger.warning("jail: could not mount the worktree's deps layer: #{String.trim(reason)}")
+
+    opts = Keyword.put(opts, :deps, :read_only)
+    {exe, args} = argv(script, cd, opts)
+    port = open(exe, args, cd, opts)
+    notice = @deps_read_only_notice <> "\n"
+
+    case collect(port, [], deadline) |> skipped(opts) do
+      {:ok, output, status} -> {:ok, notice <> output, status}
+      {:timeout, output} -> {:timeout, notice <> output}
+    end
+  end
+
+  defp open(exe, args, cd, opts) do
     # Spawned directly: the VM makes a port program its own session and process
     # group leader, so `kill -PGID` in `kill/1` reaches the command and
     # everything it started (SHELL-3). A `setsid` wrapper must not go here —
@@ -225,31 +327,54 @@ defmodule Elia.Shell do
     # reports would then be the wrapper's, whose group holds the command
     # itself only (a timeout killed the server's child and leaked the command).
     # A killed jail takes its pid namespace with it (ISOL-10).
-    {exe, args} = argv(script, cd, opts)
+    Port.open({:spawn_executable, exe}, [
+      :binary,
+      :exit_status,
+      :stderr_to_stdout,
+      :hide,
+      args: args,
+      cd: cd,
+      env: port_env(opts)
+    ])
+  end
 
-    env = port_env(opts)
+  # ISOL-26: bubblewrap writes its report of the running sandbox to stderr once
+  # the mounts are made, so the first `}` line of the stream is the moment the
+  # overlay is up and the lock can go. What follows it is the command's own
+  # output, which is why the report is taken off the front of it.
+  defp await_ready(port, acc, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
-    port =
-      Port.open({:spawn_executable, exe}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        :hide,
-        args: args,
-        cd: cd,
-        env: env
-      ])
+    receive do
+      {^port, {:data, data}} ->
+        acc = acc <> data
 
-    timeout = Keyword.get(opts, :timeout, :timer.seconds(60))
+        case split_report(acc) do
+          {:ok, rest} -> {:ready, rest}
+          :more -> await_ready(port, acc, deadline)
+        end
 
-    port
-    |> collect([], System.monotonic_time(:millisecond) + timeout)
-    |> skipped(opts)
+      {^port, {:exit_status, _status}} ->
+        {:failed, acc}
+    after
+      remaining ->
+        kill(port)
+        {:failed, acc}
+    end
+  end
+
+  defp split_report(acc) do
+    case :binary.split(acc, "}\n") do
+      [report, rest] -> if String.contains?(report, "child-pid"), do: {:ok, rest}, else: :more
+      [_incomplete] -> :more
+    end
   end
 
   ## The jail
 
   defp jail_args(script, cd, opts) do
+    binds = bind_args(cd, profile(cd, opts), opts)
+
     [
       "--die-with-parent",
       "--unshare-pid",
@@ -259,11 +384,20 @@ defmodule Elia.Shell do
       "--clearenv"
     ] ++
       setenv_args(Keyword.get(opts, :env, [])) ++
+      ready_args(binds) ++
       ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"] ++
       read_only_args(@toolchain) ++
       home_args() ++
-      bind_args(cd, profile(cd, opts)) ++
+      binds ++
       ["--chdir", cd, "--", shell(opts), "-c", script]
+  end
+
+  # ISOL-26: bubblewrap reports the sandbox as up on stderr once its mounts are
+  # made, and that report is what ends the mount lock — so it is asked for only
+  # by the jail that mounts the worktree's dependency layer, the one that has to
+  # wait for the lock in the first place.
+  defp ready_args(binds) do
+    if "--overlay" in binds, do: ["--info-fd", "2"], else: []
   end
 
   # The environment is rebuilt, not inherited: nothing else reaches a command,
@@ -328,7 +462,7 @@ defmodule Elia.Shell do
       if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
   end
 
-  defp bind_args(cd, profile) do
+  defp bind_args(cd, profile, opts) do
     live = Workspace.runtime_root()
 
     cond do
@@ -347,7 +481,7 @@ defmodule Elia.Shell do
         # A chat worktree: its own tree, the repository's git directory (the
         # worktree's `.git` is a pointer file into `<live>/.git/worktrees/<id>`,
         # whose common dir commits need), and the shared dependencies.
-        ["--bind", cd, cd] ++ git_args(live) ++ deps_args(live, profile, cd)
+        ["--bind", cd, cd] ++ git_args(live) ++ deps_args(live, profile, cd, opts)
     end
   end
 
@@ -373,11 +507,14 @@ defmodule Elia.Shell do
   # fetch for one the chat added, succeeds without changing what the live tree
   # and the other chats compile against. A tree that isn't there, or a layer that
   # can't be made, falls back to the read-only bind: the command then fails on
-  # its own write and says what it could not write.
-  defp deps_args(live, :worktree, cd) do
+  # its own write and says what it could not write. `deps: :read_only` asks for
+  # that fallback itself, which is what a jail whose mount failed retries with
+  # (ISOL-27).
+  defp deps_args(live, :worktree, cd, opts) do
     deps = Path.join(live, "deps")
 
-    with true <- File.dir?(deps),
+    with :overlay <- Keyword.get(opts, :deps, :overlay),
+         true <- File.dir?(deps),
          {:ok, {upper, work}} <- Elia.Deps.open(cd, live) do
       ["--overlay-src", deps, "--overlay", upper, work, deps]
     else
@@ -385,8 +522,11 @@ defmodule Elia.Shell do
     end
   end
 
-  defp deps_args(live, :deps_sync, _cd), do: bind_try(Path.join(live, "deps"), "--bind-try")
-  defp deps_args(live, _profile, _cd), do: bind_try(Path.join(live, "deps"), "--ro-bind-try")
+  defp deps_args(live, :deps_sync, _cd, _opts),
+    do: bind_try(Path.join(live, "deps"), "--bind-try")
+
+  defp deps_args(live, _profile, _cd, _opts),
+    do: bind_try(Path.join(live, "deps"), "--ro-bind-try")
 
   defp bind_try(path, flag), do: [flag, path, path]
 

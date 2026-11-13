@@ -267,4 +267,84 @@ defmodule Elia.ShellMixEnvTest do
                Shell.run("printenv MIX_ENV", shell: "sh", jail: true, env: [{"MIX_ENV", "test"}])
     end
   end
+
+  # ISOL-12, ISOL-27: a caller that reads a run's output as a value takes the
+  # notices off it, whichever one the run put there.
+  test "the notices a run may put in front of its output come off it" do
+    assert Shell.strip_notices(Shell.jail_skipped_notice() <> "\nhi\n") == "hi\n"
+    assert Shell.strip_notices(Shell.deps_read_only_notice() <> "\nhi\n") == "hi\n"
+    assert Shell.strip_notices("hi\n") == "hi\n"
+  end
+end
+
+defmodule Elia.ShellMountTest do
+  # ISOL-26, ISOL-27: the jail that mounts a worktree's dependency layer takes a
+  # lock and asks bubblewrap to report when it is up, and a jail that can't mount
+  # the layer falls back to the shared tree read-only. These check the argv, so
+  # they need bubblewrap only to build one (ISOL-12) — but they write the live
+  # tree's `deps`, so the module doesn't run async.
+  use ExUnit.Case, async: false
+
+  alias Elia.{Shell, Workspace}
+
+  @moduletag skip:
+               if(Elia.Shell.available?(),
+                 do: false,
+                 else: "bubblewrap is not available (ISOL-12)"
+               )
+
+  setup do
+    # The suite runs unjailed (config/test.exs); these are about the jail's argv,
+    # so the host is made to allow one (ISOL-20).
+    previous = Application.get_env(:elia, Elia.Shell)
+    Application.put_env(:elia, Elia.Shell, jail: true)
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+    live = Workspace.runtime_root()
+
+    worktree =
+      Path.join([live, ".elia", "worktrees", "mount-#{System.unique_integer([:positive])}"])
+
+    deps = Path.join(live, "deps")
+
+    File.mkdir_p!(Path.join(deps, "phoenix/priv/templates"))
+    File.mkdir_p!(worktree)
+    File.ln_s(deps, Path.join(worktree, "deps"))
+
+    on_exit(fn ->
+      File.rm_rf!(worktree)
+      File.rm_rf!(deps)
+      Elia.Deps.remove(worktree, live)
+    end)
+
+    %{live: live, worktree: worktree}
+  end
+
+  # ISOL-26: the report is what ends the mount lock, so the jail that mounts the
+  # layer asks for it and no other does.
+  test "a jail that mounts the layer asks bubblewrap to report when it is up", %{
+    worktree: worktree
+  } do
+    {_exe, args} = Shell.argv("echo hi", worktree, jail: true)
+
+    assert "--overlay" in args
+    assert "--info-fd" in args
+  end
+
+  test "a jail that mounts nothing doesn't ask for the report", %{live: live} do
+    {_exe, args} = Shell.argv("echo hi", live, jail: true, profile: :live_tree)
+
+    refute "--overlay" in args
+    refute "--info-fd" in args
+  end
+
+  # ISOL-27: the fallback the retry ends in.
+  test "deps: :read_only binds the shared tree read-only instead of overlaying it", %{
+    worktree: worktree
+  } do
+    {_exe, args} = Shell.argv("echo hi", worktree, jail: true, deps: :read_only)
+
+    refute "--overlay" in args
+    assert "--ro-bind-try" in args
+  end
 end

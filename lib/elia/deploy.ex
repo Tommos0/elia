@@ -742,7 +742,7 @@ defmodule Elia.Deploy do
 
   defp out(output) do
     output
-    |> String.replace_leading(Elia.Shell.jail_skipped_notice() <> "\n", "")
+    |> Elia.Shell.strip_notices()
     |> String.trim()
   end
 

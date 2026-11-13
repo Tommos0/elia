@@ -829,14 +829,13 @@ defmodule Elia.Tasks do
   defp git_cmd(args, root) do
     command = Enum.map_join(["git" | args], " ", &quote_arg/1)
 
-    # A run whose jail was skipped says so in its output (ISOL-12), but these
+    # A run whose jail was skipped says so in its output (ISOL-12), and one whose
+    # layer couldn't be mounted says the tree was read-only (ISOL-27), but these
     # callers read the output as a value — a ref, a path, a NUL-separated list —
-    # so the notice comes off before it gets to them.
-    notice = Elia.Shell.jail_skipped_notice() <> "\n"
-
+    # so the notices come off before it gets to them.
     case Elia.Shell.run(command, cd: root) do
-      {:ok, out, status} -> {String.replace_leading(out, notice, ""), status}
-      {:timeout, out} -> {String.replace_leading(out, notice, ""), 1}
+      {:ok, out, status} -> {Elia.Shell.strip_notices(out), status}
+      {:timeout, out} -> {Elia.Shell.strip_notices(out), 1}
     end
   end
 

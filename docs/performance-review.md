@@ -87,9 +87,14 @@ returns the matched regions (see **5**).
   upperdir=/proc/self/fd/N,…,userxattr: No such file or directory` + `[exit: 1]`.
   Every one is in a step that ran **2 or 3 shell calls** (33 and 2), never a
   single-call step. 399 of 10,676 steps run 2+ shell calls → **8.8% of those
-  lose one of their commands**, and the command never ran at all. Being spec'd
-  as ISOL-26/ISOL-27 in `specs/command-isolation.md` (one jail per step's
-  commands; fallback when the layer can't be mounted).
+  lose one of their commands**, and the command never ran at all. Fixed by
+  ISOL-26/ISOL-27 in `specs/command-isolation.md`: a per-worktree lock around
+  mount *setup* (one jail per command stays as it is), plus a retry and a
+  read-only fallback so a command that never ran is never reported as failed.
+  Overlapping lifetimes are not the problem — a mount started a moment after
+  another succeeds while the first is still up — so a terminal's session-long
+  mount is harmless, and the per-chat jail in the open questions isn't needed
+  for correctness.
 - **`edit_file` friction, ~80 calls**: "old_string not found in file" (52),
   "old_string occurs N times" (6), and 20 calls with a missing argument.
   Ideas: whitespace-tolerant retry, unique partial match, schema defaults.
@@ -140,7 +145,7 @@ measurement.
 
 | # | Change | Kind | Expected |
 | --- | --- | --- | --- |
-| 1 | One jail per step's commands (ISOL-26/27) | code + spec | makes 2 safe; removes 8.8% failures |
+| 1 | Per-worktree lock around mount setup (ISOL-26/27) | code + spec | removes 8.8% failures |
 | 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips |
 | 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat |
 | 4 | Per-step timing recorded | code + spec | makes future reviews measurable |
@@ -151,12 +156,21 @@ measurement.
 
 ## Open questions
 
-- Batching shell calls shares one namespace: `/tmp` and the pid namespace are
-  shared between the commands of one step (a terminal, TERM-7, already accepts
-  this for a whole session). Acceptable for tool calls too?
-- Per-*step* jail (proposed) or per-*chat* jail (also covers the terminal, saves
-  a bwrap start and mount per command, but needs supervision and a lifecycle)?
-- Does a long-lived mount (a terminal session) collide with a new one? All 35
-  failures involve two mounts being *set up* at once; terminals hold theirs for a
-  session and no failure has been attributed to one — but that was not measured
-  properly. A per-chat jail would make the question moot.
+Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
+
+- **Overlapping lifetimes don't collide.** Two mounts started at the same
+  instant fail; a mount started a second after another succeeds while the first
+  is still up. So a terminal's session-long mount (TERM-7) is harmless and the
+  per-chat jail is not needed for correctness — the jail stays one per command
+  (ISOL-26).
+- **A shared jail per step is a speed option, not a fix.** It would mount once
+  per step instead of once per command, but it needs a driver protocol inside the
+  jail (framing, per-command timeouts and exits), and ISOL-26 removes the failure
+  without it. Not proposed.
+- **Batching shell calls stays safe without namespace sharing**, because each
+  command keeps its own jail and its own `/tmp` and pid namespace.
+
+Still open:
+
+- Proposal 4 (per-step timings) is the one that would make the next review a
+  measurement instead of an inference — worth doing first among the code items.

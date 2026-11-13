@@ -264,4 +264,97 @@ defmodule Elia.CommandIsolationTest do
       refute output =~ notice
     end
   end
+
+  describe "one mount at a time (ISOL-26, ISOL-27)" do
+    setup do
+      # A worktree whose `deps` is the live tree's (DEPLOY-1), so a jail for it
+      # mounts the overlay this is about.
+      live = Elia.Workspace.runtime_root()
+      id = "mount-#{System.unique_integer([:positive])}"
+      worktree = Path.join([live, ".elia", "worktrees", id])
+      deps = Path.join(live, "deps")
+
+      File.mkdir_p!(Path.join(deps, "phoenix/priv/templates"))
+      File.mkdir_p!(worktree)
+      File.ln_s(deps, Path.join(worktree, "deps"))
+
+      on_exit(fn ->
+        File.rm_rf!(worktree)
+        File.rm_rf!(deps)
+        Elia.Deps.remove(worktree, live)
+      end)
+
+      %{worktree: worktree}
+    end
+
+    # ISOL-26: the lock is held while a jail mounts, so a command in the worktree
+    # waits for whoever is mounting and never mounts alongside it. This is the
+    # part the timing-dependent test above can't pin down: it either collides or
+    # it doesn't, depending on how the mounts line up.
+    test "a command waits for the mount lock, then runs", %{worktree: worktree} do
+      key = Elia.Deps.layer(worktree)
+      assert :ok = Elia.Shell.Lock.acquire(key)
+
+      task = Task.async(fn -> jailed("echo hi", cd: worktree) end)
+      refute Task.yield(task, 300), "a command must not mount while the lock is held"
+
+      assert :ok = Elia.Shell.Lock.release(key)
+      assert {:ok, "hi\n", 0} = Task.await(task, 60_000)
+    end
+
+    # ISOL-26: two jails that mounted this layer at the same instant used to
+    # collide — one of them failed before its command ran (35 commands across 11
+    # chats, 8.8% of the steps that ran two shell commands). The lock has them
+    # take turns mounting, so every command runs.
+    test "commands started at once in one worktree all run", %{worktree: worktree} do
+      results =
+        1..4
+        |> Enum.map(fn n -> Task.async(fn -> jailed("echo one-#{n}", cd: worktree) end) end)
+        |> Task.await_many(60_000)
+
+      for {result, n} <- Enum.with_index(results, 1) do
+        assert {:ok, output, 0} = result
+        assert output =~ "one-#{n}"
+        refute output =~ "Can't make overlay mount"
+      end
+    end
+
+    # ISOL-27: a jail that can't mount the layer is tried once more, and then
+    # runs with the shared `deps` read-only, saying so — never "the command
+    # ran and failed" when it never ran.
+    test "a jail that can't mount the layer is retried, then runs read-only", %{
+      worktree: worktree
+    } do
+      real = System.find_executable("bwrap")
+      dir = Path.join(System.tmp_dir!(), "elia-fake-bwrap-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      count = Path.join(dir, "count")
+      script = Path.join(dir, "bwrap")
+
+      # A bubblewrap that can't mount the layer twice — the attempt and its retry
+      # — and then is the real one, which is what the read-only fallback runs.
+      File.write!(script, """
+      #!/bin/sh
+      n=$(cat #{count} 2>/dev/null || echo 0)
+      echo $((n + 1)) > #{count}
+      if [ "$n" -lt 2 ]; then
+        echo "bwrap: Can't make overlay mount on (null) with options upperdir=/x,workdir=/y,lowerdir=/z,userxattr: No such file or directory" >&2
+        exit 1
+      fi
+      exec #{real} "$@"
+      """)
+
+      File.chmod!(script, 0o755)
+
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true, bwrap: script)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+      assert {:ok, output, 0} = jailed("echo hi", cd: worktree)
+      assert output =~ Shell.deps_read_only_notice()
+      assert output =~ "hi"
+    end
+  end
 end

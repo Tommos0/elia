@@ -62,6 +62,7 @@ defmodule Elia.Terminal.Session do
     :command,
     :workspace,
     :jail,
+    :lock,
     :socket,
     :port,
     :cols,
@@ -186,6 +187,12 @@ defmodule Elia.Terminal.Session do
         env: [{"TERM", "xterm-256color"}]
       )
 
+    # ISOL-26: the session's jail mounts the worktree's dependency layer as a
+    # command's does, so it takes the same lock — and gives it back as soon as
+    # the session says it is up, which is its first output (or its death).
+    lock = if "--overlay" in args, do: Elia.Deps.layer(workspace), else: nil
+    if lock, do: Shell.Lock.acquire(lock)
+
     port =
       Port.open({:spawn_executable, exe}, [
         :binary,
@@ -202,6 +209,7 @@ defmodule Elia.Terminal.Session do
       command: Enum.join(argv, " "),
       workspace: workspace,
       jail: jail,
+      lock: lock,
       socket: socket,
       port: port,
       cols: @initial_cols,
@@ -306,19 +314,21 @@ defmodule Elia.Terminal.Session do
   end
 
   @impl true
-  def handle_info({port, {:data, {_eol, data}}}, %{port: port} = state),
-    do: {:noreply, %{state | stderr: cap_stderr(state.stderr <> data)}}
+  def handle_info({port, {:data, {_eol, data}}}, %{port: port} = state) do
+    # ISOL-26: the jail is up and talking, so the mount lock can go.
+    {:noreply, %{release_lock(state) | stderr: cap_stderr(state.stderr <> data)}}
+  end
 
   def handle_info({port, {:data, data}}, %{port: port} = state),
-    do: {:noreply, ingest(state, data)}
+    do: {:noreply, ingest(release_lock(state), data)}
 
   # The port program is gone: the client exited, so either the session ended on
   # its own or it never started. Either way there is nothing left to talk to.
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
     state =
-      case state.status do
-        :running -> end_session(%{state | port: nil}, :crashed, code)
-        :ending -> end_session(%{state | port: nil}, state.ended, state.exit_status)
+      case %{state | port: nil} |> release_lock() do
+        %{status: :running} = state -> end_session(state, :crashed, code)
+        %{status: :ending} = state -> end_session(state, state.ended, state.exit_status)
       end
 
     {:noreply, state}
@@ -334,8 +344,19 @@ defmodule Elia.Terminal.Session do
   def terminate(_reason, state) do
     # TERM-3: a session that goes away — the chat was deleted, the server is
     # shutting down — takes its process tree with it.
+    release_lock(state)
     if state.port, do: kill_port(state.port)
     :ok
+  end
+
+  # ISOL-26: the mount lock is held only until the jail is up. A session that
+  # ends before it ever spoke gives it back here, so a terminal that failed to
+  # start can't keep a worktree's commands waiting.
+  defp release_lock(%{lock: nil} = state), do: state
+
+  defp release_lock(%{lock: key} = state) do
+    Shell.Lock.release(key)
+    %{state | lock: nil}
   end
 
   ## The protocol
