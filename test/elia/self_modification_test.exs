@@ -264,6 +264,140 @@ defmodule Elia.SelfModificationTest do
       File.rm_rf!(in_root("skills/notes"))
     end
 
+    # FILE-31: the exact match is preferred, and it is the match that can cover
+    # part of a line — the tolerant retry only ever covers whole lines.
+    test "an exact match is used even where a tolerant one exists" do
+      path = "skills/notes/exact.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "  two  \n")
+
+      assert {:ok, "Edited skills/notes/exact.txt (1 replacement)"} =
+               Files.edit_file(%{"path" => path, "old_string" => "two", "new_string" => "X"}, %{})
+
+      # Part of the line, not the whole of it: the exact match did the work.
+      assert File.read!(in_root(path)) == "  X  \n"
+    after
+      File.rm_rf!(in_root("skills/notes"))
+    end
+
+    # FILE-31, FILE-32
+    test "an indentation difference is matched, and the matched lines are replaced" do
+      path = "skills/notes/indent.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "def f() do\n    one\n    two\nend\n")
+
+      assert {:ok, "Edited skills/notes/indent.txt (1 replacement, whitespace-tolerant match)"} =
+               Files.edit_file(
+                 %{"path" => path, "old_string" => "one\ntwo", "new_string" => "ONE\nTWO"},
+                 %{}
+               )
+
+      # The matched lines' own text went, `new_string` exactly as it was given:
+      # the file's indentation is not reused, and not added to it either.
+      assert File.read!(in_root(path)) == "def f() do\nONE\nTWO\nend\n"
+    after
+      File.rm_rf!(in_root("skills/notes"))
+    end
+
+    # FILE-31
+    test "trailing whitespace and CRLF endings are matched" do
+      path = "skills/notes/crlf.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "a\r\none  \r\ntwo\r\nb\r\n")
+
+      assert {:ok, "Edited skills/notes/crlf.txt (1 replacement, whitespace-tolerant match)"} =
+               Files.edit_file(
+                 %{"path" => path, "old_string" => "one\ntwo", "new_string" => "ONE\nTWO"},
+                 %{}
+               )
+
+      # The line endings around the replaced lines are the file's, untouched.
+      assert File.read!(in_root(path)) == "a\r\nONE\nTWO\r\nb\r\n"
+    after
+      File.rm_rf!(in_root("skills/notes"))
+    end
+
+    # FILE-33: the same block at two indentation levels — the shape a language
+    # where indentation is code makes dangerous — is two candidates, so it is an
+    # error that names both and nothing is written.
+    test "a tolerant match that is not unique is an error, and nothing is written" do
+      path = "skills/notes/two-blocks.txt"
+      text = "if a:\n    x = 1\n    y = 2\nif b:\n    x = 1\n    y = 2\n"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), text)
+
+      assert {:error, reason} =
+               Files.edit_file(
+                 %{"path" => path, "old_string" => "x = 1\ny = 2", "new_string" => "Z"},
+                 %{}
+               )
+
+      assert reason ==
+               "old_string occurs 2 times ignoring indentation, trailing whitespace and " <>
+                 "line endings (at lines 2 and 5); add context to make it unique or set replace_all"
+
+      assert File.read!(in_root(path)) == text
+    end
+
+    # FILE-34
+    test "replace_all replaces every tolerant candidate" do
+      path = "skills/notes/all-blocks.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "if a:\n    x = 1\n    y = 2\nif b:\n    x = 1\n    y = 2\n")
+
+      assert {:ok,
+              "Edited skills/notes/all-blocks.txt (2 replacements, whitespace-tolerant match)"} =
+               Files.edit_file(
+                 %{
+                   "path" => path,
+                   "old_string" => "x = 1\ny = 2",
+                   "new_string" => "Z",
+                   "replace_all" => true
+                 },
+                 %{}
+               )
+
+      assert File.read!(in_root(path)) == "if a:\nZ\nif b:\nZ\n"
+    end
+
+    # FILE-35: neither attempt found it, and the message says both were tried.
+    test "neither match finding anything is reported as both" do
+      path = "skills/notes/absent.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "one\ntwo\n")
+
+      assert {:error, reason} =
+               Files.edit_file(
+                 %{"path" => path, "old_string" => "three\nfour", "new_string" => "X"},
+                 %{}
+               )
+
+      assert reason ==
+               "old_string not found in file (no exact match, and no match ignoring " <>
+                 "indentation, trailing whitespace and line endings)"
+
+      # FILE-7, FILE-35: an empty `old_string` keeps its own error.
+      assert {:error, "old_string must not be empty"} =
+               Files.edit_file(%{"path" => path, "old_string" => "", "new_string" => "X"}, %{})
+
+      assert File.read!(in_root(path)) == "one\ntwo\n"
+    end
+
+    # FILE-36: several exact occurrences, named by the line each starts on.
+    test "an ambiguous exact match names the lines it occurs on" do
+      path = "skills/notes/twice.txt"
+      File.mkdir_p!(in_root("skills/notes"))
+      File.write!(in_root(path), "a\ntwo\nb\ntwo\n")
+
+      assert {:error, reason} =
+               Files.edit_file(%{"path" => path, "old_string" => "two", "new_string" => "2"}, %{})
+
+      assert reason ==
+               "old_string occurs 2 times (at lines 2 and 4); add context to make it unique or set replace_all"
+
+      assert File.read!(in_root(path)) == "a\ntwo\nb\ntwo\n"
+    end
+
     # FILE-11
     test "concurrent edits of one file all apply" do
       path = "skills/notes/concurrent.txt"
