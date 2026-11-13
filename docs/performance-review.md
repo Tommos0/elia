@@ -4,7 +4,12 @@ A review of where wall-clock time goes in Elia's chats, and the changes that
 would cut it. Not a spec: findings and proposals, for discussion. Numbers come
 from the saved chats and can be reproduced (see **Method**).
 
-Status: draft, unapproved. Nothing here is implemented.
+Status: review, checked against the tree on 2026-11-13. Proposals **1** and
+**4** are implemented (marked in the ranked table and in the findings they came
+from); **2**, **3**, **5**, **6** and **7** are not started; **8** needs no
+change, because the ladder already elides tool results before assistant prose
+(COMPACT-14..16). Each proposal still needs its own spec and approval before
+anyone writes code for it.
 
 ## Method
 
@@ -49,7 +54,10 @@ halves the waiting.
 
 Proposal: an `AGENTS.md` rule — "in one step, ask for everything you already
 know you need; several reads/searches in one message run at once; don't spend a
-round trip per file". Blocked in practice by **4** for shell calls.
+round trip per file". The blocker for shell calls was finding **4**: batching
+commands is what provoked the overlay failures. ISOL-26/ISOL-27 fixed that
+without namespace sharing (see **Open questions**), so the rule can cover shell
+calls too. Open.
 
 ## 2. Orientation tax
 
@@ -87,8 +95,9 @@ returns the matched regions (see **5**).
   upperdir=/proc/self/fd/N,…,userxattr: No such file or directory` + `[exit: 1]`.
   Every one is in a step that ran **2 or 3 shell calls** (33 and 2), never a
   single-call step. 399 of 10,676 steps run 2+ shell calls → **8.8% of those
-  lose one of their commands**, and the command never ran at all. Fixed by
-  ISOL-26/ISOL-27 in `specs/command-isolation.md`: a per-worktree lock around
+  lose one of their commands**, and the command never ran at all. **Fixed**
+  2026-11-13 (`9bf6184 feat: one jail at a time mounts a worktree's deps layer`)
+  by ISOL-26/ISOL-27 in `specs/command-isolation.md`: a per-worktree lock around
   mount *setup* (one jail per command stays as it is), plus a retry and a
   read-only fallback so a command that never ran is never reported as failed.
   Overlapping lifetimes are not the problem — a mount started a moment after
@@ -141,18 +150,27 @@ Proposal (small, high value): record per step — model ms, tool ms, approval wa
 ms, usage — in the chat (or a metrics file beside it), so the next review is a
 measurement.
 
+**Done**, 2026-11-13 (`11478c4 feat: record each loop step's timing beside its
+chat`, TIME-1 to TIME-10 in `specs/step-timing.md`): the loop measures each
+model request and the session appends one JSON line per step — turn id and
+start, step and attempt, outcome, two ISO-8601 stamps, `model_ms`, `tool_ms`,
+`approval_wait_ms`, `answer_wait_ms`, `retry_wait_ms`, per-call timings and the
+provider's token counts — to `.elia/sessions/<chat id>.timing`, read back with
+`Elia.StepTiming.load/1` (`lib/elia/step_timing.ex`). No review has read them
+yet: the measurement this proposal was for is still to be taken.
+
 ## Ranked proposals
 
-| # | Change | Kind | Expected |
-| --- | --- | --- | --- |
-| 1 | Per-worktree lock around mount setup (ISOL-26/27) | code + spec | removes 8.8% failures |
-| 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips |
-| 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat |
-| 4 | Per-step timing recorded | code + spec | makes future reviews measurable |
-| 5 | Search tool that returns matched regions | code + spec | 4 steps → 1–2 per "grep then read" |
-| 6 | `edit_file` whitespace-tolerant retry, argument defaults | code + spec | ~80 wasted calls |
-| 7 | Cache breakpoints on OpenRouter; effort default | code + spec | shorter and cheaper steps |
-| 8 | Compact tool results before prose | code + spec | smaller views in long chats |
+| # | Change | Kind | Expected | Status 2026-11-13 |
+| --- | --- | --- | --- | --- |
+| 1 | Per-worktree lock around mount setup (ISOL-26/27) | code + spec | removes 8.8% failures | **done** (`9bf6184`) |
+| 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips | open |
+| 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat | open |
+| 4 | Per-step timing recorded | code + spec | makes future reviews measurable | **done** (`11478c4`) |
+| 5 | Search tool that returns matched regions | code + spec | 4 steps → 1–2 per "grep then read" | open |
+| 6 | `edit_file` whitespace-tolerant retry, argument defaults | code + spec | ~80 wasted calls | open |
+| 7 | Cache breakpoints on OpenRouter; effort default | code + spec | shorter and cheaper steps | open |
+| 8 | Compact tool results before prose | code + spec | smaller views in long chats | no change needed (COMPACT-14..16) |
 
 ## Open questions
 
@@ -172,5 +190,8 @@ Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
 
 Still open:
 
-- Proposal 4 (per-step timings) is the one that would make the next review a
-  measurement instead of an inference — worth doing first among the code items.
+- Proposals 2, 3, 5, 6 and 7 — none of them started. 2 and 3 are instructions
+  only (`AGENTS.md` and one topic doc) and were unblocked by 1; 5, 6 and 7 each
+  need a spec first.
+- Proposal 4's other half: the records exist but no pass has read them, so
+  nothing in this file has been turned into a measurement yet.
