@@ -107,7 +107,10 @@ server is brought up to date with the trunk `master`.
   each took, the step it is on now, and how long the whole operation has been
   running. A page that mounts or is reloaded in the middle of one — including
   by the deploy's own asset change (DEPLOY-12, HOT-9) — shows the same, rather
-  than only a spinner on the button (CONF-20).
+  than only a spinner on the button (CONF-20). The list is `#deploy-steps`, each
+  finished step a row naming it (through `Elia.Deploy.step_label/1`, so the two
+  pages that render steps cannot disagree) with its duration; the step it is on
+  is `#deploy-step` and the elapsed time is `#deploy-elapsed`.
 - **CONF-22** The section reports the last operation from the record
   (DEPLOY-23) as well as from the runner (CONF-20), so a page that comes back
   after a **restart** deploy (DEPLOY-7) — whose result died with the process
@@ -117,10 +120,11 @@ server is brought up to date with the trunk `master`.
 - **CONF-23** The section offers going back to a revision the app has run
   (DEPLOY-25, DEPLOY-26): as `#deploy-rollback` it names the newest kept
   revision that is not the one running — its short sha and when it was loaded —
-  and has a control per load mode ("Hot reload", "Restart"), each disabled
-  while an operation runs, the way the deploy buttons are (CONF-20). The
-  section also says `#recover-note` the address of the recovery page
-  (`/recover`, RECOVER-10), for when this page's own UI is what a deploy broke.
+  and has a control per load mode, `#deploy-rollback-reload` and
+  `#deploy-rollback-restart`, each disabled while an operation runs, the way the
+  deploy buttons are (CONF-20). The section also says `#recover-note` the
+  address of the recovery page (`/recover`, RECOVER-10), for when this page's
+  own UI is what a deploy broke.
 
 ## Configuration
 
