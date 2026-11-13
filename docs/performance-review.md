@@ -4,12 +4,12 @@ A review of where wall-clock time goes in Elia's chats, and the changes that
 would cut it. Not a spec: findings and proposals, for discussion. Numbers come
 from the saved chats and can be reproduced (see **Method**).
 
-Status: review, checked against the tree on 2026-11-13. Proposals **1**, **2**,
-**3** and **4** are implemented (marked in the ranked table and in the findings
-they came from); **5**, **6** and **7** are not started; **8** needs no change,
-because the ladder already elides tool results before assistant prose
-(COMPACT-14..16). Each remaining proposal still needs its own spec and approval
-before anyone writes code for it.
+Status: review, checked against the tree on 2026-11-13, and again the same day
+after the last three proposals landed. Proposals **1** to **7** are implemented
+(marked in the ranked table and in the findings they came from); **8** needs no
+change, because the ladder already elides tool results before assistant prose
+(COMPACT-14..16). What this review still owes is the measurement its proposal 4
+was built for: the `.timing` records exist and no pass has read them.
 
 ## Method
 
@@ -109,6 +109,16 @@ treats all content alike, while tool results are 22M of the 24M chars and the
 least useful when cold); a `read_file` that defaults lower; a search tool that
 returns the matched regions (see **5**).
 
+**Proposal 5 done**, 2026-11-13 (`a4651d9 feat: search_files returns the matched
+regions (FILE-24..FILE-30)`): `search_files` is a sixth file tool in
+`lib/elia/skills/files.ex` that returns each match with its surrounding lines —
+`path:line` headers, matched lines marked, a match budget with a `[+n more
+matches not shown]` tail — so finding text is one call instead of `shell` +
+`grep -n` + a `read_file`. It searches only what a jailed command could reach
+(FILE-28, FILE-29), walks in Elixir with no new dependency, and the `shell`
+skill and tool description now send finding text to it rather than to `grep`
+(FILE-24, SHELL-8). Not measured yet: whether it really turns 4 steps into 1–2.
+
 ## 4. Calls that failed, and the overlay
 
 509 failed results (1.05M chars) across all chats. Classes:
@@ -130,6 +140,18 @@ returns the matched regions (see **5**).
 - **`edit_file` friction, ~80 calls**: "old_string not found in file" (52),
   "old_string occurs N times" (6), and 20 calls with a missing argument.
   Ideas: whitespace-tolerant retry, unique partial match, schema defaults.
+  **Done**, 2026-11-13 (`f69986b`, FILE-31..FILE-38 in `specs/file-tools.md`):
+  when the exact match finds nothing, a retry compares whole lines ignoring
+  indentation, trailing whitespace and a `\r`, and is used only when exactly one
+  run matches — several candidates stay an error naming the count and the lines,
+  never a pick (FILE-33). An ambiguous exact match now names the lines too
+  (FILE-36). **No** argument defaults were added (FILE-37): of the 20
+  missing-argument calls, 13 sent their replacement text under a misspelled key,
+  so defaulting `new_string` to `""` would have turned each into a silent
+  deletion. Honest caveat on the expected yield: the sub-task sampled two of the
+  52 "not found" failures and neither was a whitespace difference (one was
+  pasted twice over, one had its line breaks elsewhere than the file's) — expect
+  a share of that 52, not all of it. Not measured either way.
 - 59 results are `mix test` output and 50 compile output — real work, not waste.
 - 31 "Cancelled by the user." (a stopped turn, not a defect).
 
@@ -144,6 +166,12 @@ prefixed with a pointless `cd` (`cd /home/ai/elia` 546, `cd …/worktrees/<id>`
 Proposals: drop the `cd` prefix; `read_file` not `sed`; targeted tests while
 iterating and one `mix precommit` at the end (the full suite is the slowest
 command in the box).
+
+**Partly done**: the pointless `cd` is now an instruction (`SHELL-2`,
+`24a31fc docs: never prefix a shell command with cd`) and the file tools' rule
+covers `sed` and `cat`; `search_files` (finding 3, `a4651d9`) is where a search
+goes now instead of `grep` (FILE-24). Nothing measures whether the habits
+followed, so this is instruction, not evidence.
 
 ## 6. Provider knobs nobody is turning
 
@@ -161,6 +189,19 @@ command in the box).
 
 Ideas: cache breakpoints for Anthropic-family models behind OpenRouter; a
 per-chat reasoning-effort setting with a lower default; a lower trigger.
+
+**Proposal 7 done**, 2026-11-13 (`56d6b6b`): `LLM-37`..`LLM-39` in
+`specs/llm-providers.md`. OpenRouter now sends one `cache_control: ephemeral`
+breakpoint on the system message — but only for an `anthropic/...` model, since
+DeepSeek, OpenAI and Gemini cache server-side with nothing for the client to
+send and a stray field there risks a 400 on every step; the shipped effort
+default dropped from `high` to `medium`, and a configured effort goes to the
+Anthropic family only. The user asked for more than the review proposed: a
+per-chat reasoning-effort row on the chat settings page (`CSET-13`), which the
+chat carries into its requests (`SESS-40`) and saves only when it has one of its
+own (`STORE-37/38`, so a chat saved before this reads as "no effort of its own"
+and no migration was needed). Still open from this finding: the lower compaction
+trigger, which nobody took.
 
 ## 7. Nothing records how long a step took
 
@@ -190,9 +231,9 @@ yet: the measurement this proposal was for is still to be taken.
 | 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips | **done** (`36ea73e`) |
 | 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat | **done** (`36ea73e`), five pages kept |
 | 4 | Per-step timing recorded | code + spec | makes future reviews measurable | **done** (`11478c4`) |
-| 5 | Search tool that returns matched regions | code + spec | 4 steps → 1–2 per "grep then read" | open |
-| 6 | `edit_file` whitespace-tolerant retry, argument defaults | code + spec | ~80 wasted calls | open |
-| 7 | Cache breakpoints on OpenRouter; effort default | code + spec | shorter and cheaper steps | open |
+| 5 | Search tool that returns matched regions | code + spec | 4 steps → 1–2 per "grep then read" | **done** (`a4651d9`), FILE-24..FILE-30 |
+| 6 | `edit_file` whitespace-tolerant retry, argument defaults | code + spec | ~80 wasted calls | **done** (`f69986b`), FILE-31..FILE-38 — retry, but no defaults (FILE-37) |
+| 7 | Cache breakpoints on OpenRouter; effort default | code + spec | shorter and cheaper steps | **done** (`56d6b6b`), LLM-37..39, CSET-13, SESS-40, STORE-37/38 |
 | 8 | Compact tool results before prose | code + spec | smaller views in long chats | no change needed (COMPACT-14..16) |
 
 ## Open questions
@@ -213,11 +254,14 @@ Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
 
 Still open:
 
-- Proposals 5, 6 and 7 — none of them started, and each needs a spec first: a
-  search tool that returns matched regions (which would also make the "locate,
-  then read a range" habit of 3 cheaper), `edit_file`'s whitespace-tolerant
-  retry and argument defaults, and the OpenRouter cache breakpoint and effort
-  default.
-- Proposal 4's other half: the records exist but no pass has read them, so
-  nothing in this file has been turned into a measurement yet — neither the
-  single-lookup habit that 2 instructs against nor the orientation tax of 3.
+- The measurement half of proposal 4: the records exist but no pass has read
+  them, so nothing in this file has been turned into a measurement yet — neither
+  the single-lookup habit that 2 instructs against, the orientation tax of 3, nor
+  what 5 and 6 saved. A measurement pass has to run outside a chat's jail:
+  `.elia/sessions`, and so the `.timing` files, is masked inside one.
+- The lower compaction trigger from finding 6 was not taken.
+
+Landed alongside this review's proposals, but not one of them (2026-11-13): the
+worktree build cache (`BUILD-1..BUILD-6`, `d35be55`/`1f9d17a` — a chat's first
+compile 35 s → 5 s) and the shell and `run_tests` timeout bounds (SHELL-10,
+VERIFY-1).
