@@ -4,12 +4,12 @@ A review of where wall-clock time goes in Elia's chats, and the changes that
 would cut it. Not a spec: findings and proposals, for discussion. Numbers come
 from the saved chats and can be reproduced (see **Method**).
 
-Status: review, checked against the tree on 2026-11-13. Proposals **1** and
-**4** are implemented (marked in the ranked table and in the findings they came
-from); **2**, **3**, **5**, **6** and **7** are not started; **8** needs no
-change, because the ladder already elides tool results before assistant prose
-(COMPACT-14..16). Each proposal still needs its own spec and approval before
-anyone writes code for it.
+Status: review, checked against the tree on 2026-11-13. Proposals **1**, **2**,
+**3** and **4** are implemented (marked in the ranked table and in the findings
+they came from); **5**, **6** and **7** are not started; **8** needs no change,
+because the ladder already elides tool results before assistant prose
+(COMPACT-14..16). Each remaining proposal still needs its own spec and approval
+before anyone writes code for it.
 
 ## Method
 
@@ -57,7 +57,15 @@ know you need; several reads/searches in one message run at once; don't spend a
 round trip per file". The blocker for shell calls was finding **4**: batching
 commands is what provoked the overlay failures. ISOL-26/ISOL-27 fixed that
 without namespace sharing (see **Open questions**), so the rule can cover shell
-calls too. Open.
+calls too.
+
+**Done**, 2026-11-13 (`36ea73e`): it is the "Always" bullet *"In one step, ask
+for everything you already know you need"* in `AGENTS.md` — it covers reads,
+searches and shell commands, names what to batch (the topic docs the table
+rows name, the files a change will touch, the greps that locate them), and says
+a batched command still gets its own jail and its own `/tmp` and pid namespace
+(ISOL-26), so batching shell calls is safe. How much it actually saves has not
+been measured yet — that is finding 4's records, unread so far.
 
 ## 2. Orientation tax
 
@@ -69,6 +77,21 @@ before work starts.
 Proposals: read only the topic doc for the change being made; `grep -n` to
 locate before reading a whole file; merge `docs/agents/*.md` into one page (or
 point `AGENTS.md`'s table at one) so the required reading is one step, not four.
+
+**Done, without the merge** (2026-11-13, `36ea73e`): `AGENTS.md`'s *Read before
+you…* section now says to open only the rows the change matches, in one step, to
+locate with `grep -n` or `list_files` first and read the range (`offset`/`limit`,
+or one section of a doc) rather than whole files, and to read the spec that owns
+the behaviour rather than every spec that mentions it. The five pages were
+deliberately not merged into one: together they are 20 kB (~5k tokens) held for
+the rest of the chat, while a code change usually needs one or two of them
+(`elixir.md` + `testing.md` is 8.7 kB), and the *step* saving the merge was for
+is what finding 1's batching rule already gives — one message, several reads —
+so merging would buy tokens nobody needs. Whether orientation is really cheaper
+now is for a later pass over the chats, not for this file. Two stale claims in
+those pages were fixed in the same commit: `harness.md` said there is no
+`/recover` page (it is back, RECOVER-10..RECOVER-15), and `elixir.md` named only
+two LLM adapters of the four.
 
 ## 3. What the model reads
 
@@ -164,8 +187,8 @@ yet: the measurement this proposal was for is still to be taken.
 | # | Change | Kind | Expected | Status 2026-11-13 |
 | --- | --- | --- | --- | --- |
 | 1 | Per-worktree lock around mount setup (ISOL-26/27) | code + spec | removes 8.8% failures | **done** (`9bf6184`) |
-| 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips | open |
-| 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat | open |
+| 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips | **done** (`36ea73e`) |
+| 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat | **done** (`36ea73e`), five pages kept |
 | 4 | Per-step timing recorded | code + spec | makes future reviews measurable | **done** (`11478c4`) |
 | 5 | Search tool that returns matched regions | code + spec | 4 steps → 1–2 per "grep then read" | open |
 | 6 | `edit_file` whitespace-tolerant retry, argument defaults | code + spec | ~80 wasted calls | open |
@@ -190,8 +213,11 @@ Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
 
 Still open:
 
-- Proposals 2, 3, 5, 6 and 7 — none of them started. 2 and 3 are instructions
-  only (`AGENTS.md` and one topic doc) and were unblocked by 1; 5, 6 and 7 each
-  need a spec first.
+- Proposals 5, 6 and 7 — none of them started, and each needs a spec first: a
+  search tool that returns matched regions (which would also make the "locate,
+  then read a range" habit of 3 cheaper), `edit_file`'s whitespace-tolerant
+  retry and argument defaults, and the OpenRouter cache breakpoint and effort
+  default.
 - Proposal 4's other half: the records exist but no pass has read them, so
-  nothing in this file has been turned into a measurement yet.
+  nothing in this file has been turned into a measurement yet — neither the
+  single-lookup habit that 2 instructs against nor the orientation tax of 3.
