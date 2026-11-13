@@ -8,7 +8,7 @@ defmodule Elia.AutoApproveTest do
   # APPR: what can need approval — every tool whose work is a change to the
   # machine: the files, the shell, a sub-task, starting a terminal (TERM-25) and
   # typing into one (TERM-32).
-  @approvable ~w(delete_file edit_file list_files read_file shell spawn_task terminal_send terminal_start write_file)
+  @approvable ~w(delete_file edit_file list_files read_file search_files shell spawn_task terminal_send terminal_start write_file)
 
   setup do
     start_supervised!(FakeLLM)

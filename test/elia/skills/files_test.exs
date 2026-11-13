@@ -12,20 +12,25 @@ defmodule Elia.Skills.FilesTest do
     assert instructions =~ "project folder"
   end
 
-  # FILE-23: everywhere the file tools are named, all five are.
-  test "the five file tools are named together" do
+  # FILE-23, FILE-24: everywhere the file tools are named, they are named
+  # together — six of them now that `search_files` has joined them.
+  test "the file tools are named together" do
     names = Elia.Skills.Files.tools() |> Enum.map(& &1.name)
 
-    assert names == ~w(read_file write_file edit_file list_files delete_file)
+    assert names == ~w(read_file write_file edit_file list_files search_files delete_file)
     assert Elia.Skills.Files.description() =~ "list"
     assert Elia.Skills.Files.description() =~ "delete"
+    assert Elia.Skills.Files.description() =~ "search"
 
     instructions = Elia.Skills.Files.instructions()
     assert instructions =~ "`list_files`"
     assert instructions =~ "`delete_file`"
+    assert instructions =~ "`search_files`"
+    assert instructions =~ "grep"
 
     assert [shell] = Enum.filter(Elia.Skills.Shell.tools(), &(&1.name == "shell"))
     assert shell.description =~ "list_files"
     assert shell.description =~ "delete_file"
+    assert shell.description =~ "search_files"
   end
 end

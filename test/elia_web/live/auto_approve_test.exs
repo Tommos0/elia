@@ -29,12 +29,12 @@ defmodule EliaWeb.AutoApproveTest do
   test "a new chat shows every switch on and the count", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
 
-    assert has_element?(view, "#auto-approve-count", "9")
+    assert has_element?(view, "#auto-approve-count", "10")
 
     open_popover(view)
 
     for tool <-
-          ~w(shell read_file write_file edit_file list_files delete_file spawn_task terminal_start terminal_send) do
+          ~w(shell read_file write_file edit_file list_files search_files delete_file spawn_task terminal_start terminal_send) do
       assert has_element?(view, "#auto-approve-#{tool}[aria-checked='true']")
     end
   end

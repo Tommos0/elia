@@ -12,7 +12,7 @@ defmodule Elia.Skills.ShellTest do
     assert output =~ "[exit: 3]"
   end
 
-  # SHELL-8
+  # SHELL-8, FILE-24
   test "instructions and tool description send file work to the file tools" do
     assert String.starts_with?(
              Shell.instructions(),
@@ -23,7 +23,13 @@ defmodule Elia.Skills.ShellTest do
     assert [%{description: description}] = Shell.tools()
 
     assert description =~
-             "use read_file, list_files, write_file, edit_file and delete_file"
+             "use read_file, list_files, search_files, write_file, edit_file and delete_file"
+
+    # FILE-24: finding text in the tree is `search_files`, not `grep`.
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "grep"
+      assert text =~ "search_files"
+    end
   end
 
   # SHELL-9

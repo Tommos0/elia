@@ -1,6 +1,6 @@
 defmodule Elia.Skills.Files do
   @moduledoc """
-  Read, write, edit, list and delete files in the workspace.
+  Read, write, edit, list, search and delete files in the workspace.
 
   Approval follows `Elia.Workspace` classes: changes under `skills/` run
   without asking, other workspace files need approval, protected paths and
@@ -22,12 +22,20 @@ defmodule Elia.Skills.Files do
   @max_read_lines 2000
   # FILE-16
   @max_list_entries 200
+  # FILE-25
+  @default_context 2
+  @max_context 20
+  @default_matches 40
+  @max_matches 200
+  # FILE-27: a very long line — a minified bundle, say — is cut rather than
+  # returned whole.
+  @max_line_chars 400
 
   @impl true
   def name, do: "files"
 
   @impl true
-  def description, do: "Read, create, edit, list and delete files in the workspace."
+  def description, do: "Read, create, edit, list, search and delete files in the workspace."
 
   @impl true
   def instructions do
@@ -46,6 +54,14 @@ defmodule Elia.Skills.Files do
     a symlink or an empty directory, with the same approvals as a write (other \
     files in the workspace need the user's approval, `skills/` doesn't, and \
     protected or outside paths are refused).
+
+    `search_files` finds text in the tree and returns the matched regions: a \
+    `path:line` header and the lines around each match, the matched ones marked, \
+    so one call replaces a search followed by reading the file. Use it instead \
+    of `grep -n` through the shell. `pattern` is literal text, not a regular \
+    expression; `glob` picks the files (`*.ex`, `lib/**/*.exs`); binary files and \
+    the directories the tools can't change (`.git`, `_build`, `deps`, `.elia`) \
+    are skipped.
 
     With the jail on — the default — these tools reach this chat's workspace and \
     nothing else (FILE-12): a path outside it is refused, not offered for the \
@@ -131,6 +147,47 @@ defmodule Elia.Skills.Files do
         },
         approval: &read_policy/2,
         run: &list_files/2
+      },
+      %Elia.Tool{
+        name: "search_files",
+        description:
+          "Find `pattern` — literal, case-sensitive text, not a regular expression — in " <>
+            "the workspace and return the matched regions: a `path:line` header and the " <>
+            "lines around each match, the matched ones marked, so one call replaces a " <>
+            "search followed by reading the file. `context` (default #{@default_context}) " <>
+            "lines are shown around each match, and at most `limit` (default " <>
+            "#{@default_matches}) matched lines are returned. `glob` picks the files " <>
+            "(`*.ex`, `lib/**/*.exs`). Binary files, and the directories the tools can't " <>
+            "change (`.git`, `_build`, `deps`, `.elia`), are skipped.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "pattern" => %{"type" => "string", "description" => "Literal text to find"},
+            "path" => %{
+              "type" => "string",
+              "description" => "File or directory (default the workspace root)"
+            },
+            "glob" => %{
+              "type" => "string",
+              "description" => "File filter, e.g. `*.ex` or `lib/**/*.exs`"
+            },
+            "context" => %{
+              "type" => "integer",
+              "description" =>
+                "Lines shown around each match (default #{@default_context}, the most " <>
+                  "#{@max_context})"
+            },
+            "limit" => %{
+              "type" => "integer",
+              "description" =>
+                "Most matched lines reported (default #{@default_matches}, the most " <>
+                  "#{@max_matches})"
+            }
+          },
+          "required" => ["pattern"]
+        },
+        approval: &read_policy/2,
+        run: &search_files/2
       },
       %Elia.Tool{
         name: "delete_file",
@@ -298,6 +355,205 @@ defmodule Elia.Skills.Files do
       {:ok, Enum.join(lines, "\n")}
     end
   end
+
+  # FILE-24..FILE-30: find text in the workspace and return the matched
+  # regions, so a search doesn't need a `grep -n` and a `read_file` after it.
+  def search_files(%{"pattern" => pattern} = input, ctx \\ %{}) do
+    path = input["path"] || "."
+    {abs, _} = Workspace.resolve(path, root(ctx))
+
+    with :ok <- allowed(abs, ctx),
+         :ok <- non_empty(pattern),
+         {:ok, files} <- targets(abs, path, input["glob"], root(ctx)) do
+      context = clamp(input["context"] || @default_context, 0, @max_context)
+      limit = clamp(input["limit"] || @default_matches, 1, @max_matches)
+
+      found =
+        files
+        |> Enum.map(&file_matches(&1, pattern, root(ctx)))
+        |> Enum.reject(&is_nil/1)
+
+      {:ok, render(found, pattern, context, limit)}
+    end
+  end
+
+  # FILE-25: an empty pattern matches every line, which is never what was meant.
+  defp non_empty(""), do: {:error, "pattern must not be empty"}
+  defp non_empty(_pattern), do: :ok
+
+  # FILE-25, FILE-28, FILE-30: what a search starts from — one file, or every
+  # file under a directory.
+  defp targets(abs, path, glob, root) do
+    cond do
+      File.dir?(abs) -> {:ok, walk(abs, abs, root, glob, []) |> order(root)}
+      File.regular?(abs) -> {:ok, [abs]}
+      true -> {:error, "Cannot search #{path}: #{why(abs)}"}
+    end
+  end
+
+  defp why(abs) do
+    case File.stat(abs) do
+      {:ok, _} -> "it is not a file or a directory"
+      {:error, reason} -> to_string(:file.format_error(reason))
+    end
+  end
+
+  # FILE-28: only regular files are collected, a symlink is never followed (so a
+  # search can't leave the workspace, FILE-13), a protected directory (WS-1) is
+  # not walked into, and a directory that can't be listed is skipped.
+  defp walk(dir, base, root, glob, acc) do
+    case File.ls(dir) do
+      {:ok, names} ->
+        Enum.reduce(names, acc, fn name, acc ->
+          abs = Path.join(dir, name)
+
+          case File.lstat(abs) do
+            {:ok, %File.Stat{type: :regular}} ->
+              if glob?(glob, Path.relative_to(abs, base)), do: [abs | acc], else: acc
+
+            {:ok, %File.Stat{type: :directory}} ->
+              if Workspace.classify(abs, root) == :protected,
+                do: acc,
+                else: walk(abs, base, root, glob, acc)
+
+            _ ->
+              acc
+          end
+        end)
+
+      {:error, _} ->
+        acc
+    end
+  end
+
+  # FILE-25: a glob with no `/` in it is matched against the file's name, any
+  # other against its path relative to the search root.
+  defp glob?(nil, _rel), do: true
+
+  defp glob?(glob, rel) do
+    subject = if String.contains?(glob, "/"), do: rel, else: Path.basename(rel)
+    Regex.match?(glob_regex(glob), subject)
+  end
+
+  # `*` and `?` stop at a `/`, `**` doesn't, and `**/` also matches no
+  # directory at all, so `lib/**/*.ex` finds `lib/a.ex` as well.
+  defp glob_regex(glob) do
+    body = glob |> String.graphemes() |> compile_glob([]) |> Enum.reverse() |> Enum.join()
+    Regex.compile!("^" <> body <> "$")
+  end
+
+  defp compile_glob([], acc), do: acc
+  defp compile_glob(["*", "*", "/" | rest], acc), do: compile_glob(rest, ["(?:.*/)?" | acc])
+  defp compile_glob(["*", "*" | rest], acc), do: compile_glob(rest, [".*" | acc])
+  defp compile_glob(["*" | rest], acc), do: compile_glob(rest, ["[^/]*" | acc])
+  defp compile_glob(["?" | rest], acc), do: compile_glob(rest, ["[^/]" | acc])
+  defp compile_glob([char | rest], acc), do: compile_glob(rest, [Regex.escape(char) | acc])
+
+  # FILE-26: files in the order of their paths relative to the workspace root,
+  # case-insensitively, the path itself breaking a tie.
+  defp order(paths, root) do
+    Enum.sort_by(paths, fn abs ->
+      rel = Workspace.relative(abs, root)
+      {String.downcase(rel), rel}
+    end)
+  end
+
+  # FILE-26, FILE-28: the matched lines of one file, with its lines for the
+  # context around them. A file that isn't valid UTF-8 is binary, and one that
+  # can't be read is skipped: neither is an error.
+  defp file_matches(abs, pattern, root) do
+    with {:ok, text} <- File.read(abs),
+         true <- String.valid?(text) do
+      lines = String.split(text, "\n")
+
+      matches =
+        for {line, number} <- Enum.with_index(lines, 1),
+            String.contains?(line, pattern),
+            do: number
+
+      if matches == [], do: nil, else: {Workspace.relative(abs, root), lines, matches}
+    else
+      _ -> nil
+    end
+  end
+
+  # FILE-26: matches whose context regions overlap or touch are one region, so
+  # no line is shown twice.
+  defp regions({rel, lines, matches}, context) do
+    last = length(lines)
+
+    matches
+    |> Enum.reduce([], fn number, regions ->
+      case regions do
+        [%{to: to} = region | rest] when number - context <= to + 1 ->
+          [%{region | matches: region.matches ++ [number], to: number + context} | rest]
+
+        _ ->
+          [
+            %{
+              rel: rel,
+              lines: lines,
+              first: number,
+              matches: [number],
+              from: max(number - context, 1),
+              to: number + context
+            }
+            | regions
+          ]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.map(&%{&1 | to: min(&1.to, last)})
+  end
+
+  # FILE-26, FILE-27: the header, then a block per region as far as the budget
+  # of `limit` matched lines allows.
+  defp render([], pattern, _context, _limit), do: "[no matches for #{inspect(pattern)}]"
+
+  defp render(found, _pattern, context, limit) do
+    total = found |> Enum.map(fn {_, _, matches} -> length(matches) end) |> Enum.sum()
+
+    {blocks, shown} =
+      found
+      |> Enum.flat_map(&regions(&1, context))
+      |> Enum.reduce({[], 0}, fn region, {blocks, shown} ->
+        case min(length(region.matches), limit - shown) do
+          take when take > 0 -> {[block(region, take, context) | blocks], shown + take}
+          _ -> {blocks, shown}
+        end
+      end)
+
+    more = if total - shown > 0, do: ["[+#{total - shown} more matches not shown]"], else: []
+
+    header = "[#{total} matches in #{length(found)} files]"
+    Enum.join([header | Enum.reverse(blocks) ++ more], "\n")
+  end
+
+  # FILE-27: a region is reported only as far as the budget allows, so its end
+  # is the last reported match plus the context.
+  defp block(region, take, context) do
+    matches = Enum.take(region.matches, take)
+    to = min(region.to, List.last(matches) + context)
+    width = String.length(Integer.to_string(to))
+
+    body =
+      for number <- region.from..to//1 do
+        marker = if number in matches, do: "> ", else: "  "
+        label = String.pad_leading(Integer.to_string(number), width)
+        "#{marker}#{label} | #{cut(Enum.at(region.lines, number - 1))}"
+      end
+
+    Enum.join(["#{region.rel}:#{region.first}" | body], "\n")
+  end
+
+  defp cut(line) do
+    if String.length(line) > @max_line_chars,
+      do: String.slice(line, 0, @max_line_chars - 1) <> "…",
+      else: line
+  end
+
+  defp clamp(value, min, max) when is_integer(value), do: value |> max(min) |> min(max)
+  defp clamp(_value, min, _max), do: min
 
   # FILE-19, FILE-20, FILE-22: delete a file, a symlink or an empty directory,
   # under the same lock as a write (FILE-11) so the two can't race.

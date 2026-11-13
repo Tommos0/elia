@@ -2,12 +2,12 @@
 
 Status: Implemented
 
-`read_file`, `write_file`, `edit_file`, `list_files` and `delete_file` let the
-agent work with files without the shell: read, create and change a file, list a
-directory, and remove a file or an empty directory. Whether a call needs
-approval depends on the path's workspace class, and a chat whose jail is on can
-only reach its own workspace — so the file tools reach no further than a jailed
-command does (ISOL-25).
+`read_file`, `write_file`, `edit_file`, `list_files`, `delete_file` and
+`search_files` let the agent work with files without the shell: read, create and
+change a file, list a directory, remove a file or an empty directory, and find
+text in the tree. Whether a call needs approval depends on the path's workspace
+class, and a chat whose jail is on can only reach its own workspace — so the file
+tools reach no further than a jailed command does (ISOL-25).
 
 ## Requirements
 
@@ -107,17 +107,74 @@ command does (ISOL-25).
   file or empty directory, and that deleting needs the same approvals as
   writing (FILE-21); the `shell` tool's description sends file work to all five
   (SHELL-8); and the chat's tool card gives them its document icon (UI-15).
+- **FILE-24** `search_files` joins the file tools, so there are six: it finds
+  text in the workspace and returns the matched regions, so a search doesn't
+  have to be `shell` + `grep -n` followed by a `read_file` (proposal 5 of
+  `docs/performance-review.md`). The skill's description and instructions name
+  it with the other five, and the `shell` skill's instructions and the `shell`
+  tool's description send finding text in the tree to `search_files` rather than
+  to `grep -n` (SHELL-8).
+- **FILE-25** `search_files` takes `pattern` (required) — the text to find,
+  matched literally and case-sensitively, not as a regular expression — `path`
+  (default the workspace root, FILE-1), a file or a directory — `glob`
+  (optional), a filter on a file's path relative to the search root, where `*`
+  and `?` don't match `/`, `**` does and `**/` also matches no directory at
+  all, and a glob with no `/` in it is matched against the file's name —
+  `context` (default 2, clamped into 0..20), the lines shown around a match —
+  and `limit` (default 40, clamped into 1..200, FILE-27). An empty `pattern` is
+  an error result. When `path` names a file it is searched whatever `glob` says.
+- **FILE-26** The result is a header `[<n> matches in <m> files]` (`n` matched
+  lines, `m` files with at least one), then one block per region: a header
+  `path:line`, with `path` relative to the workspace root (FILE-1) and `line`
+  the region's first matched line, then the region's lines, each
+  `<marker> <number> | <text>` — the marker `> ` for a matched line and two
+  spaces otherwise, the number padded to the width of the region's last line
+  number. A match is a line containing the pattern, counted once however often
+  the pattern occurs in it. A file's matches whose context regions overlap or
+  touch form one region, so no line is shown twice; files come in the order of
+  their paths relative to the workspace root (case-insensitively, ties by the
+  path) and lines in line order.
+- **FILE-27** At most `limit` matched lines are reported, and a region is
+  reported only as far as that budget allows: once it is used up nothing more is
+  reported and the result ends with `[+<n> more matches not shown]`, `n` the
+  matched lines left out — the header's counts are of everything found, so the
+  model can narrow the search instead of paging. A shown line longer than 400
+  characters is cut after 399 of them and ends with `…`.
+- **FILE-28** Only regular files are searched. A symlink met while walking is
+  never followed, so a search cannot leave the workspace (FILE-13); a file that
+  isn't valid UTF-8 is skipped as binary, as is one that can't be read, and a
+  directory whose path is protected (WS-1 — `.git`, `_build`, `deps`, `.elia` at
+  the root) is not walked into — though naming one as `path` searches it, since
+  reading it isn't refused either (FILE-15).
+- **FILE-29** Approval for `search_files` follows the read policy (FILE-4,
+  FILE-18): never inside the workspace, required for a path outside it, and with
+  the jail on a `path` outside the workspace — or one that resolves out of it
+  (FILE-13) — is refused, naming the path, instead of being offered for approval
+  (FILE-12). The run enforces the same refusal, so what a search reaches is what
+  a jailed command reaches (ISOL-25).
+- **FILE-30** `search_files` fails, naming the path and the reason and changing
+  nothing, when `path` is missing or is neither a file nor a directory. When
+  nothing matches, the result is `[no matches for "<pattern>"]`.
 
 ## Implementation
 
 `Elia.Skills.Files` (the tools and the policies), with
 `Elia.Workspace.real_location/1` (WS-5) and `Elia.Shell.reachable?/2` (ISOL-25)
-for the confinement. `Elia.Explorer` (EXPL-3) lists directories for the
-`/files` page with its own rules — protected paths filtered out, symlinks
-refused — so `list_files` doesn't share it.
+for the confinement. `search_files` (FILE-24..FILE-30) walks and matches in
+Elixir: no new dependency, and no `grep` or `git grep` process. `Elia.Explorer`
+(EXPL-3) lists directories for the `/files` page with its own rules — protected
+paths filtered out, symlinks refused — so `list_files` doesn't share it.
+
+## Out of scope
+
+The tool card shows `search_files` with the default icon and the generic summary
+(UI-15), its calls count under "Other tools" rather than Files in the context
+breakdown (CTX-5), and a `path:line` in its result is not turned into a file
+link (FLINK).
 
 ## Tests
 
 `test/elia/self_modification_test.exs` (the policies, jail on and off, the
-symlink escape, and the tools), `test/elia/shell_test.exs` (the jail's reach),
-`test/elia/skills/files_test.exs` (the instructions).
+symlink escape, and the tools, including `search_files`),
+`test/elia/shell_test.exs` (the jail's reach), `test/elia/skills/files_test.exs`
+(the instructions and the naming of FILE-24).

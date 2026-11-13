@@ -418,6 +418,291 @@ defmodule Elia.SelfModificationTest do
     end
   end
 
+  describe "search_files" do
+    @dir "skills/notes/search"
+
+    defp notes!(files) do
+      File.mkdir_p!(in_root(@dir))
+
+      for {name, content} <- files do
+        File.mkdir_p!(in_root(Path.join(@dir, Path.dirname(name))))
+        File.write!(in_root(Path.join(@dir, name)), content)
+      end
+
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+    end
+
+    # FILE-25, FILE-26: one call returns the matched regions — a `path:line`
+    # header and the lines around the match, the matched ones marked — so a
+    # search doesn't need a `read_file` after it.
+    test "returns the matched regions with their context" do
+      notes!(%{"a.txt" => "one\ntwo\nthree\nfour\nfive\n"})
+
+      assert {:ok, out} =
+               Files.search_files(%{"pattern" => "three", "path" => @dir, "context" => 1}, %{})
+
+      assert String.split(out, "\n") == [
+               "[1 matches in 1 files]",
+               "#{@dir}/a.txt:3",
+               "  2 | two",
+               "> 3 | three",
+               "  4 | four"
+             ]
+    end
+
+    # FILE-26: regions that overlap or touch are one, so no line is shown twice.
+    test "nearby matches form one region, far apart ones two" do
+      notes!(%{"m.txt" => "1\nhit\n3\nhit\n5\n6\n7\n8\n9\n10\n11\nhit\n13\n14\n15\n"})
+
+      assert {:ok, out} = Files.search_files(%{"pattern" => "hit", "path" => @dir}, %{})
+
+      assert String.split(out, "\n") == [
+               "[3 matches in 1 files]",
+               "#{@dir}/m.txt:2",
+               "  1 | 1",
+               "> 2 | hit",
+               "  3 | 3",
+               "> 4 | hit",
+               "  5 | 5",
+               "  6 | 6",
+               "#{@dir}/m.txt:12",
+               "  10 | 10",
+               "  11 | 11",
+               "> 12 | hit",
+               "  13 | 13",
+               "  14 | 14"
+             ]
+    end
+
+    # FILE-25: the pattern is literal text, matched case-sensitively.
+    test "matches literally, not as a regular expression" do
+      notes!(%{"r.txt" => "abc\na.c\nABC\n"})
+
+      assert {:ok, out} = Files.search_files(%{"pattern" => "a.c", "path" => @dir}, %{})
+
+      assert out =~ "[1 matches in 1 files]"
+      assert out =~ "> 2 | a.c"
+      refute out =~ "> 1 | abc"
+      refute out =~ "> 3 | ABC"
+    end
+
+    # FILE-25: `glob` picks the files — by name when it has no `/` in it, by the
+    # path relative to the search root when it has, and `**/` matches no
+    # directory at all as well.
+    test "a glob picks the files" do
+      notes!(%{
+        "a.ex" => "needle\n",
+        "a.txt" => "needle\n",
+        "sub/b.ex" => "needle\n",
+        "sub/deep/c.exs" => "needle\n"
+      })
+
+      assert {:ok, out} =
+               Files.search_files(%{"pattern" => "needle", "path" => @dir, "glob" => "*.ex"}, %{})
+
+      assert out =~ "#{@dir}/a.ex:1"
+      assert out =~ "#{@dir}/sub/b.ex:1"
+      refute out =~ "a.txt"
+      refute out =~ "c.exs"
+
+      assert {:ok, out} =
+               Files.search_files(
+                 %{"pattern" => "needle", "path" => @dir, "glob" => "**/*.ex"},
+                 %{}
+               )
+
+      assert out =~ "#{@dir}/a.ex:1"
+      assert out =~ "#{@dir}/sub/b.ex:1"
+
+      assert {:ok, out} =
+               Files.search_files(
+                 %{"pattern" => "needle", "path" => @dir, "glob" => "sub/**/*.exs"},
+                 %{}
+               )
+
+      assert out =~ "#{@dir}/sub/deep/c.exs:1"
+      refute out =~ "a.ex"
+
+      # A glob that matches nothing is not an error, just no matches.
+      assert {:ok, "[no matches for \"needle\"]"} =
+               Files.search_files(%{"pattern" => "needle", "path" => @dir, "glob" => "*.md"}, %{})
+
+      # A file named as the path is searched whatever the glob says (FILE-25).
+      assert {:ok, out} =
+               Files.search_files(
+                 %{"pattern" => "needle", "path" => "#{@dir}/a.txt", "glob" => "*.ex"},
+                 %{}
+               )
+
+      assert out =~ "#{@dir}/a.txt:1"
+    end
+
+    # FILE-26: files in the order of their paths, lines in line order.
+    test "files come in the order of their paths" do
+      notes!(%{"b.txt" => "hit\n", "A.txt" => "hit\n", "sub/z.txt" => "hit\n"})
+
+      assert {:ok, out} = Files.search_files(%{"pattern" => "hit", "path" => @dir}, %{})
+
+      assert out
+             |> String.split("\n")
+             |> Enum.filter(&String.ends_with?(&1, ":1")) == [
+               "#{@dir}/A.txt:1",
+               "#{@dir}/b.txt:1",
+               "#{@dir}/sub/z.txt:1"
+             ]
+    end
+
+    # FILE-27: at most `limit` matched lines, a region only as far as the budget
+    # allows, and the header counting everything found so the model can narrow
+    # the search instead of paging.
+    test "caps the matched lines and says what was left out" do
+      notes!(%{"many.txt" => Enum.map_join(1..10, "", &"line#{&1} needle\n")})
+
+      assert {:ok, out} =
+               Files.search_files(
+                 %{"pattern" => "needle", "path" => @dir, "context" => 0, "limit" => 4},
+                 %{}
+               )
+
+      assert String.split(out, "\n") == [
+               "[10 matches in 1 files]",
+               "#{@dir}/many.txt:1",
+               "> 1 | line1 needle",
+               "> 2 | line2 needle",
+               "> 3 | line3 needle",
+               "> 4 | line4 needle",
+               "[+6 more matches not shown]"
+             ]
+
+      # `limit` can never raise the cap (FILE-25).
+      assert {:ok, out} =
+               Files.search_files(
+                 %{"pattern" => "needle", "path" => @dir, "context" => 0, "limit" => 500},
+                 %{}
+               )
+
+      refute out =~ "more matches not shown"
+      assert Enum.count(String.split(out, "\n"), &String.starts_with?(&1, "> ")) == 10
+    end
+
+    # FILE-27: a line longer than 400 characters is cut, so a minified file
+    # can't fill the result.
+    test "cuts a very long line" do
+      notes!(%{"long.txt" => String.duplicate("x", 500) <> " needle\n"})
+
+      assert {:ok, out} =
+               Files.search_files(%{"pattern" => "needle", "path" => @dir, "context" => 0}, %{})
+
+      assert ["[1 matches in 1 files]", "#{@dir}/long.txt:1", line] = String.split(out, "\n")
+      assert line == "> 1 | " <> String.duplicate("x", 399) <> "…"
+    end
+
+    # FILE-28: binary files and symlinks are skipped, and so is a protected
+    # directory (WS-1) — unless it is named as the path, since reading it isn't
+    # refused either (FILE-15).
+    test "skips binary files, symlinks and the protected directories" do
+      notes!(%{"text.txt" => "needle\n", "target.txt" => "needle\n"})
+      File.write!(in_root("#{@dir}/binary.bin"), "needle" <> <<0xFF, 0xFE>> <> "\n")
+      File.ln_s!(in_root("#{@dir}/target.txt"), in_root("#{@dir}/link.txt"))
+      File.mkdir_p!(in_root("_build/search"))
+      File.write!(in_root("_build/search/hidden.txt"), "needle\n")
+
+      on_exit(fn -> File.rm_rf!(in_root("_build/search")) end)
+
+      assert {:ok, out} = Files.search_files(%{"pattern" => "needle", "path" => @dir}, %{})
+      assert out =~ "#{@dir}/text.txt:1"
+      assert out =~ "#{@dir}/target.txt:1"
+      refute out =~ "binary.bin"
+      refute out =~ "link.txt"
+
+      # From the workspace root, `_build` is not walked into...
+      assert {:ok, out} = Files.search_files(%{"pattern" => "needle"}, %{})
+      assert out =~ "#{@dir}/text.txt:1"
+      refute out =~ "_build"
+
+      # ...but naming it as the path searches it.
+      assert {:ok, out} =
+               Files.search_files(%{"pattern" => "needle", "path" => "_build/search"}, %{})
+
+      assert out =~ "_build/search/hidden.txt:1"
+    end
+
+    # FILE-29: a search follows the read policy — never inside the workspace,
+    # approval outside it, and under the jail a path outside it is refused
+    # (FILE-12), the run enforcing the same refusal.
+    test "approval follows the read policy" do
+      # The suite runs with the jail off (config/test.exs); this test turns the
+      # host's on, since the host's setting is what turns the confinement off
+      # (ISOL-20), as the file-tools-under-the-jail tests do.
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+      [tool] = Enum.filter(Files.tools(), &(&1.name == "search_files"))
+      policy = fn input, ctx -> Elia.Tool.approval(tool, input, ctx) end
+
+      assert policy.(%{"pattern" => "x", "path" => "lib"}, %{}) == :never
+      assert policy.(%{"pattern" => "x"}, %{}) == :never
+      assert policy.(%{"pattern" => "x", "path" => "/etc"}, %{jail: false}) == :required
+
+      assert {:deny, reason} = policy.(%{"pattern" => "x", "path" => "/etc"}, %{jail: true})
+      assert reason =~ "outside the workspace"
+
+      assert {:error, reason} =
+               Files.search_files(%{"pattern" => "x", "path" => "/etc"}, %{jail: true})
+
+      assert reason =~ "outside the workspace"
+
+      # A link out of the workspace is refused for where it goes (FILE-13).
+      outside = Path.join(System.tmp_dir!(), "elia-search-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(outside)
+      File.write!(Path.join(outside, "notes.txt"), "needle\n")
+      File.ln_s!(outside, in_root("link-search"))
+
+      on_exit(fn ->
+        File.rm(in_root("link-search"))
+        File.rm_rf!(outside)
+      end)
+
+      assert {:deny, reason} =
+               policy.(%{"pattern" => "needle", "path" => "link-search"}, %{jail: true})
+
+      assert reason =~ "resolves to #{outside}"
+
+      assert {:error, reason} =
+               Files.search_files(%{"pattern" => "needle", "path" => "link-search"}, %{jail: true})
+
+      assert reason =~ "resolves to #{outside}"
+    end
+
+    # FILE-30: a path that isn't there, or is neither a file nor a directory,
+    # fails; nothing matching is its own result; and an empty pattern is an
+    # error rather than every line in the tree.
+    test "reports a missing path, no matches and an empty pattern" do
+      notes!(%{"a.txt" => "one\n"})
+
+      assert {:ok, "[no matches for \"needle\"]"} =
+               Files.search_files(%{"pattern" => "needle", "path" => @dir}, %{})
+
+      assert {:error, reason} =
+               Files.search_files(%{"pattern" => "needle", "path" => "#{@dir}/gone"}, %{})
+
+      assert reason =~ "Cannot search #{@dir}/gone"
+      assert reason =~ "no such file or directory"
+
+      # A broken symlink is neither a file nor a directory.
+      File.ln_s!(in_root("#{@dir}/nowhere.txt"), in_root("#{@dir}/broken"))
+
+      assert {:error, reason} =
+               Files.search_files(%{"pattern" => "needle", "path" => "#{@dir}/broken"}, %{})
+
+      assert reason =~ "no such file or directory"
+
+      assert {:error, "pattern must not be empty"} =
+               Files.search_files(%{"pattern" => "", "path" => @dir}, %{})
+    end
+  end
+
   describe "folder skills" do
     setup do
       dir = in_root("skills/tmp-skill")

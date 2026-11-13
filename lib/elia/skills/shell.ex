@@ -24,8 +24,10 @@ defmodule Elia.Skills.Shell do
   def instructions do
     """
     Never use the shell to read, create or edit files (`cat`, `sed`, `echo >`, \
-    scripts that rewrite files): use the file tools, which apply the workspace \
-    policy. Use the `shell` tool to run programs and inspect the machine. The \
+    scripts that rewrite files), or to find text in the tree (`grep`): use the \
+    file tools, which apply the workspace policy — `search_files` returns the \
+    matched regions with their context, where a `grep -n` needs a `read_file` \
+    after it. Use the `shell` tool to run programs and inspect the machine. The \
     user approves each command before it runs, so prefer one clear command over \
     many small ones. Commands run non-interactively (stdin is empty) with \
     `bash -c` where bash is installed, and POSIX `sh -c` otherwise, in the \
@@ -65,8 +67,10 @@ defmodule Elia.Skills.Shell do
             "Prefer POSIX constructs: bash-only `${PIPESTATUS[0]}`, `[[ ... ]]`, " <>
             "arrays and `set -o pipefail` fail under `sh`. Long output is " <>
             "truncated in the middle. Do not use this to read or edit files " <>
-            "(cat, sed, echo >, scripts): use read_file, list_files, write_file, " <>
-            "edit_file and delete_file. " <>
+            "(cat, sed, echo >, scripts) or to find text in the tree (grep): use " <>
+            "read_file, list_files, search_files, write_file, edit_file and " <>
+            "delete_file — search_files returns the matched regions with their " <>
+            "context, so a search needs no read_file after it. " <>
             "The command runs in a jail by default, which holds the workspace and " <>
             "the toolchain and nothing else: the settings database, the saved " <>
             "conversations and the user's credentials are not in it, so a command " <>

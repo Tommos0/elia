@@ -37,8 +37,9 @@ call takes.
   safeguard.
 - **SHELL-8** The skill's instructions open by telling the model not to use
   the shell to read, create or edit files (`cat`, `sed`, `echo >`, scripts that
-  rewrite files) but to use the file tools, which apply the workspace policy.
-  The `shell` tool's description says the same.
+  rewrite files), or to find text in the tree (`grep` — `search_files` is the
+  tool for that, FILE-24), but to use the file tools, which apply the workspace
+  policy. The `shell` tool's description says the same.
 - **SHELL-9** The skill's instructions and the `shell` tool's description say
   which shell runs commands (`bash -c` where bash is installed, POSIX `sh -c`
   otherwise) and warn that bash-only syntax (`${PIPESTATUS[0]}`, `[[ ... ]]`,
