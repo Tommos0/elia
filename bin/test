@@ -48,7 +48,7 @@ weight_of() {
     test/elia_web/live/chat_live_test.exs) echo 1300 ;;
     test/elia/shell_test.exs) echo 1100 ;;
     test/elia/skills/shell_test.exs) echo 1100 ;;
-    test/elia/self_modification_test.exs) echo 700 ;;
+    test/elia/self_modification_test.exs) echo 7900 ;;
     test/elia/tasks_git_test.exs) echo 600 ;;
     test/elia_web/live/dashboard_test.exs) echo 540 ;;
     # What a file not listed above costs, in the same units: the rest of the

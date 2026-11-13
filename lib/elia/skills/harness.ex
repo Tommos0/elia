@@ -51,16 +51,45 @@ defmodule Elia.Skills.Harness do
         description:
           "Run `mix test` in the workspace. `args` may hold test paths under test/ " <>
             "(optionally path:line) and the flags --failed, --stale, --trace, --seed N, " <>
-            "--max-failures N, --only TAG, --exclude TAG.",
+            "--max-failures N, --only TAG, --exclude TAG. " <>
+            "The run stops after #{Harness.timeout_config(:timeout)}s by default " <>
+            "(ask for longer with `timeout_seconds`, up to " <>
+            "#{Harness.timeout_config(:max_timeout)}s — a chat's first run in a fresh " <>
+            "worktree compiles deps and app before its first test, so give it the time " <>
+            "rather than letting it be killed halfway), and each test that sets no " <>
+            "timeout of its own stops after #{Harness.timeout_config(:test_timeout)}ms " <>
+            "(ask for another with `test_timeout_ms`, up to " <>
+            "#{Harness.timeout_config(:max_test_timeout)}ms). A test's own " <>
+            "`@tag timeout:` and `--trace` (which makes ExUnit ignore timeouts) override " <>
+            "the per-test one, and the run's own timeout is what bounds those.",
         input_schema: %{
           "type" => "object",
-          "properties" => %{"args" => %{"type" => "array", "items" => %{"type" => "string"}}}
+          "properties" => %{
+            "args" => %{"type" => "array", "items" => %{"type" => "string"}},
+            "timeout_seconds" => %{
+              "type" => "integer",
+              "description" =>
+                "Stop the whole run after this many seconds (default " <>
+                  "#{Harness.timeout_config(:timeout)}, the most " <>
+                  "#{Harness.timeout_config(:max_timeout)}; a larger value runs with the " <>
+                  "maximum and the result says so)"
+            },
+            "test_timeout_ms" => %{
+              "type" => "integer",
+              "description" =>
+                "Give `mix test` this per-test timeout in milliseconds (default " <>
+                  "#{Harness.timeout_config(:test_timeout)}, the most " <>
+                  "#{Harness.timeout_config(:max_test_timeout)})"
+            }
+          }
         },
         run: fn input, ctx ->
           Harness.run_tests(
             input["args"] || [],
             ctx[:workspace] || Elia.Workspace.root(),
-            jail: ctx[:jail]
+            jail: ctx[:jail],
+            timeout_seconds: input["timeout_seconds"],
+            test_timeout_ms: input["test_timeout_ms"]
           )
         end
       },

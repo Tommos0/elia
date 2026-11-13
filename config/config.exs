@@ -169,6 +169,23 @@ config :elia, Elia.Shell, jail: true
 # or `nil` and `ionice: nil` turn either half off (PRIO-6).
 config :elia, Elia.Priority, nice: 10, ionice: 6
 
+# How long a tool call may run. A `shell` call's default is for the common
+# command, not the longest one: a build, a cold compile or a whole test suite
+# asks for more with the call's `timeout_seconds`, up to `max_timeout`, and a
+# call that asks for more than that runs with the maximum and is told so
+# (SHELL-10). A test run has its own timeout, and hands `mix test` a per-test
+# one, from the harness's settings (VERIFY-8, VERIFY-9).
+config :elia, Elia.Skills.Shell,
+  default_timeout: 60,
+  max_timeout: 1_800,
+  max_output: 30_000
+
+config :elia, Elia.Harness,
+  timeout: 600,
+  max_timeout: 1_800,
+  test_timeout: 60_000,
+  max_test_timeout: 600_000
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

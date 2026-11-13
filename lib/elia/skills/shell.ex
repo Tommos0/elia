@@ -2,8 +2,12 @@ defmodule Elia.Skills.Shell do
   @moduledoc """
   Runs shell commands in the workspace. Every call requires user approval.
 
+  A call's timeout is bounded (SHELL-10): `timeout_seconds` is `default_timeout`
+  when the call gives none, and never more than `max_timeout`.
+
       config :elia, Elia.Skills.Shell,
-        default_timeout: 60,        # seconds
+        default_timeout: 60,        # seconds, used when a call gives none
+        max_timeout: 1_800,         # seconds, the most a call may ask for
         max_output: 30_000          # characters returned to the model
   """
 
@@ -76,7 +80,10 @@ defmodule Elia.Skills.Shell do
             "timeout_seconds" => %{
               "type" => "integer",
               "description" =>
-                "Kill the command after this many seconds (default #{config(:default_timeout)})"
+                "Kill the command after this many seconds. The default is " <>
+                  "#{config(:default_timeout)} and the most is #{config(:max_timeout)}: a " <>
+                  "larger value runs with the maximum and the result says so. Ask for more " <>
+                  "for a long build, a cold compile or a whole test suite."
             }
           },
           "required" => ["command"]
@@ -88,24 +95,51 @@ defmodule Elia.Skills.Shell do
   end
 
   def run(input, ctx \\ %{}) do
-    timeout = :timer.seconds(input["timeout_seconds"] || config(:default_timeout))
+    # SHELL-10: what the call asked for, against the configured default and the
+    # configured maximum — a call that asks for more than the maximum runs with
+    # the maximum, and the result (SHELL-4) says which ceiling it hit.
+    case Elia.Shell.resolve_timeout(
+           input["timeout_seconds"],
+           config(:default_timeout),
+           config(:max_timeout)
+         ) do
+      {:ok, seconds, asked} ->
+        timeout = :timer.seconds(seconds)
 
-    result(
-      Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout, jail: ctx[:jail]),
-      timeout
-    )
+        result(
+          Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout, jail: ctx[:jail]),
+          timeout,
+          asked: asked
+        )
+
+      {:error, :invalid} ->
+        {:error,
+         "timeout_seconds must be a whole number of seconds of at least 1 " <>
+           "(got #{inspect(input["timeout_seconds"])}); the default is " <>
+           "#{config(:default_timeout)}s and the most is #{config(:max_timeout)}s."}
+    end
   end
 
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
   # in Elia's own project (DEPLOY-1), Elia's own root when unset.
   defp root(ctx), do: ctx[:workspace] || Elia.Workspace.root()
 
-  @doc false
-  def result(run_result, timeout) do
+  @doc """
+  The tool result for a run: the combined output and its exit status (SHELL-4).
+  `timeout` is in milliseconds, as `Elia.Shell.run/2` takes it; `opts[:asked]`
+  is the timeout the call asked for in seconds when it was clamped to the
+  configured maximum (SHELL-10), so a timeout result says which ceiling it hit.
+  """
+  def result(run_result, timeout, opts \\ []) do
     case run_result do
-      {:ok, output, 0} -> {:ok, format(output, 0)}
-      {:ok, output, status} -> {:error, format(output, status)}
-      {:timeout, output} -> {:error, format(output, "timeout after #{div(timeout, 1000)}s")}
+      {:ok, output, 0} ->
+        {:ok, format(output, 0)}
+
+      {:ok, output, status} ->
+        {:error, format(output, status)}
+
+      {:timeout, output} ->
+        {:error, format(output, Elia.Shell.timeout_status(timeout, opts[:asked]))}
     end
   end
 
@@ -114,7 +148,7 @@ defmodule Elia.Skills.Shell do
 
   defp config(key) do
     Keyword.merge(
-      [default_timeout: 60, max_output: 30_000],
+      [default_timeout: 60, max_timeout: 1_800, max_output: 30_000],
       Application.get_env(:elia, __MODULE__, [])
     )[key]
   end

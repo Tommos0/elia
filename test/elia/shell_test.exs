@@ -105,6 +105,45 @@ defmodule Elia.ShellTest do
              Shell.run("ps -eo args | grep -c '^sleep 61$'", shell: "sh", jail: false)
   end
 
+  # SHELL-11: the timeout is a deadline for the whole run, not a quiet period. A
+  # receive that ends on a timeout only while nothing arrives would let this
+  # command run until the machine ran out of memory.
+  test "a command that floods stdout still ends at its deadline" do
+    started = System.monotonic_time(:millisecond)
+
+    assert {:timeout, output} =
+             Shell.run("while true; do echo hi; done", timeout: 500, jail: false)
+
+    assert output =~ "hi"
+    assert System.monotonic_time(:millisecond) - started < 30_000
+  end
+
+  # SHELL-4, SHELL-10
+  test "the status of a run that reached its timeout, and of a clamped one" do
+    assert Shell.timeout_status(600_000, nil) == "timeout after 600s"
+
+    assert Shell.timeout_status(600_000, 3_600) ==
+             "timeout after 600s (asked for 3600s, the most is 600s)"
+  end
+
+  # SHELL-10: what a call asked for, resolved against the default and the
+  # ceiling it may not pass.
+  test "resolves a call's timeout against the default and the maximum" do
+    assert Shell.resolve_timeout(nil, 60, 1_800) == {:ok, 60, nil}
+    assert Shell.resolve_timeout(300, 60, 1_800) == {:ok, 300, nil}
+
+    # Above the maximum the maximum is used, and what was asked for comes back
+    # beside it, so a result can say which ceiling it hit.
+    assert Shell.resolve_timeout(86_400, 60, 1_800) == {:ok, 1_800, 86_400}
+
+    # A configured default above the maximum can never win.
+    assert Shell.resolve_timeout(nil, 3_600, 1_800) == {:ok, 1_800, nil}
+
+    assert Shell.resolve_timeout(0, 60, 1_800) == {:error, :invalid}
+    assert Shell.resolve_timeout(-1, 60, 1_800) == {:error, :invalid}
+    assert Shell.resolve_timeout("60", 60, 1_800) == {:error, :invalid}
+  end
+
   # The niceness of this process, which is the one a command it spawns inherits
   # and `nice` adds its adjustment to (PRIO-1). In `/proc/self/stat` the value
   # is field 17, counting from `state`, so index 16 after the `(comm)` field

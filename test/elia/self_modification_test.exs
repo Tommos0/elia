@@ -480,5 +480,97 @@ defmodule Elia.SelfModificationTest do
       assert {:error, _} = Harness.run_tests(["--seed", "1; rm -rf /"])
       assert {:error, _} = Harness.run_tests(["--include-anything"])
     end
+
+    # VERIFY-8: the per-test timeout is `mix test`'s own, so a test that sets no
+    # timeout of its own fails the run instead of holding it. A real run in a
+    # throwaway project, because the flag has to reach ExUnit.
+    test "the per-test timeout reaches ExUnit" do
+      tree = hanging_tree()
+
+      assert {:error, output} =
+               Harness.run_tests(["test/hangs_test.exs"], tree,
+                 jail: false,
+                 timeout_seconds: 120,
+                 test_timeout_ms: 1_000
+               )
+
+      assert output =~ "timed out after 1000ms"
+      assert output =~ "[exit: 2]"
+    end
+
+    # VERIFY-9, VERIFY-10: the run's own timeout is the configured one, a call
+    # may ask for another within the ceiling — and a run stopped by it says so
+    # and names the lever, rather than reading as a suite that failed.
+    test "the run's timeout is the configured one, clamped to the configured maximum" do
+      tree = hanging_tree()
+      previous = Application.get_env(:elia, Harness, [])
+
+      Application.put_env(:elia, Harness, Keyword.merge(previous, timeout: 2, max_timeout: 3))
+      on_exit(fn -> Application.put_env(:elia, Harness, previous) end)
+
+      # A call that gives none gets the default, and it holds however long the
+      # suite would otherwise run.
+      assert {:error, output} = Harness.run_tests(["test/hangs_test.exs"], tree, jail: false)
+      assert output =~ "[exit: timeout after 2s]"
+      assert output =~ "stopped by its timeout (2s)"
+      assert output =~ "`timeout_seconds`"
+
+      # A call that asks for more than the maximum runs with the maximum, and is
+      # told which ceiling it hit (SHELL-10).
+      assert {:error, output} =
+               Harness.run_tests(["test/hangs_test.exs"], tree,
+                 jail: false,
+                 timeout_seconds: 9_999
+               )
+
+      assert output =~ "[exit: timeout after 3s (asked for 9999s, the most is 3s)]"
+      assert output =~ "stopped by its timeout (3s)"
+    end
+
+    # VERIFY-9: a timeout that isn't one changes nothing and runs nothing.
+    test "rejects a timeout that isn't a whole number of at least 1" do
+      assert {:error, output} = Harness.run_tests([], "test", timeout_seconds: 0)
+
+      assert output =~ "timeout_seconds must be a whole number of at least 1"
+      assert output =~ "the default is 600 and the most is 1800"
+
+      assert {:error, output} = Harness.run_tests([], "test", test_timeout_ms: -1)
+
+      assert output =~ "test_timeout_ms must be a whole number of at least 1"
+      assert output =~ "the default is 60000 and the most is 600000"
+    end
+
+    # VERIFY-8, VERIFY-9: the settings say what a run uses, whatever the code
+    # around them does.
+    test "the timeouts are settings with defaults" do
+      for key <- [:timeout, :max_timeout, :test_timeout, :max_test_timeout] do
+        assert is_integer(Harness.timeout_config(key))
+        assert Harness.timeout_config(key) > 0
+      end
+
+      assert Harness.timeout_config(:timeout) <= Harness.timeout_config(:max_timeout)
+
+      assert Harness.timeout_config(:test_timeout) <=
+               Harness.timeout_config(:max_test_timeout)
+    end
+  end
+
+  # A throwaway Mix project (DEPLOY-2) with a test that hangs, so a run in it can
+  # only end by a timeout (VERIFY-8, VERIFY-9).
+  defp hanging_tree do
+    tree = Elia.LiveTree.create()
+
+    File.write!(Path.join(tree, "test/hangs_test.exs"), """
+    defmodule HangsTest do
+      use ExUnit.Case, async: false
+
+      test "hangs" do
+        Process.sleep(60_000)
+      end
+    end
+    """)
+
+    on_exit(fn -> Elia.LiveTree.remove(tree) end)
+    tree
   end
 end

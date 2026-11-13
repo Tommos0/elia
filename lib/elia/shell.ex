@@ -79,6 +79,40 @@ defmodule Elia.Shell do
   def deps_read_only_notice, do: @deps_read_only_notice
 
   @doc """
+  Resolves the timeout of one call against the configured default and ceiling
+  (SHELL-10, VERIFY-9): `asked` is what the call gave (`nil` when it gave none),
+  and `default` and `max` are the settings, in whatever unit the caller works
+  in.
+
+  The first value returned is the one to use with. What the call asked for
+  comes back beside it when it asked for more than the maximum and was clamped
+  to it, so the result can say which ceiling was hit instead of leaving the
+  model to wonder why its command stopped. Anything that is not a whole number
+  of at least 1 is `{:error, :invalid}`, and nothing runs.
+  """
+  @spec resolve_timeout(term(), pos_integer(), pos_integer()) ::
+          {:ok, pos_integer(), pos_integer() | nil} | {:error, :invalid}
+  def resolve_timeout(nil, default, max), do: {:ok, min(default, max), nil}
+
+  def resolve_timeout(asked, _default, max) when is_integer(asked) and asked >= 1,
+    do: {:ok, min(asked, max), if(asked > max, do: asked)}
+
+  def resolve_timeout(_asked, _default, _max), do: {:error, :invalid}
+
+  @doc """
+  The `[exit: ...]` status of a run that reached its timeout (SHELL-4,
+  SHELL-10): how long it ran for, and — for a call that was clamped to the
+  configured maximum — what it asked for and the ceiling it hit.
+  """
+  @spec timeout_status(integer(), pos_integer() | nil) :: binary()
+  def timeout_status(timeout_ms, nil), do: "timeout after #{div(timeout_ms, 1000)}s"
+
+  def timeout_status(timeout_ms, asked) do
+    used = div(timeout_ms, 1000)
+    "timeout after #{used}s (asked for #{asked}s, the most is #{used}s)"
+  end
+
+  @doc """
   Takes the notices a run may have put in front of its output off it (ISOL-12,
   ISOL-27), for a caller that reads that output as a value — a ref, a path, a
   NUL-separated list — rather than showing it.
@@ -560,8 +594,23 @@ defmodule Elia.Shell do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
-      {^port, {:data, data}} -> collect(port, [acc | data], deadline)
-      {^port, {:exit_status, status}} -> {:ok, IO.iodata_to_binary(acc), status}
+      {^port, {:data, data}} ->
+        acc = [acc | data]
+
+        # SHELL-11: the timeout is a deadline for the whole run, not a quiet
+        # period. It is checked here as well as in the `after` below, because a
+        # command that keeps writing fills this receive: an endless loop that
+        # prints must still end at the deadline rather than run until the VM
+        # runs out of memory.
+        if System.monotonic_time(:millisecond) >= deadline do
+          kill(port)
+          {:timeout, IO.iodata_to_binary(acc)}
+        else
+          collect(port, acc, deadline)
+        end
+
+      {^port, {:exit_status, status}} ->
+        {:ok, IO.iodata_to_binary(acc), status}
     after
       remaining ->
         kill(port)
