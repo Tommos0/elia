@@ -94,6 +94,11 @@ defmodule EliaWeb.ChatSettingsTest do
     {:ok, view, _html} = settings(conn, id)
 
     assert has_element?(view, "#settings-model #model-picker-button")
+    # CSET-5, CSET-13: the chat's reasoning effort lives in the Model section.
+    assert has_element?(view, "#settings-model #effort-default")
+    assert has_element?(view, "#settings-model #effort-low")
+    assert has_element?(view, "#settings-model #effort-medium")
+    assert has_element?(view, "#settings-model #effort-high")
     assert has_element?(view, "#settings-auto-approve #auto-approve-button")
     assert has_element?(view, "#settings-jail #jail-toggle")
     assert has_element?(view, "#settings-form #settings-limits #limit-steps")
@@ -103,6 +108,43 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#settings-context #compaction-auto[role='switch']")
     # CSET-5, UI-54: the Compact button, which used to sit in the composer.
     assert has_element?(view, "#settings-context #compact-button")
+  end
+
+  # CSET-13, SESS-40, LLM-39: this chat's own reasoning effort, set the moment a
+  # button is clicked (CSET-4), with "Default" the way back to the configured one
+  # (LLM-38).
+  test "the reasoning effort buttons set this chat's effort", %{conn: conn, id: id} do
+    {:ok, view, _html} = settings(conn, id)
+
+    assert has_element?(view, "#effort-default[aria-pressed='true']")
+    assert has_element?(view, "#effort-state", "configured default")
+
+    view |> element("#effort-high") |> render_click()
+    assert Agent.snapshot(id).effort == "high"
+    assert has_element?(view, "#effort-high[aria-pressed='true']")
+    assert has_element?(view, "#effort-default[aria-pressed='false']")
+    assert has_element?(view, "#effort-state", "high")
+
+    view |> element("#effort-low") |> render_click()
+    assert Agent.snapshot(id).effort == "low"
+
+    view |> element("#effort-default") |> render_click()
+    assert Agent.snapshot(id).effort == nil
+    assert has_element?(view, "#effort-default[aria-pressed='true']")
+
+    # CSET-6: nothing was written to disk for a chat with no messages.
+    refute Store.exists?(id)
+  end
+
+  # CSET-3: the page follows the chat's own `{:effort, effort}` event, so a
+  # change made in another view shows up here.
+  test "a reasoning effort set elsewhere shows up on the page", %{conn: conn, id: id} do
+    {:ok, view, _html} = settings(conn, id)
+
+    :ok = Agent.set_effort(id, "low")
+
+    assert has_element?(view, "#effort-low[aria-pressed='true']")
+    assert has_element?(view, "#effort-state", "low")
   end
 
   # CSET-7: every numeric setting is set in one form with one Save — the limits

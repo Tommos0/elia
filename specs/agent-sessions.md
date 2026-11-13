@@ -30,6 +30,7 @@ progress so any number of UIs can follow it.
   `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
   `{:jail, on?}` (the chat's jail setting changed, SESS-30),
   `{:limits, limits}` (the chat's turn limits changed, SESS-31, LIMIT-2),
+  `{:effort, effort}` (the chat's reasoning effort changed, SESS-40),
   `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
@@ -40,7 +41,8 @@ progress so any number of UIs can follow it.
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's model selection (`nil` if none yet), its
   auto-approved tool names (sorted list), its jail setting (ISOL-16), its turn
-  limits (SESS-31, LIMIT-1), its task
+  limits (SESS-31, LIMIT-1), its reasoning effort (`effort`, SESS-40, `nil`
+  when the configured default applies), its task
   metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
   compaction state (`compaction`, COMPACT-24), its own title (`title`, `nil`
@@ -75,7 +77,8 @@ progress so any number of UIs can follow it.
   that outlived a hot reload) is upgraded on its next call: missing fields get
   their defaults and the saved model selection (SESS-14), auto-approved
   tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24), jail
-  setting (SESS-30), turn limits (SESS-31) and the done flag (SESS-35) are
+  setting (SESS-30), turn limits (SESS-31), reasoning effort (SESS-40) and the
+  done flag (SESS-35) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
   kept. The turn record (INTR-1) is not loaded from disk: it belongs to the
   process that is running the turn, so a missing one defaults to `nil`; the
@@ -184,6 +187,19 @@ progress so any number of UIs can follow it.
   `{:limits, limits}` (SESS-6), so every view of the chat agrees. It is allowed
   mid-turn (LIMIT-3), and `snapshot/1` carries them (SESS-7). A turn is started
   with them without overriding an option the caller passed explicitly (LIMIT-3).
+
+- **SESS-40** A session loads the chat's saved reasoning effort on start
+  (STORE-38, `nil` when it has none of its own, so the configured default
+  applies, LLM-38). `Elia.Agent.set_effort/2` (chat id, `nil` or one of
+  `"low"`, `"medium"` and `"high"`, LLM-39) sets this chat's effort, saves it
+  with the chat once it has messages (as SESS-14, STORE-37) and broadcasts
+  `{:effort, effort}` (SESS-6), so every view of the chat agrees; `nil` gives
+  the chat no effort of its own again. Any other value returns
+  `{:error, message}` and changes nothing. The snapshot carries it (SESS-7), a
+  session whose state predates the field loads it (SESS-15), and every turn's
+  request carries it as its `:effort` (LLM-39), unless the caller's own loop
+  options name one, which wins. It is allowed mid-turn: the next turn is sent
+  with it.
 
 - **SESS-32** `Elia.Agent.live?/1` reports whether a session for a chat is
   running in this app instance, read from `Elia.Agent.Registry` without calling

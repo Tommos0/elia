@@ -14,6 +14,8 @@ defmodule Elia.LLM.OpenRouter do
     * `:model` - used when a request names none
     * `:max_tokens` - sent only when set (models have different limits)
     * `:effort` - `reasoning.effort`, sent only when set
+    * `:cache_control` - put an explicit prompt-cache breakpoint on the system
+      message of an Anthropic-family model (LLM-37); `false` turns it off
     * `:base_url`, `:req_options` - transport overrides (tests use `Req.Test`)
   """
 
@@ -26,25 +28,25 @@ defmodule Elia.LLM.OpenRouter do
     model: "anthropic/claude-opus-5.5",
     max_tokens: nil,
     effort: nil,
+    cache_control: true,
     req_options: []
   ]
 
   @impl true
   def stream(request, on_event) do
     config = config()
+    model = request[:model] || config[:model]
 
     case Elia.LLM.api_key("openrouter") do
       {_source, key} ->
-        body = OpenAI.build_body(request, config, encoding_opts())
-
         OpenAI.stream(
-          body,
+          build_body(request, config),
           [
             url: config[:base_url] <> "/chat/completions",
             headers: [{"authorization", "Bearer " <> key}, {"x-title", "Elia"}],
             req_options: config[:req_options],
             label: "OpenRouter"
-          ] ++ encoding_opts(),
+          ] ++ encoding_opts(config, model),
           on_event
         )
 
@@ -165,12 +167,37 @@ defmodule Elia.LLM.OpenRouter do
 
   defp config, do: Keyword.merge(@defaults, Application.get_env(:elia, __MODULE__, []))
 
+  # LLM-37, LLM-38: the explicit cache breakpoint and the configured reasoning
+  # effort are sent only to the model family that documents them. A field the
+  # provider doesn't expect is at best ignored and at worst a 400, and a
+  # rejected request would fail every step of a turn.
+  defp encoding_opts(config, model) do
+    [
+      reasoning_details: true,
+      tag: __MODULE__,
+      cache_control: config[:cache_control] != false and anthropic_model?(model)
+    ]
+  end
+
+  defp anthropic_model?(model),
+    do: is_binary(model) and String.starts_with?(model, "anthropic/")
+
   # LLM-6, LLM-21: OpenRouter's own reasoning blocks are what it sends back.
-  defp encoding_opts, do: [reasoning_details: true, tag: __MODULE__]
+  @doc false
+  def build_body(request, config) do
+    model = request[:model] || config[:model]
+
+    OpenAI.build_body(request, config_for(model, config), encoding_opts(config, model))
+  end
+
+  # LLM-38: the configured effort is a default for the family that takes one; a
+  # model of any other family is asked without it. An effort the request itself
+  # names is the caller's own choice and is sent as it is (LLM-18).
+  defp config_for(model, config) do
+    if anthropic_model?(model), do: config, else: Keyword.put(config, :effort, nil)
+  end
 
   @doc false
-  def build_body(request, config), do: OpenAI.build_body(request, config, encoding_opts())
-
-  @doc false
-  def encode_messages(messages), do: OpenAI.encode_messages(messages, encoding_opts())
+  def encode_messages(messages),
+    do: OpenAI.encode_messages(messages, encoding_opts(config(), nil))
 end

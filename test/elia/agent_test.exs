@@ -1891,6 +1891,86 @@ defmodule Elia.AgentTest do
     assert %{jail: true} = Agent.snapshot(id)
   end
 
+  # SESS-6, SESS-40
+  test "setting the reasoning effort broadcasts it and shows in the snapshot", %{id: id} do
+    :ok = Agent.set_effort(id, "high")
+    assert_receive {:agent, ^id, {:effort, "high"}}
+    assert %{effort: "high"} = Agent.snapshot(id)
+
+    :ok = Agent.set_effort(id, nil)
+    assert_receive {:agent, ^id, {:effort, nil}}
+    assert %{effort: nil} = Agent.snapshot(id)
+  end
+
+  # SESS-40: the three efforts a request can name (LLM-39) and nothing else.
+  test "an effort that isn't low, medium or high is rejected", %{id: id} do
+    assert {:error, message} = Agent.set_effort(id, "very high")
+    assert message =~ "low, medium or high"
+    assert %{effort: nil} = Agent.snapshot(id)
+    refute_receive {:agent, ^id, {:effort, _}}
+  end
+
+  # SESS-40, STORE-37, STORE-38
+  test "the reasoning effort is per chat and survives a restart", %{id: id} do
+    other = Agent.new_id()
+    {:ok, other_pid} = Agent.ensure_started(other)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, other_pid) end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    :ok = Agent.set_effort(id, "low")
+    assert Elia.Store.load_effort(id) == "low"
+    # The setting belongs to one chat.
+    assert %{effort: nil} = Agent.snapshot(other)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    ref = Process.monitor(pid)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}
+
+    {:ok, _} = Agent.ensure_started(id)
+    assert %{effort: "low"} = Agent.snapshot(id)
+
+    :ok = Agent.set_effort(id, nil)
+    assert Elia.Store.load_effort(id) == nil
+  end
+
+  # SESS-40, CSET-6: an empty chat isn't written to disk (SESS-14)
+  test "setting the effort in an empty chat writes nothing", %{id: id} do
+    :ok = Agent.set_effort(id, "low")
+    assert Elia.Store.load_effort(id) == nil
+    refute File.exists?(Path.join(Elia.Store.dir(), id <> ".term"))
+  end
+
+  # SESS-40, LLM-39
+  test "a turn's request carries the chat's own effort", %{id: id} do
+    :ok = Agent.set_effort(id, "low")
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
+
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    assert [%{effort: "low"}] = FakeLLM.requests()
+  end
+
+  # SESS-40: an effort the caller named in its own loop options wins.
+  test "an effort the caller passed in loop options wins" do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, auto_approve: [], loop_opts: [llm: %{effort: "high"}])
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(id)
+
+    :ok = Agent.set_effort(id, "low")
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
+
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    assert [%{effort: "high"}] = FakeLLM.requests()
+  end
+
   # SESS-30, STORE-25, ISOL-16, ISOL-18
   test "the jail setting is per chat and survives a restart", %{id: id} do
     other = Agent.new_id()

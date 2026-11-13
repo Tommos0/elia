@@ -30,18 +30,19 @@ show up; so does the Compact button (CSET-12).
   session's snapshot (SESS-7), and follows the chat's own events — `{:model,
   selection}` (MODEL-1), `{:auto_approve, names}` (SESS-16), `{:jail, on?}`
   (SESS-30), `{:limits, limits}` (LIMIT-2), `{:compaction, state}`
-  (COMPACT-24) — so a change made on the chat page or in another tab shows up
-  here too, and vice versa.
+  (COMPACT-24), `{:effort, effort}` (SESS-40) — so a change made on the chat
+  page or in another tab shows up here too, and vice versa.
 - **CSET-4** A change made on the page applies to the chat at the moment it is
   made: it is the same session the chat page uses (SESS-1), so the next turn,
   the next tool call or the transcript follows it. Nothing on the page starts a
   turn.
 - **CSET-5** The page has one section per kind of setting, each rendering the
   control that used to sit in the composer, with the ids the chat UI spec gives
-  it: **Model** (the picker of MODEL-9 to MODEL-13), **Auto-approve** (the
-  button, popover and switches of UI-38 to UI-42), **Jail** (the switch of
-  UI-67 and UI-68), **Limits** (LIMIT-6) and **Context** (the chat's compaction
-  options of COMPACT-9 and the "Compact" button of UI-54, COMPACT-10).
+  it: **Model** (the picker of MODEL-9 to MODEL-13, and the chat's reasoning
+  effort, CSET-13), **Auto-approve** (the button, popover and switches of UI-38
+  to UI-42), **Jail** (the switch of UI-67 and UI-68), **Limits** (LIMIT-6) and
+  **Context** (the chat's compaction options of COMPACT-9 and the "Compact"
+  button of UI-54, COMPACT-10).
 - **CSET-6** Every control that changes a chat's saved value does so through the
   session (SESS-14, SESS-16, SESS-30, LIMIT-2), so a chat with no messages yet
   is not written to disk by a change made here: the value lives in the running
@@ -79,14 +80,23 @@ show up; so does the Compact button (CSET-12).
   (`/c/<id>`), so the user sees the result in the transcript. A chat that is
   mid-turn keeps the user on the page with the error (UI-54).
 
+- **CSET-13** The Model section also holds this chat's reasoning effort
+  (LLM-39): a row of buttons — `#effort-default`, `#effort-low`,
+  `#effort-medium`, `#effort-high` — with the chat's current choice marked,
+  each setting it the moment it is clicked (CSET-4) through the session
+  (SESS-40), and a line (`#effort-state`) saying what applies in words: the
+  chat's own effort, or that the provider's configured default applies (which
+  "Default" is the way back to). The page follows the chat's `{:effort, effort}`
+  event (CSET-3), so a change made in another tab shows up here.
+
 ## Out of scope
 
 - Changing a chat's project (PROJ-9) after it is started: its workspace is its
   project's (PROJ-12).
 - A per-chat choice of skills (they come from the project, PROJ-15, LOOP-17) and
-  per-chat model request fields such as reasoning effort or an output-token cap
-  (`config :elia, Elia.LLM.Anthropic`): both are candidates for this page, in a
-  later change.
+  per-chat model request fields other than reasoning effort — such as an
+  output-token cap (`config :elia, Elia.LLM.Anthropic`) — which is a candidate
+  for this page in a later change.
 
 ## Implementation
 
@@ -97,7 +107,7 @@ picker, the jail switch and the "Compact" button move to),
 ## Tests
 
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
-CSET-7 and CSET-11 to CSET-12), `test/elia_web/live/model_picker_test.exs`,
+CSET-7, CSET-11 to CSET-13), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
 `test/elia_web/live/jail_test.exs` (the moved controls),
 `test/elia_web/live/chat_live_test.exs` (the composer toolbar, CSET-8 to

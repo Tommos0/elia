@@ -99,8 +99,15 @@ config :elia, Elia.LLM.Compaction,
 
 config :elia, Elia.LLM.Anthropic,
   model: "claude-opus-5-5",
-  effort: "high",
+  effort: "medium",
   thinking_display: "summarized"
+
+# OpenRouter (LLM-37, LLM-38): the effort and the prompt-cache breakpoint are
+# sent only to an Anthropic-family model, the family that documents them, so a
+# model of any other family is asked exactly as it was before.
+config :elia, Elia.LLM.OpenRouter,
+  effort: "medium",
+  cache_control: true
 
 # The local llama.cpp server (LOCAL): a third provider, with no key and no
 # network. `base_url` says where the server is, is overridden by `LLAMA_CPP_BASE_URL`

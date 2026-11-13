@@ -31,8 +31,10 @@ defmodule Elia.LLM.OpenAI do
   The body of a chat-completions call (LLM-18, LOCAL-1).
 
   Options: `:reasoning_details` sends an assistant message's accumulated
-  `reasoning_details` back, as OpenRouter does (LLM-21), and `:tag` is the
-  module those raw blocks belong to (LLM-6).
+  `reasoning_details` back, as OpenRouter does (LLM-21), `:tag` is the module
+  those raw blocks belong to (LLM-6), and `:cache_control` puts an explicit
+  prompt-cache breakpoint on the system message (LLM-37), which only a model
+  that documents the field may be sent.
   """
   def build_body(request, config, opts \\ []) do
     effort = request[:effort] || config[:effort]
@@ -40,15 +42,29 @@ defmodule Elia.LLM.OpenAI do
     %{
       "model" => request[:model] || config[:model],
       "stream" => true,
-      "messages" => system_message(request[:system]) ++ encode_messages(request.messages, opts)
+      "messages" =>
+        system_message(request[:system], opts) ++ encode_messages(request.messages, opts)
     }
     |> put_unless_empty("tools", Enum.map(request[:tools] || [], &encode_tool/1))
     |> put_unless_empty("max_tokens", request[:max_tokens] || config[:max_tokens])
     |> put_unless_empty("reasoning", effort && %{"effort" => effort})
   end
 
-  defp system_message(system) when system in [nil, ""], do: []
-  defp system_message(system), do: [%{"role" => "system", "content" => system}]
+  defp system_message(system, _opts) when system in [nil, ""], do: []
+
+  defp system_message(system, opts),
+    do: [%{"role" => "system", "content" => system_content(system, opts)}]
+
+  # LLM-37: the breakpoint goes on the system message, which is the start of the
+  # prefix that doesn't change from step to step (with the tools). The text is
+  # the same either way, so a breakpoint can't change what the model is asked.
+  defp system_content(system, opts) do
+    if opts[:cache_control] do
+      [%{"type" => "text", "text" => system, "cache_control" => %{"type" => "ephemeral"}}]
+    else
+      system
+    end
+  end
 
   defp put_unless_empty(map, _key, value) when value in [nil, false, "", []], do: map
   defp put_unless_empty(map, key, value), do: Map.put(map, key, value)

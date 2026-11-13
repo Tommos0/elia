@@ -135,6 +135,39 @@ provider, with no key and no network at all (LOCAL).
 - **LLM-24** Tool arguments that fail to parse become empty input, with the
   raw text kept in `invalid_input` (as LLM-11).
 
+- **LLM-37** A request whose model is in the Anthropic family (its id starts
+  with `anthropic/`) carries one explicit prompt-cache breakpoint,
+  `cache_control: %{"type" => "ephemeral"}`, on the system message: the
+  encoding sends that message's `content` as a list holding a single text part
+  with the same text and the breakpoint. A provider caches the prefix up to a
+  breakpoint — the tools and the system prompt, which don't change from step to
+  step — so a turn's later steps read that prefix from the cache instead of
+  sending it again. Nothing else about the request changes: its messages,
+  tools, model and text are what they were, and a breakpoint is a caching hint
+  that cannot change an answer. A request with no system prompt, and every
+  request to a model of any other family (which documents no such field, and
+  would fail every step by rejecting it), is encoded exactly as before.
+  `config :elia, Elia.LLM.OpenRouter, cache_control: false` turns breakpoints
+  off for every model.
+
+- **LLM-38** The shipped reasoning-effort default is `"medium"` rather than
+  `"high"` on one provider and unset on the other
+  (`config :elia, Elia.LLM.Anthropic, effort: "medium"` and the Anthropic
+  adapter's code default; `config :elia, Elia.LLM.OpenRouter, effort:
+  "medium"`), since most of a turn's steps are a lookup and a read rather than
+  a decision. OpenRouter sends the configured `reasoning.effort` only for a
+  model in the Anthropic family, as in LLM-37, so a model that documents no
+  such field is sent the request it was sent before; an effort the request
+  itself names (LLM-39) is still sent whatever the model is, since the caller
+  named it. `effort: nil` sends none, as before.
+
+- **LLM-39** A request's own `:effort` overrides the configured effort on both
+  providers: `Elia.LLM.Anthropic` sends `request[:effort]` when the request has
+  one, and the configured value only without it (it read only the configured
+  value before), while the OpenAI-compatible encoding already prefers the
+  request's. It is what carries a chat's own reasoning effort into the request
+  (SESS-40, CSET-13).
+
 ### Streaming timeouts
 
 - **LLM-34** A streaming model request uses an idle timeout of 90 seconds by
@@ -205,7 +238,7 @@ config :elia, Elia.LLM.Anthropic,
   api_key: System.get_env("ANTHROPIC_API_KEY"),   # a key saved in Settings wins
   model: "claude-opus-5-5",
   max_tokens: 64_000,
-  effort: "high",
+  effort: "medium",              # LLM-38: was "high"
   thinking_display: "updates",   # "summarized" | "omitted" | nil
   fallbacks: "default",          # nil disables
   prices: %{}                    # extra/override picker prices, USD per MTok {in, out}
@@ -214,11 +247,19 @@ config :elia, Elia.LLM.OpenRouter,
   api_key: System.get_env("OPENROUTER_API_KEY"),  # a key saved in Settings wins
   model: "anthropic/claude-opus-5.5",
   max_tokens: nil,               # model default
-  effort: nil                    # "low" | "medium" | "high"
+  effort: "medium",              # "low" | "medium" | "high" (LLM-38; Anthropic family only)
+  cache_control: true            # prompt-cache breakpoint (LLM-37; Anthropic family only)
 
 # LLM-34: how long a stream may receive no data at all before it is cut off.
 config :elia, :stream_idle_timeout, 90_000
 ```
+
+The effort default and the cache breakpoint are request-time only: neither is
+stored, so no settings value changes meaning. The chat's own effort (CSET-13,
+SESS-40) is a new field in a saved chat (STORE-37): a chat saved before it has
+no `effort` key, which reads as no effort of its own (STORE-38), so the
+configured default applies and every older file is read exactly as it was — no
+migration.
 
 Tests use `Elia.FakeLLM`.
 

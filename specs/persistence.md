@@ -114,6 +114,17 @@ reopened.
   `pause_on_limit` on), so it answers like LIMIT-1 for a chat that is missing,
   unreadable, corrupt or has none.
 
+- **STORE-37** `save/3` takes `effort:` (the chat's reasoning effort: one of
+  `"low"`, `"medium"`, `"high"`, LLM-39) and stores it as `effort` only when it
+  is one of those, so a chat that keeps the configured default (`nil`, LLM-38)
+  carries no entry and giving the chat no effort of its own again removes the
+  key from the file.
+- **STORE-38** `load_effort/1` returns the chat's saved effort, or `nil` when
+  the chat is missing, unreadable, corrupt or has none — `nil` meaning no
+  effort of its own, so the configured default applies (LLM-38). A chat saved
+  before this change has no `effort` key and is read exactly as it was, so the
+  change needs no migration.
+
 - **STORE-30** `save/3` takes `turn:` (a map with the turn's `id` and
   `started_at`) and stores it as `turn`; a save that doesn't give one writes no
   `turn` entry, so the key is gone from the file as soon as the turn ends

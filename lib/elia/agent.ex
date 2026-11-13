@@ -112,6 +112,16 @@ defmodule Elia.Agent do
     do: GenServer.call(Session.via(id), {:set_jail, on?})
 
   @doc """
+  Sets this chat's own reasoning effort (SESS-40, LLM-39): `"low"`, `"medium"`
+  or `"high"`, or `nil` for no effort of its own, so the configured one applies
+  (LLM-38). It reaches the provider as the request's `:effort` (LLM-39) from the
+  next turn on. Any other value returns `{:error, message}` and changes nothing.
+  """
+  @spec set_effort(binary(), binary() | nil) :: :ok | {:error, binary()}
+  def set_effort(id, effort),
+    do: GenServer.call(Session.via(id), {:set_effort, effort})
+
+  @doc """
   Sets this chat's turn limits (SESS-31, LIMIT-2): any of `:max_steps` (a whole
   number of steps, LOOP-16), `:max_minutes` (a number of minutes, LOOP-20),
   `:max_tokens` (a whole number of tokens, LOOP-22, LIMIT-12) and

@@ -64,6 +64,10 @@ defmodule Elia.Agent.Session do
     # token budget and whether a limit pauses the turn. Empty means the loop's
     # own default.
     limits: %{max_steps: nil, max_minutes: nil, max_tokens: nil, pause_on_limit: false},
+    # This chat's own reasoning effort (SESS-40, LLM-39): one of "low",
+    # "medium" and "high", or nil, which leaves the configured effort in place
+    # (LLM-38).
+    effort: nil,
     # call_id => :awaiting_approval | :awaiting_input | :answered | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
@@ -108,6 +112,7 @@ defmodule Elia.Agent.Session do
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       jail: initial_jail(opts[:id], persist, opts[:jail]),
       limits: initial_limits(opts[:id], persist, opts[:limits]),
+      effort: initial_effort(opts[:id], persist),
       title: if(persist, do: Elia.Store.load_title(opts[:id])),
       done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
     }
@@ -126,16 +131,17 @@ defmodule Elia.Agent.Session do
   @impl true
   # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
   # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`,
-  # `:turn` (INTR-1), `:title`, `:input` (ASK) or `:done` (DONE-1) existed (a
-  # session that outlived a hot reload). Fields it already has are kept; `:turn`
-  # is not loaded from disk, since it belongs to the process that is running the
-  # turn.
+  # `:effort`, `:turn` (INTR-1), `:title`, `:input` (ASK) or `:done` (DONE-1)
+  # existed (a session that outlived a hot reload). Fields it already has are
+  # kept; `:turn` is not loaded from disk, since it belongs to the process that
+  # is running the turn.
   def handle_call(msg, from, state)
       when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
              not is_map_key(state, :pause) or not is_map_key(state, :jail) or
-             not is_map_key(state, :limits) or not is_map_key(state, :turn) or
+             not is_map_key(state, :limits) or not is_map_key(state, :effort) or
+             not is_map_key(state, :turn) or
              not is_map_key(state, :title) or not is_map_key(state, :input) or
              not is_map_key(state, :done) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
@@ -187,6 +193,11 @@ defmodule Elia.Agent.Session do
         else: %{upgraded | limits: initial_limits(upgraded.id, upgraded.persist, nil)}
 
     upgraded =
+      if is_map_key(state, :effort),
+        do: upgraded,
+        else: %{upgraded | effort: initial_effort(upgraded.id, upgraded.persist)}
+
+    upgraded =
       if is_map_key(state, :title),
         do: upgraded,
         else: %{upgraded | title: if(upgraded.persist, do: Elia.Store.load_title(upgraded.id))}
@@ -216,6 +227,7 @@ defmodule Elia.Agent.Session do
         :pause,
         :jail,
         :limits,
+        :effort,
         :title,
         :done
       ])
@@ -440,6 +452,23 @@ defmodule Elia.Agent.Session do
     state = if state.messages == [], do: state, else: save(state)
     broadcast(state, {:jail, on?})
     {:reply, :ok, state}
+  end
+
+  # SESS-40, LLM-39: this chat's own reasoning effort — "low", "medium",
+  # "high", or nil for the configured one (LLM-38). A value that is none of
+  # those is rejected and changes nothing.
+  def handle_call({:set_effort, effort}, _from, state)
+      when effort in [nil, "low", "medium", "high"] do
+    state = %{state | effort: effort}
+    # As with the chat's other settings, an empty chat is saved with its first
+    # message (CSET-6).
+    state = if state.messages == [], do: state, else: save(state)
+    broadcast(state, {:effort, effort})
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_effort, _effort}, _from, state) do
+    {:reply, {:error, "Reasoning effort must be low, medium or high"}, state}
   end
 
   # SESS-31, LIMIT-2: this chat's turn limits (LIMIT-1), which the next turn is
@@ -783,6 +812,11 @@ defmodule Elia.Agent.Session do
   defp initial_limits(id, true), do: Elia.Store.load_limits(id)
   defp initial_limits(_id, false), do: Elia.Limits.defaults()
 
+  # SESS-40, STORE-38: the chat's own reasoning effort, nil when it has none
+  # and the configured one applies (LLM-38).
+  defp initial_effort(id, true), do: Elia.Store.load_effort(id)
+  defp initial_effort(_id, false), do: nil
+
   # COMPACT-9, COMPACT-24: the chat's saved compaction state, with any options
   # its session was started with.
   defp initial_compaction(id, true, overrides) do
@@ -880,10 +914,15 @@ defmodule Elia.Agent.Session do
 
   # The provider request of the turn (MODEL-1): an explicit `:llm` wins.
   defp llm_request(state) do
-    case Keyword.get(state.loop_opts, :llm, %{}) do
-      %{provider: _} = llm -> llm
-      llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
-    end
+    llm =
+      case Keyword.get(state.loop_opts, :llm, %{}) do
+        %{provider: _} = llm -> llm
+        llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
+      end
+
+    # SESS-40, LLM-39: the chat's own reasoning effort travels as the request's
+    # `:effort`, unless the caller named one, which wins.
+    if Map.get(state, :effort), do: Map.put_new(llm, :effort, state.effort), else: llm
   end
 
   # The chat's project (PROJ-9): the saved one, else Elia's own. Read through
@@ -931,6 +970,7 @@ defmodule Elia.Agent.Session do
              compaction: saved_compaction(Map.get(state, :compaction)),
              jail: Map.get(state, :jail, true),
              limits: Map.get(state, :limits, Elia.Limits.defaults()),
+             effort: Map.get(state, :effort),
              # STORE-30, INTR-1: the turn in flight, or nothing when there is
              # none (which takes the entry off the file).
              turn: Map.get(state, :turn),

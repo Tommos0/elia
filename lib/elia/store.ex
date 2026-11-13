@@ -10,6 +10,9 @@ defmodule Elia.Store do
 
   @id_format ~r/^[A-Za-z0-9_-]{1,64}$/
 
+  # LLM-39, STORE-37: the reasoning efforts a chat may have of its own.
+  @efforts ["low", "medium", "high"]
+
   def dir, do: Path.join(Elia.Workspace.data_dir(), "sessions")
 
   def valid_id?(id), do: is_binary(id) and Regex.match?(@id_format, id)
@@ -24,9 +27,11 @@ defmodule Elia.Store do
   (STORE-25) and is stored only when it is `false`, `opts[:limits]` the
   chat's turn limits (STORE-27), of which only the values that aren't the
   default (LIMIT-1) are stored, `opts[:title]` the chat's own title
-  (STORE-32), which is stored only when it isn't blank (TITLE-2), and
+  (STORE-32), which is stored only when it isn't blank (TITLE-2),
   `opts[:done]` (a boolean) whether the chat is marked done (STORE-34), which is
-  stored only when it is `true`.
+  stored only when it is `true`, and `opts[:effort]` the chat's own reasoning
+  effort (`"low"`, `"medium"` or `"high"`, LLM-39, STORE-37), which is stored
+  only when the chat has one of its own.
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -71,6 +76,11 @@ defmodule Elia.Store do
     # STORE-34, DONE-1: a chat is open by default, so only "done" is written and
     # reopening it takes the entry off the file.
     chat = if opts[:done] == true, do: Map.put(chat, :done, true), else: chat
+
+    # STORE-37: only an effort the chat has of its own is written, so a chat
+    # that keeps the configured default (LLM-38) carries no entry and giving the
+    # chat no effort again drops the key from the file.
+    chat = if opts[:effort] in @efforts, do: Map.put(chat, :effort, opts[:effort]), else: chat
 
     # STORE-27: only the limits that aren't the default (LIMIT-1) are written,
     # so a chat that sets none carries no entry at all.
@@ -217,6 +227,24 @@ defmodule Elia.Store do
       Elia.Limits.new(limits)
     else
       _ -> Elia.Limits.defaults()
+    end
+  end
+
+  @doc """
+  The chat's own reasoning effort, or `nil` (STORE-38): `nil` when the chat is
+  missing, unreadable, corrupt or has none of its own, in which case the
+  configured effort applies (LLM-38). A chat saved before this field existed
+  reads as one with no effort of its own, so nothing older needs a migration.
+  """
+  @spec load_effort(binary()) :: binary() | nil
+  def load_effort(id) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{effort: effort} <- decode(data),
+         true <- effort in @efforts do
+      effort
+    else
+      _ -> nil
     end
   end
 

@@ -175,6 +175,24 @@ defmodule Elia.LLM.AnthropicTest do
     assert body["thinking"]["display"] == "summarized"
   end
 
+  # LLM-38
+  test "the shipped config asks for medium reasoning effort" do
+    shipped = Config.Reader.read!("config/config.exs", env: :test)[:elia][Anthropic]
+    assert shipped[:effort] == "medium"
+
+    body = Anthropic.build_body(%{messages: [Message.user("hi")]}, effort: "medium")
+    assert body["output_config"] == %{"effort" => "medium"}
+  end
+
+  # LLM-39: a request may name its own effort (a chat's setting, SESS-40), and it
+  # wins over the configured one.
+  test "a request's own effort overrides the configured one" do
+    body =
+      Anthropic.build_body(%{messages: [Message.user("hi")], effort: "low"}, effort: "high")
+
+    assert body["output_config"] == %{"effort" => "low"}
+  end
+
   test "drops reasoning from other providers and merges consecutive user turns" do
     history = [
       Message.user("one"),

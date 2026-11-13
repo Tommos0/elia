@@ -47,6 +47,9 @@ defmodule EliaWeb.ChatSettingsLive do
         # LIMIT-1, LIMIT-6: the chat's turn limits and the form that sets them.
         limits: snapshot.limits,
         limits_form: limits_form(snapshot.limits),
+        # CSET-13, SESS-40: this chat's own reasoning effort (LLM-39), nil when
+        # the configured default applies (LLM-38).
+        effort: snapshot.effort,
         # COMPACT-30: the chat's compaction options and the form that sets them.
         compaction: snapshot.compaction,
         compaction_form: compaction_form(snapshot.compaction),
@@ -126,6 +129,15 @@ defmodule EliaWeb.ChatSettingsLive do
                   search_form={@search_form}
                   streams={@streams}
                 />
+              </div>
+              <%!-- CSET-13: this chat's own reasoning effort (LLM-39). --%>
+              <div class="mt-4 border-t border-base-300 pt-4">
+                <p class="text-xs font-medium">Reasoning effort</p>
+                <p class="mt-0.5 text-xs text-base-content/50">
+                  How hard the model thinks before it answers. Applies to the models that
+                  take a reasoning effort; the next turn uses it.
+                </p>
+                <.effort_choice effort={@effort} />
               </div>
             </section>
 
@@ -461,6 +473,48 @@ defmodule EliaWeb.ChatSettingsLive do
     </div>
     """
   end
+
+  attr :effort, :string, default: nil
+
+  # CSET-13, SESS-40: this chat's own reasoning effort (LLM-39). Each button
+  # applies the moment it is clicked, like the jail switch (CSET-4), and
+  # "Default" gives the chat no effort of its own again, so the configured one
+  # applies (LLM-38).
+  defp effort_choice(assigns) do
+    ~H"""
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <button
+        :for={option <- effort_options()}
+        type="button"
+        id={"effort-" <> option.key}
+        phx-click="set_effort"
+        phx-value-effort={option.value || ""}
+        aria-pressed={to_string(@effort == option.value)}
+        class={[
+          "rounded-lg border px-2.5 py-1 text-xs transition",
+          @effort == option.value && "border-primary/50 bg-primary/5 font-medium text-primary",
+          @effort != option.value &&
+            "border-base-300 text-base-content/60 hover:border-base-content/20"
+        ]}
+      >
+        {option.label}
+      </button>
+      <span id="effort-state" class="text-xs text-base-content/50">{effort_state(@effort)}</span>
+    </div>
+    """
+  end
+
+  defp effort_options do
+    [
+      %{key: "default", value: nil, label: "Default"},
+      %{key: "low", value: "low", label: "Low"},
+      %{key: "medium", value: "medium", label: "Medium"},
+      %{key: "high", value: "high", label: "High"}
+    ]
+  end
+
+  defp effort_state(nil), do: "the provider's configured default"
+  defp effort_state(effort), do: effort
 
   defp jail_state(true), do: "Jailed"
   defp jail_state(false), do: "Not jailed"
@@ -911,6 +965,13 @@ defmodule EliaWeb.ChatSettingsLive do
     {:noreply, socket}
   end
 
+  # CSET-13, SESS-40: this chat's own reasoning effort (LLM-39). The buttons
+  # follow the session's broadcast, so every view of the chat stays in sync.
+  def handle_event("set_effort", %{"effort" => effort}, socket) do
+    Agent.set_effort(socket.assigns.session_id, if(effort == "", do: nil, else: effort))
+    {:noreply, socket}
+  end
+
   def handle_event("toggle_auto_approve", %{"tool" => tool}, socket) do
     set_auto_approve(socket, tool, tool not in socket.assigns.auto_approve)
   end
@@ -1078,6 +1139,8 @@ defmodule EliaWeb.ChatSettingsLive do
 
   defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
   defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)
+
+  defp apply_event({:effort, effort}, socket), do: assign(socket, effort: effort)
 
   defp apply_event({:limits, limits}, socket),
     do: assign(socket, limits: limits, limits_form: limits_form(limits))
