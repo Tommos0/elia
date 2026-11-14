@@ -272,12 +272,18 @@ defmodule Elia.Skills.Files do
 
   # FILE-13: a path that only looks inside the workspace says where it goes.
   defp refusal(abs) do
-    real = Workspace.real_location(abs)
-
     where =
-      if real == abs,
-        do: "#{abs} is outside the workspace",
-        else: "#{abs} resolves to #{real}, outside the workspace"
+      case Workspace.real_location(abs) do
+        # WS-6
+        :unresolvable ->
+          "#{abs} goes through more symlinks than can be followed, so where it leads is unknown"
+
+        ^abs ->
+          "#{abs} is outside the workspace"
+
+        real ->
+          "#{abs} resolves to #{real}, outside the workspace"
+      end
 
     where <> "; this chat's jail confines the file tools to it (FILE-12)."
   end

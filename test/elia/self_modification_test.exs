@@ -6,6 +6,19 @@ defmodule Elia.SelfModificationTest do
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
 
+  # `count` links in `<root>/<dir>`: `l0` points at a directory outside the
+  # workspace holding `file.txt`, and each `l<n>` at `l<n-1>`, so a path
+  # through `l<n>` takes `n + 1` links to resolve.
+  defp link_chain(dir, count) do
+    outside = Path.join(System.tmp_dir!(), "elia-chain-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "file.txt"), "not for the tools")
+    File.mkdir_p!(in_root(dir))
+    File.ln_s!(outside, in_root("#{dir}/l0"))
+    for n <- 1..(count - 1)//1, do: File.ln_s!("l#{n - 1}", in_root("#{dir}/l#{n}"))
+    %{outside: outside}
+  end
+
   # One throwaway project for the whole module (VERIFY-8, VERIFY-9): the runs
   # below are real `mix test` runs, and sharing one tree keeps them to a single
   # compile — and costs the other tests in the module nothing but a temp dir.
@@ -87,6 +100,30 @@ defmodule Elia.SelfModificationTest do
 
       assert Workspace.real_location(in_root("real")) == in_root("real")
     end
+
+    # WS-6: eight links are followed for one path, each counting once; past
+    # that, or round a loop, the path has no real location.
+    test "a link chain past the bound, or a loop, is unresolvable" do
+      %{outside: outside} = link_chain("chain", 9)
+
+      on_exit(fn ->
+        File.rm_rf!(in_root("chain"))
+        File.rm_rf!(outside)
+      end)
+
+      # `chain/l7` is eight links to the directory outside: within the bound.
+      assert Workspace.real_location(in_root("chain/l7/file.txt")) ==
+               Path.join(outside, "file.txt")
+
+      # `chain/l8` is nine, and is never taken for a path inside the workspace.
+      assert Workspace.real_location(in_root("chain/l8/file.txt")) == :unresolvable
+      assert Workspace.real_location(in_root("chain/l8/new.txt")) == :unresolvable
+      refute Elia.Shell.reachable?(in_root("chain/l8/file.txt"), Workspace.root())
+
+      File.ln_s!("loop-b", in_root("chain/loop-a"))
+      File.ln_s!("loop-a", in_root("chain/loop-b"))
+      assert Workspace.real_location(in_root("chain/loop-a/file.txt")) == :unresolvable
+    end
   end
 
   describe "the file tools under the jail" do
@@ -132,6 +169,29 @@ defmodule Elia.SelfModificationTest do
       assert {:ok, "hi"} = Files.read_file(%{"path" => "notes/a.txt"}, ctx)
     after
       File.rm_rf!(in_root("notes"))
+    end
+
+    # FILE-13, WS-6: a chain longer than the link bound that ends outside the
+    # workspace is refused, not taken for the workspace path it stops at.
+    test "a link chain past the bound is refused" do
+      %{outside: outside} = link_chain("long-chain", 12)
+
+      on_exit(fn ->
+        File.rm_rf!(in_root("long-chain"))
+        File.rm_rf!(outside)
+      end)
+
+      path = "long-chain/l11/file.txt"
+      assert File.read!(in_root(path)) == "not for the tools"
+
+      assert {:deny, reason} = Files.read_policy(%{"path" => path}, %{jail: true})
+      assert reason =~ "more symlinks than can be followed"
+      assert {:error, _} = Files.read_file(%{"path" => path}, %{jail: true})
+
+      assert {:error, _} =
+               Files.write_file(%{"path" => path, "content" => "x"}, %{jail: true})
+
+      assert File.read!(in_root(path)) == "not for the tools"
     end
 
     # FILE-13

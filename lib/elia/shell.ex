@@ -166,6 +166,10 @@ defmodule Elia.Shell do
     abs = Workspace.real_location(abs)
 
     cond do
+      # WS-6: a path with no real location is reachable by nothing.
+      :unresolvable in [live, cd, abs] ->
+        false
+
       not inside?(cd, live) ->
         inside?(abs, cd)
 
@@ -181,7 +185,10 @@ defmodule Elia.Shell do
   # What a chat worktree's profile binds besides the worktree itself (ISOL-13).
   defp bound?(abs, live) do
     Enum.any?([Path.join(live, "deps"), Path.join(live, ".git")], fn path ->
-      inside?(abs, Workspace.real_location(path))
+      case Workspace.real_location(path) do
+        :unresolvable -> false
+        real -> inside?(abs, real)
+      end
     end)
   end
 

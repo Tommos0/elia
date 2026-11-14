@@ -76,44 +76,58 @@ defmodule Elia.Workspace do
 
   The classes of `classify/2` are decided on the path as written; a caller that
   must not be fooled by a link compares real locations (FILE-13).
+
+  At most `#{@max_link_depth}` links are followed for one path; a path that needs
+  more — a longer chain, or a loop — is `:unresolvable` (WS-6).
   """
-  @spec real_location(binary()) :: binary()
+  @spec real_location(binary()) :: binary() | :unresolvable
   def real_location(path) do
     ["/" | components] = Path.split(Path.expand(path))
-    resolve(components, "/", @max_link_depth)
+
+    case resolve(components, "/", @max_link_depth) do
+      {:ok, real, _links_left} -> real
+      :unresolvable -> :unresolvable
+    end
   end
 
   # Components left to right, `real` being the resolved prefix. A link is
   # followed where it is found, whether it is the last component or in the
-  # middle, and the rest of the path continues from the link's target. The depth
-  # bound is what a chain gets at most: a loop (`a -> a`) would otherwise follow
-  # forever.
-  defp resolve([], real, _depth), do: real
+  # middle, and the rest of the path continues from the link's target. The links
+  # left are one budget for the whole path, carried through a target's own links
+  # into the rest (WS-6): a loop (`a -> a`) would otherwise follow forever, and a
+  # link past the bound is never kept as if it were a directory.
+  defp resolve([], real, left), do: {:ok, real, left}
 
-  defp resolve([name | rest], real, depth) do
+  defp resolve([name | rest], real, left) do
     path = Path.join(real, name)
 
     case File.lstat(path) do
-      {:ok, %File.Stat{type: :symlink}} when depth > 0 ->
-        case File.read_link(path) do
-          {:ok, target} -> resolve(rest, resolve_target(target, real, depth), depth - 1)
-          {:error, _} -> Path.join([real, name | rest])
+      {:ok, %File.Stat{type: :symlink}} when left == 0 ->
+        :unresolvable
+
+      {:ok, %File.Stat{type: :symlink}} ->
+        with {:ok, target} <- File.read_link(path),
+             {:ok, real, left} <- resolve_target(target, real, left - 1) do
+          resolve(rest, real, left)
+        else
+          :unresolvable -> :unresolvable
+          {:error, _} -> {:ok, Path.join([real, name | rest]), left}
         end
 
       {:ok, _} ->
-        resolve(rest, path, depth)
+        resolve(rest, path, left)
 
       {:error, _} ->
         # Nothing exists from here on, so this is where the path would land.
-        Path.join([real, name | rest])
+        {:ok, Path.join([real, name | rest]), left}
     end
   end
 
   # A link's target is relative to the link's own directory, and may have
   # components of its own, links among them.
-  defp resolve_target(target, dir, depth) do
+  defp resolve_target(target, dir, left) do
     ["/" | components] = Path.split(Path.expand(target, dir))
-    resolve(components, "/", depth - 1)
+    resolve(components, "/", left)
   end
 
   defp inside?(path, dir), do: path == dir or String.starts_with?(path, dir <> "/")
