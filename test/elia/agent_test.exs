@@ -1825,14 +1825,17 @@ defmodule Elia.AgentTest do
 
     # COMPACT-29: the pass's state is reported, saved and broadcast before the
     # turn ends. Nothing is cold — the chat is one turn — and the marker is the
-    # boundary of the turn's most recent step (COMPACT-31, COMPACT-32).
-    assert_receive {:agent, ^id, {:compaction, %{level: 3, covered: 0, turn_covered: 3}}}, 5000
+    # boundary of the turn's most recent step (COMPACT-31, COMPACT-32). The pass
+    # takes the older step's reasoning and its tool result, so the deepest rung it
+    # went to is that of tool results (COMPACT-34, COMPACT-35): no whole step is
+    # dropped, since no message is cold (COMPACT-37).
+    assert_receive {:agent, ^id, {:compaction, %{level: 2, covered: 0, turn_covered: 3}}}, 5000
     assert Agent.snapshot(id).status == :running
 
     send(third_loop, :go)
     await_status(id, :idle)
 
-    assert %{level: 3, covered: 0, turn_covered: 3} = Elia.Store.load_compaction(id)
+    assert %{level: 2, covered: 0, turn_covered: 3} = Elia.Store.load_compaction(id)
 
     [first, second, third] = FakeLLM.requests()
 
@@ -1907,6 +1910,42 @@ defmodule Elia.AgentTest do
 
     # The first request had nothing to elide: it was the brief alone.
     assert Enum.all?(first.messages, &(&1.meta[:compaction] != :marker))
+  end
+
+  # COMPACT-36, ## Stored data
+  test "a saved state that predates the item list still elides what it described" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    messages = big_history(3)
+
+    # A state as a build before the item list saved it: a level and the
+    # boundaries that went with it, and no items.
+    :ok =
+      Elia.Store.save(id, messages,
+        compaction: %{
+          level: 3,
+          covered: 8,
+          folded: 0,
+          turn_covered: 0,
+          pins: [],
+          ledger: [],
+          options: %{}
+        }
+      )
+
+    start_compaction_session(id, loop_opts: [llm: %{provider: FakeLLM}])
+
+    state = Agent.snapshot(id).compaction
+
+    # The chat loads with the items the level described materialised, so nothing
+    # it had already elided comes back.
+    assert state.items != []
+    view = Elia.LLM.Compaction.view(messages, state)
+    assert Enum.all?([1, 2, 3, 5, 6, 7], &(view.statuses[&1].status in [:elided, :summarized]))
+    refute Enum.any?(view.messages, &(Message.text_content(&1) == "done 1"))
+    # Its user messages are still sent (COMPACT-11).
+    assert Enum.any?(view.messages, &(Message.text_content(&1) =~ "task 1"))
   end
 
   # COMPACT-7

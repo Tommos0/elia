@@ -81,13 +81,15 @@ config :elia, Elia.LLM, provider: Elia.LLM.Anthropic
 # transient failure then ends the turn (RETRY-4).
 config :elia, :step_retry, delays_ms: [15_000, 30_000, 60_000]
 
-# Compaction (COMPACT-6, COMPACT-8, COMPACT-9, COMPACT-11, COMPACT-12, COMPACT-28):
-# a turn compacts first when the estimated request exceeds `min(budget, fraction *
-# window)`, and reduces it to `target_fraction` of that, keeping the last
-# `working_set` turns — or only the recent ones that fit in `working_set_tokens`,
-# whichever is smaller — verbatim and cutting a user message longer than
-# `user_cap` tokens with a marker. `auto` is whether that happens on its own; a
-# chat can override all of it (Elia.Agent.set_compaction/2).
+# Compaction (COMPACT-6, COMPACT-8, COMPACT-9, COMPACT-11, COMPACT-12, COMPACT-28,
+# COMPACT-34): a turn compacts first when the estimated request exceeds
+# `min(budget, fraction * window)`, and reduces it to `target_fraction` of that,
+# keeping the last `working_set` turns — or only the recent ones that fit in
+# `working_set_tokens`, whichever is smaller — verbatim, cutting a user message
+# longer than `user_cap` tokens with a marker and leaving an item smaller than
+# `elide_floor` estimated tokens alone while a bigger one can reach the target.
+# `auto` is whether that happens on its own; a chat can override all of it
+# (Elia.Agent.set_compaction/2).
 config :elia, Elia.LLM.Compaction,
   budget: 100_000,
   fraction: 0.6,
@@ -95,6 +97,7 @@ config :elia, Elia.LLM.Compaction,
   working_set: 6,
   working_set_tokens: 25_000,
   user_cap: 8_000,
+  elide_floor: 1_000,
   auto: true
 
 config :elia, Elia.LLM.Anthropic,

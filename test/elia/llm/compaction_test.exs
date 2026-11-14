@@ -882,6 +882,312 @@ defmodule Elia.LLM.CompactionTest do
     end
   end
 
+  ## The size floor and the selection (COMPACT-34..COMPACT-37)
+
+  # Two cold turns whose reasoning blocks are below the size floor and whose
+  # first tool result is not, so the two tiers COMPACT-34 orders can be told
+  # apart; turn 3 is the working set and stays verbatim.
+  defp floor_history do
+    big = String.duplicate("b ", 3_000)
+    small = String.duplicate("s ", 30)
+
+    Enum.flat_map(1..2, fn n ->
+      [
+        Message.user("task #{n}: #{small}"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{type: :reasoning, text: small},
+            %{
+              type: :tool_call,
+              id: "c#{n}",
+              name: "read_file",
+              input: %{"path" => "file#{n}.txt"}
+            }
+          ]
+        },
+        %Message{
+          role: :tool,
+          content: [Message.tool_result("c#{n}", if(n == 1, do: big, else: small))]
+        },
+        %Message{role: :assistant, content: [Message.text("done #{n}")]}
+      ]
+    end) ++ history(3..3)
+  end
+
+  # Three cold turns whose reasoning blocks are all above the size floor and of
+  # three sizes, so largest-first (COMPACT-35) can be told from oldest-first.
+  defp sized_history do
+    Enum.flat_map([{1, 1_500}, {2, 1_250}, {3, 1_050}], fn {n, words} ->
+      [
+        Message.user("task #{n}: word word"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{type: :reasoning, text: String.duplicate("r ", words)},
+            %{
+              type: :tool_call,
+              id: "c#{n}",
+              name: "read_file",
+              input: %{"path" => "file#{n}.txt"}
+            }
+          ]
+        },
+        %Message{role: :tool, content: [Message.tool_result("c#{n}", "output #{n}")]},
+        %Message{role: :assistant, content: [Message.text("done #{n}")]}
+      ]
+    end) ++ history(4..4)
+  end
+
+  # COMPACT-34
+  test "an item below the size floor is left alone while one at the floor reaches the target" do
+    messages = floor_history()
+    covered = Compaction.working_set_start(messages, %{working_set: 1})
+    assert covered == 8
+
+    # The target is the view with the one big tool result elided: an item at or
+    # above the floor reaches it, so the below-floor reasoning blocks are left
+    # alone (COMPACT-34).
+    target = Compaction.view(messages, %Compaction{covered: covered, items: [{2, 0}]}).tokens
+
+    trimmed =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: target,
+        overhead: 0,
+        working_set: 1
+      })
+
+    assert trimmed.items == [{2, 0}]
+
+    view = Compaction.view(messages, trimmed)
+    assert view.tokens <= target
+    # The big result was elided to its note; the small reasoning blocks are still
+    # sent (COMPACT-14, COMPACT-34).
+    assert view.statuses[2].status == :truncated
+    assert view.statuses[1].status == :sent
+    assert view.statuses[5].status == :sent
+
+    # COMPACT-9, COMPACT-34: the floor is a chat option like the others, so a
+    # chat that lowers it takes the small reasoning blocks too — its rung comes
+    # before the tool results' once nothing is below the floor.
+    lowered =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: target,
+        overhead: 0,
+        working_set: 1,
+        elide_floor: 1
+      })
+
+    assert {1, 0} in lowered.items
+    assert Compaction.options(%{}).elide_floor == 1_000
+    assert Compaction.options(elide_floor: 1).elide_floor == 1
+  end
+
+  # COMPACT-34
+  test "an item below the size floor is elided once the items at it are exhausted" do
+    huge = String.duplicate("huge ", 1_000)
+    small = String.duplicate("s ", 30)
+    result = String.duplicate("out ", 200)
+
+    # A chat whose whole history is one turn: its own older step holds a big
+    # reasoning block and a small tool result, and its most recent step is sent
+    # in full (COMPACT-31, COMPACT-32, COMPACT-33).
+    messages = [
+      Message.user("task 1: #{small}"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :reasoning, text: huge},
+          %{type: :tool_call, id: "c1", name: "read_file", input: %{"path" => "a.txt"}}
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("c1", result)]},
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :reasoning, text: small},
+          %{type: :tool_call, id: "c2", name: "read_file", input: %{"path" => "b.txt"}}
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("c2", small)]}
+    ]
+
+    big_only = Compaction.view(messages, %Compaction{turn_covered: 3, items: [{1, 0}]}).tokens
+    small_only = Compaction.view(messages, %Compaction{turn_covered: 3, items: [{2, 0}]}).tokens
+
+    trimmed =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: big_only - 1,
+        overhead: 0
+      })
+
+    # The reasoning block at the floor is taken first, and the tool result below
+    # it only because that alone does not reach the target (COMPACT-34).
+    assert trimmed.items == [{1, 0}, {2, 0}]
+    assert Compaction.view(messages, trimmed).tokens <= big_only - 1
+    # The below-floor item on its own would not have reached it.
+    assert small_only > big_only - 1
+
+    # The most recent step is untouched: its reasoning and its result are sent in
+    # full (COMPACT-32).
+    view = Compaction.view(messages, trimmed)
+    assert view.statuses[3].status == :sent
+    assert view.statuses[4].status == :sent
+  end
+
+  # COMPACT-35
+  test "a pass takes its largest items first and stops at the target" do
+    messages = sized_history()
+    covered = Compaction.working_set_start(messages, %{working_set: 1})
+    assert covered == 12
+
+    at = fn items ->
+      Compaction.view(messages, %Compaction{covered: covered, items: items}).tokens
+    end
+
+    # A target between the two largest reasoning blocks and the third: the pass
+    # takes the two, in size order, and stops there.
+    target = div(at.([{1, 0}]) + at.([{1, 0}, {5, 0}]), 2)
+
+    trimmed =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: target,
+        overhead: 0,
+        working_set: 1
+      })
+
+    assert trimmed.items == [{1, 0}, {5, 0}]
+
+    view = Compaction.view(messages, trimmed)
+    assert view.tokens <= target
+    # The third, smaller reasoning block is still sent: the pass does not take
+    # the next item once it is at or below the target (COMPACT-35).
+    assert view.statuses[9].status == :sent
+  end
+
+  # COMPACT-36
+  test "what a pass elided stays elided, and a later pass only adds to it" do
+    messages = bulky_history()
+    covered = Compaction.working_set_start(messages, %{working_set: 2})
+
+    at = fn level ->
+      Compaction.view(messages, %Compaction{level: level, covered: covered}).tokens
+    end
+
+    first =
+      Compaction.trim(messages, %Compaction{}, %{
+        trigger: 1,
+        target: at.(1),
+        overhead: 0,
+        working_set: 2
+      })
+
+    assert first.items != []
+
+    # A later pass whose target the first one already meets takes nothing: the
+    # items are not derived again, and nothing that was elided comes back.
+    later =
+      Compaction.trim(messages, first, %{trigger: 1, target: at.(1), overhead: 0, working_set: 2})
+
+    assert later.items == first.items
+    assert Compaction.view(messages, later).tokens == Compaction.view(messages, first).tokens
+
+    # A pass that needs more adds to the list rather than starting over.
+    deeper =
+      Compaction.trim(messages, first, %{trigger: 1, target: at.(3), overhead: 0, working_set: 2})
+
+    assert Enum.all?(first.items, &(&1 in deeper.items))
+    assert length(deeper.items) > length(first.items)
+    assert Compaction.view(messages, deeper).tokens <= at.(3)
+
+    # COMPACT-4, COMPACT-16: a whole old step goes with the result answering its
+    # call, so no call is left without its result.
+    dropped = for {index, nil} <- deeper.items, do: index
+    calls = Compaction.calls(messages)
+
+    for {index, nil} <- deeper.items,
+        %Message{role: :assistant, content: content} = message <- [Enum.at(messages, index)],
+        call <- content,
+        call.type == :tool_call,
+        Map.has_key?(calls, call.id) do
+      answered =
+        Enum.find_index(messages, fn
+          %Message{role: :tool, content: results} ->
+            Enum.any?(results, &(&1.tool_call_id == call.id))
+
+          _ ->
+            false
+        end)
+
+      assert answered in dropped
+    end
+  end
+
+  # COMPACT-37
+  test "aging out of the working set elides nothing on its own" do
+    messages = history(1..3)
+    view = Compaction.view(messages, %Compaction{})
+
+    # A working set of one turn leaves the first two turns cold, and the target
+    # is the view as it stands: the cold turns are eligible and nothing more.
+    state =
+      Compaction.compact(messages, %Compaction{},
+        target: view.tokens,
+        working_set: 1,
+        summarizer: no_summary()
+      )
+
+    assert state.covered == 8
+    assert state.items == []
+
+    aged = Compaction.view(messages, state)
+    assert Enum.all?(0..7, &(aged.statuses[&1].status == :sent))
+    # The aged-out turns' spoken record is still sent (COMPACT-1, COMPACT-37).
+    assert Enum.any?(aged.messages, &(Message.text_content(&1) == "done 1"))
+    assert Message.text_content(Enum.at(aged.messages, 0)) =~ "task 1"
+  end
+
+  # COMPACT-36, ## Stored data
+  test "a state saved before the item list existed materialises its elision" do
+    messages = history(1..3)
+
+    # A state as a build before the item list saved it: a level and the
+    # boundaries that went with it, and no items.
+    saved = %{
+      level: 3,
+      covered: 8,
+      folded: 0,
+      turn_covered: 0,
+      pins: [],
+      ledger: [],
+      options: %{},
+      a_field_from_the_future: :ignored
+    }
+
+    state = Compaction.from_map(saved)
+    assert state.items == []
+
+    # The level's own elision is materialised when the chat loads, so nothing the
+    # chat had already elided comes back (COMPACT-36).
+    materialised = Compaction.materialise(state, messages)
+    assert materialised.items != []
+
+    view = Compaction.view(messages, materialised)
+    assert Enum.all?([1, 2, 3, 5, 6, 7], &(view.statuses[&1].status in [:elided, :summarized]))
+    # A user message is never dropped (COMPACT-11).
+    assert view.statuses[0].status == :sent
+    assert view.statuses[4].status == :sent
+    refute Enum.any?(view.messages, &(Message.text_content(&1) == "done 1"))
+
+    # Materialising is idempotent, and a pass adds to what it produced.
+    assert Compaction.materialise(materialised, messages) == materialised
+    assert Compaction.materialise(%Compaction{}, messages) == %Compaction{}
+  end
+
   ## Pins and the ledger
 
   # COMPACT-21
