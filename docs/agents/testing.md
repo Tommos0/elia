@@ -22,6 +22,15 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
 
   - To synchronize before the next call, use `_ = :sys.get_state(pid)`.
 - Use `Elia.FakeLLM` (`test/support/fake_llm.ex`) rather than real model calls.
+  A provider serves only the chats of the test that started it (SUITE-9), so
+  start it before the sessions you drive: a call from a session that was already
+  running is refused, which is what keeps a session another test leaked from
+  taking a turn you scripted.
+- A test that runs the boot scan (`Elia.Agent.Resumer.resume_interrupted/0`)
+  points the store at a scratch directory of its own (SUITE-10,
+  `test/elia/auto_resume_test.exs`): the scan reads every saved chat, so against
+  the store the suite shares it would resume the chats other tests left behind
+  and start sessions that outlive the test that runs it.
 
 ## LiveView tests
 
