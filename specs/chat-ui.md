@@ -420,7 +420,8 @@ what the screen actually shows.
 
 The session keeps and shows the full history; the model is sent a smaller
 **request view** (COMPACT-2). The transcript is honest about which parts of it
-the model did or did not see, and the user can compact the chat by hand.
+the model did or did not see, the user can compact the chat by hand, and can pin
+an item compaction hid so it stays in the model's context.
 
 - **UI-51** The transcript always shows the whole conversation, including what
   compaction elided (COMPACT-1), and annotates each item with its request-view
@@ -449,6 +450,21 @@ the model did or did not see, and the user can compact the chat by hand.
   `data-request-status` (`sent`, `elided`, `summarized` or `truncated`) and its
   dimmed content in `[data-pruned]`. An item the model was sent in full, and
   one it got only part of (truncated), are not dimmed.
+- **UI-88** An item the model was **not sent in full** — the elided, summarized
+  and truncated cases of UI-51, the ones that carry a note — has a pin button
+  (`#pin-<item>`, the item name of UI-51) beside its note, and a pinned item has
+  it too, so a pin can be taken back; an item the model was sent in full that is
+  not pinned has none. Pressing it pins or unpins the **message that item
+  belongs to**, through `Elia.Agent.set_pin/4` (SESS-25, COMPACT-21) — for a tool
+  card, the tool message carrying its result, since a call and its result are
+  two messages (COMPACT-4), and a tool card's own note is its result's status,
+  so pinning a card's result clears its note — so from then on no compaction
+  rule elides it and it is back in the request view. The button says which it
+  does
+  (`aria-pressed="true"`, a filled bookmark and the label "Pinned" while the
+  message is pinned, "Pin" while it isn't), and the state the session saves and
+  broadcasts (COMPACT-24, SESS-25) re-derives the transcript, so the item's note
+  and its dimming (UI-56) go and the estimate (COMPACT-26) grows with it.
 
 ### Sub-tasks
 

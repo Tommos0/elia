@@ -186,6 +186,91 @@ defmodule EliaWeb.CompactionTest do
     assert has_element?(view, "#items-call-r1 details summary", "Output")
   end
 
+  # UI-88, COMPACT-21, SESS-25: an item the model was not sent in full carries a
+  # pin button, and pinning it brings its message back into the request view.
+  test "a hidden item is pinned and unpinned from the transcript", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    {messages, compaction} = compacted_chat()
+    :ok = Elia.Store.save(id, messages, compaction: compaction)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    # The cold turn's answer was summarized away, so it offers the pin.
+    assert has_element?(view, "#status-m3-0", "Summarized for the model")
+    assert has_element?(view, "#pin-m3-0[aria-pressed='false']", "Pin")
+
+    # An item the model was sent in full offers nothing.
+    refute has_element?(view, "#pin-m5-0")
+
+    view |> element("#pin-m3-0") |> render_click()
+    _ = :sys.get_state(view.pid)
+
+    # The message is pinned and saved with the chat (SESS-25, COMPACT-24).
+    assert {3, nil} in Agent.snapshot(id).compaction.pins
+
+    # COMPACT-21: it is back in the request view, so its note and its dimming go
+    # and the button offers to take the pin back.
+    refute has_element?(view, "#status-m3-0")
+    refute has_element?(view, "#items-m3-0 [data-pruned='true']")
+    assert has_element?(view, "#pin-m3-0[aria-pressed='true']", "Pinned")
+
+    view |> element("#pin-m3-0") |> render_click()
+    _ = :sys.get_state(view.pid)
+
+    refute {3, nil} in Agent.snapshot(id).compaction.pins
+    assert has_element?(view, "#status-m3-0", "Summarized for the model")
+    assert has_element?(view, "#pin-m3-0[aria-pressed='false']", "Pin")
+  end
+
+  # UI-88, COMPACT-4: a tool card's button pins the tool message that carries its
+  # result, not the assistant message the call was written in.
+  test "a tool card pins the message that carries its result", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    {messages, compaction} = compacted_chat(%{level: 2, covered: 4, folded: 0, summary: nil})
+    :ok = Elia.Store.save(id, messages, compaction: compaction)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#status-call-r1", "Not sent to the model")
+    view |> element("#pin-call-r1") |> render_click()
+    _ = :sys.get_state(view.pid)
+
+    # The result's message (index 2) is pinned, not the call's (index 1).
+    assert {2, nil} in Agent.snapshot(id).compaction.pins
+    refute {1, nil} in Agent.snapshot(id).compaction.pins
+
+    # The output is sent again, so the card's note is gone and the button says so.
+    refute has_element?(view, "#status-call-r1")
+    assert has_element?(view, "#pin-call-r1[aria-pressed='true']", "Pinned")
+    assert view |> element("#items-call-r1") |> render() =~ "the notes, at length"
+  end
+
+  # UI-88, COMPACT-11: a user message the cap cut short is hidden in part too, so
+  # it can be pinned — and pinning it sends it whole.
+  test "a truncated user message can be pinned", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    messages = [
+      Message.user("first task"),
+      Message.user("second task: " <> String.duplicate("long words ", 30)),
+      %Message{role: :assistant, content: [Message.text("Done with the second.")]}
+    ]
+
+    :ok = Elia.Store.save(id, messages, compaction: %{options: %{user_cap: 5}})
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#status-m1", "Truncated for the model")
+    view |> element("#pin-m1") |> render_click()
+    _ = :sys.get_state(view.pid)
+
+    assert {1, nil} in Agent.snapshot(id).compaction.pins
+    refute has_element?(view, "#status-m1")
+  end
+
   # COMPACT-26, CTX-11
   test "the estimate is over the request view and shows the elided amount", %{conn: conn} do
     id = Agent.new_id()

@@ -1491,6 +1491,7 @@ defmodule EliaWeb.ChatLive do
       |> assign(:id, request_id(assigns.item))
       |> assign(:label, request_label(assigns.item))
       |> assign(:pruned, pruned?(assigns.item))
+      |> assign(:pinned, Map.get(assigns.item, :pinned, false))
 
     ~H"""
     <div class="mt-1 flex items-center gap-2 text-[11px]">
@@ -1512,6 +1513,37 @@ defmodule EliaWeb.ChatLive do
           −{format_tokens(@item.elided)} tokens
         </span>
       </span>
+      <%!-- UI-88, COMPACT-21: an item the model was not sent in full is pinned
+      here, so no compaction rule elides its message from then on — and a pinned
+      item offers the button that takes the pin back. --%>
+      <button
+        :if={(@label != nil || @pinned) && Map.get(@item, :pin_index) != nil}
+        type="button"
+        id={"pin-#{@id}"}
+        phx-click="pin"
+        phx-value-index={@item.pin_index}
+        phx-value-on={to_string(not @pinned)}
+        aria-pressed={to_string(@pinned)}
+        title={
+          if @pinned,
+            do: "Pinned: the model is always sent it. Click to unpin.",
+            else: "Pin so the model is always sent it"
+        }
+        class={[
+          "flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium transition active:scale-95",
+          if(@pinned,
+            do: "border-primary/40 bg-primary/10 text-primary",
+            else:
+              "border-base-300 text-base-content/55 hover:border-base-content/25 hover:text-base-content"
+          )
+        ]}
+      >
+        <.icon
+          name={if @pinned, do: "hero-bookmark-solid", else: "hero-bookmark"}
+          class="size-3 shrink-0"
+        />
+        <span>{if @pinned, do: "Pinned", else: "Pin"}</span>
+      </button>
     </div>
     """
   end
@@ -1671,6 +1703,20 @@ defmodule EliaWeb.ChatLive do
 
       {:error, :busy} ->
         {:noreply, put_flash(socket, :error, "Elia is working; try again in a moment.")}
+    end
+  end
+
+  # UI-88, COMPACT-21: pin (or unpin) the message an item belongs to, so no
+  # compaction rule elides it. The session saves the pin and broadcasts the new
+  # state (SESS-25, COMPACT-24), which re-derives the transcript and the estimate.
+  def handle_event("pin", %{"index" => index} = params, socket) when is_binary(index) do
+    case Integer.parse(index) do
+      {index, ""} ->
+        Agent.set_pin(socket.assigns.session_id, index, nil, params["on"] in [true, "true"])
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -2331,24 +2377,25 @@ defmodule EliaWeb.ChatLive do
     )
   end
 
-  defp insert_message(socket, %Message{role: :tool, content: results}, _index, status) do
+  defp insert_message(socket, %Message{role: :tool, content: results}, index, status) do
     Enum.reduce(results, socket, fn result, socket ->
       case socket.assigns.calls do
         %{} = calls when is_map_key(calls, result.tool_call_id) ->
           call = calls[result.tool_call_id]
 
-          # COMPACT-25: an elided result is the card's own "not sent" note.
-          call =
-            if status.status == :sent do
-              call
-            else
-              %{
-                call
-                | request_status: status.status,
-                  block_status: Map.get(status.blocks, 0),
-                  elided: status.elided
-              }
-            end
+          # UI-88, COMPACT-4: a card's call and its result are two messages, and
+          # it is the tool message that a pin has to keep, so the card carries
+          # that message's index. Its note is the result's too (COMPACT-25),
+          # rather than the assistant message's the call was annotated with.
+          call = %{
+            call
+            | result_index: index,
+              pin_index: index,
+              pinned: Compaction.pinned?(socket.assigns.compaction, index),
+              request_status: status.status,
+              block_status: Map.get(status.blocks, 0),
+              elided: status.elided
+          }
 
           put_call(socket, %{
             call
@@ -2393,13 +2440,15 @@ defmodule EliaWeb.ChatLive do
               name: call.name,
               input: call.input,
               index: index,
+              result_index: nil,
               task: task_card(socket, call.id),
               status: Map.get(socket.assigns.tool_status, call.id, :pending),
               output: nil,
               is_error: false
             },
             status,
-            i
+            i,
+            socket.assigns.compaction
           )
 
         put_call(socket, item)
@@ -2411,7 +2460,7 @@ defmodule EliaWeb.ChatLive do
 
   defp stream_item(socket, item, status, block \\ nil) do
     if visible?(socket.assigns.compact_view, item) do
-      stream_insert(socket, :items, annotate(item, status, block))
+      stream_insert(socket, :items, annotate(item, status, block, socket.assigns.compaction))
     else
       socket
     end
@@ -2426,17 +2475,27 @@ defmodule EliaWeb.ChatLive do
   defp visible?(_compact, _item), do: true
 
   # COMPACT-25: every item carries its request-view status, so the UI never
-  # implies the model saw something it did not.
-  defp annotate(item, status, block) do
+  # implies the model saw something it did not. UI-88: it carries its pin state
+  # too, so an item compaction hid offers the button that brings it back.
+  defp annotate(item, status, block, state) do
     block = block || Map.get(item, :block)
+    target = pin_target(item)
 
     Map.merge(item, %{
       request_status: status[:status] || :sent,
       block_status: Map.get(status[:blocks] || %{}, block),
       elided: status[:elided] || 0,
-      pinned: Map.get(status, :pinned, false)
+      pin_index: target,
+      pinned: target != nil and Compaction.pinned?(state, target)
     })
   end
+
+  # UI-88, COMPACT-4: a pin keeps a whole message. For a tool card that is the
+  # tool message carrying its result (the call itself is a different message,
+  # and its input is never elided, COMPACT-15); a card whose result has not
+  # arrived yet has no message of its own to pin.
+  defp pin_target(%{kind: :tool} = item), do: Map.get(item, :result_index)
+  defp pin_target(item), do: Map.get(item, :index)
 
   defp put_call(socket, call) do
     socket = assign(socket, calls: Map.put(socket.assigns.calls, call.call_id, call))
