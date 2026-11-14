@@ -1,9 +1,11 @@
 defmodule Elia.Agent.Loop do
   @moduledoc """
   The agentic loop: call the model, run requested tools, feed results back,
-  repeat until the model stops asking for tools. When it stops, the turn is
-  done: nothing is verified and nothing is rolled back
-  (`specs/verification.md`).
+  repeat until the model stops asking for tools. A turn that keeps making the
+  same call and keeps getting the same answer back is standing still (LOOP-24,
+  LOOP-25), which is a limit like the step count, the clock and the token budget
+  (LOOP-3, LOOP-20, LOOP-22). When it stops, the turn is done: nothing is
+  verified and nothing is rolled back (`specs/verification.md`).
 
   Runs inside a task owned by `Elia.Agent.Session` and reports to it with
   plain messages:
@@ -49,13 +51,20 @@ defmodule Elia.Agent.Loop do
 
   @max_steps 100
 
+  # LOOP-25: how many times one repeated call may return the identical result
+  # before the turn is standing still.
+  @standing_still 4
+
   # RETRY-4: the waits before each retry of a model call that failed
   # transiently, unless the turn's option or `config :elia, :step_retry` says
   # otherwise. Its length is how many retries a step gets.
   @default_retry_delays [15_000, 30_000, 60_000]
 
   @type limit ::
-          {:steps, pos_integer()} | {:time, non_neg_integer()} | {:tokens, non_neg_integer()}
+          {:steps, pos_integer()}
+          | {:time, non_neg_integer()}
+          | {:tokens, non_neg_integer()}
+          | {:repetition, binary(), pos_integer()}
 
   @type result :: :done | :refused | {:limit, limit()} | {:error, term()}
 
@@ -81,6 +90,10 @@ defmodule Elia.Agent.Loop do
       # LOOP-22, LIMIT-12: the tokens the provider has reported for this turn so
       # far — what its steps cost, input and output together.
       tokens: 0,
+      # LOOP-24, LOOP-25: the repeated calls this turn has made, by their name
+      # and input, with the last result each returned and how many times in a row
+      # it has returned it.
+      repeats: %{},
       # RETRY-1, RETRY-4: the waits before each retry of a failed model call;
       # [] retries nothing.
       retry_delays: retry_delays(Keyword.get(opts, :step_retry)),
@@ -108,14 +121,24 @@ defmodule Elia.Agent.Loop do
     step(ctx, history, 1)
   end
 
-  # LOOP-3, LOOP-19, LOOP-20, LOOP-22: the limits are checked at the start of
-  # every step.
+  # LOOP-3, LOOP-19, LOOP-20, LOOP-22, LOOP-25: the limits are checked at the
+  # start of every step — the step that made the fourth identical result has
+  # finished by then (LOOP-25).
   defp step(ctx, history, step) do
     cond do
       step > ctx.max_steps -> limit(ctx, history, {:steps, ctx.max_steps})
       over_budget?(ctx) -> limit(ctx, history, {:time, ctx.budget_ms})
       over_tokens?(ctx) -> limit(ctx, history, {:tokens, ctx.token_budget})
-      true -> run_step(ctx, history, step)
+      true -> check_standing_still(ctx, history, step)
+    end
+  end
+
+  # LOOP-25: a repeated call whose identical result has come back four times
+  # means the turn stands still.
+  defp check_standing_still(ctx, history, step) do
+    case standing_still(ctx) do
+      nil -> run_step(ctx, history, step)
+      limit -> limit(ctx, history, limit)
     end
   end
 
@@ -125,17 +148,36 @@ defmodule Elia.Agent.Loop do
   defp limit(_ctx, _history, limit), do: {:limit, limit}
 
   # LOOP-19: ask the session to pause the turn and wait for the user's decision.
-  # A resume starts the step count, the wall-clock budget and the token total
-  # over (LOOP-20, LOOP-22).
+  # A resume starts the step count, the wall-clock budget, the token total and
+  # the count of a repeated call (LOOP-20, LOOP-22, LOOP-25) over.
   defp pause(ctx, history, limit) do
     send(ctx.session, {:loop_pause, self(), limit})
 
     receive do
       {:pause_decision, :continue} ->
-        step(%{ctx | started_ms: now_ms(), approved_ms: 0, tokens: 0}, history, 1)
+        step(
+          %{ctx | started_ms: now_ms(), approved_ms: 0, tokens: 0, repeats: %{}},
+          history,
+          1
+        )
 
       {:pause_decision, :fail} ->
         {:limit, limit}
+    end
+  end
+
+  # LOOP-25: which repeated call (if any) has returned the identical result
+  # enough times in a row for the turn to be standing still — the worst one,
+  # when a step made several calls stand still at once.
+  defp standing_still(ctx) do
+    standing =
+      for {{name, _input}, %{count: count}} <- ctx.repeats,
+          count >= @standing_still,
+          do: {count, name}
+
+    case Enum.sort(standing, :desc) do
+      [{count, name} | _] -> {:repetition, name, count}
+      [] -> nil
     end
   end
 
@@ -252,6 +294,7 @@ defmodule Elia.Agent.Loop do
 
           calls ->
             {results, waits} = run_tools(ctx, tools, calls, stop_reason)
+            {results, ctx} = note_repeats(ctx, calls, results)
             tool_message = %Message{role: :tool, content: results}
 
             append(ctx, tool_message)
@@ -418,6 +461,52 @@ defmodule Elia.Agent.Loop do
     do: Compaction.view(history, ctx.compaction).messages
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
+
+  # LOOP-24, LOOP-25: a call this turn has already made — same tool, same input
+  # — is a repeated call. When its result is byte-identical to what that call
+  # returned the time before, the loop appends its own notice to the result the
+  # model is sent, and `ctx.repeats` carries the count LOOP-25's limit is
+  # measured on. The call itself still runs, and the tool's own output is left
+  # as the tool returned it.
+  defp note_repeats(ctx, calls, results) do
+    {results, repeats} =
+      calls
+      |> Enum.zip(results)
+      |> Enum.map_reduce(ctx.repeats, &note_repeat/2)
+
+    {results, %{ctx | repeats: repeats}}
+  end
+
+  defp note_repeat({call, result}, repeats) do
+    key = {call.name, call.input}
+    content = result.content
+
+    case Map.get(repeats, key) do
+      # The first time this turn makes this call there is nothing to compare
+      # with, so its result is the tool's own.
+      nil ->
+        {result, Map.put(repeats, key, %{content: content, count: 1})}
+
+      %{content: ^content, count: count} ->
+        count = count + 1
+        notice = repetition_notice(call.name, count)
+
+        {%{result | content: content <> "\n\n" <> notice},
+         Map.put(repeats, key, %{content: content, count: count})}
+
+      # The answer changed, so this call isn't standing still any more.
+      %{} ->
+        {result, Map.put(repeats, key, %{content: content, count: 1})}
+    end
+  end
+
+  # LOOP-24: the notice names the tool, says how many times in this turn the
+  # identical call has now returned the identical result, and says that nothing
+  # has changed since. It is the loop's notice, not the tool's output.
+  defp repetition_notice(name, count) do
+    "[Elia harness] The identical call to #{name} has now returned the identical " <>
+      "result #{times(count)} in this turn, and nothing has changed since."
+  end
 
   # LOOP-10, LOOP-20, LOOP-21, TIME-3: returns the step's tool results and what
   # the step cost — how long the loop waited for the user (their approval

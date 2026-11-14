@@ -1152,7 +1152,13 @@ defmodule Elia.Agent.Session do
   defp pause_message({:tokens, tokens}),
     do: "Token limit reached (#{Elia.LLM.Tokens.format(tokens)} tokens)."
 
-  # STOP-2, LOOP-3, LOOP-20, LOOP-22: what a turn that a limit ended says it was.
+  # LIMIT-13: the turn has made the same call for the same answer once too
+  # often (LOOP-24, LOOP-25).
+  defp pause_message({:repetition, name, n}),
+    do: "Standing still: #{name} returned the same result #{n} times."
+
+  # STOP-2, LOOP-3, LOOP-20, LOOP-22, LIMIT-13: what a turn that a limit ended
+  # says it was.
   defp limit_message({:steps, max}), do: "Stopped after #{max} steps without finishing"
 
   defp limit_message({:time, ms}),
@@ -1160,6 +1166,9 @@ defmodule Elia.Agent.Session do
 
   defp limit_message({:tokens, tokens}),
     do: "Stopped after #{Elia.LLM.Tokens.format(tokens)} tokens: the token budget ran out"
+
+  defp limit_message({:repetition, name, n}),
+    do: "Stopped standing still: #{name} returned the same result #{n} times"
 
   # STOP-1, SESS-38: a turn that didn't finish says so in the transcript, marked
   # with the kind of stop it was (STOP-2), saved as any appended message is and
@@ -1208,6 +1217,12 @@ defmodule Elia.Agent.Session do
   defp pause_notice_text({:tokens, tokens}),
     do:
       pause_message({:tokens, tokens}) <>
+        " The turn is paused: Continue starts the count over, Fail ends it."
+
+  # LIMIT-13: the standing-still limit is worded as the others are (LIMIT-10).
+  defp pause_notice_text({:repetition, name, n}),
+    do:
+      pause_message({:repetition, name, n}) <>
         " The turn is paused: Continue starts the count over, Fail ends it."
 
   defp set_status(state, status) do
