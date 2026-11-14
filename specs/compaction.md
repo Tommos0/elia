@@ -36,6 +36,12 @@ big it grew. The turn being run is cold up to its most recent step now
 (COMPACT-31): a step's own older machinery is elided behind the model, while what
 it asked for and got last stays in front of it (COMPACT-32).
 
+Elision is a matter of what pays: replacing a small item with a note saves almost
+nothing and loses something the model may still need, while a big stale tool dump
+is worth its weight. So a rung takes its largest items first and stops as soon as
+the target is met (COMPACT-35), and an item below the size floor is left for last
+(COMPACT-34).
+
 ## Requirements
 
 ### The request view
@@ -118,20 +124,38 @@ it asked for and got last stays in front of it (COMPACT-32).
 
 ### The ladder
 
-Compaction elides the cold prefix (the turns older than the working set) in this
-order, stopping as soon as the estimate is at or below the target:
+Compaction elides the cold prefix (the turns older than the working set),
+stopping as soon as the estimate is at or below the target (COMPACT-8). The
+order is a composition of three rules: the items at or above the size floor
+before any item below it (COMPACT-34); within a tier, the rungs below in the
+order they are given (COMPACT-14, COMPACT-15, COMPACT-16); and within a rung,
+the largest items first (COMPACT-35). A rung therefore takes a few big items
+where it once took every one of them.
 
-- **COMPACT-14** First, **reasoning blocks** in the cold prefix are dropped
-  (they are the model's self-talk about work already done and acted on, and the
+- **COMPACT-14** First, **reasoning blocks** in the cold prefix are elided (they
+  are the model's self-talk about work already done and acted on, and the
   provider already tolerates dropping stale thinking).
-- **COMPACT-15** Then old **tool results** are elided: each is replaced by a
-  one-line note naming the call and its input summary, with an explicit marker
-  saying the output was elided and the tool should be re-run or the file
-  re-read. Tool call *inputs* are not elided on their own — a call and its
-  result go together (COMPACT-4) and a `write_file`/`edit_file` input is the
+- **COMPACT-15** Then old **tool results** are elided: each one elided is
+  replaced by a one-line note naming the call and its input summary, with an
+  explicit marker saying the output was elided and the tool should be re-run or
+  the file re-read. Tool call *inputs* are not elided on their own — a call and
+  its result go together (COMPACT-4) and a `write_file`/`edit_file` input is the
   record of what was written.
-- **COMPACT-16** Then whole **old turns** (the assistant text and calls of a
-  turn) are dropped, oldest first, down to the working set.
+- **COMPACT-16** Then whole old **steps** — an assistant message with its text
+  and calls, and the tool results answering them — are dropped together, never a
+  call without its result (COMPACT-4).
+- **COMPACT-34** An item of fewer than `elide_floor` estimated tokens (1,000 by
+  default, an option like the others, COMPACT-9) is elided only when the items at
+  or above the floor do not reach the target (COMPACT-35).
+- **COMPACT-35** A pass takes its items largest first (COMPACT-14..16,
+  COMPACT-34) and stops as soon as the estimate (CTX-1) is at or below the
+  target, so it elides no more than reaching the target needs.
+- **COMPACT-36** The items a pass elided are recorded in the chat's compaction
+  state (COMPACT-24), and a later pass adds to them rather than deriving them
+  again, so nothing a pass elided comes back (COMPACT-12, COMPACT-33).
+- **COMPACT-37** A turn that ages out of the working set is not elided by aging
+  out: its items become eligible for a pass (COMPACT-14..16, COMPACT-31) and are
+  elided only when a pass needs them (COMPACT-35).
 
 ### Within a turn
 
@@ -144,26 +168,26 @@ order, stopping as soon as the estimate is at or below the target:
   calls and results are sent in full and approval state keyed by `call_id` stays
   valid (COMPACT-4, COMPACT-5). The pass is **elision only**: it may take the
   ladder (COMPACT-14, COMPACT-15, COMPACT-16) deeper towards the target
-  (COMPACT-8), starting from the level already reached — the ladder never moves
-  back up (COMPACT-12) — but it never folds a summary (COMPACT-17), so no model
-  call happens inside a step, and a ladder that cannot reach the target leaves
-  the pruned view and no error (COMPACT-20). What it is measured against is the
-  view's tokens plus the request's overhead (CTX-1): at or below the trigger
-  nothing changes and nothing is reported; when the ladder advances,
-  `Elia.Agent.Loop` reports the new state to `Elia.Agent.Session`, which saves it
-  and broadcasts `{:compaction, state}`, so the transcript's annotations and the
-  context estimate stay honest about what the model was sent (COMPACT-24,
-  COMPACT-25, COMPACT-26) and a changed request view resets the CTX-10 provider
-  adjustment (COMPACT-27).
+  (COMPACT-8), adding to what the chat has already elided — the ladder never
+  moves back up (COMPACT-12, COMPACT-36) — but it never folds a summary
+  (COMPACT-17), so no model call happens inside a step, and a ladder that cannot
+  reach the target leaves the pruned view and no error (COMPACT-20). What it is
+  measured against is the view's tokens plus the request's overhead (CTX-1): at
+  or below the trigger nothing changes and nothing is reported; when the ladder
+  advances, `Elia.Agent.Loop` reports the new state to `Elia.Agent.Session`,
+  which saves it and broadcasts `{:compaction, state}`, so the transcript's
+  annotations and the context estimate stay honest about what the model was sent
+  (COMPACT-24, COMPACT-25, COMPACT-26) and a changed request view resets the
+  CTX-10 provider adjustment (COMPACT-27).
 
 ### The turn being run
 
 - **COMPACT-31** The turn being run is cold up to its most recent step: a pass
-  (COMPACT-29) elides the machinery of that turn's own older steps, oldest first,
-  when the view is over the trigger (COMPACT-6, COMPACT-29), and the manual
-  action's pass (COMPACT-10) elides them too, at the depth it takes, since no
-  turn is running then and the chat's last turn stands where the turn being run
-  does.
+  (COMPACT-29) elides the machinery of that turn's own older steps — the ones
+  COMPACT-34 and COMPACT-35 select — when the view is over the trigger
+  (COMPACT-6, COMPACT-29), and the manual action's pass (COMPACT-10) elides them
+  too, at the depth it takes, since no turn is running then and the chat's last
+  turn stands where the turn being run does.
 - **COMPACT-32** Inside the turn being run the ladder never elides the turn's
   user message (COMPACT-11, COMPACT-13), a `tool_call` block (COMPACT-15), or a
   message from its most recent step on: that step's assistant message, its calls
@@ -208,9 +232,9 @@ order, stopping as soon as the estimate is at or below the target:
 
 ### State and the UI
 
-- **COMPACT-24** The summary, the ledger, the pin set and the aged-out marker
-  are saved with the conversation (STORE) and reloaded on restart, so a
-  restart neither re-summarizes nor loses pins.
+- **COMPACT-24** The summary, the ledger, the pin set, what the ladder elided
+  (COMPACT-36) and the aged-out marker are saved with the conversation (STORE)
+  and reloaded on restart, so a restart neither re-summarizes nor loses pins.
 - **COMPACT-25** The transcript annotates each message and block with its
   request-view status — **Sent**, **Truncated** (with the elided amount and a
   way to reveal the full text), **Elided** ("not sent to the model"),
@@ -236,6 +260,14 @@ order, stopping as soon as the estimate is at or below the target:
   those values give for the chat's model window (COMPACT-6), or says that no
   window is known (COMPACT-7).
 
+## Configuration
+
+`config :elia, Elia.LLM.Compaction` holds the defaults every chat starts from,
+the size floor among them (`elide_floor`, 1,000 tokens, COMPACT-34). A chat can
+override any of them (`Elia.Agent.set_compaction/2`, COMPACT-9); the chat
+settings page sets the budget, the fraction, the target and the working set
+(COMPACT-30).
+
 ## Out of scope
 
 - Summarizing the whole conversation into a fresh one ("start over"): a manual
@@ -246,11 +278,13 @@ order, stopping as soon as the estimate is at or below the target:
 ## Stored data
 
 The chat's compaction state is saved with the conversation and reloaded on
-restart (COMPACT-24), and the rung inside the turn being run keeps its progress
-there (COMPACT-33). The change is **backward compatible**: a state saved before
-that field existed loads with the field at its default — nothing elided inside
-the turn — and a build that does not know the field ignores it (`from_map/1`
-reads the fields it knows), so no migration is needed.
+restart (COMPACT-24): the items the ladder elided (COMPACT-36) and how far the
+rung inside the turn being run went (COMPACT-33) are part of it. The change is
+**backward compatible**: a state saved before the item list existed keeps the
+elision its own level and boundaries describe — the ladder materialises those
+items when the chat loads, so nothing a chat had elided comes back — and a build
+that does not know a field ignores it (`from_map/1` reads the fields it knows),
+so no migration is needed.
 
 ## Implementation
 
@@ -263,15 +297,18 @@ COMPACT-29), `Elia.Store` (saving the summary, ledger and pins),
 (annotations, the summary notice, "compact now"),
 `EliaWeb.ChatSettingsLive` (this chat's compaction options, COMPACT-30).
 
-The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is a `level`
-(how far down the ladder the cold region has been taken), the `covered` index
-the cold region ended at last time (the aged-out marker), the `folded` index the
-summary has already taken in, the `summary`, the `ledger`, the `pins`, the
-chat's own option overrides and how far the turn being run has been elided
-inside itself (COMPACT-31, COMPACT-33). The cold prefix's rules apply to
-messages before `covered`, the turn being run's own older steps are elided up to
-its most recent one (COMPACT-32), and the ladder never moves back up: a region
-that was elided or summarized stays that way.
+The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is the **items
+the ladder elided** (COMPACT-36) — `{message index, block index | nil}`, a block
+for a reasoning block or a tool result and the message for a whole step — a
+`level` (how far down the ladder the chat has gone), the `covered` index the cold
+region ended at last time (the aged-out marker), the `folded` index the summary
+has already taken in, the `summary`, the `ledger`, the `pins`, the chat's own
+option overrides and how far the turn being run has been elided inside itself
+(COMPACT-31, COMPACT-33). The request view elides exactly the items in that list,
+plus the user-message cap (COMPACT-11): the cold prefix's items are eligible
+before `covered`, the turn being run's own older steps up to its most recent one
+(COMPACT-32), and the ladder never moves back up — the list only grows
+(COMPACT-12, COMPACT-36).
 
 The cold prefix starts where the working set does, and
 `Elia.LLM.Compaction.working_set_start/2` finds it: the last `working_set`
@@ -281,6 +318,14 @@ COMPACT-28). The turn being run's own older steps are the rung that bounds a
 turn from inside (COMPACT-31): they are elided behind the most recent step
 (COMPACT-32), which is why a chat whose whole history is one turn is no longer
 uncompactable.
+
+A pass collects the items it may take — the eligible reasoning blocks and tool
+results, and, in the cold prefix, whole steps with the results answering their
+calls (COMPACT-4) — and takes them in the order COMPACT-34 and COMPACT-35 give:
+floor tier, then rung, then size, largest first, one at a time until the estimate
+is at or below the target. What it took is added to the state's item list
+(COMPACT-36), so the cost is a sort and one estimate per item rather than a
+re-derivation of the view for each one.
 
 Two things are deliberately not literal, and the code is where the choice
 lives:
@@ -306,9 +351,10 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 
 - `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
   boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
-  stopping point, and the rung inside the turn being run — COMPACT-1 to
-  COMPACT-8, COMPACT-11 to COMPACT-18, COMPACT-20, COMPACT-23, COMPACT-25,
-  COMPACT-29, COMPACT-31 to COMPACT-33).
+  stopping point, the rung inside the turn being run, the size floor and the
+  largest-first selection, and a state saved before the item list existed —
+  COMPACT-1 to COMPACT-8, COMPACT-11 to COMPACT-18, COMPACT-20, COMPACT-23,
+  COMPACT-25, COMPACT-29, COMPACT-31 to COMPACT-37).
 - `test/elia/agent_test.exs` (the state, its persistence, the trigger, the
   manual action, the ledger, the working set a turn keeps, and the mid-turn pass
   end to end: a later request smaller than an earlier one, the most recent step
