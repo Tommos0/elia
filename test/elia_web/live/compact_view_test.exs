@@ -72,6 +72,40 @@ defmodule EliaWeb.CompactViewTest do
     assert has_element?(view, "#items-call-r1")
   end
 
+  # UI-90: an item that renders nothing is left out of the compact view, so its
+  # time never sits alone where a hidden tool call was.
+  test "the compact view leaves no empty row where a hidden tool call was", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    Elia.Store.save(id, [
+      Message.stamp(Message.user("please read it")),
+      Message.stamp(%Message{
+        role: :assistant,
+        content: [
+          Message.text(" "),
+          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}}
+        ]
+      }),
+      Message.stamp(%Message{role: :tool, content: [Message.tool_result("r1", "contents")]}),
+      Message.stamp(%Message{role: :assistant, content: [Message.text("All read.")]})
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    # The full view shows the blank text part, with its time.
+    assert has_element?(view, "#items-m1-0")
+    assert has_element?(view, "#at-m1-0")
+
+    view |> element("#view-toggle") |> render_click()
+
+    # The compact view drops the tool call, and the empty item with it.
+    refute has_element?(view, "#items-call-r1")
+    refute has_element?(view, "#items-m1-0")
+    refute has_element?(view, "#at-m1-0")
+    assert has_element?(view, "#items-m3-0", "All read.")
+  end
+
   # UI-62: while a turn runs the compact view names the step, refreshed every
   # second, and cleared when the turn ends.
   test "the compact view summarizes the current step once a second", %{conn: conn} do

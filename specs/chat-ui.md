@@ -569,6 +569,11 @@ the hidden tool calls leave with a one-line summary of the current step.
   left alone). It is cleared when the turn ends. While it waits for approval or
   for an answer it offers a "Review" button (`#work-summary-review`) that
   switches to the full view.
+- **UI-90** In the compact view an item that would render nothing is not shown
+  at all: a message with no text of its own — a blank text part, or a message
+  whose only content is the tool calls or reasoning the compact view hides
+  (UI-61) — leaves no empty row, so its time (MSGAT-5) never sits alone where
+  the work was. The full view is unchanged (MSGAT-7).
 
 ## Implementation
 
@@ -623,7 +628,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   controls it took over, UI-2, UI-3, UI-38).
 - `test/elia_web/live/compaction_test.exs` (the transcript's annotations,
   UI-20, UI-51, UI-53, UI-56, UI-88), and
-  `test/elia_web/live/compact_view_test.exs` (the Focus view, UI-60 to UI-62).
+  `test/elia_web/live/compact_view_test.exs` (the Focus view, UI-60 to UI-62,
+  UI-90).
 - `test/elia_web/live/task_ui_test.exs` (the task card and its statuses, the
   nested rows, the header, the pause banner — UI-43 to UI-48, UI-50, UI-57 to
   UI-59, UI-64).

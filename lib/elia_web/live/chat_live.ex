@@ -2667,6 +2667,14 @@ defmodule EliaWeb.ChatLive do
   # (UI-75, ASK-10).
   defp visible?(_compact, %{kind: :tool, name: "ask_user"}), do: true
   defp visible?(compact, %{kind: kind}) when kind in [:tool, :reasoning], do: not compact
+
+  # UI-90: an item with no text of its own renders nothing once its tool calls
+  # and reasoning are hidden, so the compact view leaves it out rather than
+  # showing a row that is only its time.
+  defp visible?(true, %{kind: kind} = item)
+       when kind in [:user, :assistant, :notice, :error, :summary],
+       do: String.trim(Map.get(item, :text) || "") != ""
+
   defp visible?(_compact, _item), do: true
 
   # COMPACT-25: every item carries its request-view status, so the UI never
