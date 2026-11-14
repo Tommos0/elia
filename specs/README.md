@@ -35,6 +35,7 @@ Status: Implemented | Draft | Planned | Retired
 - **<PREFIX>-2** ...
 
 ## Configuration        (optional)
+## Terms                (optional glossary)
 ## Out of scope         (optional)
 ## Stored data          (when a change alters a stored shape)
 ## Implementation       (modules that implement it)
@@ -70,7 +71,8 @@ it.
   the one the file's IDs use (SPEC-9).
 - **Shape.** A spec is a title, a `Status:` line, a paragraph saying what the
   feature is and why, and `## Requirements`. The only other sections are
-  `Configuration`, `Out of scope`, `Stored data`, `Implementation` and `Tests`;
+  `Configuration`, `Terms` (a glossary), `Out of scope`, `Stored data`,
+  `Implementation` and `Tests`;
   subheadings within them are free (SPEC-10). A change that alters a shape that
   outlives the process says which it is in `## Stored data` — backward
   compatible, or needing migration (SPEC-11).

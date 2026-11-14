@@ -9,6 +9,7 @@ defmodule Elia.SpecHygiene.Lint do
   @sections [
     "Requirements",
     "Configuration",
+    "Terms",
     "Out of scope",
     "Stored data",
     "Implementation",

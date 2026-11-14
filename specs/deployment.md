@@ -23,6 +23,20 @@ before (DEPLOY-25, DEPLOY-26) — from the Settings page or, when a deploy has
 left that page's own UI unusable, from a plain HTML page that needs none of the
 tree's front end (`/recover`, RECOVER-10).
 
+## Terms
+
+- **live tree** — the tree the server runs from, where Elia's data lives
+  (`:runtime_root`) and where the code reloader reloads; the target of a
+  deploy. It is checked out on the branch `live`.
+- **trunk** — the branch `master` of the live tree's repository: the chats'
+  fork point, and the branch their agents merge into. A tree set up before this
+  workflow has the same name for the tree's main line, which is why it is
+  reused.
+- **chat worktree** — the isolated git worktree (branch `chat/<chat id>`) a
+  chat in Elia's own project works in; its workspace root (PROJ-12).
+- **set up for deployment** — a live tree that is checked out on `live`, has a
+  trunk, and has a trunk at or ahead of `live` (DEPLOY-14).
+
 ## Requirements
 
 ### Worktrees

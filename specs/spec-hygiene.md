@@ -52,7 +52,7 @@ Implementation).
 
 - **SPEC-10** A spec is a title, a `Status:` line, a paragraph saying what the
   feature is and why, and a `## Requirements` section. The only other `##`
-  sections it uses are `Configuration`, `Out of scope`, `Stored data`,
+  sections it uses are `Configuration`, `Terms`, `Out of scope`, `Stored data`,
   `Implementation` and `Tests`. Subheadings within any of them are free.
 - **SPEC-11** A spec whose change alters a shape that outlives the process — a
   saved chat, the settings database, a saved skill or workflow, any stored file
