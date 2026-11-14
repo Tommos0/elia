@@ -51,7 +51,8 @@ machines that have spare cores, without weakening a single test.
 
 - **SUITE-8** `mix precommit` runs its test step through `bin/test`, so the gate
   is partitioned too. `mix test` on its own is unchanged: single process, one
-  compile, which is what `run_tests` and a path or tag argument use.
+  compile, which is what a path or tag argument to `mix test` gets, and what the
+  deploy's own suite run is (VERIFY-1).
 
 ## Configuration
 

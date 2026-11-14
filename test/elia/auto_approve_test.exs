@@ -250,7 +250,7 @@ defmodule Elia.AutoApproveTest do
 
   # APPR-13
   test "only tools that can need approval can be switched on", %{id: id} do
-    assert {:error, :not_approvable} = Agent.set_auto_approve(id, "run_tests", true)
+    assert {:error, :not_approvable} = Agent.set_auto_approve(id, "reload_skills", true)
     assert {:error, :not_approvable} = Agent.set_auto_approve(id, "no_such_tool", true)
     assert :ok = Agent.set_auto_approve(id, "read_file", true)
     assert %{auto_approve: ["read_file"]} = Agent.snapshot(id)

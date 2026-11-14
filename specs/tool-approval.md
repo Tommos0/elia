@@ -32,7 +32,7 @@ refused.
   | `list_tasks`, `await_task` | never (SUBTASK-26, SUBTASK-27) |
   | `read_file`, `list_files` | only outside the workspace |
   | `write_file`, `edit_file`, `delete_file` | see FILE-5 |
-  | `reload_skills`, `run_tests`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
+  | `reload_skills`, `update_ledger`, `finish_task` | never (SUBTASK-3) |
   | `ask_user` | never (ASK-1) |
 
 ### Auto-approval

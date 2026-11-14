@@ -19,7 +19,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 
 ## Tests
 
-- A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run `run_tests` (or plain `mix precommit` — a command never inherits the server's `MIX_ENV`, ISOL-24) before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5).
+- A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run the tests — `mix test`, or plain `mix precommit` (a command never inherits the server's `MIX_ENV`, ISOL-24) — before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5).
 
 ## Recovery
 
@@ -30,7 +30,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - A deploy is the only thing that loads code into the running app (DEPLOY-8): a request recompiles and loads nothing, so edits stay invisible to the running app until a deploy. Browser live reload doesn't watch `lib/` either. Reload the page after a deploy to see UI changes.
 - **Merging your work into the trunk is your step; deploying is the user's.** When a change is done: commit it, rebase on `master` if the trunk has moved, then `git push . HEAD:master` — fast-forward only, so the trunk must be an ancestor (DEPLOY-13). `AGENTS.md` and the `self-modification` skill say the same. The harness never merges your branch.
 - The user then deploys from the Settings page (`Elia.Deploy.deploy/1`, DEPLOY-5..DEPLOY-7): Elia runs the full test suite in the live tree, fast-forwards `live` to `master` (rolling it back if the tests fail, HOT-4) and loads the result — by "Hot reload", which recompiles and loads the live tree keeping running state (DEPLOY-6), or by "Restart", which stops the runtime system with a non-zero status so `bin/serve` starts it again on the deployed code in a clean process (DEPLOY-7, RESTART-1).
-- Make all the edits for a change first, run `run_tests`, then commit and merge — a multi-file edit is on the chat's branch, so the running app can't be broken halfway. Don't expect the change to be live until the user has deployed it.
+- Make all the edits for a change first, run the tests, then commit and merge — a multi-file edit is on the chat's branch, so the running app can't be broken halfway. Don't expect the change to be live until the user has deployed it.
 - Not needed for `skills/**` (use `reload_skills`) or for tests and docs.
 - A UI change — a template, `assets/css/`, a hook — can be seen *before* it is deployed: `bin/preview` in the chat's workspace screenshots its own code in a real headless browser, in the test env, and prints a Markdown image link per page (PREVIEW, `specs/ui-preview.md`). Nothing is deployed, no API key is involved and no live data is read; the pictures land in the gitignored `tmp/preview/`, and the running app serves a chat's own ones at `/preview/<chat id>/<file>` (PREVIEW-7). Paste the links into a reply to show the user. Preview in dark mode at a mobile width by default: `ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview …` (PREVIEW-3, PREVIEW-13).
 

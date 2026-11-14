@@ -19,8 +19,8 @@ Application.put_env(
   )
 )
 
-# Real-browser tests are excluded unless a run asks for the tag, so `mix test`,
-# the `run_tests` tool and `mix precommit` never start a browser or need Node
+# Real-browser tests are excluded unless a run asks for the tag, so `mix test`
+# and `mix precommit` never start a browser or need Node
 # (BROWSER-5). Run them with
 # `ELIA_BROWSER_TESTS=1 mix test --only real_browser`.
 #

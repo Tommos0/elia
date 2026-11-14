@@ -290,7 +290,7 @@ defmodule Elia.Agent.Session do
         project: project(state),
         workspace: workspace(state),
         # ISOL-15: the tool context carries this chat's jail setting, so the
-        # shell tools and `run_tests` follow it.
+        # shell tools follow it.
         jail: Map.get(state, :jail, true),
         # TIME-2: the turn's start goes into every step's timing record, so the
         # record needs nothing from the chat's saved term, whose turn entry is

@@ -26,7 +26,7 @@ system prompt from them. It can be reloaded while the app runs.
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
-  `run_tests`, `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
+  `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
   `await_task`, [Sub-tasks](subtasks.md)), `titles` (`set_title`,
   [Chat titles](chat-titles.md)), `done` (`mark_done`,
   [Marking a chat done](chat-done.md), DONE-6), `user-input` (`ask_user`,

@@ -46,7 +46,7 @@ Playwright.
 - They speak HTTP to the **test env server**, which is the same BEAM node, so
   `Elia.FakeLLM` and the scratch workspace still apply: no deploy, no dev
   server, no API keys. They see the worktree's own code.
-- They are excluded from a plain `mix test`, so `run_tests` and `mix precommit`
+- They are excluded from a plain `mix test`, so `mix test` and `mix precommit`
   stay fast and need no Node. Run them explicitly:
 
       mix assets.build                                 # esbuild/tailwind run in dev only
@@ -87,7 +87,7 @@ a browser during `mix test`.
 
 ## Running
 
-- One file: `mix test test/path_test.exs` (or `run_tests`). Previously failed: `mix test --failed`.
+- One file: `mix test test/path_test.exs`. Previously failed: `mix test --failed`.
 - The whole suite: `bin/test` — the same tests as `mix test`, but as concurrent
   partitions (`specs/test-suite.md`, SUITE). Each partition gets its own scratch
   workspace, settings database and port (`ELIA_TEST_WORKSPACE`,
@@ -105,9 +105,9 @@ a browser during `mix test`.
 - A suite run through the `shell` tool needs a longer timeout than the shell's
   default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four
-  partitions. A `run_tests` run has its own timeouts: a per-test one handed to
-  `mix test` as `--timeout`, and the run's own, 600s by default
-  (`config :elia, Elia.Harness`, VERIFY-8, VERIFY-9). A chat's first run in a
-  fresh worktree compiles deps and app before its first test, so give it
-  `timeout_seconds` rather than letting it be killed halfway through the
-  compile (VERIFY-10).
+  partitions. A chat's first run in a fresh worktree compiles deps and app before
+  its first test, so give it `timeout_seconds` rather than letting it be killed
+  halfway through the compile. A run the harness itself makes — the deploy's
+  suite (DEPLOY-5) — is `Elia.Harness.run_tests/3`: it hands `mix test` a
+  per-test `--timeout` and runs under `config :elia, Elia.Harness, timeout: 600`
+  by default (VERIFY-1, VERIFY-8, VERIFY-9).

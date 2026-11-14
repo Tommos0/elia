@@ -1,22 +1,25 @@
 defmodule Elia.Skills.HarnessTest do
   use ExUnit.Case, async: true
 
-  # SKILL-8, PROJ-16
+  # SKILL-8, PROJ-16, VERIFY-11
   test "instructions apply in every project: a folder skill over changing code" do
     instructions = Elia.Skills.Harness.instructions()
     assert instructions =~ "skills/<name>/SKILL.md"
     assert instructions =~ "reload_skills"
-    assert instructions =~ "run_tests"
+    # VERIFY-11: a test run is the shell tool's, not this skill's.
+    assert instructions =~ "mix test"
+    assert instructions =~ "mix precommit"
+    refute instructions =~ "run_tests"
     assert instructions =~ "Folder skills need no approval"
     # The spec workflow and the code-change guardrails are self-modification's.
     refute instructions =~ "specs/README.md"
     refute instructions =~ "hot_reload"
   end
 
-  # SKILL-7, PROJ-16, COMPACT-22
-  test "tools are reload_skills, run_tests and update_ledger" do
+  # SKILL-7, PROJ-16, COMPACT-22, VERIFY-11
+  test "tools are reload_skills and update_ledger, with no test runner" do
     assert Elia.Skills.Harness.tools() |> Enum.map(& &1.name) |> Enum.sort() ==
-             ~w(reload_skills run_tests update_ledger)
+             ~w(reload_skills update_ledger)
   end
 
   # COMPACT-22, COMPACT-21

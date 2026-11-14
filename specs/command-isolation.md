@@ -8,8 +8,9 @@ and a fresh pid namespace whose `/proc` doesn't show the server. A command
 therefore can't read the settings database with the provider API keys (CONF-1),
 the saved conversations under `.elia/sessions` (STORE), or the user's
 credentials (`~/.git-credentials`, `~/.ssh`, `~/.config/gh`, `~/.netrc`) — not
-even when the command is code the model wrote itself, such as a test file run
-by `run_tests` (VERIFY), which needs no approval (APPR-7).
+even when the command is code the model wrote itself, such as a test file it
+wrote and then ran with the `shell` tool (VERIFY-11): the jail is what makes
+that safe, not the approval prompt (APPR-7).
 
 Without it the harness and the shell run as the same user, so the approval
 prompt is the only safeguard (SHELL-7): a command that reads like a build step
@@ -23,8 +24,9 @@ genuinely needs the rest of the machine (ISOL-16).
 ### Where it applies
 
 - **ISOL-1** Every process Elia runs for a tool call is jailed by default: the
-  `shell` tool (SHELL-1), `run_tests` (VERIFY-1), a folder skill's script tools
-  (FOLDER), and the `git` calls the harness itself makes in a chat's workspace
+  `shell` tool (SHELL-1), the suite a deploy runs (VERIFY-1, ISOL-14), a folder
+  skill's script tools (FOLDER), and the `git` calls the harness itself makes in
+  a chat's workspace
   (DEPLOY-9, SUBTASK). All of them go through `Elia.Shell.run/2`; the
   `System.cmd("git", …)` calls in `Elia.Tasks` and `Elia.Deploy` move behind it,
   since they bypass it today. A git call that times out counts as a failure,
@@ -81,8 +83,9 @@ genuinely needs the rest of the machine (ISOL-16).
   worktree's own: BUILD-1, BUILD-2.) The first command that compiles the
   dependencies pays for it, as part of that command: it is a tool call the chat
   already shows as running (FEED), it needs no approval of its own, and it
-  answers to the command's own timeout (SHELL-3) — ten minutes for `run_tests`
-  (VERIFY-1), and whatever the model asks for with the `shell` tool.
+  answers to the command's own timeout (SHELL-3) — ten minutes for the deploy's
+  suite run (VERIFY-1, ISOL-14), and whatever the model asks for with the
+  `shell` tool.
 
   A dependency the chat adds is fetched into its own layer, so it stays that
   chat's until the change is deployed: the live tree gets it when the deploy
@@ -165,8 +168,8 @@ genuinely needs the rest of the machine (ISOL-16).
   chat's setting is involved: they run the merged trunk in the live tree, which
   needs write access there.
 - **ISOL-15** The tool context carries the jail decision, like `:workspace`
-  does, so the shell tools and `run_tests` jail a call according to the chat
-  they run in. A caller with no chat — the deploy (ISOL-14) — gets the default,
+  does, so the `shell` tool jails a call according to the chat
+  it runs in. A caller with no chat — the deploy (ISOL-14) — gets the default,
   which is on.
 
 ### One mount at a time
@@ -281,8 +284,8 @@ bubblewrap is missing (ISOL-12).
   itself needs. It needs a second user, a sudoers rule and group-shared
   worktrees; the mount namespace gets the secrets out of reach with no
   deployment change, so it comes first.
-- **Which tools need approval.** With the jail on, `run_tests` runs
-  model-written code where it can't reach a secret, so APPR-7 is left as it is.
+- **Which tools need approval.** With the jail on, a test suite the model wrote
+  runs where it can't reach a secret, so APPR-7 is left as it is.
 - **Hex's own store (future work).** A jailed command gets no Hex store to keep.
   `$HOME` inside the jail is a fresh empty directory holding only the binds
   (ISOL-4), so the store Hex makes — `~/.hex/cache.bin`, the registry, and
@@ -359,9 +362,9 @@ and its removal, ISOL-7, DEPLOY-10),
 Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
 workspace writable, a command writing inside the shared `deps` and leaving it
 unchanged, a timeout still cleaning up, a command waiting for the mount lock
-before it runs, and two commands started at once in one worktree both running —
-ISOL-26), `test/elia/harness_test.exs`
-(`run_tests` jailed), `test/elia/deployment_test.exs` (the worktree
+before it runs, two commands started at once in one worktree both running, and
+`Elia.Harness.run_tests/3` jailed — ISOL-26),
+`test/elia/deployment_test.exs` (the worktree
 administration and the deploy's fetch, DEPLOY-18),
 `test/elia/tasks_git_test.exs` (the harness's git calls),
 `test/elia/self_modification_test.exs` (the file

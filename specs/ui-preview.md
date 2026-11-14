@@ -57,7 +57,7 @@ have something to render.
   the running app couldn't serve (PREVIEW-7).
 - **PREVIEW-6** A preview is excluded from the default test run like the
   browser tests (BROWSER-5): `bin/preview` runs it through the browser layer's
-  case, tagged `:preview`, so `mix test`, `run_tests`, `mix precommit` and a
+  case, tagged `:preview`, so `mix test`, `mix precommit` and a
   deploy's suite never start a browser. Failures say what to fix instead of
   reading as assertions: a missing `assets/node_modules` is installed first
   (PREVIEW-14) and, if that is not possible, names `npm install` in that

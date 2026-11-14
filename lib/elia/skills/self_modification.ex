@@ -5,8 +5,7 @@ defmodule Elia.Skills.SelfModification do
   workflow. A chat has this skill only when its project is Elia's own; other
   projects get `Elia.Skills.Harness` alone (PROJ-16).
 
-  It carries no tools of its own: what it needs done is done with `run_tests`
-  (`Elia.Skills.Harness`) and the shell.
+  It carries no tools of its own: what it needs done is done with the shell.
   """
 
   @behaviour Elia.Skill
@@ -21,17 +20,19 @@ defmodule Elia.Skills.SelfModification do
   def instructions do
     """
     Changing Elixir code (`lib/`, `config/`, `test/`) needs the user's approval. \
-    Nothing verifies a turn and nothing is rolled back, so run `run_tests` (or \
-    plain `mix precommit`: no command inherits the server's `MIX_ENV`, so the \
-    alias's `preferred_envs` picks `test`, ISOL-24) yourself before finishing a \
-    change.
+    Nothing verifies a turn and nothing is rolled back, so run the tests \
+    yourself — `mix test`, or plain `mix precommit` (no command inherits the \
+    server's `MIX_ENV`, so the alias's `preferred_envs` picks `test`, ISOL-24) — \
+    before finishing a change, and give a suite run a longer `timeout_seconds` \
+    than the shell's default: a first run in a fresh worktree compiles deps and \
+    app before its first test.
 
     A chat in this project works in its own git worktree, not in the tree the \
     server runs from (DEPLOY-1). Running code therefore never changes while you \
     edit: an Elixir change reaches the running app only through a deploy, which \
     the user runs from Settings — it brings the trunk `master` to `live` and \
     then hot reloads or restarts the server (DEPLOY-5–DEPLOY-7). So make all the \
-    edits for a change first, run `run_tests`, then commit your work and merge \
+    edits for a change first, run the tests, then commit your work and merge \
     your branch into the trunk yourself: rebase on `master` if it has moved, \
     then `git push . HEAD:master`, which is fast-forward only (DEPLOY-13). That \
     is where your part ends — tell the user the change is ready and let them \

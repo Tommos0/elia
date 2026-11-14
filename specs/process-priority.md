@@ -26,8 +26,9 @@ low I/O class are what an unprivileged process may set for itself.
   the most there is.
 - **PRIO-2** It covers every process Elia spawns, not just the `shell` tool:
   the single spawn point is `Elia.Shell.execute/3`, which every tool call and
-  harness step goes through (ISOL-1) — the `shell` tool, `run_tests`
-  (VERIFY-1), a folder skill's script tools (FOLDER), the harness's own git
+  harness step goes through (ISOL-1) — the `shell` tool, the suite a deploy
+  runs (`Elia.Harness.run_tests/3`, VERIFY-1, ISOL-14), a folder skill's script
+  tools (FOLDER), the harness's own git
   calls (DEPLOY-9), the worktree dependency compile (ISOL-7) and a preview the
   chat runs by command (PREVIEW).
 - **PRIO-3** The whole process tree gets it, jailed or not: `nice` (and

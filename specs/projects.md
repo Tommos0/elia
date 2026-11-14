@@ -72,8 +72,9 @@ kept apart from the ones that apply in every project.
   SKILL-10–SKILL-13 apply to P's folder instead of Elia's root).
 - **PROJ-16** The `harness` skill keeps the instructions that apply in every
   project — prefer a folder skill over changing code, reload skills, and run
-  the tests before finishing — with the tools `reload_skills`, `run_tests` and
-  `update_ledger` (SKILL-7, COMPACT-22).
+  the tests before finishing — with the tools `reload_skills` and
+  `update_ledger` (SKILL-7, COMPACT-22): a test run is the `shell` tool's
+  (VERIFY-11).
 - **PROJ-17** A built-in `self-modification` skill carries what only applies to
   Elia's own code: changing Elixir files, the spec-driven workflow and merging
   to the trunk (`master`). It has no tools of its own. A chat has it only when

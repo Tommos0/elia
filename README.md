@@ -143,7 +143,7 @@ mix assets.build && ELIA_BROWSER_TESTS=1 mix test --only real_browser
 ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat
 ```
 
-The real-browser tests are excluded from a plain `mix test` so `run_tests` and
+The real-browser tests are excluded from a plain `mix test` so `mix test` and
 `mix precommit` stay fast and need no Node (BROWSER, `specs/browser-tests.md`).
 `bin/preview` screenshots the workspace's own code in a real headless browser,
 in the test env — no deploy, no API key — and prints a Markdown image link per
@@ -160,7 +160,7 @@ page (PREVIEW-9, `specs/ui-preview.md`).
 | `Elia.Skills.{Shell,Files,Harness,Tasks,Titles,Done,UserInput,SelfModification}` | The built-in skills |
 | `Elia.Skills.Folder` | Folder skills: `SKILL.md` and script-backed tools |
 | `Elia.Tasks` | Lock and spawn/await for sub-task chats (`spawn_task`, `finish_task`) |
-| `Elia.Harness` | Running the test suite (`run_tests`) |
+| `Elia.Harness` | Running the test suite (`Elia.Harness.run_tests/3`, the deploy's gate; a chat runs it with the `shell` tool) |
 | `Elia.Deploy` | Chat worktrees, the trunk `master` and `live`, deploying (hot reload or restart) |
 | `Elia.Deps` | The dependency layer a chat's worktree compiles against |
 | `Elia.Projects` | Project folders; every chat belongs to one and works in it (its worktree for Elia's own project) |
@@ -197,9 +197,10 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   and so is a path that resolves through a symlink out of it, so they reach no
   further than a jailed command does (FILE-12, FILE-13).
 - **Tests**: nothing runs the test suite for you at the end of a turn. The agent
-  runs `run_tests` (or plain `mix precommit`: no command inherits the server's
-  `MIX_ENV`, so the alias's `preferred_envs` picks `test`, ISOL-24) itself before
-  finishing a change, and a deploy runs the full suite in the live tree before
+  runs the tests itself — `mix test`, or plain `mix precommit` (no command
+  inherits the server's `MIX_ENV`, so the alias's `preferred_envs` picks `test`,
+  ISOL-24) — before finishing a change, and a deploy runs the full suite in the
+  live tree before
   loading anything.
 - **Deploying**: the server runs from the *live tree*; a chat in Elia's own
   project works in its own git worktree (branch `chat/<chat id>`, forked from

@@ -81,7 +81,7 @@ defmodule EliaWeb.AutoApproveTest do
       assert has_element?(view, "#auto-approve-#{tool}[role='switch'][aria-checked='false']")
     end
 
-    for tool <- ~w(run_tests reload_skills) do
+    for tool <- ~w(reload_skills update_ledger) do
       refute has_element?(view, "#auto-approve-#{tool}")
     end
 

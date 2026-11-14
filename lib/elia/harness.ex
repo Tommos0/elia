@@ -1,19 +1,21 @@
 defmodule Elia.Harness do
   @moduledoc """
-  Running the test suite in a chat's workspace. Loading code into the running
-  app is a deploy, and lives in `Elia.Deploy`; a turn is not verified and
-  nothing is rolled back (see `specs/verification.md`).
+  Running the test suite. The deploy's gate is what calls this in the app
+  (DEPLOY-5, ISOL-14); a chat runs the tests itself with the `shell` tool, and
+  no tool exposes this any more (VERIFY-11, `specs/verification.md`). Loading
+  code into the running app is a deploy, and lives in `Elia.Deploy`; a turn is
+  not verified and nothing is rolled back.
 
   A run has two clocks (VERIFY-8, VERIFY-9): the per-test timeout handed to
   `mix test` as `--timeout`, and the run's own, which stops a suite that would
-  otherwise hold the turn. Both are settings, and both are bounded, so a call
+  otherwise hold the turn. Both are settings, and both are bounded, so a caller
   asks for one rather than running into it:
 
       config :elia, Elia.Harness,
         timeout: 600,              # seconds, the whole run
-        max_timeout: 1_800,        # seconds, the most a call may ask for
+        max_timeout: 1_800,        # seconds, the most a caller may ask for
         test_timeout: 60_000,      # ms, `mix test --timeout`, per test
-        max_test_timeout: 600_000  # ms, the most a call may ask for
+        max_test_timeout: 600_000  # ms, the most a caller may ask for
   """
 
   alias Elia.Workspace
@@ -40,9 +42,9 @@ defmodule Elia.Harness do
   @doc """
   Runs `mix test` in `root` (Elia's own root by default). `args` may be test
   paths under `test/` (optionally `path:line`) and a few safe flags; anything
-  else is rejected so the tool cannot run arbitrary code. `opts[:jail]` is the
-  chat's jail setting (ISOL-15): `false` runs the suite unjailed, and without a
-  chat the default is on (ISOL-14).
+  else is rejected so a caller cannot run arbitrary code — the deploy passes
+  none (DEPLOY-5). `opts[:jail]` is the chat's jail setting (ISOL-15): `false`
+  runs the suite unjailed, and without a chat the default is on (ISOL-14).
 
   `opts[:timeout_seconds]` is the run's own timeout and `opts[:test_timeout_ms]`
   the per-test one (VERIFY-8, VERIFY-9); nil or absent takes the configured
