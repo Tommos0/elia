@@ -302,7 +302,7 @@ defmodule Elia.AgentTest do
   # LIMIT-9, LIMIT-10, SESS-37, STOP-1, STOP-2
   test "a chat that sets no limits pauses at the loop's default 100 steps, and says so", %{} do
     id = start_fake_skill_session([])
-    push_repeating_tool_call(100)
+    push_step_tool_calls(100)
 
     :ok = Agent.send_message(id, "go")
 
@@ -337,7 +337,7 @@ defmodule Elia.AgentTest do
   test "the max_steps option sets the turn's step limit, and turning pausing off keeps the ending",
        %{} do
     id = start_fake_skill_session(max_steps: 3, pause_on_limit: false)
-    push_repeating_tool_call(4)
+    push_step_tool_calls(4)
 
     :ok = Agent.send_message(id, "go")
 
@@ -354,7 +354,7 @@ defmodule Elia.AgentTest do
   # LOOP-19, SESS-27
   test "pause_on_limit pauses at the step limit, and a resume starts the count over", %{} do
     id = start_fake_skill_session(max_steps: 2, pause_on_limit: true)
-    push_repeating_tool_call(2)
+    push_step_tool_calls(2)
 
     :ok = Agent.send_message(id, "go")
 
@@ -382,14 +382,14 @@ defmodule Elia.AgentTest do
   # message, so the transcript tells the whole story.
   test "each pause writes its own message", %{} do
     id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
-    push_repeating_tool_call(1)
+    push_step_tool_calls(1)
 
     :ok = Agent.send_message(id, "go")
     assert_receive {:agent, ^id, {:status, :paused}}, 10_000
 
     # Continue: the count starts over, so the next step runs and the one after
     # it pauses again.
-    push_repeating_tool_call(1)
+    push_step_tool_calls(1)
     :ok = Agent.resume(id)
     assert_receive {:agent, ^id, {:status, :paused}}, 10_000
 
@@ -403,7 +403,7 @@ defmodule Elia.AgentTest do
   # LOOP-19, SESS-27, STOP-1, STOP-2
   test "failing a paused turn ends it with the limit's error", %{} do
     id = start_fake_skill_session(max_steps: 1, pause_on_limit: true)
-    push_repeating_tool_call(1)
+    push_step_tool_calls(1)
 
     :ok = Agent.send_message(id, "go")
     assert_receive {:agent, ^id, {:status, :paused}}, 10_000
@@ -421,6 +421,109 @@ defmodule Elia.AgentTest do
     stopped = List.last(messages)
     assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
     assert Message.text_content(stopped) =~ "Stopped after 1 steps without finishing"
+  end
+
+  # LOOP-24: the loop recognises a call it has made already in this turn — same
+  # tool, same input. When that call's result comes back byte-identical, the
+  # result the model is sent carries the loop's own notice: how many times the
+  # identical call has now returned the identical result, and that nothing has
+  # changed since. A call that changed its input is not a repeated call.
+  test "a repeated call's identical result carries the loop's notice", %{} do
+    id = start_fake_skill_session([])
+    push_fake_calls([%{"n" => 1}, %{"n" => 1}, %{"n" => 2}])
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    requests = FakeLLM.requests()
+    # The first time the turn makes the call, its result is the tool's own.
+    assert tool_result(Enum.at(requests, 1)) == "ok"
+
+    # The identical call after it says how often it has now returned it, and
+    # that the result hasn't changed since — the notice is the loop's, appended
+    # to the tool's own output, which is still there.
+    second = tool_result(Enum.at(requests, 2))
+    assert String.starts_with?(second, "ok")
+
+    assert second =~
+             "The identical call to fake_tool has now returned the identical result 2 times"
+
+    assert second =~ "nothing has changed since"
+
+    # A call that changed its input is not the same call, so it carries nothing.
+    assert tool_result(Enum.at(requests, 3)) == "ok"
+  end
+
+  # LOOP-25, LIMIT-10, LIMIT-13, SESS-27: four byte-identical results from a
+  # repeated call mean the turn stands still. The step that made it four
+  # finished, and the turn is then at a limit like the others: it pauses for the
+  # user, the pause is written into the transcript, and a resume starts the
+  # count over.
+  test "four identical results pause the turn, and a resume starts the count over", %{} do
+    id = start_fake_skill_session(pause_on_limit: true)
+    push_repeating_tool_call(4)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
+
+    assert_receive {:agent, ^id,
+                    {:paused, "Standing still: fake_tool returned the same result 4 times."}},
+                   10_000
+
+    assert Agent.snapshot(id).pause ==
+             "Standing still: fake_tool returned the same result 4 times."
+
+    assert id in Agent.paused()
+
+    # LIMIT-10, LIMIT-13: the pause is in the transcript as a harness message,
+    # marked with the limit it names, worded as the other limits are (LIMIT-9).
+    last = List.last(Elia.Store.load(id))
+
+    assert %Message{
+             role: :user,
+             meta: %{harness: true, limit: {:repetition, "fake_tool", 4}}
+           } = last
+
+    assert Message.text_content(last) =~
+             "Standing still: fake_tool returned the same result 4 times. The turn is " <>
+               "paused: Continue starts the count over, Fail ends it."
+
+    # Continue: the count starts over, so the next identical call is the first
+    # of a new count and the turn carries on to its end. A count that carried
+    # over would have paused it again at once instead.
+    push_repeating_tool_call(1)
+    FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
+    :ok = Agent.resume(id)
+
+    await_status(id, :idle)
+    refute id in Agent.paused()
+
+    # The resumed turn's result is the first of a new count: no notice on it.
+    assert tool_result(Enum.at(FakeLLM.requests(), 5)) == "ok"
+  end
+
+  # LOOP-25, LIMIT-13, STOP-1, STOP-2: with pausing off, the same limit ends the
+  # turn instead of pausing it, and that ending is written too.
+  test "without pause_on_limit, standing still ends the turn", %{} do
+    id = start_fake_skill_session(pause_on_limit: false)
+    push_repeating_tool_call(4)
+
+    :ok = Agent.send_message(id, "go")
+
+    assert_receive {:agent, ^id,
+                    {:error, "Stopped standing still: fake_tool returned the same result 4 times"}},
+                   10_000
+
+    await_status(id, :idle)
+    refute id in Agent.paused()
+
+    stopped = List.last(Elia.Store.load(id))
+    assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
+
+    assert Message.text_content(stopped) =~
+             "Stopped standing still: fake_tool returned the same result 4 times"
   end
 
   # LOOP-20, SESS-27
@@ -670,15 +773,33 @@ defmodule Elia.AgentTest do
     id
   end
 
-  # Scripts the model to ask for the fake skill's tool `times` times, so only
-  # the step limit ends the turn.
-  defp push_repeating_tool_call(times) do
-    fun = fn _request, _on_event ->
-      message = FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", %{})])
-      {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
+  # LOOP-24: scripts the model to ask for the fake skill's tool once per step,
+  # with the given input each time.
+  defp push_fake_calls(inputs) do
+    for input <- inputs do
+      FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c", "fake_tool", input)]))
     end
+  end
 
-    for _ <- 1..times, do: FakeLLM.push(fun)
+  # Scripts the model to ask for the fake skill's tool `times` times, a
+  # different call each step — never the same call with the same input twice, so
+  # no repetition (LOOP-24) and only the step limit ends the turn.
+  defp push_step_tool_calls(times) do
+    push_fake_calls(for step <- 1..times, do: %{"step" => step})
+  end
+
+  # Scripts the model to ask for the fake skill's tool `times` times with the
+  # same input every step, so every result is identical to the one before it
+  # (LOOP-24, LOOP-25).
+  defp push_repeating_tool_call(times) do
+    push_fake_calls(for _ <- 1..times, do: %{})
+  end
+
+  # LOOP-10: the tool result of the step the request's history carries last —
+  # one result, since these tests' calls each make one.
+  defp tool_result(request) do
+    %Message{role: :tool, content: [result]} = List.last(request.messages)
+    result.content
   end
 
   # LOOP-22, LIMIT-12: scripts the model to ask for the fake skill's tool `times`

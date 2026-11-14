@@ -122,16 +122,22 @@ defmodule Elia.TasksTest do
   # The tool results in a chat's own history, oldest first.
   defp session_results(id), do: results(%{messages: Agent.snapshot(id).messages})
 
-  # The `index`-th result of `name` in the chat's history, decoded.
+  # The `index`-th result of `name` in the chat's history, decoded. LOOP-24: the
+  # loop appends a notice of its own after the result of a call that has
+  # returned the identical result before, so the JSON is what comes before it.
   defp session_json(id, name, index) do
     session_results(id)
     |> Enum.filter(fn {tool, _content, _error} -> tool == name end)
     |> Enum.at(index)
     |> case do
       nil -> nil
-      {_tool, content, _error} -> Jason.decode!(content)
+      {_tool, content, _error} -> content |> before_notice() |> Jason.decode!()
     end
   end
+
+  # LOOP-24: the result as the tool returned it, without the notice the loop may
+  # have appended to it.
+  defp before_notice(content), do: content |> String.split("\n\n[Elia harness]") |> hd()
 
   # The chat's most recent tool result: {content, is_error}.
   defp session_result(id) do
@@ -390,6 +396,8 @@ defmodule Elia.TasksTest do
     assert commit == String.trim(head)
 
     # SUBTASK-27: a task that already finished returns at once, from its metadata.
+    # LOOP-24: the second `await_task` is the identical call for the identical
+    # result, so the loop appended its own notice to it; the JSON is the same.
     assert session_json(parent, "await_task", 1) == result
 
     # SUBTASK-26: the single-task form adds the result once it has finished.
