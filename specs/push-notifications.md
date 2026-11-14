@@ -22,9 +22,12 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 - **PUSH-1** A VAPID key pair (P-256) is generated on first use and kept in the
   settings database (`Elia.Settings`); every later subscription uses the same
   pair, so subscriptions made before a restart keep working.
-- **PUSH-2** The Settings page has a push section (`#push-section`) that carries
-  the app's VAPID public key, URL-safe base64 without padding, for the page's
-  JavaScript, and it is the only place a subscription is made.
+- **PUSH-2** The Settings page has a push section (`#push-section`) — the
+  section of CONF-25, collapsed by default — that carries the app's VAPID public
+  key, URL-safe base64 without padding, for the page's JavaScript, and it is the
+  only place a subscription is made. The section's hook runs from the page's
+  load whether or not the section is expanded, so what it finds is there when
+  the section is opened.
 - **PUSH-3** Turning the push section's switch (`#push-toggle`) on asks the
   browser for notification permission, subscribes with the app's key, and stores
   the subscription's `endpoint`, `p256dh` and `auth` on the server, keyed by

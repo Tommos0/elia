@@ -7,7 +7,8 @@ data, so they live in a small on-disk database in the user's data directory
 rather than in the repository. A Settings page lets the user enter, check and
 remove a key for each provider, start and stop the local llama.cpp server
 (LOCAL-25), and deploy Elia's own code (DEPLOY-5): it is where the running
-server is brought up to date with the trunk `master`.
+server is brought up to date with the trunk `master`. What the page holds is
+grouped into four collapsible sections, collapsed on load (CONF-25).
 
 ## Requirements
 
@@ -132,6 +133,27 @@ server is brought up to date with the trunk `master`.
   stops moving once the operation has ended. A page that mounts while one runs
   (CONF-21) counts from the runner's own start time (DEPLOY-22), the same as
   the value it renders first.
+
+### Sections
+
+- **CONF-25** `/settings` groups what it holds into four collapsible sections,
+  in this order: "Appearance" (`#appearance`, CONF-17), "LLM providers"
+  (`#providers` — the provider cards of CONF-9 and the local model server
+  section of LOCAL-25), "Deployment" (`#deployment`, CONF-19) and "Push
+  notifications" (`#push-section`, PUSH-2). Each is collapsed when the page
+  loads: only its header is shown — an icon, the section's title, a one-line
+  description and a chevron — and clicking that header expands the section and
+  collapses it again, without a round trip to the server. Nothing about the
+  open state is stored or sent, so every load — a reload, a reconnect, a page
+  that comes back after a restart deploy (CONF-22) — starts with all four
+  collapsed.
+- **CONF-26** What a collapsed section holds is in the page all the same, so
+  its controls keep their ids (CONF-9–CONF-11, CONF-17, CONF-19, PUSH-2–PUSH-8)
+  and their state: a check that is running, a deploy in flight and the push
+  section's own reading of the browser (PUSH-20) are the same whether or not
+  the section is expanded, and expanding one after something happened in it
+  shows it as it is. The settings database location (CONF-12) stays outside the
+  sections and is always visible.
 
 ## Configuration
 

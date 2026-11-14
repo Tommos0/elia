@@ -213,50 +213,115 @@ defmodule EliaWeb.SettingsLive do
             API keys for the model providers Elia can use. Pick a model from the chat composer.
           </p>
 
-          <section
+          <%!-- CONF-25: the page is four collapsible sections, each collapsed on
+          load. Expanding one is the browser's own `<details>`, so no click
+          reaches the server and nothing about the open state is stored. --%>
+          <.collapsible
             id="appearance"
-            class="mt-8 flex items-center justify-between gap-3 rounded-2xl border border-base-300 p-5"
+            icon="hero-swatch"
+            title="Appearance"
+            blurb="Follow the system, or pick light or dark."
+            class="mt-8"
           >
-            <div>
-              <h2 class="font-medium">Appearance</h2>
-              <p class="text-xs text-base-content/50">Follow the system, or pick light or dark.</p>
-            </div>
             <Layouts.theme_toggle />
-          </section>
+          </.collapsible>
 
-          <div class="mt-4 space-y-4">
-            <section
-              :for={info <- @providers}
-              id={"provider-#{info.key}"}
-              class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div class="flex items-center gap-3">
-                  <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
-                    <.icon name={provider_icon(info.key)} class="size-5" />
+          <.collapsible
+            id="providers"
+            icon="hero-key"
+            title="LLM providers"
+            blurb="Keys for the providers Elia can use, and a llama-server it can start."
+          >
+            <div class="space-y-4">
+              <section
+                :for={info <- @providers}
+                id={"provider-#{info.key}"}
+                class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="flex items-center gap-3">
+                    <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                      <.icon name={provider_icon(info.key)} class="size-5" />
+                    </div>
+                    <div>
+                      <h2 class="font-medium">{info.name}</h2>
+                      <p class="text-xs text-base-content/50">{provider_blurb(info.key)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 class="font-medium">{info.name}</h2>
-                    <p class="text-xs text-base-content/50">{provider_blurb(info.key)}</p>
-                  </div>
+                  <.key_status key={@keys[info.key]} provider={info.key} keyless={info.keyless} />
                 </div>
-                <.key_status key={@keys[info.key]} provider={info.key} keyless={info.keyless} />
-              </div>
 
-              <div :if={info.keyless} class="mt-5">
+                <div :if={info.keyless} class="mt-5">
+                  <.form
+                    for={@base_forms[info.key]}
+                    id={"base-url-form-#{info.key}"}
+                    phx-submit="submit_base_url"
+                    class="flex flex-col gap-2 sm:flex-row sm:items-start"
+                  >
+                    <input type="hidden" name="provider" value={info.key} />
+                    <div class="flex-1">
+                      <.input
+                        field={@base_forms[info.key][:base_url]}
+                        type="text"
+                        autocomplete="off"
+                        placeholder="http://127.0.0.1:8080"
+                        class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans focus:border-primary focus:bg-base-100"
+                      />
+                    </div>
+                    <div class="flex gap-2">
+                      <button
+                        type="submit"
+                        name="action"
+                        value="check"
+                        id={"check-#{info.key}"}
+                        disabled={@pending[info.key] != nil}
+                        class="flex h-11 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                      >
+                        <.spinner :if={@pending[info.key] == :check} />
+                        <.icon
+                          :if={@pending[info.key] != :check}
+                          name="hero-shield-check"
+                          class="size-4"
+                        /> Check
+                      </button>
+                      <button
+                        type="submit"
+                        name="action"
+                        value="save"
+                        id={"save-#{info.key}"}
+                        disabled={@pending[info.key] != nil}
+                        class="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
+                      >
+                        <.spinner :if={@pending[info.key] == :save} /> Save
+                      </button>
+                    </div>
+                  </.form>
+                  <button
+                    :if={@stored_base_urls[info.key]}
+                    type="button"
+                    id={"remove-url-#{info.key}"}
+                    phx-click="remove_base_url"
+                    phx-value-provider={info.key}
+                    class="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-error transition hover:bg-error/10"
+                  >
+                    <.icon name="hero-trash" class="size-3.5" /> Remove saved URL
+                  </button>
+                </div>
+
                 <.form
-                  for={@base_forms[info.key]}
-                  id={"base-url-form-#{info.key}"}
-                  phx-submit="submit_base_url"
-                  class="flex flex-col gap-2 sm:flex-row sm:items-start"
+                  :if={!info.keyless}
+                  for={@forms[info.key]}
+                  id={"key-form-#{info.key}"}
+                  phx-submit="submit"
+                  class="mt-5 flex flex-col gap-2 sm:flex-row sm:items-start"
                 >
                   <input type="hidden" name="provider" value={info.key} />
                   <div class="flex-1">
                     <.input
-                      field={@base_forms[info.key][:base_url]}
-                      type="text"
+                      field={@forms[info.key][:api_key]}
+                      type="password"
                       autocomplete="off"
-                      placeholder="http://127.0.0.1:8080"
+                      placeholder={key_placeholder(info.key)}
                       class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans focus:border-primary focus:bg-base-100"
                     />
                   </div>
@@ -288,64 +353,246 @@ defmodule EliaWeb.SettingsLive do
                     </button>
                   </div>
                 </.form>
-                <button
-                  :if={@stored_base_urls[info.key]}
-                  type="button"
-                  id={"remove-url-#{info.key}"}
-                  phx-click="remove_base_url"
-                  phx-value-provider={info.key}
-                  class="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-error transition hover:bg-error/10"
+
+                <div
+                  :if={result = @results[info.key]}
+                  id={"result-#{info.key}"}
+                  class={[
+                    "mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
+                    elem(result, 0) == :ok && "bg-success/10 text-success",
+                    elem(result, 0) == :error && "bg-error/10 text-error"
+                  ]}
                 >
-                  <.icon name="hero-trash" class="size-3.5" /> Remove saved URL
-                </button>
+                  <.icon
+                    name={
+                      if elem(result, 0) == :ok,
+                        do: "hero-check-circle",
+                        else: "hero-exclamation-triangle"
+                    }
+                    class="mt-px size-4 shrink-0"
+                  />
+                  <span class="break-words">{elem(result, 1)}</span>
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-4">
+                  <div class="flex items-center gap-2 text-xs text-base-content/70">
+                    <.icon name="hero-banknotes" class="size-4 shrink-0" />
+                    <span :if={info.keyless} id={"balance-#{info.key}"}>
+                      Nothing to bill: it runs on this machine.
+                    </span>
+                    <.balance_line
+                      :if={!info.keyless && @keys[info.key]}
+                      provider={info.key}
+                      supported={LLM.balance_supported?(info.key)}
+                      balance={@balances[info.key]}
+                    />
+                    <span :if={!info.keyless && !@keys[info.key]} id={"balance-#{info.key}"}>
+                      Add a key to see credits.
+                    </span>
+                    <button
+                      :if={!info.keyless && @keys[info.key] && LLM.balance_supported?(info.key)}
+                      type="button"
+                      id={"refresh-balance-#{info.key}"}
+                      phx-click="refresh_balance"
+                      phx-value-provider={info.key}
+                      disabled={@balances[info.key] == :loading}
+                      class="rounded-md p-1 transition hover:bg-base-200 disabled:opacity-50"
+                      aria-label="Refresh balance"
+                    >
+                      <.icon name="hero-arrow-path" class="size-3.5" />
+                    </button>
+                  </div>
+                  <a
+                    :if={info.billing_url}
+                    id={"topup-#{info.key}"}
+                    href={info.billing_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10"
+                  >
+                    <.icon name="hero-plus-circle" class="size-4" /> Add credits
+                  </a>
+                </div>
+
+                <div
+                  :if={@keys[info.key]}
+                  class="mt-2 flex items-center justify-end gap-2"
+                >
+                  <button
+                    type="button"
+                    id={"check-current-#{info.key}"}
+                    phx-click="check_current"
+                    phx-value-provider={info.key}
+                    disabled={@pending[info.key] != nil}
+                    class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-base-200 disabled:opacity-50"
+                  >
+                    <.spinner :if={@pending[info.key] == :check_current} /> Check current key
+                  </button>
+                  <button
+                    :if={match?({:stored, _}, @keys[info.key])}
+                    type="button"
+                    id={"remove-#{info.key}"}
+                    phx-click="remove"
+                    phx-value-provider={info.key}
+                    data-confirm={"Remove the saved #{info.name} key?"}
+                    class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-error transition hover:bg-error/10"
+                  >
+                    <.icon name="hero-trash" class="size-3.5" /> Remove
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <%!-- LOCAL-25 to LOCAL-28: the llama-server Elia can start for you,
+            from a .gguf on this machine. --%>
+            <section
+              id="local-server"
+              class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                    <.icon name="hero-cpu-chip" class="size-5" />
+                  </div>
+                  <div>
+                    <h2 class="font-medium">Local model server</h2>
+                    <p class="text-xs text-base-content/50">
+                      A llama-server Elia starts for you from a .gguf on this machine.
+                    </p>
+                  </div>
+                </div>
+                <.status_badge status={@server.status} />
               </div>
 
               <.form
-                :if={!info.keyless}
-                for={@forms[info.key]}
-                id={"key-form-#{info.key}"}
-                phx-submit="submit"
-                class="mt-5 flex flex-col gap-2 sm:flex-row sm:items-start"
+                for={@server_form}
+                id="local-server-form"
+                phx-submit="save_local_server"
+                class="contents"
               >
-                <input type="hidden" name="provider" value={info.key} />
-                <div class="flex-1">
+                <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div class="sm:col-span-2">
+                    <.input
+                      field={@server_form[:binary]}
+                      type="text"
+                      label="llama-server binary"
+                      placeholder="/path/to/llama.cpp/build/bin/llama-server"
+                      class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                    />
+                  </div>
+                  <div class="sm:col-span-2">
+                    <.input
+                      field={@server_form[:model]}
+                      type="text"
+                      label="Model (.gguf)"
+                      list="local-server-models"
+                      placeholder="/path/to/model.gguf"
+                      class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                    />
+                    <datalist id="local-server-models">
+                      <option :for={path <- @server_models} value={path} />
+                    </datalist>
+                    <p :if={@server_models == []} class="mt-1 text-xs text-base-content/50">
+                      No .gguf files found — set a models directory to pick one from a list.
+                    </p>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <.input
+                      field={@server_form[:models_dir]}
+                      type="text"
+                      label="Models directory"
+                      placeholder="/path/to/models"
+                      class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                    />
+                  </div>
                   <.input
-                    field={@forms[info.key][:api_key]}
-                    type="password"
-                    autocomplete="off"
-                    placeholder={key_placeholder(info.key)}
-                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans focus:border-primary focus:bg-base-100"
+                    field={@server_form[:host]}
+                    type="text"
+                    label="Host"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
                   />
-                </div>
-                <div class="flex gap-2">
-                  <button
-                    type="submit"
-                    name="action"
-                    value="check"
-                    id={"check-#{info.key}"}
-                    disabled={@pending[info.key] != nil}
-                    class="flex h-11 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
-                  >
-                    <.spinner :if={@pending[info.key] == :check} />
-                    <.icon :if={@pending[info.key] != :check} name="hero-shield-check" class="size-4" />
-                    Check
-                  </button>
-                  <button
-                    type="submit"
-                    name="action"
-                    value="save"
-                    id={"save-#{info.key}"}
-                    disabled={@pending[info.key] != nil}
-                    class="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
-                  >
-                    <.spinner :if={@pending[info.key] == :save} /> Save
-                  </button>
+                  <.input
+                    field={@server_form[:port]}
+                    type="text"
+                    inputmode="numeric"
+                    label="Port"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                  <.input
+                    field={@server_form[:context]}
+                    type="text"
+                    inputmode="numeric"
+                    label="Context (-c)"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                  <.input
+                    field={@server_form[:threads]}
+                    type="text"
+                    inputmode="numeric"
+                    label="Threads (-t)"
+                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                  />
+                  <div class="sm:col-span-2">
+                    <.input
+                      field={@server_form[:extra_args]}
+                      type="text"
+                      label="Extra arguments"
+                      placeholder="--flash-attn"
+                      class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
+                    />
+                  </div>
+                  <label class="flex items-center gap-2 text-xs text-base-content/70 sm:col-span-2">
+                    <.input
+                      field={@server_form[:jinja]}
+                      type="checkbox"
+                      label="Apply the chat template (--jinja, needed for tool calls)"
+                    />
+                  </label>
+
+                  <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
+                    <button
+                      type="submit"
+                      name="action"
+                      value="save"
+                      id="save-local-server"
+                      class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
+                    >
+                      <.icon name="hero-check" class="size-4" /> Save
+                    </button>
+                    <button
+                      type="submit"
+                      name="action"
+                      value="start"
+                      id="start-local-server"
+                      disabled={@server.status in [:starting, :running]}
+                      class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      <.icon name="hero-play" class="size-4" /> Start
+                    </button>
+                    <button
+                      type="button"
+                      id="stop-local-server"
+                      phx-click="stop_local_server"
+                      disabled={@server.status not in [:starting, :running]}
+                      class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
+                    >
+                      <.icon name="hero-stop" class="size-4" /> Stop
+                    </button>
+                    <button
+                      type="button"
+                      id="reset-local-server"
+                      phx-click="reset_local_server"
+                      class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
+                    >
+                      <.icon name="hero-arrow-uturn-left" class="size-4" /> Reset
+                    </button>
+                  </div>
                 </div>
               </.form>
 
               <div
-                :if={result = @results[info.key]}
-                id={"result-#{info.key}"}
+                :if={result = @server_result}
+                id="local-server-result"
                 class={[
                   "mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
                   elem(result, 0) == :ok && "bg-success/10 text-success",
@@ -363,284 +610,38 @@ defmodule EliaWeb.SettingsLive do
                 <span class="break-words">{elem(result, 1)}</span>
               </div>
 
-              <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-4">
-                <div class="flex items-center gap-2 text-xs text-base-content/70">
-                  <.icon name="hero-banknotes" class="size-4 shrink-0" />
-                  <span :if={info.keyless} id={"balance-#{info.key}"}>
-                    Nothing to bill: it runs on this machine.
+              <div id="local-server-status" class="mt-4 rounded-xl bg-base-200/50 p-3 text-xs">
+                <div class="flex flex-wrap items-center gap-2">
+                  <.status_badge id="local-server-badge" status={@server.status} />
+                  <span class="font-mono">{@server.url}</span>
+                  <span :if={@server.os_pid} class="text-base-content/60">
+                    pid {@server.os_pid}
                   </span>
-                  <.balance_line
-                    :if={!info.keyless && @keys[info.key]}
-                    provider={info.key}
-                    supported={LLM.balance_supported?(info.key)}
-                    balance={@balances[info.key]}
-                  />
-                  <span :if={!info.keyless && !@keys[info.key]} id={"balance-#{info.key}"}>
-                    Add a key to see credits.
-                  </span>
-                  <button
-                    :if={!info.keyless && @keys[info.key] && LLM.balance_supported?(info.key)}
-                    type="button"
-                    id={"refresh-balance-#{info.key}"}
-                    phx-click="refresh_balance"
-                    phx-value-provider={info.key}
-                    disabled={@balances[info.key] == :loading}
-                    class="rounded-md p-1 transition hover:bg-base-200 disabled:opacity-50"
-                    aria-label="Refresh balance"
-                  >
-                    <.icon name="hero-arrow-path" class="size-3.5" />
-                  </button>
                 </div>
-                <a
-                  :if={info.billing_url}
-                  id={"topup-#{info.key}"}
-                  href={info.billing_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10"
-                >
-                  <.icon name="hero-plus-circle" class="size-4" /> Add credits
-                </a>
-              </div>
-
-              <div
-                :if={@keys[info.key]}
-                class="mt-2 flex items-center justify-end gap-2"
-              >
-                <button
-                  type="button"
-                  id={"check-current-#{info.key}"}
-                  phx-click="check_current"
-                  phx-value-provider={info.key}
-                  disabled={@pending[info.key] != nil}
-                  class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-base-200 disabled:opacity-50"
-                >
-                  <.spinner :if={@pending[info.key] == :check_current} /> Check current key
-                </button>
-                <button
-                  :if={match?({:stored, _}, @keys[info.key])}
-                  type="button"
-                  id={"remove-#{info.key}"}
-                  phx-click="remove"
-                  phx-value-provider={info.key}
-                  data-confirm={"Remove the saved #{info.name} key?"}
-                  class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-error transition hover:bg-error/10"
-                >
-                  <.icon name="hero-trash" class="size-3.5" /> Remove
-                </button>
+                <p :if={@server.model} class="mt-1 break-all text-base-content/70">
+                  {@server.model}
+                </p>
+                <p :if={@server.command} class="mt-1 break-all font-mono text-base-content/50">
+                  $ {@server.command}
+                </p>
+                <p :if={@server.error} class="mt-2 text-error">{@server.error}</p>
+                <pre
+                  :if={@server.output != []}
+                  id="local-server-log"
+                  class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-base-content/60"
+                ><%= Enum.join(@server.output, "\n") %></pre>
               </div>
             </section>
-          </div>
-
-          <%!-- LOCAL-25 to LOCAL-28: the llama-server Elia can start for you,
-          from a .gguf on this machine. --%>
-          <section
-            id="local-server"
-            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
-          >
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
-                  <.icon name="hero-cpu-chip" class="size-5" />
-                </div>
-                <div>
-                  <h2 class="font-medium">Local model server</h2>
-                  <p class="text-xs text-base-content/50">
-                    A llama-server Elia starts for you from a .gguf on this machine.
-                  </p>
-                </div>
-              </div>
-              <.status_badge status={@server.status} />
-            </div>
-
-            <.form
-              for={@server_form}
-              id="local-server-form"
-              phx-submit="save_local_server"
-              class="contents"
-            >
-              <div class="mt-5 grid gap-3 sm:grid-cols-2">
-                <div class="sm:col-span-2">
-                  <.input
-                    field={@server_form[:binary]}
-                    type="text"
-                    label="llama-server binary"
-                    placeholder="/path/to/llama.cpp/build/bin/llama-server"
-                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                  />
-                </div>
-                <div class="sm:col-span-2">
-                  <.input
-                    field={@server_form[:model]}
-                    type="text"
-                    label="Model (.gguf)"
-                    list="local-server-models"
-                    placeholder="/path/to/model.gguf"
-                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                  />
-                  <datalist id="local-server-models">
-                    <option :for={path <- @server_models} value={path} />
-                  </datalist>
-                  <p :if={@server_models == []} class="mt-1 text-xs text-base-content/50">
-                    No .gguf files found — set a models directory to pick one from a list.
-                  </p>
-                </div>
-                <div class="sm:col-span-2">
-                  <.input
-                    field={@server_form[:models_dir]}
-                    type="text"
-                    label="Models directory"
-                    placeholder="/path/to/models"
-                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                  />
-                </div>
-                <.input
-                  field={@server_form[:host]}
-                  type="text"
-                  label="Host"
-                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                />
-                <.input
-                  field={@server_form[:port]}
-                  type="text"
-                  inputmode="numeric"
-                  label="Port"
-                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                />
-                <.input
-                  field={@server_form[:context]}
-                  type="text"
-                  inputmode="numeric"
-                  label="Context (-c)"
-                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                />
-                <.input
-                  field={@server_form[:threads]}
-                  type="text"
-                  inputmode="numeric"
-                  label="Threads (-t)"
-                  class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                />
-                <div class="sm:col-span-2">
-                  <.input
-                    field={@server_form[:extra_args]}
-                    type="text"
-                    label="Extra arguments"
-                    placeholder="--flash-attn"
-                    class="w-full rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 font-mono text-xs outline-none transition focus:border-primary focus:bg-base-100"
-                  />
-                </div>
-                <label class="flex items-center gap-2 text-xs text-base-content/70 sm:col-span-2">
-                  <.input
-                    field={@server_form[:jinja]}
-                    type="checkbox"
-                    label="Apply the chat template (--jinja, needed for tool calls)"
-                  />
-                </label>
-
-                <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
-                  <button
-                    type="submit"
-                    name="action"
-                    value="save"
-                    id="save-local-server"
-                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
-                  >
-                    <.icon name="hero-check" class="size-4" /> Save
-                  </button>
-                  <button
-                    type="submit"
-                    name="action"
-                    value="start"
-                    id="start-local-server"
-                    disabled={@server.status in [:starting, :running]}
-                    class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
-                  >
-                    <.icon name="hero-play" class="size-4" /> Start
-                  </button>
-                  <button
-                    type="button"
-                    id="stop-local-server"
-                    phx-click="stop_local_server"
-                    disabled={@server.status not in [:starting, :running]}
-                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
-                  >
-                    <.icon name="hero-stop" class="size-4" /> Stop
-                  </button>
-                  <button
-                    type="button"
-                    id="reset-local-server"
-                    phx-click="reset_local_server"
-                    class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200"
-                  >
-                    <.icon name="hero-arrow-uturn-left" class="size-4" /> Reset
-                  </button>
-                </div>
-              </div>
-            </.form>
-
-            <div
-              :if={result = @server_result}
-              id="local-server-result"
-              class={[
-                "mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
-                elem(result, 0) == :ok && "bg-success/10 text-success",
-                elem(result, 0) == :error && "bg-error/10 text-error"
-              ]}
-            >
-              <.icon
-                name={
-                  if elem(result, 0) == :ok,
-                    do: "hero-check-circle",
-                    else: "hero-exclamation-triangle"
-                }
-                class="mt-px size-4 shrink-0"
-              />
-              <span class="break-words">{elem(result, 1)}</span>
-            </div>
-
-            <div id="local-server-status" class="mt-4 rounded-xl bg-base-200/50 p-3 text-xs">
-              <div class="flex flex-wrap items-center gap-2">
-                <.status_badge id="local-server-badge" status={@server.status} />
-                <span class="font-mono">{@server.url}</span>
-                <span :if={@server.os_pid} class="text-base-content/60">
-                  pid {@server.os_pid}
-                </span>
-              </div>
-              <p :if={@server.model} class="mt-1 break-all text-base-content/70">
-                {@server.model}
-              </p>
-              <p :if={@server.command} class="mt-1 break-all font-mono text-base-content/50">
-                $ {@server.command}
-              </p>
-              <p :if={@server.error} class="mt-2 text-error">{@server.error}</p>
-              <pre
-                :if={@server.output != []}
-                id="local-server-log"
-                class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-base-content/60"
-              ><%= Enum.join(@server.output, "\n") %></pre>
-            </div>
-          </section>
+          </.collapsible>
 
           <%!-- CONF-19, CONF-20, DEPLOY-5..DEPLOY-7: deployment means bringing
           the trunk `master` to `live` and loading it here. --%>
-          <section
+          <.collapsible
             id="deployment"
-            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+            icon="hero-rocket-launch"
+            title="Deployment"
+            blurb="Bring the app up to date: merge the trunk into live, then load it."
           >
-            <div class="flex items-center gap-3">
-              <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
-                <.icon name="hero-rocket-launch" class="size-5" />
-              </div>
-              <div>
-                <h2 class="font-medium">Deployment</h2>
-                <p class="text-xs text-base-content/50">
-                  Bring the app up to date: merging <code class="font-mono">master</code>
-                  into <code class="font-mono">live</code>, then loading it into the running server.
-                </p>
-              </div>
-            </div>
-
             <p
               id="deploy-status"
               class={[
@@ -828,32 +829,21 @@ defmodule EliaWeb.SettingsLive do
                 — it needs none of the app's own front end.
               </span>
             </p>
-          </section>
+          </.collapsible>
 
           <%!-- PUSH-2, PUSH-5..PUSH-8: Web Push on this device. The hook does the
           subscribing (PUSH-3, PUSH-4), because only the page can ask for
           permission and make a subscription; the section says why when it
           cannot (PUSH-5, PUSH-6), and offers what the server does (PUSH-7,
           PUSH-8). --%>
-          <section
+          <.collapsible
             id="push-section"
+            icon="hero-bell-alert"
+            title="Push notifications"
+            blurb="Be told when a chat needs you — an approval, a question, a turn that finished — even with Elia closed."
             phx-hook=".PushSettings"
             data-vapid-public-key={@push_key}
-            class="mt-4 rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
           >
-            <div class="flex items-center gap-3">
-              <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
-                <.icon name="hero-bell-alert" class="size-5" />
-              </div>
-              <div>
-                <h2 class="font-medium">Push notifications</h2>
-                <p class="text-xs text-base-content/50">
-                  Be told when a chat needs you — an approval, a question, a turn that
-                  finished — even with Elia closed.
-                </p>
-              </div>
-            </div>
-
             <%!-- PUSH-19, PUSH-22: what the section is doing. Before the page has
             reached the server nothing has been read, and only the server can
             say so — the hook (PUSH-20) replaces this with what it found, and
@@ -928,7 +918,7 @@ defmodule EliaWeb.SettingsLive do
                 <span>{@push_status.text}</span>
               </p>
             </div>
-          </section>
+          </.collapsible>
 
           <p
             id="settings-path"
@@ -1256,6 +1246,49 @@ defmodule EliaWeb.SettingsLive do
   defp status_class(:starting), do: "bg-info/15 text-info"
   defp status_class(:failed), do: "bg-error/15 text-error"
   defp status_class(_status), do: "bg-base-300 text-base-content/60"
+
+  # CONF-25: one collapsible section of the settings page. The `<details>` is
+  # the browser's own, so expanding one needs no script, no round trip to the
+  # server and nothing kept about the open state, and the section's content is
+  # in the page whether or not it is expanded (CONF-26) — a collapsed section is
+  # hidden, not absent.
+  attr :id, :string, required: true
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  attr :blurb, :string, required: true
+  attr :class, :string, default: "mt-4"
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  defp collapsible(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      class={[
+        "group rounded-2xl border border-base-300 transition duration-200 hover:border-base-content/20 hover:shadow-sm",
+        @class
+      ]}
+      {@rest}
+    >
+      <summary class="flex cursor-pointer list-none items-center gap-3 rounded-2xl p-5 hover:bg-base-200/40">
+        <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-base-200 text-base-content/70">
+          <.icon name={@icon} class="size-5" />
+        </div>
+        <div class="min-w-0">
+          <h2 class="font-medium">{@title}</h2>
+          <p class="text-xs text-base-content/50">{@blurb}</p>
+        </div>
+        <.icon
+          name="hero-chevron-down"
+          class="ml-auto size-4 shrink-0 text-base-content/40 transition group-open:rotate-180"
+        />
+      </summary>
+      <div class="px-5 pb-5">
+        {render_slot(@inner_block)}
+      </div>
+    </details>
+    """
+  end
 
   attr :provider, :string, required: true
   attr :supported, :boolean, required: true

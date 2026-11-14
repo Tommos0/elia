@@ -464,6 +464,48 @@ defmodule EliaWeb.SettingsLiveTest do
     refute has_element?(files, "#theme-toggle")
   end
 
+  # CONF-25, CONF-26
+  test "the page is four collapsible sections, all collapsed on load", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-25: four sections, in this order, each one a `<details>` the browser
+    # itself expands — so none of them is open until its header is clicked.
+    sections = [
+      {"appearance", "Appearance"},
+      {"providers", "LLM providers"},
+      {"deployment", "Deployment"},
+      {"push-section", "Push notifications"}
+    ]
+
+    for {id, title} <- sections do
+      assert has_element?(view, "details##{id}:not([open])")
+      assert has_element?(view, "details##{id} summary", title)
+    end
+
+    ids = Enum.map(sections, &elem(&1, 0))
+    assert section_order(render(view), ids) == ids
+
+    # CONF-26: a collapsed section is hidden, not absent — what it holds is in
+    # the page, with its own ids, so expanding it shows the section as it is.
+    assert has_element?(view, "#appearance #theme-toggle")
+    assert has_element?(view, "#providers #provider-anthropic")
+    assert has_element?(view, "#providers #local-server")
+    assert has_element?(view, "#deployment #deploy-status")
+    assert has_element?(view, "#push-section #push-count")
+
+    # ...and what belongs to no section stays visible (CONF-12).
+    assert has_element?(view, "#settings-path")
+    refute has_element?(view, "details #settings-path")
+  end
+
+  # CONF-25: the four sections in the order they appear in the page.
+  defp section_order(html, ids) do
+    Enum.sort_by(ids, fn id ->
+      {index, _} = :binary.match(html, ~s(id="#{id}"))
+      index
+    end)
+  end
+
   # CONF-14
   test "a provider without a balance API says so", %{conn: conn} do
     configure(Anthropic, api_key: "sk-ant-env-wxyz")

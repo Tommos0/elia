@@ -38,6 +38,7 @@ defmodule EliaWeb.PushBrowserTest do
       conn
       |> visit("/settings")
       |> assert_has(~s(#push-section[data-vapid-public-key="#{key}"]))
+      |> open_push_section()
 
     # The hook ran: the marker the server renders for "nothing has been read
     # yet" is gone (PUSH-20, PUSH-22).
@@ -79,6 +80,7 @@ defmodule EliaWeb.PushBrowserTest do
       conn
       |> block_worker()
       |> visit("/settings")
+      |> open_push_section()
       |> assert_has("#push-reason", text: "service worker")
       |> assert_has("#push-reason", text: "/sw.js")
       |> refute_has("#push-toggle")
@@ -104,7 +106,7 @@ defmodule EliaWeb.PushBrowserTest do
   # the background leaves behind — gets the server's own words back, and has to
   # read the browser again rather than sit at "Checking this browser…" for ever.
   test "the section reads the browser again when the server renders it again", %{conn: conn} do
-    conn = visit(conn, "/settings")
+    conn = conn |> visit("/settings") |> open_push_section()
     # The hook has answered once: the marker the server renders is gone.
     assert await_settled(conn)
 
@@ -132,7 +134,7 @@ defmodule EliaWeb.PushBrowserTest do
   # PUSH-20: a reading that fails is an answer too, and the only one a phone can
   # show — it has no console.
   test "the section says when the browser cannot be read at all", %{conn: conn} do
-    conn = visit(conn, "/settings")
+    conn = conn |> visit("/settings") |> open_push_section()
     assert await_settled(conn)
 
     # The browser's own API, failing the way a browser that will not answer
@@ -160,7 +162,7 @@ defmodule EliaWeb.PushBrowserTest do
   # again, so an answer that changed while it was away — permission withdrawn,
   # a subscription made or dropped — does not stay stale on screen.
   test "the section reads the browser again when the page comes back", %{conn: conn} do
-    conn = visit(conn, "/settings")
+    conn = conn |> visit("/settings") |> open_push_section()
     assert await_settled(conn)
 
     # What the browser answers from now on, so that a second reading can be told
@@ -212,6 +214,15 @@ defmodule EliaWeb.PushBrowserTest do
 
     evaluate(conn, "window.dispatchEvent(new Event('focus'))")
     assert await_state?(id, true)
+  end
+
+  # CONF-25: the push section is one of the settings page's collapsible
+  # sections, collapsed on load, so a test that reads what the section shows
+  # opens it first — a Playwright assertion only sees what is on screen.
+  defp open_push_section(conn) do
+    conn
+    |> click("#push-section summary")
+    |> assert_has("#push-section[open]")
   end
 
   # PUSH-20: the marker the server renders is what the section says before
