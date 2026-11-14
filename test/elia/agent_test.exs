@@ -1605,7 +1605,8 @@ defmodule Elia.AgentTest do
     assert Enum.any?(second.messages, &(&1.meta[:compaction] == :marker))
     refute Enum.any?(second.messages, &(Message.text_content(&1) =~ "done 1"))
 
-    # COMPACT-29: every message of the turn being run is still sent in full.
+    # COMPACT-29, COMPACT-32: the most recent step of the turn being run — its
+    # assistant message, its calls and their results — is still sent in full.
     assert Enum.any?(second.messages, fn
              %Message{role: :tool, content: [%{content: content, tool_call_id: "c1"}]} ->
                content == output
@@ -1630,6 +1631,159 @@ defmodule Elia.AgentTest do
     snapshot = Agent.snapshot(id)
     assert Enum.slice(snapshot.messages, 0, length(messages)) == messages
     assert length(snapshot.messages) == length(messages) + 4
+  end
+
+  # COMPACT-1, COMPACT-5, COMPACT-29, COMPACT-31, COMPACT-32, COMPACT-33
+  test "a chat whose whole history is one turn is bounded from inside it mid-turn" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # A chat with no history: the turn being run is the whole chat, so there is
+    # no cold prefix at all (COMPACT-28), and the rung inside the turn is the
+    # only thing that can bound it (COMPACT-31).
+    output = String.duplicate("out ", 700)
+    big_reasoning = String.duplicate("think ", 2_000)
+
+    start_compaction_session(id,
+      compaction: %{budget: 1},
+      loop_opts: [llm: %{provider: FakeLLM}, skills: fake_skill(output)]
+    )
+
+    test_pid = self()
+
+    # Step one reasons a lot and calls the tool; step two's call is answered
+    # while step three waits, so the turn is provably still running when the
+    # mid-turn pass is asserted on.
+    FakeLLM.push(
+      FakeLLM.assistant([
+        %{type: :reasoning, text: big_reasoning},
+        FakeLLM.tool_call("c1", "fake_tool", %{})
+      ])
+    )
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:second_request, self()})
+
+      receive do
+        :go -> :ok
+      end
+
+      {:ok,
+       %{
+         message:
+           FakeLLM.assistant([
+             %{type: :reasoning, text: "a short thought"},
+             FakeLLM.tool_call("c2", "fake_tool", %{})
+           ]),
+         stop_reason: :tool_use,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:third_request, self()})
+
+      receive do
+        :go -> :ok
+      end
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("done")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    :ok = Agent.send_message(id, "do the work")
+    assert_receive {:second_request, loop}, 5000
+    send(loop, :go)
+    assert_receive {:third_request, third_loop}, 5000
+
+    # COMPACT-29: the pass's state is reported, saved and broadcast before the
+    # turn ends. Nothing is cold — the chat is one turn — and the marker is the
+    # boundary of the turn's most recent step (COMPACT-31, COMPACT-32).
+    assert_receive {:agent, ^id, {:compaction, %{level: 3, covered: 0, turn_covered: 3}}}, 5000
+    assert Agent.snapshot(id).status == :running
+
+    send(third_loop, :go)
+    await_status(id, :idle)
+
+    assert %{level: 3, covered: 0, turn_covered: 3} = Elia.Store.load_compaction(id)
+
+    [first, second, third] = FakeLLM.requests()
+
+    # The request view shrinks while the history grows: the step before the most
+    # recent one is elided (COMPACT-31), so the third request is smaller than the
+    # second even though a whole step was added to the chat.
+    assert Elia.LLM.Compaction.tokens(third.messages) <
+             Elia.LLM.Compaction.tokens(second.messages)
+
+    assert Enum.any?(third.messages, &(&1.meta[:compaction] == :marker))
+
+    # COMPACT-32: the most recent step — its assistant message, its call and its
+    # result — is sent in full.
+    assert Enum.any?(third.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c2"}]} ->
+               content == output
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(third.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c2"))
+
+             _ ->
+               false
+           end)
+
+    # COMPACT-33: the older step is elided by the rungs only — its reasoning is
+    # gone and its result is a note — and its call is still there.
+    refute Enum.any?(third.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :reasoning and &1.text == big_reasoning))
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(third.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c1"}]} ->
+               content =~ "output elided by compaction"
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(third.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c1"))
+
+             _ ->
+               false
+           end)
+
+    # The user message that began the turn is still sent (COMPACT-32).
+    assert Enum.any?(third.messages, &(Message.text_content(&1) == "do the work"))
+
+    # COMPACT-1: the session's history keeps everything, that reasoning included.
+    snapshot = Agent.snapshot(id)
+    assert length(snapshot.messages) == 6
+
+    assert Enum.any?(snapshot.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :reasoning and &1.text == big_reasoning))
+
+             _ ->
+               false
+           end)
+
+    # The first request had nothing to elide: it was the brief alone.
+    assert Enum.all?(first.messages, &(&1.meta[:compaction] != :marker))
   end
 
   # COMPACT-7

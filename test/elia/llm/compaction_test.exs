@@ -59,6 +59,40 @@ defmodule Elia.LLM.CompactionTest do
 
   defp turn_tokens(messages, n), do: Compaction.tokens(Enum.slice(messages, (n - 1) * 4, 4))
 
+  # One step of the turn being run: an assistant message that reasons about the
+  # work and calls a tool, and the tool's result. Two messages, so a turn of
+  # `k` steps ends with the result of step `k`.
+  defp step(n, k, text) do
+    [
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :reasoning, text: "thinking #{n}.#{k} #{String.duplicate(text, 10)}"},
+          %{
+            type: :tool_call,
+            id: "c#{n}-#{k}",
+            name: "read_file",
+            input: %{"path" => "file#{n}-#{k}.txt"}
+          }
+        ]
+      },
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("c#{n}-#{k}", "output #{n}.#{k} #{String.duplicate(text, 50)}")
+        ]
+      }
+    ]
+  end
+
+  # A turn being run at the start of its next step: its user message, then
+  # `steps` steps, so the last one is its most recent step (COMPACT-32). Message
+  # `2k` is step `k`'s assistant message and `2k + 1` its result.
+  defp running_turn(n, steps, text) do
+    [Message.user("task #{n}: #{String.duplicate(text, 20)}")] ++
+      Enum.flat_map(1..steps, &step(n, &1, text))
+  end
+
   # A summarizer that never summarizes: the ladder-only tests use it so they
   # never reach a provider (COMPACT-20).
   defp no_summary, do: fn _ -> {:error, :none} end
@@ -680,25 +714,172 @@ defmodule Elia.LLM.CompactionTest do
     assert Compaction.view(messages, trimmed).tokens <= at.(2)
   end
 
-  # COMPACT-4, COMPACT-5, COMPACT-29
-  test "trim never makes the current (last) turn cold" do
+  # COMPACT-4, COMPACT-5, COMPACT-29, COMPACT-31, COMPACT-32, COMPACT-33
+  test "trim makes the turn being run cold up to its most recent step" do
     huge = String.duplicate("huge ", 20_000)
     # The current turn alone is bigger than the working set budget, so it is all
-    # of the working set (COMPACT-28) and none of it may be elided.
+    # of the working set (COMPACT-28) — and the rung inside it is what bounds it
+    # (COMPACT-31).
     messages = turn(1, "word ") ++ turn(2, huge)
 
     trimmed = Compaction.trim(messages, %Compaction{}, %{trigger: 1, target: 1})
     view = Compaction.view(messages, trimmed)
 
     assert trimmed.covered == 4
-    refute Enum.any?(4..7, &(view.statuses[&1].status in [:elided, :summarized]))
-    assert Enum.all?(5..7, &(view.statuses[&1].status == :sent))
+    # The boundary the pass elided to is the turn's most recent step (COMPACT-32).
+    assert trimmed.turn_covered == 7
 
-    # The turn being run is sent in full: its own tool result is verbatim.
+    # The turn being run's own older step is elided by the rungs (COMPACT-31):
+    # its reasoning (COMPACT-14) and the content of its tool result (COMPACT-15).
+    assert view.statuses[5].status == :truncated
+    assert view.statuses[6].status == :truncated
+
+    # Its user message is capped, never elided (COMPACT-11, COMPACT-32), and its
+    # tool_call block survives (COMPACT-32).
+    refute view.statuses[4].status in [:elided, :summarized]
+
     assert Enum.any?(view.messages, fn
-             %Message{role: :tool, content: [%{content: content}]} -> content == huge
-             _ -> false
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c2"))
+
+             _ ->
+               false
            end)
+
+    # The rungs only: no step of the turn being run is dropped whole (COMPACT-33).
+    refute Enum.any?(4..7, &(view.statuses[&1].status == :elided))
+
+    # Its most recent step is sent in full (COMPACT-32) — and the step before it
+    # was elided by the rungs only, its result a note naming its call
+    # (COMPACT-15, COMPACT-33).
+    assert view.statuses[7].status == :sent
+
+    assert Enum.any?(view.messages, fn
+             %Message{role: :tool, content: [%{content: content}]} ->
+               content =~ "output elided by compaction"
+               content =~ "read_file file2.txt"
+
+             _ ->
+               false
+           end)
+  end
+
+  ## The turn being run (COMPACT-31, COMPACT-32, COMPACT-33)
+
+  # COMPACT-31, COMPACT-32, COMPACT-33
+  test "a pass elides the turn being run's own older steps, keeping its most recent one" do
+    messages = running_turn(1, 3, "word ")
+    # One turn, so nothing is cold: the whole history is the turn being run.
+    assert Compaction.working_set_start(messages, %{}) == 0
+
+    trimmed = Compaction.trim(messages, %Compaction{}, %{trigger: 1, target: 1})
+    view = Compaction.view(messages, trimmed)
+
+    assert trimmed.covered == 0
+    assert trimmed.turn_covered == 5
+
+    # The older steps' machinery is elided (COMPACT-31): each step's reasoning
+    # (COMPACT-14) and the content of its tool result (COMPACT-15).
+    assert Enum.map(1..4, &view.statuses[&1].status) ==
+             [:truncated, :truncated, :truncated, :truncated]
+
+    # The most recent step — its assistant message, its calls and their results —
+    # is sent in full (COMPACT-32).
+    assert view.statuses[5].status == :sent
+    assert view.statuses[6].status == :sent
+
+    assert Enum.any?(view.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c1-3"}]} ->
+               content =~ "output 1.3"
+
+             _ ->
+               false
+           end)
+
+    # The user message that begins the turn is never elided (COMPACT-32), and a
+    # call of an older step survives with its message (COMPACT-15, COMPACT-32).
+    refute view.statuses[0].status in [:elided, :summarized]
+
+    assert Enum.any?(view.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c1-1"))
+
+             _ ->
+               false
+           end)
+
+    # The rungs only: no step of the turn was dropped whole (COMPACT-33), and the
+    # gap is named (COMPACT-23).
+    refute Enum.any?(0..6, &(view.statuses[&1].status == :elided))
+    assert Enum.any?(view.messages, &(&1.meta[:compaction] == :marker))
+
+    # The single-message path agrees with the view about the turn being run
+    # (COMPACT-25).
+    calls = Compaction.calls(messages)
+
+    for index <- 0..(length(messages) - 1) do
+      assert Compaction.status(Enum.at(messages, index), index, trimmed, %{
+               messages: messages,
+               calls: calls
+             }) == view.statuses[index]
+    end
+  end
+
+  # COMPACT-31, COMPACT-32
+  test "a chat whose whole history is one turn is bounded from inside it" do
+    messages = running_turn(1, 4, "word ")
+    full = Compaction.tokens(messages)
+
+    trimmed = Compaction.trim(messages, %Compaction{}, %{trigger: 1, target: 1})
+    view = Compaction.view(messages, trimmed)
+
+    # Nothing is cold — the working set is the one turn (COMPACT-12, COMPACT-28)
+    # — and the request view is still smaller than the history (COMPACT-31).
+    assert trimmed.covered == 0
+    assert view.elided > 0
+    assert view.tokens < full
+
+    # What bounds it is the turn's own most recent step (COMPACT-32): its
+    # assistant message, its call and its result are all there, whole.
+    assert view.statuses[7].status == :sent
+    assert view.statuses[8].status == :sent
+  end
+
+  # COMPACT-31, COMPACT-33
+  test "an elision inside the turn stays elided for the rest of it" do
+    messages = running_turn(1, 3, "word ")
+    trimmed = Compaction.trim(messages, %Compaction{}, %{trigger: 1, target: 1})
+    assert trimmed.turn_covered == 5
+
+    # The turn grows by a step: the pass takes the turn further, and the elision
+    # it made before is still there (COMPACT-33).
+    grown = messages ++ step(1, 4, "word ")
+    later = Compaction.trim(grown, trimmed, %{trigger: 1, target: 1})
+    assert later.turn_covered == 7
+
+    view = Compaction.view(grown, later)
+    assert Enum.all?(1..6, &(view.statuses[&1].status == :truncated))
+    assert Enum.all?(7..8, &(view.statuses[&1].status == :sent))
+
+    # A state that has already elided further than the history's own boundary
+    # keeps its elision: the marker never moves back up (COMPACT-33).
+    ahead = %Compaction{level: 2, turn_covered: 8}
+    assert Enum.all?(1..7, &(Compaction.view(grown, ahead).statuses[&1].status == :truncated))
+
+    assert Compaction.trim(grown, ahead, %{trigger: 1, target: 1}).turn_covered == 8
+  end
+
+  # COMPACT-31, COMPACT-33
+  test "a state with nothing elided inside the turn elides nothing inside it" do
+    # The field's default (COMPACT-33, ## Stored data): a state saved before the
+    # rung inside the turn existed — or one whose pass has not run yet — leaves
+    # the turn being run as it is, whatever the level.
+    messages = running_turn(1, 3, "word ")
+
+    for level <- 0..3 do
+      view = Compaction.view(messages, %Compaction{level: level})
+      assert Enum.all?(0..6, &(view.statuses[&1].status == :sent))
+    end
   end
 
   ## Pins and the ledger
@@ -793,19 +974,22 @@ defmodule Elia.LLM.CompactionTest do
     calls = Compaction.calls(messages)
 
     for index <- 0..(length(messages) - 1) do
-      assert Compaction.status(Enum.at(messages, index), index, state, %{calls: calls}) ==
-               view.statuses[index]
+      assert Compaction.status(Enum.at(messages, index), index, state, %{
+               calls: calls,
+               messages: messages
+             }) == view.statuses[index]
     end
   end
 
   ## State
 
-  # COMPACT-24
+  # COMPACT-24, COMPACT-33
   test "the state round-trips through a plain map" do
     state = %Compaction{
       level: 2,
       covered: 8,
       folded: 6,
+      turn_covered: 12,
       summary: "so far",
       ledger: ["a"],
       pins: [{1, 0}],
@@ -819,5 +1003,10 @@ defmodule Elia.LLM.CompactionTest do
     assert Compaction.from_map(nil) == %Compaction{}
     assert Compaction.from_map(%{level: 9}).level == 3
     assert Compaction.empty?(%Compaction{})
+
+    # COMPACT-33, ## Stored data: a state saved before the rung inside the turn
+    # existed loads with it at its default — nothing elided inside the turn.
+    assert Compaction.from_map(%{level: 2, covered: 8}).turn_covered == 0
+    assert Compaction.from_map(%{turn_covered: "12"}).turn_covered == 0
   end
 end

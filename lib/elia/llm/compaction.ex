@@ -34,6 +34,10 @@ defmodule Elia.LLM.Compaction do
     * `ledger` - append-only exact facts, sent verbatim (COMPACT-22);
     * `pins` - `{message index, block index | nil}` items no rule may elide
       (COMPACT-21);
+    * `turn_covered` - how far the turn being run has been elided inside itself
+      (COMPACT-31, COMPACT-33): the history index the last pass took it cold up
+      to, which is the boundary of its most recent step, so what was elided
+      inside the turn stays elided for the rest of it;
     * `options` - this chat's overrides of the config (COMPACT-9).
 
   The ladder never moves back up: compaction is monotone, so a region that was
@@ -86,6 +90,7 @@ defmodule Elia.LLM.Compaction do
   defstruct level: 0,
             covered: 0,
             folded: 0,
+            turn_covered: 0,
             summary: nil,
             ledger: [],
             pins: [],
@@ -96,6 +101,7 @@ defmodule Elia.LLM.Compaction do
           level: non_neg_integer(),
           covered: non_neg_integer(),
           folded: non_neg_integer(),
+          turn_covered: non_neg_integer(),
           summary: binary() | nil,
           ledger: [binary()],
           pins: [pin()],
@@ -133,6 +139,7 @@ defmodule Elia.LLM.Compaction do
       level: level(map),
       covered: Map.get(map, :covered) || defaults.covered,
       folded: Map.get(map, :folded) || defaults.folded,
+      turn_covered: turn_covered(map),
       summary: Map.get(map, :summary),
       ledger: Map.get(map, :ledger) || [],
       pins: Map.get(map, :pins) || [],
@@ -143,6 +150,16 @@ defmodule Elia.LLM.Compaction do
   defp level(map) do
     case Map.get(map, :level) do
       n when is_integer(n) and n >= 0 -> min(n, @top_level)
+      _ -> 0
+    end
+  end
+
+  # COMPACT-33: a state saved before the rung inside the turn existed loads with
+  # it at its default — nothing elided inside the turn (`specs/compaction.md`,
+  # ## Stored data).
+  defp turn_covered(map) do
+    case Map.get(map, :turn_covered) do
+      n when is_integer(n) and n >= 0 -> n
       _ -> 0
     end
   end
@@ -224,12 +241,21 @@ defmodule Elia.LLM.Compaction do
     covered = min(state.covered, length(messages))
     keep = keep_indexes(messages, state.pins)
     calls = Map.get(opts, :calls) || calls(messages)
+    region = region(messages, state, covered)
 
     {kept, statuses, elided, dropped} =
       messages
       |> Enum.with_index()
       |> Enum.reduce({[], %{}, 0, 0}, fn {message, index}, {kept, statuses, elided, dropped} ->
-        ctx = %{state: state, covered: covered, options: options, keep: keep, calls: calls}
+        ctx = %{
+          state: state,
+          covered: covered,
+          region: region,
+          options: options,
+          keep: keep,
+          calls: calls
+        }
+
         {status, kept_message, gone} = derive(message, index, ctx)
         kept = if kept_message, do: [kept_message | kept], else: kept
         dropped = if kept_message, do: dropped, else: dropped + 1
@@ -251,8 +277,11 @@ defmodule Elia.LLM.Compaction do
 
   @doc """
   One message's request-view status (COMPACT-25), for a UI that appends a
-  message without rebuilding the whole view. Options may carry `:calls` and
-  option overrides.
+  message without rebuilding the whole view. Options may carry `:calls`, option
+  overrides and `:messages` — the history the message belongs to, which is what
+  tells a message of the turn being run's own older steps from one of the
+  working set (COMPACT-31); without it the status is derived as if the turn
+  being run had no older step elided.
   """
   @spec status(Message.t(), non_neg_integer(), t(), map() | keyword()) :: message_status()
   def status(message, index, state \\ %__MODULE__{}, opts \\ %{}) do
@@ -264,6 +293,7 @@ defmodule Elia.LLM.Compaction do
     ctx = %{
       state: state,
       covered: min(state.covered, index + 1),
+      region: status_region(opts, state),
       options: options(Map.merge(state.options, opts)),
       keep: MapSet.new(),
       calls: Map.get(opts, :calls) || %{}
@@ -271,6 +301,13 @@ defmodule Elia.LLM.Compaction do
 
     {status, _kept, _elided} = derive(message, index, ctx)
     status
+  end
+
+  defp status_region(opts, state) do
+    case Map.get(opts, :messages) do
+      messages when is_list(messages) -> region(messages, state, state.covered)
+      _ -> nil
+    end
   end
 
   @doc "A `tool_call_id => %{name, input}` index of the messages' tool calls."
@@ -336,19 +373,21 @@ defmodule Elia.LLM.Compaction do
 
   @doc """
   The mid-turn pass (COMPACT-29): runs the ladder deeper when the request view's
-  estimate exceeds `:trigger`, eliding the cold prefix only.
+  estimate exceeds `:trigger`, eliding the cold prefix and the turn being run's
+  own older steps.
 
   Returns the state unchanged when the trigger is unknown or the estimate (the
   view's tokens plus `:overhead`) is already at or below it. Otherwise it takes
   the cold region towards `:target` with the same `walk/5` ladder as `compact/3`,
   so the two paths cannot drift, and returns the state with its advanced
-  `covered` and `level`.
+  `covered`, `turn_covered` and `level`.
 
   It never folds a summary: a mid-turn pass is elision only, so no model call
   happens inside a step, and a ladder that cannot reach the target leaves the
-  pruned view and no error (COMPACT-20). The cold region always ends at or before
-  the current turn's user message (COMPACT-28), so the turn being run is never
-  cold and its calls and results stay intact (COMPACT-5).
+  pruned view and no error (COMPACT-20). The turn being run is cold up to its
+  most recent step (COMPACT-31), so its user message, its calls and that step's
+  own calls and results stay intact (COMPACT-32) and approval state keyed by
+  `call_id` is never invalidated (COMPACT-5).
   """
   @spec trim([Message.t()], t() | map(), map() | keyword()) :: t()
   def trim(messages, state \\ %__MODULE__{}, opts \\ %{}) do
@@ -361,14 +400,26 @@ defmodule Elia.LLM.Compaction do
     if trigger != nil and view(messages, state, options).tokens + overhead > trigger do
       # COMPACT-12, COMPACT-28: the cold prefix is everything before the working
       # set, which never includes the turn being run.
-      state = %{state | covered: max(state.covered, working_set_start(messages, options))}
-      {level, _reached?} = walk(messages, state, options, Map.get(opts, :target), overhead)
+      # COMPACT-31, COMPACT-33: the turn being run is taken cold up to its most
+      # recent step (COMPACT-32) — the marker records the boundary, so what the
+      # rungs elided inside the turn stays elided for the rest of it.
+      advanced =
+        %{state | covered: max(state.covered, working_set_start(messages, options))}
+        |> put_turn_covered(step_boundary(messages))
 
-      %{state | level: level}
+      {level, _reached?} = walk(messages, advanced, options, Map.get(opts, :target), overhead)
+
+      # At level 0 the rungs are off and nothing inside the turn was elided, so
+      # the marker does not move: it records elision that happened.
+      advanced = if level >= 1, do: advanced, else: state
+      %{advanced | level: level}
     else
       state
     end
   end
+
+  defp put_turn_covered(state, boundary),
+    do: %{state | turn_covered: max(state.turn_covered, boundary)}
 
   # COMPACT-8: stop as soon as the estimate is at or below the target. A manual
   # compaction (no target) goes all the way down the ladder.
@@ -497,6 +548,13 @@ defmodule Elia.LLM.Compaction do
       pins == :all ->
         {%{status: :sent, blocks: sent_blocks(message), elided: 0, pinned: true}, message, 0}
 
+      in_region?(index, ctx.region) ->
+        # COMPACT-31, COMPACT-33: the turn being run is cold up to its most
+        # recent step, so its own older steps are elided by the rungs — its
+        # reasoning (COMPACT-14) and its tool results (COMPACT-15) — and never
+        # dropped whole.
+        prune(message, index, ctx, pins)
+
       index >= ctx.covered ->
         # Not cold: only the user-message cap applies (COMPACT-11).
         cap(message, index, ctx)
@@ -504,6 +562,46 @@ defmodule Elia.LLM.Compaction do
       true ->
         cold(message, index, ctx, pins)
     end
+  end
+
+  # COMPACT-31, COMPACT-32, COMPACT-33: the turn being run's own older steps —
+  # from the user message that begins it up to the marker the last pass elided
+  # to, which is the boundary of its most recent step. `prune/4` is the rungs
+  # only, so a step inside the turn is never dropped whole (COMPACT-16), and its
+  # user message is capped, never elided (COMPACT-11, COMPACT-32).
+  defp region(messages, state, covered) do
+    marker = min(state.turn_covered, length(messages))
+
+    case last_turn_start(messages) do
+      turn when is_integer(turn) and turn >= covered and turn < marker -> {turn, marker}
+      _turn -> nil
+    end
+  end
+
+  defp in_region?(_index, nil), do: false
+  defp in_region?(index, {from, to}), do: index >= from and index < to
+
+  # The user message that begins the turn being run: the last turn of the
+  # history. A harness message (COMPACT-19) is not a turn start.
+  defp last_turn_start(messages), do: List.last(turn_starts(messages))
+
+  # COMPACT-32: the boundary of the turn being run's most recent step — its last
+  # assistant message, with everything from it on (its calls and their results)
+  # sent in full. A turn with no assistant message yet has no older step.
+  defp step_boundary(messages) do
+    case last_turn_start(messages) do
+      nil -> 0
+      turn -> last_assistant(messages, turn) || 0
+    end
+  end
+
+  defp last_assistant(messages, from) do
+    messages
+    |> Enum.with_index()
+    |> Enum.reduce(nil, fn
+      {%Message{role: :assistant}, index}, _last when index >= from -> index
+      _other, last -> last
+    end)
   end
 
   # COMPACT-14, COMPACT-15, COMPACT-16

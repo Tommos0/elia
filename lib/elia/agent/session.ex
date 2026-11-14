@@ -550,7 +550,7 @@ defmodule Elia.Agent.Session do
   # annotations and the estimate stay honest (COMPACT-24..COMPACT-26) and the
   # CTX-10 adjustment of the old view is dropped (COMPACT-27).
   def handle_info({:loop_compaction, compaction}, state) when is_struct(compaction, Compaction) do
-    {:noreply, apply_compaction(state, compaction)}
+    {:noreply, apply_compaction(state, take_ladder(state.compaction, compaction))}
   end
 
   def handle_info({:loop_usage, usage}, state) when is_map(usage) do
@@ -667,6 +667,23 @@ defmodule Elia.Agent.Session do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # The loop derived what it reports from the state the session handed it when
+  # the turn started (COMPACT-29), so it owns how far down the ladder the view
+  # has been taken — `level`, `covered` and the rung inside the turn being run
+  # (COMPACT-31, COMPACT-33) — and the session keeps what it has changed since:
+  # the ledger a tool wrote (COMPACT-22), a pin (COMPACT-21), this chat's
+  # options (COMPACT-9) and the summary.
+  defp take_ladder(session, reported) do
+    %{
+      reported
+      | summary: session.summary,
+        folded: session.folded,
+        ledger: session.ledger,
+        pins: session.pins,
+        options: session.options
+    }
+  end
 
   ## Helpers
 
