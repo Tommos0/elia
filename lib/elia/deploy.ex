@@ -296,6 +296,66 @@ defmodule Elia.Deploy do
     end
   end
 
+  ## What the last deploy brought (DEPLOY-27)
+
+  @doc """
+  What the revision the app runs has that the one it ran before it does not
+  (DEPLOY-27): the changes the last deploy brought into the running app, which
+  is what the dashboard's "What's new" card shows (DASH-14).
+
+  `{:ok, %{commits: commits, at: at, before: before}}`, where `commits` is
+  newest first — each `%{sha: full, short: abbreviated, subject: its first
+  line}`, merge commits left out — `at` is when the running revision was
+  loaded, and `before` is the abbreviated sha of the revision before it.
+
+  The record (DEPLOY-23, DEPLOY-25) is what says which two revisions those are;
+  the commits come from one `git log <before>..<now>` in the live tree, the way
+  `status/1` answers from git (DEPLOY-17). `commits` is empty and `before` is
+  `nil` when the record holds no earlier revision — a tree that has only the
+  revision the server came up on — and `at` is `nil` when it holds none at all.
+  `{:error, reason}` when that git call fails.
+  """
+  @spec changes(binary()) :: {:ok, map()} | {:error, binary()}
+  def changes(root \\ Workspace.runtime_root()) do
+    case loaded_revisions(root) do
+      [] ->
+        {:ok, %{commits: [], at: nil, before: nil}}
+
+      [%{sha: sha, at: at} | rest] ->
+        before =
+          case rest do
+            [%{sha: before} | _older] -> before
+            [] -> nil
+          end
+
+        case commits_between(before, sha, root) do
+          {:ok, commits} -> {:ok, %{commits: commits, at: at, before: before && short(before)}}
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  # DEPLOY-27: the commits one revision has that another does not, in the order
+  # `git log` lists them (newest first). A merge is not a change of its own, so
+  # merges are left out; with nothing to compare with there is nothing to report
+  # and no git call to make.
+  defp commits_between(nil, _sha, _root), do: {:ok, []}
+
+  defp commits_between(before, sha, root) do
+    case git(root, ["log", "--no-merges", "--format=%H%x1f%s", "#{before}..#{sha}"]) do
+      {:ok, ""} -> {:ok, []}
+      {:ok, output} -> {:ok, Enum.map(String.split(output, "\n"), &commit/1)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp commit(line) do
+    case String.split(line, "\x1f", parts: 2) do
+      [sha, subject] -> %{sha: sha, short: short(sha), subject: subject}
+      [sha] -> %{sha: sha, short: short(sha), subject: ""}
+    end
+  end
+
   @doc false
   # The record as it is on disk, or an empty one. What the runner seeds itself
   # from (DEPLOY-22, DEPLOY-23) and what the readers answer from.
@@ -341,10 +401,16 @@ defmodule Elia.Deploy do
 
   @doc false
   # Adds a revision to the ones the app has run (DEPLOY-25): newest first, the
-  # same revision not twice, and only the last few kept.
+  # same revision not twice, and only the last few kept. A revision the app
+  # loads again goes on being the newest — it is what the app runs — but keeps
+  # the time it was first loaded, so a load that brought no new revision
+  # (DEPLOY-20) does not make the changes already recorded look new (DASH-14).
   @spec append_revision([map()], map()) :: [map()]
   def append_revision(loaded, revision) do
-    [revision | Enum.reject(loaded, &(&1.sha == revision.sha))] |> Enum.take(@keep_revisions)
+    case Enum.find(loaded, &(&1.sha == revision.sha)) do
+      %{at: at} -> [%{revision | at: at} | Enum.reject(loaded, &(&1.sha == revision.sha))]
+      nil -> [revision | loaded] |> Enum.take(@keep_revisions)
+    end
   end
 
   # The record's shape on disk. Everything a page reads comes back through

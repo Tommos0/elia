@@ -4,8 +4,8 @@ Status: Implemented
 
 `/` — the app's start URL (PWA-1) and the target of the header logo — is a home
 screen rather than a jump straight into the most recent chat: it shows what
-needs the user, where they left off, their projects, the machine's health and
-whether the trunk is deployed. Opening a chat stays one tap away, and the chat
+needs the user, where they left off, their projects, the machine's health,
+whether the trunk is deployed and what the last deploy brought. Opening a chat stays one tap away, and the chat
 list's entry point moved to `/chats` (UI-77), which resumes the chat the user
 left off in exactly as `/` used to (UI-1, UI-71).
 
@@ -118,6 +118,19 @@ left off in exactly as `/` used to (UI-1, UI-71).
   and its one-time fix (`#deploy-error`) when the live tree isn't set up for
   deployment (DEPLOY-14). It links to `/settings` (`#deploy-settings-link`),
   where deploying happens (CONF-19).
+- **DASH-14** A "What's new" card (`#whats-new`) shows what the last deploy
+  brought into the running app, from `Elia.Deploy.changes/0` (DEPLOY-27), in the
+  column with the Deploy card (DASH-11) and refreshed when the page mounts and
+  every 10 seconds while connected: up to five rows (`#whats-new-<short sha>`),
+  newest first, each with the commit's subject — truncated, with the whole
+  subject in the `title` — and its abbreviated sha, and "and N more"
+  (`#whats-new-more`) when the deploy brought more than five. A muted line
+  above the rows is when the running revision was loaded, a
+  `<time id="whats-new-time">` in relative form (UI-34: its `datetime` is that
+  moment and its `title` the exact date and time). A range with nothing in it
+  reads "Nothing new was deployed." (`#whats-new-empty`), and no earlier
+  revision to compare with — or a read that failed — "No changes to show yet."
+  (`#whats-new-none`).
 
 ## Out of scope
 
@@ -134,15 +147,15 @@ left off in exactly as `/` used to (UI-1, UI-71).
 `EliaWeb.DashboardLive` (whose column grid shrinks with the screen, DASH-12),
 `EliaWeb.Router` (the `/` route and the `/chats` route
 of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
-`Elia.Projects`, `Elia.Agent` (statuses), `Elia.SystemStats` (DASH-10) and
-`Elia.Deploy.status/0` (DASH-11).
+`Elia.Projects`, `Elia.Agent` (statuses), `Elia.SystemStats` (DASH-10),
+`Elia.Deploy.status/0` (DASH-11) and `Elia.Deploy.changes/0` (DASH-14).
 
 ## Tests
 
 - `test/elia_web/live/dashboard_test.exs` (the page and its header, the
   "Continue" card and a done chat being skipped, "Needs attention", "Recent
-  chats" and the room its title gets, the refresh, "Projects", "System" and
-  "Deploy" — DASH-1, DASH-3 to DASH-11, DASH-13).
+  chats" and the room its title gets, the refresh, "Projects", "System",
+  "Deploy" and "What's new" — DASH-1, DASH-3 to DASH-11, DASH-13, DASH-14).
 - `test/elia_web/live/chat_live_test.exs` (the dashboard as `/`, DASH-1, DASH-2;
   what `/chats` opens, UI-77).
 - `test/elia_web/browser/chat_browser_test.exs` (the dashboard in a real

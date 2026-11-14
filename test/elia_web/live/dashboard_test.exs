@@ -1,8 +1,9 @@
 defmodule EliaWeb.DashboardTest do
   @moduledoc """
-  The dashboard at `/` (DASH-1 - DASH-11): the home screen the app opens on,
+  The dashboard at `/` (DASH-1 - DASH-14): the home screen the app opens on,
   which lists what needs the user, where they left off, their projects, the
-  machine and the deploy state — and starts nothing.
+  machine, the deploy state and what the last deploy brought — and starts
+  nothing.
   """
   use EliaWeb.ConnCase, async: false
 
@@ -504,6 +505,117 @@ defmodule EliaWeb.DashboardTest do
     # Nothing left behind for the next test.
     send(view.pid, :deploy)
     File.rm!(Deploy.loaded_path(tree))
+  end
+
+  ## What's new (DASH-14)
+
+  # DASH-14, DEPLOY-27: what the last deploy brought into the running app.
+  test "the What's new card lists what the last deploy brought", %{conn: conn} do
+    tree = live_tree()
+
+    # The app starts on what the tree has checked out (DEPLOY-17); that revision
+    # is what the deploy below is measured against.
+    assert :ok = Deploy.record_loaded(tree)
+    running = Deploy.loaded_revision(tree)
+
+    # A deploy brings two changes onto `live`: the trunk moves, then the deploy
+    # fast-forwards `live` onto it and loads it (DEPLOY-5, DEPLOY-13).
+    LiveTree.git!(tree, ["checkout", "master"])
+    first = trunk_commit(tree, "feat: the first change")
+    second = trunk_commit(tree, "fix: the second change")
+    LiveTree.git!(tree, ["checkout", "live"])
+    LiveTree.git!(tree, ["merge", "--ff-only", "master"])
+    assert :ok = Deploy.record_loaded(tree)
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#whats-new")
+    assert has_element?(view, "#whats-new-#{short(second)}", "fix: the second change")
+    assert has_element?(view, "#whats-new-#{short(first)}", "feat: the first change")
+    # DASH-14, UI-34: when the running revision was loaded, relative, with the
+    # exact date and time on hover.
+    assert has_element?(view, "#whats-new-time[datetime][title]", "just now")
+    # Newest first, and the revision the app was already on is not one of the
+    # changes the deploy brought.
+    html = render(view)
+    assert at(html, "whats-new-#{short(second)}") < at(html, "whats-new-#{short(first)}")
+    refute has_element?(view, "#whats-new-#{short(running)}")
+    refute has_element?(view, "#whats-new-empty")
+    refute has_element?(view, "#whats-new-none")
+  end
+
+  # DASH-14: five rows at most, with the rest counted.
+  test "the What's new card counts what it doesn't list", %{conn: conn} do
+    tree = live_tree()
+    assert :ok = Deploy.record_loaded(tree)
+
+    LiveTree.git!(tree, ["checkout", "master"])
+    for n <- 1..7, do: trunk_commit(tree, "change #{n}")
+
+    LiveTree.git!(tree, ["checkout", "live"])
+    LiveTree.git!(tree, ["merge", "--ff-only", "master"])
+    assert :ok = Deploy.record_loaded(tree)
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#whats-new", "change 7")
+    assert has_element?(view, "#whats-new", "change 3")
+    refute has_element?(view, "#whats-new", "change 2")
+    refute has_element?(view, "#whats-new", "change 1")
+    assert has_element?(view, "#whats-new-more", "and 2 more")
+  end
+
+  # DASH-14, DEPLOY-27: nothing to compare with reads differently from nothing
+  # brought, and the card catches up on the refresh it shares with the Deploy
+  # card (DASH-11).
+  test "the What's new card says when there is nothing to show", %{conn: conn} do
+    tree = live_tree()
+
+    # No record, nothing deployed yet: no earlier revision to compare with.
+    {:ok, view, _html} = live(conn, ~p"/")
+    assert has_element?(view, "#whats-new-none", "No changes to show yet.")
+
+    # The app records what it comes up on (DEPLOY-17) — still nothing to compare.
+    assert :ok = Deploy.record_loaded(tree)
+    send(view.pid, :deploy)
+    assert has_element?(view, "#whats-new-none")
+    refute has_element?(view, "#whats-new-empty")
+
+    # A deploy that brought a change.
+    before = Deploy.loaded_revision(tree)
+    LiveTree.git!(tree, ["checkout", "master"])
+    trunk_commit(tree, "feat: the change")
+    LiveTree.git!(tree, ["checkout", "live"])
+    LiveTree.git!(tree, ["merge", "--ff-only", "master"])
+    assert :ok = Deploy.record_loaded(tree)
+
+    send(view.pid, :deploy)
+    assert has_element?(view, "#whats-new", "feat: the change")
+
+    # The app back on the revision it ran before that deploy, the way a rollback
+    # leaves it (DEPLOY-26): the range is empty rather than missing.
+    LiveTree.git!(tree, ["reset", "--hard", before])
+    assert :ok = Deploy.record_loaded(tree, :rollback, :restart)
+
+    send(view.pid, :deploy)
+    assert has_element?(view, "#whats-new-empty", "Nothing new was deployed.")
+    refute has_element?(view, "#whats-new-none")
+  end
+
+  # A commit on the trunk with a subject of its own, so what a deploy brought can
+  # be asserted on by name (DEPLOY-27).
+  defp trunk_commit(tree, subject) do
+    name = "trunk_#{System.unique_integer([:positive])}"
+    File.write!(Path.join(tree, "lib/#{name}.ex"), "defmodule #{Macro.camelize(name)} do\nend\n")
+    LiveTree.commit(tree, subject)
+  end
+
+  defp short(sha), do: String.slice(sha, 0, 7)
+
+  # Where a node starts in the rendered page, so "newest first" can be checked.
+  defp at(html, id) do
+    {position, _length} = :binary.match(html, id)
+    position
   end
 
   # A live tree set up for deployment (DEPLOY-14), as Elia's own is.

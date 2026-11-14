@@ -203,8 +203,11 @@ tree's front end (`/recover`, RECOVER-10).
   hook. A tree with no front end (DEPLOY-19) has nothing to check.
 - **DEPLOY-25** The revisions the running app has loaded are kept, not only the
   newest (DEPLOY-17): the record (DEPLOY-23) keeps the last few revisions the
-  app has run, newest first, each with when it was loaded and by what — a
-  deploy, a rollback or a restart. `Elia.Deploy.loaded_revisions/1` reads them
+  app has run, newest first, each with when it was first loaded and by what — a
+  deploy, a rollback or a restart. A revision the app loads again goes on being
+  the newest, since it is what the app runs, and keeps the time it was first
+  loaded, so a load that brought no new revision (DEPLOY-20) does not make the
+  changes already recorded look new. `Elia.Deploy.loaded_revisions/1` reads them
   back and `Elia.Deploy.status/1` goes on naming the newest as the revision the
   app is running. Keeping a few rather than one means a revision the app has
   run and no longer is can still be named and gone back to.
@@ -226,6 +229,17 @@ tree's front end (`/recover`, RECOVER-10).
   is what the rollback loaded (DEPLOY-17). A hot reload back to an older
   revision loads the modules that revision has and cannot unload one it does not
   (HOT-10): the message says so, and a restart is the clean way back.
+- **DEPLOY-27** `Elia.Deploy.changes/1` reports what the revision the app runs
+  has that the one it ran before it does not:
+  `{:ok, %{commits: commits, at: at, before: before}}`, where `commits` is
+  newest first, each `%{sha: full, short: abbreviated, subject: its first line}`,
+  with merge commits left out — a merge is not a change of its own — and `at` is
+  when the running revision was loaded, `before` the abbreviated sha of the
+  revision before it. `commits` is empty and `before` is `nil` when the record
+  holds no earlier revision, `at` is `nil` when it holds none at all, and a
+  `git log <before>..<now>` in the live tree that fails is `{:error, reason}`.
+  It answers from the record (DEPLOY-23, DEPLOY-25) and git the way `status/1`
+  does (DEPLOY-17).
 
 ### Sub-tasks and lifecycle
 
@@ -265,7 +279,7 @@ deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
 a deploy runs before it loads — `npm install` in the live tree's `assets/` and
 `mix assets.build`, DEPLOY-19 — with the check that the bundle is there
 (DEPLOY-24) and the seam its tests replace the way `load:` and `stop:` are, and
-`rollback/3`, DEPLOY-26),
+`rollback/3`, DEPLOY-26, and `changes/1`, DEPLOY-27),
 `Elia.Deploy.Runner` (the deploy's own process, its step and its result,
 DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23),
 `Elia.Application` (starts it),
@@ -283,7 +297,8 @@ deployment section: the steps, the record, going back), `EliaWeb.Endpoint`
 `test/elia/deployment_test.exs` (worktrees, the trunk, the deploy, the front
 end it builds before it loads and the bundle it checks for, the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
-restart, the runner and the loaded revision, DEPLOY-1 to DEPLOY-26),
+restart, the runner, the loaded revision and what a deploy brought, DEPLOY-1 to
+DEPLOY-27),
 `test/elia_web/live/settings_live_test.exs` (the deployment section, including
 a page that mounts mid-deploy, a page that comes back after a restart and after
 one), `test/elia_web/recovery_test.exs` (the recovery page, RECOVER-10 to

@@ -1,10 +1,10 @@
 defmodule EliaWeb.DashboardLive do
   @moduledoc """
   The dashboard at `/` (DASH): where you left off, what needs you, recent chats,
-  your projects, the machine's health and the deploy state. It renders a page
-  and nothing else — it starts no session, creates no chat and writes nothing
-  (DASH-1); opening a chat is one tap away, through `/chats` (UI-77) or a chat
-  row.
+  your projects, the machine's health, the deploy state and what the last deploy
+  brought. It renders a page and nothing else — it starts no session, creates no
+  chat and writes nothing (DASH-1); opening a chat is one tap away, through
+  `/chats` (UI-77) or a chat row.
 
   The chat lists follow the registry (`Elia.Agent.awaiting_approval/0`,
   `paused/0`, `running/0`, SESS-19) the way the sidebar does, so the same
@@ -35,7 +35,7 @@ defmodule EliaWeb.DashboardLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Home", prev: nil, deploy: Deploy.status())
+     |> assign(page_title: "Home", prev: nil, deploy: Deploy.status(), changes: Deploy.changes())
      |> refresh()
      |> update_stats(sample())}
   end
@@ -48,7 +48,11 @@ defmodule EliaWeb.DashboardLive do
 
   def handle_info(:stats, socket), do: {:noreply, update_stats(socket, sample())}
 
-  def handle_info(:deploy, socket), do: {:noreply, assign(socket, deploy: Deploy.status())}
+  # DASH-11: where the trunk stands against the branch the server runs
+  # (DEPLOY-14, DEPLOY-15, DEPLOY-17); DASH-14: what the last deploy brought
+  # arrives with it (DEPLOY-27).
+  def handle_info(:deploy, socket),
+    do: {:noreply, assign(socket, deploy: Deploy.status(), changes: Deploy.changes())}
 
   # DASH-3, DASH-7: the relative times, refreshed every minute (UI-34).
   def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
@@ -226,6 +230,7 @@ defmodule EliaWeb.DashboardLive do
                 memory_level={level(@mem_pct)}
               />
               <.deploy_card deploy={@deploy} />
+              <.whats_new_card changes={@changes} now={@now} />
             </div>
           </div>
         </div>
@@ -556,6 +561,74 @@ defmodule EliaWeb.DashboardLive do
 
   defp behind?({:ok, %{behind?: behind?}}), do: behind?
   defp behind?(_deploy), do: false
+
+  # DASH-14: how many of the last deploy's changes the card lists. A function
+  # rather than a module attribute, since `@name` in a template is an assign.
+  defp whats_new_rows, do: 5
+
+  # DASH-14: what the last deploy brought into the running app (DEPLOY-27). The
+  # commits themselves come from `Elia.Deploy.changes/0`, which answers from the
+  # record and one `git log`; a read that failed shows the same as no earlier
+  # revision to compare with, since a card is no place for a git error.
+  attr :changes, :any, required: true
+  attr :now, :any, required: true
+
+  defp whats_new_card(assigns) do
+    ~H"""
+    <section id="whats-new" class="rounded-2xl border border-base-300 p-5">
+      <h2 class="text-xs font-medium tracking-wider text-base-content/50 uppercase">What's new</h2>
+
+      <%= case @changes do %>
+        <% {:ok, %{commits: [_ | _] = commits, at: at}} -> %>
+          <p class="mt-1 text-xs text-base-content/50">
+            Deployed
+            <time
+              id="whats-new-time"
+              datetime={DateTime.to_iso8601(at)}
+              title={Calendar.strftime(at, "%Y-%m-%d %H:%M:%S UTC")}
+            >
+              {TimeAgo.format(at, @now)}
+            </time>
+          </p>
+
+          <ul class="mt-3 space-y-1">
+            <li
+              :for={commit <- Enum.take(commits, whats_new_rows())}
+              id={"whats-new-#{commit.short}"}
+              class="flex items-baseline gap-2 rounded-lg px-3 py-1.5"
+            >
+              <span class="min-w-0 flex-1 truncate text-sm" title={commit.subject}>
+                {commit.subject}
+              </span>
+              <span class="shrink-0 font-mono text-[11px] text-base-content/40">
+                {commit.short}
+              </span>
+            </li>
+          </ul>
+
+          <p
+            :if={length(commits) > whats_new_rows()}
+            id="whats-new-more"
+            class="mt-2 px-3 text-xs text-base-content/60"
+          >
+            and {length(commits) - whats_new_rows()} more
+          </p>
+        <% {:ok, %{before: nil}} -> %>
+          <p id="whats-new-none" class="mt-3 text-sm text-base-content/50">
+            No changes to show yet.
+          </p>
+        <% {:ok, _changes} -> %>
+          <p id="whats-new-empty" class="mt-3 text-sm text-base-content/50">
+            Nothing new was deployed.
+          </p>
+        <% {:error, _reason} -> %>
+          <p id="whats-new-none" class="mt-3 text-sm text-base-content/50">
+            No changes to show yet.
+          </p>
+      <% end %>
+    </section>
+    """
+  end
 
   defp memory_line(%{memory: nil}), do: "Unavailable"
 

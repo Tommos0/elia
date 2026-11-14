@@ -48,6 +48,14 @@ defmodule Elia.DeploymentTest do
     file
   end
 
+  # A commit on the trunk with a subject of its own, so what a deploy brought
+  # can be asserted on by name (DEPLOY-27).
+  defp trunk_commit(tree, subject) do
+    name = "trunk_#{System.unique_integer([:positive])}"
+    File.write!(Path.join(tree, "lib/#{name}.ex"), "defmodule #{Macro.camelize(name)} do\nend\n")
+    commit(tree, subject)
+  end
+
   # A chat's worktree, from the trunk, removed again at the end of the test.
   defp new_worktree do
     id = Agent.new_id()
@@ -1523,10 +1531,21 @@ defmodule Elia.DeploymentTest do
     assert Deploy.loaded_revision() == second
     assert {:ok, %{loaded: ^second}} = Deploy.status()
 
-    # And loading the same revision again does not list it twice.
+    # And loading the same revision again does not list it twice, and keeps the
+    # time it was first loaded, so a load that brought nothing new (DEPLOY-20)
+    # leaves what the last deploy brought reading as that deploy's (DEPLOY-25,
+    # DASH-14).
+    assert [%{sha: ^second, at: loaded} | _rest] = Deploy.loaded_revisions()
     assert {:ok, _message} = Deploy.hot_reload()
     assert_receive :loaded
-    assert [%{sha: ^second}, %{sha: ^first}] = Deploy.loaded_revisions()
+
+    assert [%{sha: ^second, at: ^loaded}, %{sha: ^first, at: first_loaded}] =
+             Deploy.loaded_revisions()
+
+    assert first_loaded != loaded
+    assert {:ok, %{commits: commits, at: ^loaded, before: before}} = Deploy.changes()
+    assert [%{sha: ^second}] = commits
+    assert before == String.slice(first, 0, 7)
   end
 
   # DEPLOY-25: a tree deployed before the record existed has the loaded revision
@@ -1889,4 +1908,86 @@ defmodule Elia.DeploymentTest do
     assert List.last(steps).step == :restart
     assert [%{sha: ^live, by: :deploy, mode: :restart} | _rest] = Deploy.loaded_revisions()
   end
+
+  ## What the last deploy brought (DEPLOY-27)
+
+  # DEPLOY-27, DASH-14: what the revision the app runs has that the one it ran
+  # before it does not — the changes the dashboard's "What's new" card lists.
+  test "changes/1 reports what the last deploy brought (DEPLOY-27)", %{tree: tree} do
+    # The app starts on what the tree has checked out (DEPLOY-17), so there is
+    # nothing to compare it with yet.
+    running = head(tree)
+    assert :ok = Deploy.record_loaded()
+    assert {:ok, %{commits: [], at: %DateTime{}, before: nil}} = Deploy.changes()
+
+    # A deploy: the trunk moves, then the deploy fast-forwards `live` onto it and
+    # loads it (DEPLOY-5, DEPLOY-13).
+    LiveTree.git!(tree, ["checkout", "master"])
+    first = trunk_commit(tree, "feat: the first change")
+    second = trunk_commit(tree, "fix: the second change")
+    LiveTree.git!(tree, ["checkout", "live"])
+    assert {_, 0} = git(tree, ["merge", "--ff-only", "master"])
+    assert :ok = Deploy.record_loaded()
+
+    assert {:ok, %{commits: commits, at: %DateTime{}, before: before}} = Deploy.changes()
+
+    # Newest first, each with its sha, the abbreviated one a page shows, and the
+    # commit's subject — and the revision the app was already on is not one of
+    # the changes the deploy brought.
+    assert before == String.slice(running, 0, 7)
+
+    assert Enum.map(commits, & &1.sha) == [second, first]
+    assert Enum.map(commits, & &1.short) == [slice(second), slice(first)]
+    assert Enum.map(commits, & &1.subject) == ["fix: the second change", "feat: the first change"]
+    refute Enum.any?(commits, &(&1.sha == running))
+  end
+
+  # DEPLOY-27: a merge is not a change of its own, so what a deploy brought is
+  # the commits it really made, not the merges that carried them.
+  test "changes/1 leaves merge commits out (DEPLOY-27)", %{tree: tree} do
+    assert :ok = Deploy.record_loaded()
+
+    LiveTree.git!(tree, ["checkout", "master"])
+    trunk_commit(tree, "feat: the trunk's own change")
+    LiveTree.git!(tree, ["checkout", "-b", "side"])
+    trunk_commit(tree, "fix: a change on a side branch")
+    LiveTree.git!(tree, ["checkout", "master"])
+    LiveTree.git!(tree, ["merge", "--no-ff", "side", "-m", "merge: the side branch"])
+    LiveTree.git!(tree, ["checkout", "live"])
+    assert {_, 0} = git(tree, ["merge", "--ff-only", "master"])
+    assert :ok = Deploy.record_loaded()
+
+    assert {:ok, %{commits: commits}} = Deploy.changes()
+
+    subjects = Enum.map(commits, & &1.subject)
+    assert "feat: the trunk's own change" in subjects
+    assert "fix: a change on a side branch" in subjects
+    refute "merge: the side branch" in subjects
+  end
+
+  # DEPLOY-27: a range git cannot read is an error the page renders, not a crash
+  # behind it.
+  test "changes/1 reports a range it cannot read (DEPLOY-27)", %{tree: tree} do
+    # A record naming a revision the tree does not have, the way a tree moved
+    # underneath the record would leave one.
+    assert :ok =
+             Deploy.write_record(tree, %{
+               running: nil,
+               last: nil,
+               loaded: [
+                 %{
+                   sha: String.duplicate("0", 40),
+                   at: DateTime.utc_now(),
+                   by: :deploy,
+                   mode: :reload
+                 },
+                 %{sha: head(tree), at: DateTime.utc_now(), by: :deploy, mode: :reload}
+               ]
+             })
+
+    assert {:error, reason} = Deploy.changes()
+    assert reason =~ "0000000"
+  end
+
+  defp slice(sha), do: String.slice(sha, 0, 7)
 end
