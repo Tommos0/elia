@@ -1,6 +1,6 @@
 defmodule Elia.Shell.Lock do
   @moduledoc """
-  One lock per worktree around mounting the shared `deps` overlay (ISOL-26).
+  One lock per worktree around mounting the shared `deps` overlay (ISOL-28).
 
   A jail mounts the worktree's dependency layer itself (ISOL-7), and two jails
   that mount the same layer at the same instant collide: one of them fails with

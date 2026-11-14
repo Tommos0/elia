@@ -36,6 +36,7 @@ Status: Implemented | Draft | Planned | Retired
 
 ## Configuration        (optional)
 ## Out of scope         (optional)
+## Stored data          (when a change alters a stored shape)
 ## Implementation       (modules that implement it)
 ## Tests                (test files that cover it)
 ```
@@ -43,6 +44,51 @@ Status: Implemented | Draft | Planned | Retired
 Requirement IDs are stable: never renumber or reuse one. Retire a requirement
 by striking it through (`~~**X-4** ...~~ Removed: <reason>`) rather than
 deleting it.
+
+## Rules
+
+`specs/spec-hygiene.md` (SPEC) owns the rules below; they are what keeps the
+corpus coherent, and `test/elia/spec_hygiene_test.exs` fails the suite on the
+ones a machine can decide. A violation is fixed in the change that introduces
+it.
+
+- **Identity.** A requirement is `<PREFIX>-<n>`, the prefix this file's index
+  row gives it (SPEC-1). Every ID names exactly one requirement (SPEC-2); an ID
+  is never renumbered or reused, and a requirement added later takes the next
+  unused number of its prefix (SPEC-3). Retiring keeps the number and spends it
+  forever (SPEC-4).
+- **Retirement.** A retired requirement stays where it is, struck through
+  (`~~`), keeps its ID and says why in the same entry, after `Retired:`,
+  `Removed:` or `Superseded by`; a spec whose requirements are all retired says
+  `Status: Retired` (SPEC-5), and its index row says so (SPEC-7).
+- **Status.** The `Status:` line is exactly one of `Implemented`, `Draft`,
+  `Planned` or `Retired` — the one word and nothing else. What the status needs
+  to explain goes on the lines below it (SPEC-6).
+- **Index.** Every file in `specs/` other than this one, and every file in
+  `specs/plans/`, is listed here: a spec as a row of the table with its prefix,
+  a plan under `## Plans` (SPEC-8). Every row's link resolves, and its prefix is
+  the one the file's IDs use (SPEC-9).
+- **Shape.** A spec is a title, a `Status:` line, a paragraph saying what the
+  feature is and why, and `## Requirements`. The only other sections are
+  `Configuration`, `Out of scope`, `Stored data`, `Implementation` and `Tests`;
+  subheadings within them are free (SPEC-10). A change that alters a shape that
+  outlives the process says which it is in `## Stored data` — backward
+  compatible, or needing migration (SPEC-11).
+- **A requirement** is one testable statement of behaviour, in the present
+  tense (SPEC-12), and holds only that statement: rationale, history,
+  incidents, line numbers, chat ids, worktree names and measured timings belong
+  in the intro, the section's prose, a doc or the commit (SPEC-13).
+  `Out of scope` lists what is deliberately not required, and no requirement is
+  defined in it (SPEC-14).
+- **Cross-references.** A `PREFIX-n` is one some spec defines — a retired
+  requirement counts as defined — or a bare prefix, or a range within one
+  prefix; never a number that names a different requirement than the one meant
+  (SPEC-15).
+- **The lint** is `test/elia/spec_hygiene_test.exs` (SPEC-16, SPEC-17): it reads
+  `specs/**/*.md` and nothing else, so it runs in `mix test`, `bin/test` and
+  `mix precommit`. One statement per requirement, rationale inside one, required
+  behaviour under `Out of scope` and whether a stored shape needs migration are
+  review rules, not lint failures (SPEC-18).
 
 ## Index
 
@@ -101,3 +147,11 @@ deleting it.
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |
+| [Spec hygiene](spec-hygiene.md) | `SPEC` | The rules that keep `specs/` coherent, and the lint that fails the suite on the ones a machine can decide |
+
+## Plans
+
+A plan is not a spec: it is a working document with no requirement IDs, for work
+whose requirements are written later.
+
+- [Sub-agents](plans/subagents.md) — the multi-phase plan `specs/subtasks.md` implements: phases 1 to 3 done, phase 4 (concurrent sub-tasks) and phase 5 (read-only children) still to come

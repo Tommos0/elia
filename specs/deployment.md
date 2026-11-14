@@ -23,20 +23,6 @@ before (DEPLOY-25, DEPLOY-26) — from the Settings page or, when a deploy has
 left that page's own UI unusable, from a plain HTML page that needs none of the
 tree's front end (`/recover`, RECOVER-10).
 
-## Terms
-
-- **live tree** — the tree the server runs from, where Elia's data lives
-  (`:runtime_root`) and where the code reloader reloads; the target of a
-  deploy. It is checked out on the branch `live`.
-- **trunk** — the branch `master` of the live tree's repository: the chats'
-  fork point, and the branch their agents merge into. A tree set up before this
-  workflow has the same name for the tree's main line, which is why it is
-  reused.
-- **chat worktree** — the isolated git worktree (branch `chat/<chat id>`) a
-  chat in Elia's own project works in; its workspace root (PROJ-12).
-- **set up for deployment** — a live tree that is checked out on `live`, has a
-  trunk, and has a trunk at or ahead of `live` (DEPLOY-14).
-
 ## Requirements
 
 ### Worktrees
@@ -246,20 +232,17 @@ tree's front end (`/recover`, RECOVER-10).
   `AGENTS.md` and the self-modification skill. The no-op request behaviour
   (GUARD-8) is kept by DEPLOY-8.
 
-## Specs to amend
-
-HOT (hot reload is a deploy mode, with no tool), CONF (the Settings page's
-deployment section: the steps a deploy reports, the deploy that outlives its
-result, and going back to a revision the app has run, CONF-21–CONF-23),
-RESTART (the restart control), PROJ (per-chat worktrees
-for Elia's own project; the live tree), SKILL and APPR (the
-`self-modification` skill's tools), CKPT and RECOVER (both retired — RECOVER is
-revived for a different job, the page that reaches the app when a deploy has
-broken its UI: RECOVER-10), SUBTASK
-(the sub-task's own worktree), ISOL (the deploy's own fetch and suite run,
-DEPLOY-18, ISOL-14).
-
 ## Implementation
+
+The specs this one amends: HOT (hot reload is a deploy mode, with no tool),
+CONF (the Settings page's deployment section: the steps a deploy reports, the
+deploy that outlives its result, and going back to a revision the app has run,
+CONF-21–CONF-23), RESTART (the restart control), PROJ (per-chat worktrees for
+Elia's own project; the live tree), SKILL and APPR (the `self-modification`
+skill's tools), CKPT and RECOVER (both retired — RECOVER is revived for a
+different job, the page that reaches the app when a deploy has broken its UI:
+RECOVER-10), SUBTASK (the sub-task's own worktree), ISOL (the deploy's own
+fetch and suite run, DEPLOY-18, ISOL-14).
 
 `Elia.Deploy` (worktrees, the trunk and `live`, the deploy, hot reload and
 restart, `deployable/1`, `status/1`, the inert request reloader, the steps a

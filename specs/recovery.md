@@ -68,18 +68,7 @@ what the Settings page's own rollback control does (CONF-23).
 - **RECOVER-15** The page links back to the app (`/`), and the Settings
   deployment section names it (CONF-23).
 
-## Out of scope
-
-- Rolling files back, or choosing individual files to restore (retired
-  RECOVER-3–RECOVER-6): the live tree is a git repository with the trunk in
-  `master`, and a revision the app has run is the unit.
-- Checkpoints (CKPT), and the 500-page banner that linked here (retired
-  RECOVER-7): a crash page now just shows the error.
-- Authenticating the page (retired RECOVER-2): the app has no login of its own,
-  so anyone who can reach the chat UI can already approve commands. The
-  same-origin POST check (RECOVER-13) is what guards the state change.
-
-## Retired requirements
+### Retired requirements
 
 - ~~**RECOVER-1** When the endpoint's code reloader is on (the dev server), the
   endpoint serves `/recover` before `Phoenix.LiveReloader` and
@@ -103,9 +92,11 @@ what the Settings page's own rollback control does (CONF-23).
 - ~~**RECOVER-5** After a successful rollback, skills are reloaded and the page
   shows the sha restored, an undo button (a rollback to the snapshot taken
   just before, CKPT-5), and a link back to the app. The page says that the
-  running app only changes after a deploy (DEPLOY-8).~~ Retired.
+  running app only changes after a deploy (DEPLOY-8).~~ Retired: nothing rolls
+  back (CKPT).
 - ~~**RECOVER-6** If the rollback fails, the page shows the error with a 500
-  and the workspace is left as git left it.~~ Retired.
+  and the workspace is left as git left it.~~ Retired: nothing rolls back
+  (CKPT).
 - ~~**RECOVER-7** An HTML response with status 500 gets a banner at the top of
   `<body>`: a link to `/recover` and, if there is a recommended checkpoint
   (RECOVER-3), a button that rolls back to it. Other responses (other
@@ -115,7 +106,7 @@ what the Settings page's own rollback control does (CONF-23).
 - ~~**RECOVER-8** The recovery plug uses only modules loaded before the code
   reloader (`Elia.Checkpoint`, `Elia.Skills`, `Elia.Workspace`), so its
   running version stays the boot-time one while the rest of the app is broken.~~
-  Retired.
+  Retired: the plug it describes is gone (RECOVER-10).
 - ~~**RECOVER-9** A `POST` is same-origin when its `Origin` header is `http` or
   `https` and matches the request's public address:
 
@@ -130,6 +121,17 @@ what the Settings page's own rollback control does (CONF-23).
   `null`, other-host, other-port or other-scheme origin is refused.~~ Retired:
   there is no POST to protect. RECOVER-13 states the same rule again for the
   POST this page has now.
+
+## Out of scope
+
+- Rolling files back, or choosing individual files to restore (retired
+  RECOVER-3–RECOVER-6): the live tree is a git repository with the trunk in
+  `master`, and a revision the app has run is the unit.
+- Checkpoints (CKPT), and the 500-page banner that linked here (retired
+  RECOVER-7): a crash page now just shows the error.
+- Authenticating the page (retired RECOVER-2): the app has no login of its own,
+  so anyone who can reach the chat UI can already approve commands. The
+  same-origin POST check (RECOVER-13) is what guards the state change.
 
 ## Implementation
 

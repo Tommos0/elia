@@ -265,7 +265,7 @@ defmodule Elia.CommandIsolationTest do
     end
   end
 
-  describe "one mount at a time (ISOL-26, ISOL-27)" do
+  describe "one mount at a time (ISOL-28, ISOL-27)" do
     setup do
       # A worktree whose `deps` is the live tree's (DEPLOY-1), so a jail for it
       # mounts the overlay this is about.
@@ -287,7 +287,7 @@ defmodule Elia.CommandIsolationTest do
       %{worktree: worktree}
     end
 
-    # ISOL-26: the lock is held while a jail mounts, so a command in the worktree
+    # ISOL-28: the lock is held while a jail mounts, so a command in the worktree
     # waits for whoever is mounting and never mounts alongside it. This is the
     # part the timing-dependent test above can't pin down: it either collides or
     # it doesn't, depending on how the mounts line up.
@@ -302,7 +302,7 @@ defmodule Elia.CommandIsolationTest do
       assert {:ok, "hi\n", 0} = Task.await(task, 60_000)
     end
 
-    # ISOL-26: two jails that mounted this layer at the same instant used to
+    # ISOL-28: two jails that mounted this layer at the same instant used to
     # collide — one of them failed before its command ran (35 commands across 11
     # chats, 8.8% of the steps that ran two shell commands). The lock has them
     # take turns mounting, so every command runs.

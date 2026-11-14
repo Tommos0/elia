@@ -35,7 +35,7 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Terminal.Registry},
       {DynamicSupervisor, name: Elia.Terminal.Supervisor, strategy: :one_for_one},
       Elia.Settings,
-      # ISOL-26: one lock per worktree around mounting the shared `deps` overlay,
+      # ISOL-28: one lock per worktree around mounting the shared `deps` overlay,
       # so two jails never mount the same layer at the same instant.
       Elia.Shell.Lock,
       # PUSH-13, PUSH-14: which chats have a visible page, and PUSH-11, PUSH-12:

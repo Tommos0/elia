@@ -105,7 +105,7 @@ jailed, and without a command or an approval prompt.
   what they may read is Elia's own saved chats and nothing else — not the
   settings database and not a file outside `.elia/sessions`.
 
-## Data
+## Stored data
 
 Old data: nothing stored changes shape. The three tools only read the saved
 chats (STORE-1, HIST-10) — a chat saved by an older version lists and reads the

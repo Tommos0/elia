@@ -1,7 +1,9 @@
 # Test runs
 
-Status: Implemented (VERIFY-1, VERIFY-2, VERIFY-8 to VERIFY-11); the end-of-turn
-verification and the `run_tests` tool are retired
+Status: Implemented
+
+VERIFY-1, VERIFY-2 and VERIFY-8 to VERIFY-11 are implemented; the end-of-turn
+verification and the `run_tests` tool are retired.
 
 `Elia.Harness.run_tests/3` runs the test suite in the workspace; the deploy's
 gate is what calls it in the app (DEPLOY-5), and a chat runs the suite itself

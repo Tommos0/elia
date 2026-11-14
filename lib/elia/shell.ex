@@ -287,7 +287,7 @@ defmodule Elia.Shell do
     {_exe, args} = argv(script, cd, opts)
 
     if "--overlay" in args do
-      # ISOL-26: this jail mounts the worktree's dependency layer itself, and two
+      # ISOL-28: this jail mounts the worktree's dependency layer itself, and two
       # jails that mount the same layer at the same instant collide. The lock is
       # held only until the jail reports that it is up, not for the command.
       key = Elia.Deps.layer(cd)
@@ -372,7 +372,7 @@ defmodule Elia.Shell do
     ])
   end
 
-  # ISOL-26: bubblewrap writes its report of the running sandbox to stderr once
+  # ISOL-28: bubblewrap writes its report of the running sandbox to stderr once
   # the mounts are made, so the first `}` line of the stream is the moment the
   # overlay is up and the lock can go. What follows it is the command's own
   # output, which is why the report is taken off the front of it.
@@ -426,7 +426,7 @@ defmodule Elia.Shell do
       ["--chdir", cd, "--", shell(opts), "-c", script]
   end
 
-  # ISOL-26: bubblewrap reports the sandbox as up on stderr once its mounts are
+  # ISOL-28: bubblewrap reports the sandbox as up on stderr once its mounts are
   # made, and that report is what ends the mount lock — so it is asked for only
   # by the jail that mounts the worktree's dependency layer, the one that has to
   # wait for the lock in the first place.

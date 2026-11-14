@@ -187,7 +187,7 @@ defmodule Elia.Terminal.Session do
         env: [{"TERM", "xterm-256color"}]
       )
 
-    # ISOL-26: the session's jail mounts the worktree's dependency layer as a
+    # ISOL-28: the session's jail mounts the worktree's dependency layer as a
     # command's does, so it takes the same lock — and gives it back as soon as
     # the session says it is up, which is its first output (or its death).
     lock = if "--overlay" in args, do: Elia.Deps.layer(workspace), else: nil
@@ -315,7 +315,7 @@ defmodule Elia.Terminal.Session do
 
   @impl true
   def handle_info({port, {:data, {_eol, data}}}, %{port: port} = state) do
-    # ISOL-26: the jail is up and talking, so the mount lock can go.
+    # ISOL-28: the jail is up and talking, so the mount lock can go.
     {:noreply, %{release_lock(state) | stderr: cap_stderr(state.stderr <> data)}}
   end
 
@@ -349,7 +349,7 @@ defmodule Elia.Terminal.Session do
     :ok
   end
 
-  # ISOL-26: the mount lock is held only until the jail is up. A session that
+  # ISOL-28: the mount lock is held only until the jail is up. A session that
   # ends before it ever spoke gives it back here, so a terminal that failed to
   # start can't keep a worktree's commands waiting.
   defp release_lock(%{lock: nil} = state), do: state

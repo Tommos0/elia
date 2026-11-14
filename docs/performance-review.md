@@ -55,7 +55,7 @@ halves the waiting.
 Proposal: an `AGENTS.md` rule — "in one step, ask for everything you already
 know you need; several reads/searches in one message run at once; don't spend a
 round trip per file". The blocker for shell calls was finding **4**: batching
-commands is what provoked the overlay failures. ISOL-26/ISOL-27 fixed that
+commands is what provoked the overlay failures. ISOL-28/ISOL-27 fixed that
 without namespace sharing (see **Open questions**), so the rule can cover shell
 calls too.
 
@@ -64,7 +64,7 @@ for everything you already know you need"* in `AGENTS.md` — it covers reads,
 searches and shell commands, names what to batch (the topic docs the table
 rows name, the files a change will touch, the greps that locate them), and says
 a batched command still gets its own jail and its own `/tmp` and pid namespace
-(ISOL-26), so batching shell calls is safe. How much it actually saves has not
+(ISOL-28), so batching shell calls is safe. How much it actually saves has not
 been measured yet — that is finding 4's records, unread so far.
 
 ## 2. Orientation tax
@@ -130,7 +130,7 @@ skill and tool description now send finding text to it rather than to `grep`
   single-call step. 399 of 10,676 steps run 2+ shell calls → **8.8% of those
   lose one of their commands**, and the command never ran at all. **Fixed**
   2026-11-13 (`9bf6184 feat: one jail at a time mounts a worktree's deps layer`)
-  by ISOL-26/ISOL-27 in `specs/command-isolation.md`: a per-worktree lock around
+  by ISOL-28/ISOL-27 in `specs/command-isolation.md`: a per-worktree lock around
   mount *setup* (one jail per command stays as it is), plus a retry and a
   read-only fallback so a command that never ran is never reported as failed.
   Overlapping lifetimes are not the problem — a mount started a moment after
@@ -238,7 +238,7 @@ yet: the measurement this proposal was for is still to be taken.
 
 | # | Change | Kind | Expected | Status 2026-11-13 |
 | --- | --- | --- | --- | --- |
-| 1 | Per-worktree lock around mount setup (ISOL-26/27) | code + spec | removes 8.8% failures | **done** (`9bf6184`) |
+| 1 | Per-worktree lock around mount setup (ISOL-28/27) | code + spec | removes 8.8% failures | **done** (`9bf6184`) |
 | 2 | `AGENTS.md`: batch known lookups in one step | instructions | up to −27% round trips | **done** (`36ea73e`) |
 | 3 | `AGENTS.md`: cheaper orientation (one topic doc, grep first) | instructions | −10 steps per coding chat | **done** (`36ea73e`), five pages kept |
 | 4 | Per-step timing recorded | code + spec | makes future reviews measurable | **done** (`11478c4`) |
@@ -255,10 +255,10 @@ Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
   instant fail; a mount started a second after another succeeds while the first
   is still up. So a terminal's session-long mount (TERM-7) is harmless and the
   per-chat jail is not needed for correctness — the jail stays one per command
-  (ISOL-26).
+  (ISOL-28).
 - **A shared jail per step is a speed option, not a fix.** It would mount once
   per step instead of once per command, but it needs a driver protocol inside the
-  jail (framing, per-command timeouts and exits), and ISOL-26 removes the failure
+  jail (framing, per-command timeouts and exits), and ISOL-28 removes the failure
   without it. Not proposed.
 - **Batching shell calls stays safe without namespace sharing**, because each
   command keeps its own jail and its own `/tmp` and pid namespace.

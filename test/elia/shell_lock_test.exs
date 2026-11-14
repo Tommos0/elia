@@ -1,12 +1,12 @@
 defmodule Elia.Shell.LockTest do
-  # ISOL-26: one jail at a time mounts a worktree's dependency layer, and the
+  # ISOL-28: one jail at a time mounts a worktree's dependency layer, and the
   # lock is held only for the mount — so it is a queue, not a mutex around the
   # command, and a holder that dies doesn't wedge the worktree.
   use ExUnit.Case, async: false
 
   alias Elia.Shell.Lock
 
-  # The application starts the lock (ISOL-26); a key per test keeps them apart.
+  # The application starts the lock (ISOL-28); a key per test keeps them apart.
   defp key, do: {:test, make_ref()}
 
   test "one holder at a time, and the next waiter gets it when it is released" do

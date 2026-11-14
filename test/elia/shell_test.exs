@@ -317,7 +317,7 @@ defmodule Elia.ShellMixEnvTest do
 end
 
 defmodule Elia.ShellMountTest do
-  # ISOL-26, ISOL-27: the jail that mounts a worktree's dependency layer takes a
+  # ISOL-28, ISOL-27: the jail that mounts a worktree's dependency layer takes a
   # lock and asks bubblewrap to report when it is up, and a jail that can't mount
   # the layer falls back to the shared tree read-only. These check the argv, so
   # they need bubblewrap only to build one (ISOL-12) — but they write the live
@@ -359,7 +359,7 @@ defmodule Elia.ShellMountTest do
     %{live: live, worktree: worktree}
   end
 
-  # ISOL-26: the report is what ends the mount lock, so the jail that mounts the
+  # ISOL-28: the report is what ends the mount lock, so the jail that mounts the
   # layer asks for it and no other does.
   test "a jail that mounts the layer asks bubblewrap to report when it is up", %{
     worktree: worktree

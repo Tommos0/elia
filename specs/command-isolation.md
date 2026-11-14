@@ -185,7 +185,7 @@ not the problem: a mount started a moment after another succeeds while the first
 is still up (measured on this host), so a terminal's session-long mount (TERM-7)
 is harmless.
 
-- **ISOL-26** No two jails mount a worktree's dependency layer at the same
+- **ISOL-28** No two jails mount a worktree's dependency layer at the same
   instant. A jail that mounts one — a command's (ISOL-7) and a terminal
   session's (TERM-7) — takes a lock for that worktree before it starts and
   releases it as soon as the jail says it is up: bubblewrap's own `--info-fd`
@@ -322,7 +322,7 @@ bubblewrap is missing (ISOL-12).
   supervision (a jail that dies is the whole chat's commands failing), a
   lifecycle tied to the worktree (DEPLOY-10), a way to end one command without
   ending the jail, and a decision about what a chat's commands may see of each
-  other across steps — which one jail per command keeps out of reach. ISOL-26
+  other across steps — which one jail per command keeps out of reach. ISOL-28
   makes the collision that would motivate it impossible, so it is not needed for
   correctness.
 - Seccomp filters, cgroup limits, and capping what a jailed command may write
@@ -333,7 +333,7 @@ bubblewrap is missing (ISOL-12).
 `Elia.Shell` (the bubblewrap argv, the profiles, the environment allowlist, and
 what a jailed command can reach — ISOL-25; `run/2` takes `:jail` and
 `:profile`; the readiness report that ends the mount lock and the read-only
-fallback — ISOL-26, ISOL-27), `Elia.Shell.Lock` (the per-worktree lock around
+fallback — ISOL-28, ISOL-27), `Elia.Shell.Lock` (the per-worktree lock around
 mounting the layer, and releasing a dead holder), `Elia.Terminal.Session` (the
 session's jail takes the same lock and gives it back at its first output),
 `Elia.Skills.Shell`,
@@ -354,7 +354,7 @@ lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
 what a jailed command can reach, the fallback when bubblewrap is missing, the
 readiness report that ends the mount lock, and the read-only fallback of
 ISOL-27), `test/elia/shell_lock_test.exs` (the per-worktree lock: one holder at
-a time, the next waiter granted in order, a dead holder released — ISOL-26),
+a time, the next waiter granted in order, a dead holder released — ISOL-28),
 `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
 and its removal, ISOL-7, DEPLOY-10),
 `test/elia/command_isolation_test.exs`
@@ -363,7 +363,7 @@ Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, 
 workspace writable, a command writing inside the shared `deps` and leaving it
 unchanged, a timeout still cleaning up, a command waiting for the mount lock
 before it runs, two commands started at once in one worktree both running, and
-`Elia.Harness.run_tests/3` jailed — ISOL-26),
+`Elia.Harness.run_tests/3` jailed — ISOL-28),
 `test/elia/deployment_test.exs` (the worktree
 administration and the deploy's fetch, DEPLOY-18),
 `test/elia/tasks_git_test.exs` (the harness's git calls),

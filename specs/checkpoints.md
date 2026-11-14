@@ -12,7 +12,7 @@ project now edits its own git worktree on its own branch (DEPLOY-1), so a bad
 turn cannot reach the running tree, and ordinary git is the undo: the chat's own
 branch, the trunk `master`, and the deploy gate, which refuses to load a tree
 whose suite or compile fails (DEPLOY-5, HOT-4). Nothing snapshots the workspace
-any more, and no write takes a checkpoint (FILE-8, SHELL-6 and FOLDER-9 are
+any more, and no write takes a checkpoint (SHELL-6 is
 retired with it). See `specs/deployment.md`.
 
 ## Requirements
@@ -25,7 +25,8 @@ retired with it). See `specs/deployment.md`.
 - ~~**CKPT-2** Snapshots include untracked files and respect `.gitignore`.
   The first change in a turn (from shell, file writes or script tools) takes
   one checkpoint for that turn; later changes in the same turn reuse it.~~
-  Retired: FILE-8, SHELL-6 and FOLDER-9 no longer take one.
+  Retired: the shell tool's checkpoint (SHELL-6) is gone with it, and no file
+  write takes one.
 - ~~**CKPT-3** If a checkpoint can't be taken, the tool that would change the
   workspace fails with an error and doesn't run.~~ Retired: there is no
   checkpoint to fail.

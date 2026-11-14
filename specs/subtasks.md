@@ -1,9 +1,11 @@
 # Sub-tasks
 
-Status: Implemented (phases 1 to 3 of [the plan](plans/subagents.md): core,
-task cards, a nested chat list and a task header in the chat UI, stopped turns,
-budget and crash recovery; the reset tool is retired, SUBTASK-22. Phase 4:
-concurrent sub-tasks)
+Status: Implemented
+
+Phases 1 to 3 of [the plan](plans/subagents.md) are done: core, task cards, a
+nested chat list and a task header in the chat UI, stopped turns, budget and
+crash recovery. The reset tool is retired (SUBTASK-22). Phase 4, concurrent
+sub-tasks, is not done yet.
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat
 with a fresh context and get back a short structured result. The child is an
@@ -118,11 +120,11 @@ its own workspace; children that would share one workspace are serialized
 
 ### Retired: interaction with checkpoints and verification
 
-- ~~**SUBTASK-14**~~ *Retired (phase 4).* It used to replace the parent's turn
-  checkpoint when the child ended, so a rollback couldn't wipe the child's
-  work. The child leaves the parent's workspace alone (SUBTASK-23) and
-  `spawn_task` doesn't block the parent, so there was nothing left to replace —
-  and checkpoints themselves are gone now (CKPT, VERIFY).
+- ~~**SUBTASK-14**~~ Retired: phase 4 dropped it. It used to replace the
+  parent's turn checkpoint when the child ended, so a rollback couldn't wipe
+  the child's work. The child leaves the parent's workspace alone (SUBTASK-23)
+  and `spawn_task` doesn't block the parent, so there was nothing left to
+  replace — and checkpoints themselves are gone now (CKPT, VERIFY).
 
 ### UI support (phase 2)
 
@@ -291,7 +293,7 @@ its own workspace; children that would share one workspace are serialized
   (SUBTASK-24), its session dies (SUBTASK-8, SUBTASK-19), or the user deletes
   the child's chat (SESS-29, SUBTASK-29).
 
-## Out of scope (later phases of the plan)
+## Out of scope
 
 Read-only children (phase 5).
 
