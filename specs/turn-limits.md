@@ -39,8 +39,9 @@ turn that stopped for the user says so however much later the chat is opened.
   boolean}`, where `nil` is "no limit of this chat's own", like the chat's jail
   setting (SESS-30):
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets them for one chat,
-  `set_limits/2` is allowed mid-turn, a change is broadcast as
-  `{:limits, limits}` (SESS-6) so every view of the chat agrees, and
+  `set_limits/2` is allowed mid-turn, a change goes through
+  `Elia.Agent.set_settings/2` (SESS-41) and is broadcast with it (SESS-6) so
+  every view of the chat agrees, and
   `snapshot/1` carries them (SESS-7). They are saved with the chat (STORE-27,
   STORE-28) and loaded on start.
 - **LIMIT-3** A turn runs with them: the session passes `max_steps`, `budget_ms`

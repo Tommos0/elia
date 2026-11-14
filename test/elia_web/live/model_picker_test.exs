@@ -85,7 +85,9 @@ defmodule EliaWeb.ModelPickerTest do
     assert has_element?(view, "#selected-model", "OpenAI: GPT X")
     assert has_element?(view, "#selected-provider[data-provider=openrouter]")
     # MODEL-1, MODEL-15: stored on the chat, and remembered as the default.
-    assert %{provider: "openrouter", model: "openai/gpt-x"} = Agent.snapshot(id).selection
+    assert %{provider: "openrouter", model: "openai/gpt-x"} =
+             Agent.snapshot(id).settings.model
+
     assert %{provider: "openrouter", model: "openai/gpt-x"} = LLM.selection()
 
     # The selected model is marked when the picker reopens.

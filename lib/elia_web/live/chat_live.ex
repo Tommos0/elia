@@ -87,7 +87,8 @@ defmodule EliaWeb.ChatLive do
         tool_status: snapshot.tool_status,
         last_usage: snapshot.last_usage,
         show_context: false,
-        context_window: LLM.context_window(snapshot.selection),
+        # SESS-7: the chat's per-chat settings are one field.
+        context_window: LLM.context_window(snapshot.settings.model),
         # COMPACT-2: the full history, which the transcript always shows, and the
         # chat's compaction state, from which the request view is derived.
         messages: [],
@@ -129,15 +130,15 @@ defmodule EliaWeb.ChatLive do
         parent_title: parent_title(snapshot.task),
         chats_open: false,
         now: DateTime.utc_now(),
-        # MSGAT-6: the transcript items that carry a stamp, by id, so the tick
+# MSGAT-6: the transcript items that carry a stamp, by id, so the tick
         # can send one again when its relative text has moved on — a streamed
         # item is only re-rendered when it is sent again.
         timed_items: %{},
-        selection: LLM.selection(snapshot.selection),
+        selection: LLM.selection(snapshot.settings.model),
         # CSET-9: the chat page names the jail setting (ISOL-16) and whether
         # the host has one at all (ISOL-12, ISOL-20); the switch itself is on
         # the chat settings page (CSET-5).
-        jail: snapshot.jail,
+        jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
@@ -2033,21 +2034,16 @@ defmodule EliaWeb.ChatLive do
     |> insert_message(message, index, status)
   end
 
-  defp apply_event({:model, selection}, socket) do
+  # CSET-8, UI-67, SESS-41: the chat's per-chat settings have one event, and this
+  # page shows two things of them — the model, in its settings link, and the jail
+  # warning beside it (CSET-9). What a selection change redraws and nothing else
+  # is the label; auto-approval has no control here at all (APPR-8 is set on the
+  # chat settings page, CSET-5), and neither do the turn's limits (LIMIT-6).
+  defp apply_event({:settings, settings}, socket) do
     socket
-    |> assign(selection: selection, context_window: LLM.context_window(selection))
+    |> assign(selection: LLM.selection(settings.model), jail: settings.jail)
+    |> assign(context_window: LLM.context_window(settings.model))
   end
-
-  # CSET-8: this page shows the chat's model only in its settings link, so a new
-  # selection redraws that label and nothing else. Auto-approval has no control
-  # here at all (APPR-8 is set on the chat settings page, CSET-5), and neither
-  # does the turn's limits; the jail setting still decides the warning next to
-  # the link (CSET-9, UI-67).
-  defp apply_event({:auto_approve, _names}, socket), do: socket
-  defp apply_event({:limits, _limits}, socket), do: socket
-
-  # UI-67, SESS-30: every tab on the chat follows the jail setting.
-  defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)
 
   # UI-44, UI-49: the card's status and link follow the child.
   defp apply_event({:subtask, call_id, child_id, status}, socket) do

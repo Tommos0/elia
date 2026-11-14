@@ -27,10 +27,10 @@ show up; so does the Compact button (CSET-12).
   back to the chat (`#chat-settings-back`). Its page title (UI-3) is the chat's
   title.
 - **CSET-3** Every control on the page is right on first render, from the
-  session's snapshot (SESS-7), and follows the chat's own events — `{:model,
-  selection}` (MODEL-1), `{:auto_approve, names}` (SESS-16), `{:jail, on?}`
-  (SESS-30), `{:limits, limits}` (LIMIT-2), `{:compaction, state}`
-  (COMPACT-24), `{:effort, effort}` (SESS-40) — so a change made on the chat
+  session's snapshot (SESS-7), and follows the chat's own events — `{:settings,
+  settings}` (SESS-41, which carries the model, auto-approval, jail, limits and
+  effort alike) and `{:compaction, state}`
+  (COMPACT-24) — so a change made on the chat
   page or in another tab shows up here too, and vice versa.
 - **CSET-4** A change made on the page applies to the chat at the moment it is
   made: it is the same session the chat page uses (SESS-1), so the next turn,
@@ -86,8 +86,8 @@ show up; so does the Compact button (CSET-12).
   each setting it the moment it is clicked (CSET-4) through the session
   (SESS-40), and a line (`#effort-state`) saying what applies in words: the
   chat's own effort, or that the provider's configured default applies (which
-  "Default" is the way back to). The page follows the chat's `{:effort, effort}`
-  event (CSET-3), so a change made in another tab shows up here.
+  "Default" is the way back to). The page follows the chat's `{:settings,
+  settings}` event (CSET-3), so a change made in another tab shows up here.
 
 ## Out of scope
 

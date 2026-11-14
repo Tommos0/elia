@@ -64,7 +64,7 @@ defmodule EliaWeb.JailTest do
     view |> element("#jail-toggle") |> render_click()
     assert has_element?(view, "#jail-toggle[aria-checked='false']")
     assert has_element?(view, "#jail-state", "Not jailed")
-    assert %{jail: false} = Agent.snapshot(id)
+    assert %{settings: %{jail: false}} = Agent.snapshot(id)
 
     # UI-67: turning it off shows that commands can then reach the secrets.
     html = render(element(view, "#jail-warning"))
@@ -74,12 +74,12 @@ defmodule EliaWeb.JailTest do
     view |> element("#jail-toggle") |> render_click()
     assert has_element?(view, "#jail-toggle[aria-checked='true']")
     assert has_element?(view, "#jail-state", "Jailed")
-    assert %{jail: true} = Agent.snapshot(id)
+    assert %{settings: %{jail: true}} = Agent.snapshot(id)
     refute has_element?(view, "#jail-warning")
   end
 
-  # UI-67, SESS-30, CSET-3: the switch follows `{:jail, on?}`, so every view of
-  # the chat agrees — a second tab here.
+  # UI-67, SESS-30, SESS-41, CSET-3: the switch follows `{:settings, settings}`,
+  # so every view of the chat agrees — a second tab here.
   test "every view of the chat follows the switch", %{conn: conn, id: id} do
     {:ok, first, _} = settings(conn, id)
     {:ok, second, _} = settings(conn, id)
@@ -178,7 +178,7 @@ defmodule EliaWeb.JailTest do
     # ISOL-19: turning the jail off loosens nothing else — the call still needs
     # approval and no tool is auto-approved.
     assert has_element?(view, "#deny-c1")
-    assert %{auto_approve: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
   end
 
   # UI-69: a jailed chat's prompt doesn't mention it.

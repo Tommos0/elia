@@ -34,22 +34,23 @@ defmodule EliaWeb.ChatSettingsLive do
         # from its first user message (STORE-7).
         page_title: Elia.Store.chat_title(id),
         project: snapshot.project,
-        selection: LLM.selection(snapshot.selection),
-        context_window: LLM.context_window(snapshot.selection),
-        auto_approve: snapshot.auto_approve,
+        # SESS-7: the chat's per-chat settings are one field.
+        selection: LLM.selection(snapshot.settings.model),
+        context_window: LLM.context_window(snapshot.settings.model),
+        auto_approve: snapshot.settings.auto_approve,
         # The auto-approve popover (UI-38): open on the settings page only.
         auto_approve_open: false,
         approvable_tools: approvable_tools(skills),
         # UI-67, UI-68: this chat's jail setting (ISOL-16) and whether the host
         # has a jail at all (ISOL-12, ISOL-20).
-        jail: snapshot.jail,
+        jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         # LIMIT-1, LIMIT-6: the chat's turn limits and the form that sets them.
-        limits: snapshot.limits,
-        limits_form: limits_form(snapshot.limits),
+        limits: snapshot.settings.limits,
+        limits_form: limits_form(snapshot.settings.limits),
         # CSET-13, SESS-40: this chat's own reasoning effort (LLM-39), nil when
         # the configured default applies (LLM-38).
-        effort: snapshot.effort,
+        effort: snapshot.settings.effort,
         # COMPACT-30: the chat's compaction options and the form that sets them.
         compaction: snapshot.compaction,
         compaction_form: compaction_form(snapshot.compaction),
@@ -1129,21 +1130,26 @@ defmodule EliaWeb.ChatSettingsLive do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # CSET-3: every control follows the chat's own events, so a change made on the
-  # chat page or in another tab shows up here too.
-  defp apply_event({:model, selection}, socket) do
+  # CSET-3, SESS-41: every control follows the chat's own settings event — the
+  # model, auto-approval, jail, limits and effort alike — so a change made on the
+  # chat page or in another tab shows up here too. CSET-7: the limits form is
+  # only rebuilt when the chat's limits themselves changed, so a half-typed value
+  # stays while something else is set.
+  defp apply_event({:settings, settings}, socket) do
+    previous = socket.assigns.limits
+
     socket
-    |> assign(selection: selection, context_window: LLM.context_window(selection))
+    |> assign(
+      selection: LLM.selection(settings.model),
+      context_window: LLM.context_window(settings.model),
+      auto_approve: settings.auto_approve,
+      jail: settings.jail,
+      effort: settings.effort,
+      limits: settings.limits
+    )
+    |> maybe_limits_form(previous, settings.limits)
     |> stream_models()
   end
-
-  defp apply_event({:auto_approve, names}, socket), do: assign(socket, auto_approve: names)
-  defp apply_event({:jail, on?}, socket), do: assign(socket, jail: on?)
-
-  defp apply_event({:effort, effort}, socket), do: assign(socket, effort: effort)
-
-  defp apply_event({:limits, limits}, socket),
-    do: assign(socket, limits: limits, limits_form: limits_form(limits))
 
   defp apply_event({:compaction, compaction}, socket),
     do: assign(socket, compaction: compaction, compaction_form: compaction_form(compaction))
@@ -1151,6 +1157,14 @@ defmodule EliaWeb.ChatSettingsLive do
   # The chat's other events (deltas, tool status, tasks) have nothing to say on
   # this page.
   defp apply_event(_event, socket), do: socket
+
+  # LIMIT-6, CSET-7: the form shows what the chat runs with; it is rebuilt only
+  # when the chat's limits changed, so setting something else doesn't disturb a
+  # value the user has typed and not saved.
+  defp maybe_limits_form(socket, limits, limits), do: socket
+
+  defp maybe_limits_form(socket, _previous, limits),
+    do: assign(socket, limits_form: limits_form(limits))
 
   # CSET-11: a rejected save changes nothing and leaves the user on the page,
   # with the message and the values as they were typed, so they can be corrected

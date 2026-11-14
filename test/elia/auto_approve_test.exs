@@ -37,7 +37,7 @@ defmodule Elia.AutoApproveTest do
     end)
 
     Agent.subscribe(id)
-    assert %{auto_approve: @approvable, messages: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: @approvable}, messages: []} = Agent.snapshot(id)
 
     FakeLLM.push(FakeLLM.assistant([shell_call("c1", "echo default")]))
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
@@ -70,8 +70,8 @@ defmodule Elia.AutoApproveTest do
       end
     end)
 
-    assert %{auto_approve: []} = Agent.snapshot(plain)
-    assert %{auto_approve: ["shell"]} = Agent.snapshot(saved)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(plain)
+    assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(saved)
   end
 
   # APPR-14, FOLDER-8: the default set is worked out from the project's skills,
@@ -96,7 +96,7 @@ defmodule Elia.AutoApproveTest do
     {:ok, pid} = Agent.ensure_started(id)
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
 
-    assert "default_greet" in Agent.snapshot(id).auto_approve
+    assert "default_greet" in Agent.snapshot(id).settings.auto_approve
   after
     File.rm_rf!(Path.join(Elia.Workspace.skills_dir(), "defaulter"))
     Elia.Skills.reload()
@@ -255,25 +255,25 @@ defmodule Elia.AutoApproveTest do
     assert {:error, :not_approvable} = Agent.set_auto_approve(id, "reload_skills", true)
     assert {:error, :not_approvable} = Agent.set_auto_approve(id, "no_such_tool", true)
     assert :ok = Agent.set_auto_approve(id, "read_file", true)
-    assert %{auto_approve: ["read_file"]} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["read_file"]}} = Agent.snapshot(id)
 
     # A name that is already on can always be turned off.
     assert :ok = Agent.set_auto_approve(id, "read_file", false)
-    assert %{auto_approve: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
   end
 
-  # SESS-6, SESS-7, SESS-16
+  # SESS-6, SESS-7, SESS-16, SESS-41
   test "changes are broadcast and shown in the snapshot, sorted", %{id: id} do
-    assert %{auto_approve: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
 
     :ok = Agent.set_auto_approve(id, "shell", true)
-    assert_receive {:agent, ^id, {:auto_approve, ["shell"]}}
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["shell"]}}}
     :ok = Agent.set_auto_approve(id, "edit_file", true)
-    assert_receive {:agent, ^id, {:auto_approve, ["edit_file", "shell"]}}
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["edit_file", "shell"]}}}
     :ok = Agent.set_auto_approve(id, "shell", false)
-    assert_receive {:agent, ^id, {:auto_approve, ["edit_file"]}}
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["edit_file"]}}}
 
-    assert %{auto_approve: ["edit_file"]} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["edit_file"]}} = Agent.snapshot(id)
   end
 
   # APPR-12, SESS-16, STORE-14, STORE-15
@@ -289,7 +289,7 @@ defmodule Elia.AutoApproveTest do
 
     :ok = Agent.set_auto_approve(id, "shell", true)
     assert Store.load_auto_approve(id) == ["shell"]
-    assert %{auto_approve: []} = Agent.snapshot(other)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(other)
 
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     ref = Process.monitor(pid)
@@ -297,7 +297,7 @@ defmodule Elia.AutoApproveTest do
     assert_receive {:DOWN, ^ref, :process, ^pid, _}
 
     {:ok, _} = Agent.ensure_started(id)
-    assert %{auto_approve: ["shell"]} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
 
     :ok = Agent.set_auto_approve(id, "shell", false)
     assert Store.load_auto_approve(id) == []
@@ -310,24 +310,42 @@ defmodule Elia.AutoApproveTest do
     refute File.exists?(Path.join(Store.dir(), id <> ".term"))
   end
 
-  # SESS-15
-  test "a session with state from before :auto_approve existed is upgraded", %{id: id} do
+  # SESS-15, SESS-41
+  test "a session with state from before the one settings map existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
-    :sys.replace_state(pid, &Map.delete(&1, :auto_approve))
+    :sys.replace_state(pid, &Map.delete(&1, :settings))
 
     # APPR-14: the upgrade works out the default for a chat that is still new.
-    assert %{auto_approve: @approvable, messages: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: @approvable}, messages: []} = Agent.snapshot(id)
   end
 
   # SESS-15
-  test "upgrading keeps the fields the state already has", %{id: id} do
-    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+  test "upgrading keeps the settings the state already has" do
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, auto_approve: [])
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
     selection = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
 
+    # A state from before the one map: its five settings are fields of their own
+    # (SESS-15, SESS-41).
     :sys.replace_state(pid, fn state ->
-      state |> Map.delete(:auto_approve) |> Map.put(:selection, selection)
+      state
+      |> Map.delete(:settings)
+      |> Map.put(:selection, selection)
+      |> Map.put(:jail, false)
+      |> Map.put(:effort, "low")
+      |> Map.put(:limits, %{max_steps: 9, max_minutes: nil, max_tokens: nil, pause_on_limit: true})
+      |> Map.put(:auto_approve, MapSet.new(["shell"]))
     end)
 
-    assert %{selection: ^selection, auto_approve: @approvable} = Agent.snapshot(id)
+    assert %{
+             settings: %{
+               model: ^selection,
+               jail: false,
+               effort: "low",
+               limits: %{max_steps: 9},
+               auto_approve: ["shell"]
+             }
+           } = Agent.snapshot(id)
   end
 end

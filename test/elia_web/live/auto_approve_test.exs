@@ -98,7 +98,7 @@ defmodule EliaWeb.AutoApproveTest do
     assert has_element?(view, "#auto-approve-shell[aria-checked='true']")
     assert has_element?(view, "#auto-approve-write_file[aria-checked='false']")
     assert has_element?(view, "#auto-approve-count", "1")
-    assert %{auto_approve: ["shell"]} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
 
     view |> element("#auto-approve-write_file") |> render_click()
     assert has_element?(view, "#auto-approve-count", "2")
@@ -107,7 +107,7 @@ defmodule EliaWeb.AutoApproveTest do
     view |> element("#auto-approve-write_file") |> render_click()
     assert has_element?(view, "#auto-approve-shell[aria-checked='false']")
     refute has_element?(view, "#auto-approve-count")
-    assert %{auto_approve: []} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
   end
 
   # UI-39, SESS-16, CSET-3: a switch moved on one view of the chat (its settings

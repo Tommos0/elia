@@ -337,10 +337,10 @@ defmodule Elia.Tasks do
         selection: child_selection(parent_snapshot, model),
         # SUBTASK-6: the child inherits a copy of the parent's auto-approved
         # tools so the user doesn't approve them all over again.
-        auto_approve: parent_snapshot.auto_approve,
+        auto_approve: parent_snapshot.settings.auto_approve,
         # SUBTASK-30: and a copy of the parent's jail setting (ISOL-18), which is
         # the child's own from then on.
-        jail: parent_snapshot.jail,
+        jail: parent_snapshot.settings.jail,
         project: project
       )
 
@@ -381,8 +381,12 @@ defmodule Elia.Tasks do
   # The child's selection: the parent's, or `model` on the parent's provider (SUBTASK-6).
   defp child_selection(parent, model) do
     if is_binary(model),
-      do: %{provider: Elia.LLM.selection(parent.selection).provider, model: model, name: model},
-      else: parent.selection
+      do: %{
+        provider: Elia.LLM.selection(parent.settings.model).provider,
+        model: model,
+        name: model
+      },
+      else: parent.settings.model
   end
 
   ## The watcher (SUBTASK-28)

@@ -354,7 +354,7 @@ defmodule Elia.TasksTest do
     refute "spawn_task" in tool_names(request)
     assert request.system =~ "## Skill: task\n"
     assert request.model == "other-model"
-    assert %{model: "other-model"} = Agent.snapshot(child).selection
+    assert %{model: "other-model"} = Agent.snapshot(child).settings.model
     assert Elia.Settings.get(:model) == default_model
 
     # SUBTASK-4: a child can't start a child.
@@ -434,12 +434,12 @@ defmodule Elia.TasksTest do
              Enum.find(Store.list(1000), &(&1.id == child))
 
     # SUBTASK-6: the child inherited the parent's auto-approved tools.
-    assert Agent.snapshot(child).auto_approve == ["shell"]
+    assert Agent.snapshot(child).settings.auto_approve == ["shell"]
 
     # APPR-12: the copy is the child's own; changing the parent doesn't touch it.
     :ok = Agent.set_auto_approve(parent, "shell", false)
-    assert Agent.snapshot(parent).auto_approve == []
-    assert Agent.snapshot(child).auto_approve == ["shell"]
+    assert Agent.snapshot(parent).settings.auto_approve == []
+    assert Agent.snapshot(child).settings.auto_approve == ["shell"]
 
     # SUBTASK-11: nothing is left running.
     assert Tasks.active() == []
@@ -501,17 +501,17 @@ defmodule Elia.TasksTest do
 
     child = session_json(parent, "spawn_task", 0)["task_id"]
 
-    assert Agent.snapshot(child).jail == false
+    assert Agent.snapshot(child).settings.jail == false
 
     # ISOL-18: the copy is the child's own from then on; changing either chat
     # afterwards never affects the other.
     :ok = Agent.set_jail(parent, true)
-    assert Agent.snapshot(parent).jail == true
-    assert Agent.snapshot(child).jail == false
+    assert Agent.snapshot(parent).settings.jail == true
+    assert Agent.snapshot(child).settings.jail == false
 
     :ok = Agent.set_jail(child, true)
-    assert Agent.snapshot(child).jail == true
-    assert Agent.snapshot(parent).jail == true
+    assert Agent.snapshot(child).settings.jail == true
+    assert Agent.snapshot(parent).settings.jail == true
 
     stop_session(child)
   end
@@ -519,7 +519,7 @@ defmodule Elia.TasksTest do
   # SUBTASK-30, STORE-26
   test "a child of a chat that keeps the default is jailed", %{parent: parent} do
     # The parent's value is the default and so isn't in its file (STORE-25).
-    assert Agent.snapshot(parent).jail == true
+    assert Agent.snapshot(parent).settings.jail == true
 
     push_turns(
       router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
@@ -528,7 +528,7 @@ defmodule Elia.TasksTest do
     run_parent(parent, ["s1"])
 
     child = session_json(parent, "spawn_task", 0)["task_id"]
-    assert Agent.snapshot(child).jail == true
+    assert Agent.snapshot(child).settings.jail == true
 
     stop_session(child)
   end
@@ -625,7 +625,7 @@ defmodule Elia.TasksTest do
     # token budget — so the child's token spend is unlimited until the user sets
     # one on its own settings page.
     assert %{max_steps: 1, max_tokens: nil, pause_on_limit: true} =
-             Agent.snapshot(child).limits
+             Agent.snapshot(child).settings.limits
 
     # SUBTASK-24: the entry is still held and the parent is still waiting, with
     # no deadline of its own.

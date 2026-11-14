@@ -38,7 +38,7 @@ defmodule EliaWeb.TerminalLive do
         # What the workspace *is*, without creating one just by opening a page
         # (DEPLOY): the worktree is forked when a terminal actually starts.
         workspace: Deploy.existing_workspace(snapshot.project, id),
-        jail: snapshot.jail,
+        jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         tmux: Terminal.available?(),
         tmux_message: Terminal.unavailable_message(),

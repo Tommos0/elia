@@ -599,7 +599,7 @@ defmodule Elia.AgentTest do
 
     # A change applies from the next turn (LIMIT-3).
     :ok = Agent.set_limits(id, %{max_tokens: 600})
-    assert Agent.snapshot(id).limits.max_tokens == 600
+    assert Agent.snapshot(id).settings.limits.max_tokens == 600
 
     :ok = Agent.send_message(id, "go")
 
@@ -1042,7 +1042,7 @@ defmodule Elia.AgentTest do
 
     # Selecting in an empty chat is broadcast but not written to disk.
     {:ok, _} = Agent.select_model(id, "openrouter", "vendor/chat-model", "Chat Model")
-    assert_receive {:agent, ^id, {:model, %{model: "vendor/chat-model"}}}
+    assert_receive {:agent, ^id, {:settings, %{model: %{model: "vendor/chat-model"}}}}
     assert Elia.Store.load_model(id) == nil
 
     # A later choice elsewhere only changes the default.
@@ -1062,7 +1062,7 @@ defmodule Elia.AgentTest do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
     {:ok, _} = Agent.ensure_started(id)
-    assert %{model: "vendor/chat-model"} = Agent.snapshot(id).selection
+    assert %{model: "vendor/chat-model"} = Agent.snapshot(id).settings.model
   end
 
   # MODEL-16
@@ -1071,7 +1071,7 @@ defmodule Elia.AgentTest do
     Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
     on_exit(fn -> Elia.Store.delete(id) end)
     {:ok, _} = Elia.LLM.select("openrouter", "vendor/first")
-    assert Agent.snapshot(id).selection == nil
+    assert Agent.snapshot(id).settings.model == nil
 
     Elia.LLMCase.stub_openrouter_stream(self(), [
       %{"choices" => [%{"delta" => %{"content" => "Hi."}}]},
@@ -1080,18 +1080,18 @@ defmodule Elia.AgentTest do
 
     :ok = Agent.send_message(id, "hi")
     await_status(id, :idle)
-    assert %{model: "vendor/first"} = Agent.snapshot(id).selection
+    assert %{model: "vendor/first"} = Agent.snapshot(id).settings.model
 
     {:ok, _} = Elia.LLM.select("openrouter", "vendor/second")
-    assert %{model: "vendor/first"} = Agent.snapshot(id).selection
+    assert %{model: "vendor/first"} = Agent.snapshot(id).settings.model
   end
 
-  # SESS-15
-  test "a session with state from before :selection existed is upgraded", %{id: id} do
+  # SESS-15, SESS-41
+  test "a session with state from before the one settings map existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
-    :sys.replace_state(pid, &Map.delete(&1, :selection))
+    :sys.replace_state(pid, &Map.delete(&1, :settings))
 
-    assert %{selection: nil, messages: []} = Agent.snapshot(id)
+    assert %{settings: %{model: nil, jail: true, effort: nil}, messages: []} = Agent.snapshot(id)
   end
 
   # SESS-15, INTR-1
@@ -1148,7 +1148,7 @@ defmodule Elia.AgentTest do
     # SESS-17: the selection isn't stored as the default model.
     assert Elia.Settings.get(:model) == default
     # SESS-17: the option sets the chat's auto-approved tools, then it saves them.
-    assert %{auto_approve: ["shell"]} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
     assert Elia.Store.load_auto_approve(id) == ["shell"]
 
     :ok = Agent.update_task(id, %{status: "done"})
@@ -2319,48 +2319,51 @@ defmodule Elia.AgentTest do
   end
 
   # SESS-15, SESS-30
-  test "a session with state from before :jail existed is upgraded", %{id: id} do
+  test "a session with state from before the settings map existed loads its saved jail", %{
+    id: id
+  } do
     :ok = Elia.Store.save(id, [Message.user("hi")], jail: false)
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
-    :sys.replace_state(pid, &Map.delete(&1, :jail))
+    :sys.replace_state(pid, &Map.delete(&1, :settings))
 
     # The upgrade loads the chat's saved setting (STORE-26).
-    assert %{jail: false} = Agent.snapshot(id)
+    assert %{settings: %{jail: false}} = Agent.snapshot(id)
   end
 
   # SESS-7, SESS-30, ISOL-16
   test "a chat is jailed by default, and the snapshot says so", %{id: id} do
-    assert %{jail: true} = Agent.snapshot(id)
+    assert %{settings: %{jail: true}} = Agent.snapshot(id)
   end
 
-  # SESS-6, SESS-30
+  # SESS-6, SESS-30, SESS-41
   test "setting the jail broadcasts it and shows in the snapshot", %{id: id} do
     :ok = Agent.set_jail(id, false)
-    assert_receive {:agent, ^id, {:jail, false}}
-    assert %{jail: false} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{jail: false}}}
+    assert %{settings: %{jail: false}} = Agent.snapshot(id)
 
     :ok = Agent.set_jail(id, true)
-    assert_receive {:agent, ^id, {:jail, true}}
-    assert %{jail: true} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{jail: true}}}
+    assert %{settings: %{jail: true}} = Agent.snapshot(id)
   end
 
-  # SESS-6, SESS-40
+  # SESS-6, SESS-40, SESS-41
   test "setting the reasoning effort broadcasts it and shows in the snapshot", %{id: id} do
     :ok = Agent.set_effort(id, "high")
-    assert_receive {:agent, ^id, {:effort, "high"}}
-    assert %{effort: "high"} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{effort: "high"}}}
+    assert %{settings: %{effort: "high"}} = Agent.snapshot(id)
 
     :ok = Agent.set_effort(id, nil)
-    assert_receive {:agent, ^id, {:effort, nil}}
-    assert %{effort: nil} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{effort: nil}}}
+    assert %{settings: %{effort: nil}} = Agent.snapshot(id)
   end
 
-  # SESS-40: the three efforts a request can name (LLM-39) and nothing else.
+  # SESS-40, SESS-42: the three efforts a request can name (LLM-39) and nothing
+  # else.
   test "an effort that isn't low, medium or high is rejected", %{id: id} do
     assert {:error, message} = Agent.set_effort(id, "very high")
     assert message =~ "low, medium or high"
-    assert %{effort: nil} = Agent.snapshot(id)
-    refute_receive {:agent, ^id, {:effort, _}}
+    assert %{settings: %{effort: nil}} = Agent.snapshot(id)
+    refute_receive {:agent, ^id, {:settings, _}}
   end
 
   # SESS-40, STORE-37, STORE-38
@@ -2376,7 +2379,7 @@ defmodule Elia.AgentTest do
     :ok = Agent.set_effort(id, "low")
     assert Elia.Store.load_effort(id) == "low"
     # The setting belongs to one chat.
-    assert %{effort: nil} = Agent.snapshot(other)
+    assert %{settings: %{effort: nil}} = Agent.snapshot(other)
 
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     ref = Process.monitor(pid)
@@ -2384,7 +2387,7 @@ defmodule Elia.AgentTest do
     assert_receive {:DOWN, ^ref, :process, ^pid, _}
 
     {:ok, _} = Agent.ensure_started(id)
-    assert %{effort: "low"} = Agent.snapshot(id)
+    assert %{settings: %{effort: "low"}} = Agent.snapshot(id)
 
     :ok = Agent.set_effort(id, nil)
     assert Elia.Store.load_effort(id) == nil
@@ -2437,7 +2440,7 @@ defmodule Elia.AgentTest do
     :ok = Agent.set_jail(id, false)
     assert Elia.Store.load_jail(id) == false
     # The setting belongs to one chat (ISOL-18).
-    assert %{jail: true} = Agent.snapshot(other)
+    assert %{settings: %{jail: true}} = Agent.snapshot(other)
 
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
     ref = Process.monitor(pid)
@@ -2445,7 +2448,7 @@ defmodule Elia.AgentTest do
     assert_receive {:DOWN, ^ref, :process, ^pid, _}
 
     {:ok, _} = Agent.ensure_started(id)
-    assert %{jail: false} = Agent.snapshot(id)
+    assert %{settings: %{jail: false}} = Agent.snapshot(id)
 
     :ok = Agent.set_jail(id, true)
     assert Elia.Store.load_jail(id) == true
@@ -2481,8 +2484,8 @@ defmodule Elia.AgentTest do
     assert_receive {:turn_started, loop}, 2000
 
     assert :ok = Agent.set_jail(id, false)
-    assert_receive {:agent, ^id, {:jail, false}}
-    assert %{jail: false} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{jail: false}}}
+    assert %{settings: %{jail: false}} = Agent.snapshot(id)
 
     send(loop, :go)
     await_status(id, :idle)
@@ -2523,5 +2526,121 @@ defmodule Elia.AgentTest do
     assert_receive {:tool_ctx, ctx}, 5000
     assert ctx.jail == false
     await_status(id, :idle)
+  end
+
+  ## One settings path (SESS-41, SESS-42)
+
+  # SESS-41: one call sets any of the five, and the change is one save and one
+  # event carrying the whole map.
+  test "one call sets several settings at once, with one event", %{id: id} do
+    selection = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
+
+    assert :ok =
+             Agent.set_settings(id, %{
+               model: selection,
+               auto_approve: %{"shell" => true},
+               jail: false,
+               limits: %{max_steps: 5},
+               effort: "low"
+             })
+
+    assert_receive {:agent, ^id, {:settings, settings}}
+    assert settings.model == selection
+    assert settings.auto_approve == ["shell"]
+    assert settings.jail == false
+    assert settings.effort == "low"
+    assert settings.limits.max_steps == 5
+    # LIMIT-9: a limit the change didn't name keeps what it had, which is the
+    # default (pausing).
+    assert settings.limits.pause_on_limit == true
+
+    assert %{settings: ^settings} = Agent.snapshot(id)
+    # One change, one event.
+    refute_receive {:agent, ^id, {:settings, _}}, 50
+  end
+
+  # SESS-41: the typed setters keep their signatures and are the same one path.
+  test "the typed setters make the same one change", %{id: id} do
+    # MODEL-15: selecting writes the picked model into the settings database as
+    # the default, so the scratch one is emptied and put back (LLMCase).
+    Elia.LLMCase.reset_settings()
+    :ok = Agent.set_jail(id, false)
+    assert_receive {:agent, ^id, {:settings, %{jail: false}}}
+
+    {:ok, selection} = Agent.select_model(id, "openrouter", "vendor/m", "Vendor M")
+    assert_receive {:agent, ^id, {:settings, %{model: ^selection, jail: false}}}
+
+    :ok = Agent.set_effort(id, "low")
+    assert_receive {:agent, ^id, {:settings, %{effort: "low"}}}
+
+    :ok = Agent.set_limits(id, %{max_steps: 3})
+    assert_receive {:agent, ^id, {:settings, %{limits: %{max_steps: 3}}}}
+
+    :ok = Agent.set_auto_approve(id, "shell", true)
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["shell"]}}}
+  end
+
+  # SESS-42: a key the one path doesn't know is refused, and nothing changes.
+  test "an unknown setting is refused and changes nothing", %{id: id} do
+    assert {:error, message} = Agent.set_settings(id, %{temperature: 0.5})
+    assert message =~ "temperature"
+
+    assert %{settings: %{jail: true}} = Agent.snapshot(id)
+    refute_receive {:agent, ^id, {:settings, _}}
+  end
+
+  # SESS-42: one bad value rejects the whole change — the keys that were fine
+  # with it too.
+  test "one bad value rejects the whole change", %{id: id} do
+    assert {:error, message} = Agent.set_settings(id, %{jail: false, effort: "very high"})
+    assert message =~ "low, medium or high"
+
+    assert %{settings: %{jail: true, effort: nil}} = Agent.snapshot(id)
+    refute_receive {:agent, ^id, {:settings, _}}
+  end
+
+  # SESS-42: each of the five is checked by the rule of its own requirement
+  # (MODEL-1, APPR-13, ISOL-16, LIMIT-7, LLM-39).
+  test "each setting's own rule is what a change is checked against", %{id: id} do
+    assert {:error, message} = Agent.set_settings(id, %{model: "vendor/m"})
+    assert message =~ "model"
+
+    assert {:error, message} = Agent.set_settings(id, %{auto_approve: %{"reload_skills" => true}})
+    assert message =~ "reload_skills"
+
+    assert {:error, message} = Agent.set_settings(id, %{jail: "off"})
+    assert message =~ "jail"
+
+    assert {:error, message} = Agent.set_settings(id, %{limits: %{max_steps: 0}})
+    assert message =~ "step limit"
+
+    assert {:error, message} = Agent.set_settings(id, %{effort: "medium-ish"})
+    assert message =~ "low, medium or high"
+
+    # APPR-13: a name can always be turned off, and one that can need approval
+    # can be turned on.
+    assert :ok = Agent.set_settings(id, %{auto_approve: %{"reload_skills" => false}})
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: []}}}
+  end
+
+  # SESS-41, STORE-1, STORE-14, STORE-25, STORE-27, STORE-37: one change of a
+  # chat with messages is saved with it, each key by its own rule.
+  test "one change is saved with the chat", %{id: id} do
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hi.")]))
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    assert :ok =
+             Agent.set_settings(id, %{
+               jail: false,
+               effort: "low",
+               limits: %{max_steps: 4},
+               auto_approve: %{"read_file" => true}
+             })
+
+    assert Elia.Store.load_jail(id) == false
+    assert Elia.Store.load_effort(id) == "low"
+    assert Elia.Store.load_limits(id).max_steps == 4
+    assert Elia.Store.load_auto_approve(id) == ["read_file"]
   end
 end

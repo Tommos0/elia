@@ -120,23 +120,23 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#effort-state", "configured default")
 
     view |> element("#effort-high") |> render_click()
-    assert Agent.snapshot(id).effort == "high"
+    assert Agent.snapshot(id).settings.effort == "high"
     assert has_element?(view, "#effort-high[aria-pressed='true']")
     assert has_element?(view, "#effort-default[aria-pressed='false']")
     assert has_element?(view, "#effort-state", "high")
 
     view |> element("#effort-low") |> render_click()
-    assert Agent.snapshot(id).effort == "low"
+    assert Agent.snapshot(id).settings.effort == "low"
 
     view |> element("#effort-default") |> render_click()
-    assert Agent.snapshot(id).effort == nil
+    assert Agent.snapshot(id).settings.effort == nil
     assert has_element?(view, "#effort-default[aria-pressed='true']")
 
     # CSET-6: nothing was written to disk for a chat with no messages.
     refute Store.exists?(id)
   end
 
-  # CSET-3: the page follows the chat's own `{:effort, effort}` event, so a
+  # CSET-3: the page follows the chat's own `{:settings, settings}` event, so a
   # change made in another view shows up here.
   test "a reasoning effort set elsewhere shows up on the page", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
@@ -194,16 +194,18 @@ defmodule EliaWeb.ChatSettingsTest do
     {:ok, view, _html} = settings(conn, id)
 
     view |> element("#jail-toggle") |> render_click()
-    assert Agent.snapshot(id).jail == false
+    assert Agent.snapshot(id).settings.jail == false
 
     # LIMIT-9: pausing is on by default, so the click turns it off.
     view |> element("#limit-pause") |> render_click()
-    assert Agent.snapshot(id).limits.pause_on_limit == false
+    assert Agent.snapshot(id).settings.limits.pause_on_limit == false
 
     saved = %{limits: limits("12", "5", "500000"), compaction: compaction("20000", "70")}
     assert_saved(view, saved, id)
 
-    assert %{max_steps: 12, max_minutes: 5, max_tokens: 500_000} = Agent.snapshot(id).limits
+    assert %{max_steps: 12, max_minutes: 5, max_tokens: 500_000} =
+             Agent.snapshot(id).settings.limits
+
     assert %{budget: 20_000, fraction: 0.7} = Agent.snapshot(id).compaction.options
 
     assert Agent.snapshot(id).status == :idle
@@ -226,7 +228,9 @@ defmodule EliaWeb.ChatSettingsTest do
     # LIMIT-9: pausing is on by default, so what the click set is the off value
     # — a value that isn't the default, and so the one the file carries
     # (STORE-27).
-    assert %{max_steps: 5, max_tokens: 900, pause_on_limit: false} = Agent.snapshot(id).limits
+    assert %{max_steps: 5, max_tokens: 900, pause_on_limit: false} =
+             Agent.snapshot(id).settings.limits
+
     refute Store.exists?(id)
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
@@ -298,7 +302,7 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert_saved(view, %{limits: limits()}, id)
 
-    assert Agent.snapshot(id).limits == %{
+    assert Agent.snapshot(id).settings.limits == %{
              max_steps: nil,
              max_minutes: nil,
              max_tokens: nil,
@@ -318,33 +322,33 @@ defmodule EliaWeb.ChatSettingsTest do
       submit_limits(view, bad)
 
       assert has_element?(view, "#settings-error")
-      assert Agent.snapshot(id).limits.max_steps == nil
+      assert Agent.snapshot(id).settings.limits.max_steps == nil
       # CSET-7: the typed value stays, so it can be corrected.
       assert has_element?(view, "#limit-steps[value='#{bad}']")
     end
 
     submit_limits(view, "", "0")
     assert has_element?(view, "#settings-error")
-    assert Agent.snapshot(id).limits.max_minutes == nil
+    assert Agent.snapshot(id).settings.limits.max_minutes == nil
 
     # LIMIT-7, LIMIT-12: the token budget must be a whole number above 0 too ...
     for bad <- ~w(abc 0 -3 2.5) do
       submit_settings(view, %{limits: limits("", "", bad)})
 
       assert has_element?(view, "#settings-error")
-      assert Agent.snapshot(id).limits.max_tokens == nil
+      assert Agent.snapshot(id).settings.limits.max_tokens == nil
       assert has_element?(view, "#limit-tokens[value='#{bad}']")
     end
 
     # CSET-11: a good value is accepted, and the save goes back to the chat.
     assert_saved(view, %{limits: limits("3")}, id)
-    assert Agent.snapshot(id).limits.max_steps == 3
+    assert Agent.snapshot(id).settings.limits.max_steps == 3
 
     # ... and, unlike the other two, it has no upper bound: a count far above
     # the step limit's cap is taken as it is.
     {:ok, view, _html} = settings(conn, id)
     assert_saved(view, %{limits: limits("", "", "1000000000")}, id)
-    assert Agent.snapshot(id).limits.max_tokens == 1_000_000_000
+    assert Agent.snapshot(id).settings.limits.max_tokens == 1_000_000_000
   end
 
   # COMPACT-30: the section shows this chat's compaction options, as percentages,
@@ -439,7 +443,7 @@ defmodule EliaWeb.ChatSettingsTest do
            )
 
     assert has_element?(view, "#settings-error")
-    assert Agent.snapshot(id).limits.max_steps == nil
+    assert Agent.snapshot(id).settings.limits.max_steps == nil
     refute Agent.snapshot(id).compaction.options[:budget]
     # The typed values stay, in both sections.
     assert has_element?(view, "#limit-steps[value='7']")
@@ -452,7 +456,7 @@ defmodule EliaWeb.ChatSettingsTest do
            )
 
     assert has_element?(view, "#settings-error")
-    assert Agent.snapshot(id).limits.max_steps == nil
+    assert Agent.snapshot(id).settings.limits.max_steps == nil
     refute Agent.snapshot(id).compaction.options[:fraction]
   end
 

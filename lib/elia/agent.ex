@@ -100,16 +100,38 @@ defmodule Elia.Agent do
   tool that never needs approval returns `{:error, :not_approvable}` (APPR-13).
   """
   @spec set_auto_approve(binary(), binary(), boolean()) :: :ok | {:error, :not_approvable}
-  def set_auto_approve(id, tool_name, on?) when is_binary(tool_name) and is_boolean(on?),
-    do: GenServer.call(Session.via(id), {:set_auto_approve, tool_name, on?})
+  def set_auto_approve(id, tool_name, on?) when is_binary(tool_name) and is_boolean(on?) do
+    # SESS-41: one of the typed entry points of the one write path. SESS-42: the
+    # only refusal this change can get is APPR-13's, reported as this setter
+    # promises rather than in the path's own words.
+    case set_settings(id, %{auto_approve: %{tool_name => on?}}) do
+      :ok -> :ok
+      {:error, _message} -> {:error, :not_approvable}
+    end
+  end
+
+  @doc """
+  Sets any of the chat's per-chat settings at once (SESS-41): `:model` (a
+  selection, MODEL-1, or `nil` for none of its own), `:auto_approve` (a map of
+  tool names to whether the chat auto-approves them, APPR-8), `:jail` (a
+  boolean, ISOL-16), `:limits` (a map of turn limits to change, LIMIT-1) and
+  `:effort` (`nil` or one of `"low"`, `"medium"` and `"high"`, LLM-39). It is
+  the one write path: the change is saved with the chat once it has messages and
+  broadcast as one `{:settings, settings}` event (SESS-6), so every view of the
+  chat agrees. A key of a change that isn't one of the five, or a value that
+  isn't one for its key, returns `{:error, message}` naming the setting at fault
+  and changes nothing (SESS-42).
+  """
+  @spec set_settings(binary(), map()) :: :ok | {:error, binary()}
+  def set_settings(id, changes) when is_map(changes),
+    do: GenServer.call(Session.via(id), {:set_settings, changes})
 
   @doc """
   Turns the jail for this chat's commands on or off (SESS-30, ISOL-16). Allowed
   mid-turn (ISOL-19).
   """
   @spec set_jail(binary(), boolean()) :: :ok
-  def set_jail(id, on?) when is_boolean(on?),
-    do: GenServer.call(Session.via(id), {:set_jail, on?})
+  def set_jail(id, on?) when is_boolean(on?), do: set_settings(id, %{jail: on?})
 
   @doc """
   Sets this chat's own reasoning effort (SESS-40, LLM-39): `"low"`, `"medium"`
@@ -118,8 +140,7 @@ defmodule Elia.Agent do
   next turn on. Any other value returns `{:error, message}` and changes nothing.
   """
   @spec set_effort(binary(), binary() | nil) :: :ok | {:error, binary()}
-  def set_effort(id, effort),
-    do: GenServer.call(Session.via(id), {:set_effort, effort})
+  def set_effort(id, effort), do: set_settings(id, %{effort: effort})
 
   @doc """
   Sets this chat's turn limits (SESS-31, LIMIT-2): any of `:max_steps` (a whole
@@ -132,7 +153,7 @@ defmodule Elia.Agent do
   the next turn is started with the new limits (LIMIT-3).
   """
   @spec set_limits(binary(), map() | keyword()) :: :ok | {:error, binary()}
-  def set_limits(id, changes), do: GenServer.call(Session.via(id), {:set_limits, changes})
+  def set_limits(id, changes), do: set_settings(id, %{limits: Map.new(changes)})
 
   @doc """
   Gives the chat its own title (SESS-33, TITLE-4), the name its chat list row,
@@ -157,12 +178,12 @@ defmodule Elia.Agent do
     do: GenServer.call(Session.via(id), {:set_done, on?})
 
   @doc """
-  Sets the chat's model (MODEL-1). Also remembers it as the default for new
-  chats (MODEL-15).
+  Sets the chat's model (MODEL-1) through the one write path (SESS-41). Also
+  remembers it as the default for new chats (MODEL-15).
   """
   def select_model(id, provider_key, model, name \\ nil) do
     with {:ok, selection} <- Elia.LLM.select(provider_key, model, name),
-         :ok <- GenServer.call(Session.via(id), {:select_model, selection}) do
+         :ok <- set_settings(id, %{model: selection}) do
       {:ok, selection}
     end
   end

@@ -4,7 +4,11 @@ Status: Implemented
 
 Each conversation is a process that owns its message history, runs one turn
 at a time in a supervised task, collects the user's approvals, and broadcasts
-progress so any number of UIs can follow it.
+progress so any number of UIs can follow it. The chat's per-chat settings — its
+model, its auto-approved tools, its jail, its turn limits and its reasoning
+effort — are one map with one write path and one event (SESS-41), so a setting
+costs a row rather than a field, a setter, a save, an event and a follower in
+every view.
 
 ## Requirements
 
@@ -26,11 +30,8 @@ progress so any number of UIs can follow it.
   `{:tool_status, call_id, s}`, `{:error, text}` (a stop, whose transcript
   message is STOP-1's, SESS-38), `{:reset, messages}`,
   `{:compaction, state}` (the chat's compaction state changed, COMPACT-24),
-  `{:model, selection}` (the chat's model selection changed, MODEL-1),
-  `{:auto_approve, names}` (the chat's auto-approved tools changed, SESS-16),
-  `{:jail, on?}` (the chat's jail setting changed, SESS-30),
-  `{:limits, limits}` (the chat's turn limits changed, SESS-31, LIMIT-2),
-  `{:effort, effort}` (the chat's reasoning effort changed, SESS-40),
+  `{:settings, settings}` (one of the chat's per-chat settings changed, SESS-41;
+  `settings` is the map SESS-7 describes),
   `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
@@ -39,10 +40,12 @@ progress so any number of UIs can follow it.
   or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
   `{:task, metadata}` (the chat's task metadata changed, SESS-20).
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
-  status, the chat's model selection (`nil` if none yet), its
-  auto-approved tool names (sorted list), its jail setting (ISOL-16), its turn
-  limits (SESS-31, LIMIT-1), its reasoning effort (`effort`, SESS-40, `nil`
-  when the configured default applies), its task
+  status, the chat's per-chat settings as one map (`settings`, SESS-41) whose
+  `model` is its selection (`nil` if none yet, MODEL-1), whose `auto_approve` is
+  its auto-approved tool names (a sorted list, APPR-8), whose `jail` is its jail
+  setting (ISOL-16), whose `limits` are its turn limits (SESS-31, LIMIT-1) and
+  whose `effort` is its reasoning effort (SESS-40, `nil` when the configured
+  default applies), its task
   metadata (`task`, `nil`
   for an ordinary chat), the project it belongs to (`project`, PROJ-9), its
   compaction state (`compaction`, COMPACT-24), its own title (`title`, `nil`
@@ -69,18 +72,21 @@ progress so any number of UIs can follow it.
 - **SESS-13** A failure to save the history is logged and does not stop the
   session.
 - **SESS-14** A session loads its saved model selection on start (STORE-9).
-  `select_model/4` sets it, saves it with the history once the chat has
-  messages, and broadcasts `{:model, selection}`. A session never writes a chat
+  `select_model/4` sets it through `set_settings/2` (SESS-41), which saves it
+  with the history once the chat has messages and broadcasts the chat's settings
+  (SESS-6). A session never writes a chat
   that has no messages: the file an empty chat has is the one STORE-22 writes
   when it is started. It is allowed mid-turn (MODEL-3).
 - **SESS-15** A session process whose state predates a struct field (e.g. one
   that outlived a hot reload) is upgraded on its next call: missing fields get
-  their defaults and the saved model selection (SESS-14), auto-approved
-  tools (SESS-16), project (PROJ-9), compaction state (COMPACT-24), jail
-  setting (SESS-30), turn limits (SESS-31), reasoning effort (SESS-40) and the
+  their defaults and the chat's saved settings (SESS-41) — each of the five
+  (SESS-14, SESS-16, SESS-30, SESS-31, SESS-40) —, its project (PROJ-9), its
+  compaction state (COMPACT-24) and the
   done flag (SESS-35) are
   loaded, so snapshots and turns don't crash. Fields the state already has are
-  kept. The turn record (INTR-1) is not loaded from disk: it belongs to the
+  kept: a state that predates the one `settings` map and holds a value of one of
+  the five as a field of its own keeps that value in the map, and only the ones
+  it doesn't have are loaded. The turn record (INTR-1) is not loaded from disk: it belongs to the
   process that is running the turn, so a missing one defaults to `nil`; the
   pending question (SESS-34) has nothing saved to load either, and takes its
   default, which is none.
@@ -88,20 +94,25 @@ progress so any number of UIs can follow it.
   or, for a chat that is new, starts with every tool that can need approval
   (APPR-14, APPR-13).
   `set_auto_approve/3` (chat id, tool name, boolean) turns auto-approval for a
-  tool on or off (APPR-8, APPR-13), saves it with the history once the chat has
-  messages (as in SESS-14), and broadcasts `{:auto_approve, names}` with the
-  sorted list. It is allowed mid-turn (APPR-11).
+  tool on or off (APPR-8, APPR-13) through `set_settings/2` (SESS-41), which
+  saves it with the history once the chat has messages (as in SESS-14) and
+  broadcasts the chat's settings (SESS-6), whose `auto_approve` is the sorted
+  list; turning a tool on approves its calls that are pending then (APPR-11). It
+  is allowed mid-turn (APPR-11).
 - **SESS-30** A session loads its saved jail setting on start (STORE-26) and
   every session it starts from (a sub-task, SUBTASK-30) carries it. `set_jail/2`
-  (chat id, boolean) turns the jail for this chat's commands on or off (ISOL-16),
+  (chat id, boolean) turns the jail for this chat's commands on or off (ISOL-16)
+  through `set_settings/2` (SESS-41), which
   saves it with the history once the chat has messages (as in SESS-14,
-  STORE-25) and broadcasts `{:jail, on?}`, so every view of the chat agrees. It
+  STORE-25) and broadcasts the chat's settings (SESS-6), so every view of the
+  chat agrees. It
   is allowed mid-turn (ISOL-19).
 
 - **SESS-17** `ensure_started/2` options `task` (sub-task metadata, STORE-16),
   `selection` (a model selection, MODEL-1), `auto_approve` (a list of
   tool-name strings, APPR-8) and `limits` (turn limits, SESS-31) set the new
-  session's values instead of the saved ones. None stores the selection as the
+  session's values instead of the saved ones — each filling the setting of its
+  name in the one map (SESS-41). None stores the selection as the
   default model (MODEL-15). The session
   saves its task metadata with the history (STORE-16), and a session whose state
   predates the `task` field is upgraded as in SESS-15.
@@ -182,20 +193,22 @@ progress so any number of UIs can follow it.
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets this chat's step
-  limit, time budget and whether a limit pauses the turn (LIMIT-1), saves them
-  with the chat once it has messages (as SESS-14, STORE-27) and broadcasts
-  `{:limits, limits}` (SESS-6), so every view of the chat agrees. It is allowed
+  limit, time budget and whether a limit pauses the turn (LIMIT-1) through
+  `set_settings/2` (SESS-41), which saves them
+  with the chat once it has messages (as SESS-14, STORE-27) and broadcasts the
+  chat's settings (SESS-6), so every view of the chat agrees. It is allowed
   mid-turn (LIMIT-3), and `snapshot/1` carries them (SESS-7). A turn is started
   with them without overriding an option the caller passed explicitly (LIMIT-3).
 
 - **SESS-40** A session loads the chat's saved reasoning effort on start
   (STORE-38, `nil` when it has none of its own, so the configured default
   applies, LLM-38). `Elia.Agent.set_effort/2` (chat id, `nil` or one of
-  `"low"`, `"medium"` and `"high"`, LLM-39) sets this chat's effort, saves it
-  with the chat once it has messages (as SESS-14, STORE-37) and broadcasts
-  `{:effort, effort}` (SESS-6), so every view of the chat agrees; `nil` gives
-  the chat no effort of its own again. Any other value returns
-  `{:error, message}` and changes nothing. The snapshot carries it (SESS-7), a
+  `"low"`, `"medium"` and `"high"`, LLM-39) sets this chat's effort through
+  `set_settings/2` (SESS-41), which saves it
+  with the chat once it has messages (as SESS-14, STORE-37) and broadcasts the
+  chat's settings (SESS-6), so every view of the chat agrees; `nil` gives
+  the chat no effort of its own again. Any other value is refused (SESS-42) and
+  changes nothing. The snapshot carries it (SESS-7), a
   session whose state predates the field loads it (SESS-15), and every turn's
   request carries it as its `:effort` (LLM-39), unless the caller's own loop
   options name one, which wins. It is allowed mid-turn: the next turn is sent
@@ -281,9 +294,52 @@ progress so any number of UIs can follow it.
   history holds only what the turn completed. A report from a loop the session
   no longer runs (SESS-9) is ignored, like its other late messages.
 
+- **SESS-41** A session holds the chat's five per-chat settings — its model
+  selection (MODEL-1), its auto-approved tool names (APPR-8), its jail setting
+  (ISOL-16), its turn limits (LIMIT-1) and its own reasoning effort (LLM-39,
+  SESS-40) — as one `settings` map, each one at its own default until the chat
+  sets it (SESS-14, SESS-16, SESS-30, SESS-31, SESS-40), and one write path sets
+  them: `Elia.Agent.set_settings/2` (chat id, a map of changes) applies the
+  changes it names, saves them with the chat once it has messages (as SESS-14)
+  and broadcasts one `{:settings, settings}` event (SESS-6) carrying the whole
+  map SESS-7 describes, so a change is one save and one event however many
+  settings it names and whichever caller made it. The five typed setters
+  `select_model/4`, `set_auto_approve/3`, `set_jail/2`, `set_limits/2` and
+  `set_effort/2` keep their signatures and their own promises and are implemented
+  on that one path (SESS-14, SESS-16, SESS-30, SESS-31, SESS-40).
+- **SESS-42** `set_settings/2` validates every key of a change before it applies
+  any of it: a change it refuses returns `{:error, message}` naming the setting
+  at fault and leaves every setting as it was — nothing applied, nothing saved
+  (STORE-1) and no event broadcast (SESS-41). A key that is not one of the five
+  is refused, and each of the five's own rule is the requirement that owns it: a
+  `model` that is neither a selection map nor `nil` (MODEL-1), an
+  `auto_approve` that names a tool that cannot need approval in this chat, or
+  whose name or value is not a tool name and a boolean (APPR-13), a `jail` that
+  isn't a boolean (ISOL-16), limits LIMIT-7 refuses (LIMIT-1), or an `effort`
+  that is neither `nil` nor one of `"low"`, `"medium"` and `"high"` (LLM-39). A
+  typed setter reports the refusal as its own signature promises, so
+  `set_auto_approve/3` still answers `{:error, :not_approvable}` (APPR-13).
+
 ## Out of scope
 
 - Several turns running at once in one session.
+- Folding a chat's title, its done flag or its compaction state into the
+  `settings` map (SESS-41): a title and a done flag are chat state rather than
+  settings — a message clears the done flag (DONE-9) and a chat with task
+  metadata has no title of its own (TITLE-3) — and compaction is stateful, with a
+  summary, a ledger and pins under their own save and reload rules (COMPACT-24),
+  so folding them in would make the one map the bag of unrelated things it is
+  there to end.
+
+## Stored data
+
+Unchanged: the one `settings` map is the session's own shape (SESS-41), and the
+saved chat keeps the keys it already had — `model`, `auto_approve`, `jail`,
+`limits` and `effort`, each one written and loaded by its own rule (STORE-1's
+table, STORE-9, STORE-14, STORE-15, STORE-25 to STORE-28, STORE-37, STORE-38).
+Nothing that reads or writes `.elia/sessions/<id>.term` is touched, so the change
+is backward compatible and there is nothing to migrate: an older file loads as it
+did before, and a file written now is what an older version wrote.
 
 ## Implementation
 
@@ -294,10 +350,11 @@ progress so any number of UIs can follow it.
 - `test/elia/agent_test.exs` (a session's load and its turns, its
   statuses, its events, its snapshot, a stop and the truncation it writes, a
   crash, the model, auto-approve, jail, effort, limits and turn
-  it loads, `ensure_started/2`'s options, task metadata, `compact/1`, the
+  it loads, the one write path and what it refuses, `ensure_started/2`'s
+  options, task metadata, `compact/1`, the
   session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
   held, a pause recorded and the stop a turn ends in — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-40).
+  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-42).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

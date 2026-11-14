@@ -17,14 +17,18 @@ defmodule Elia.Agent.Session do
   `{:usage, usage}`, `{:compaction, state}`, `{:retry, info}` (a failed model
   call is being retried, RETRY-3), `{:error, text}` (a stop, whose
   transcript message is STOP-1's, STOP-4),
-  `{:reset, messages}`, `{:model, selection}`, `{:auto_approve, names}`,
-  `{:jail, on?}`, `{:limits, limits}`, `{:title, title}`, `{:done, on?}`,
+  `{:reset, messages}`, `{:settings, settings}` (one of the chat's per-chat
+  settings changed, SESS-41), `{:title, title}`, `{:done, on?}`,
   `{:paused, message}`, `{:task, metadata}`.
   """
 
   use GenServer, restart: :temporary
 
   require Logger
+
+  # SESS-41: the five settings the chat's one map holds, and the only keys a
+  # change to it may name (SESS-42).
+  @setting_keys [:model, :auto_approve, :jail, :limits, :effort]
 
   alias Elia.LLM.{Compaction, Context, Message}
 
@@ -44,8 +48,6 @@ defmodule Elia.Agent.Session do
     # The chat's own title (TITLE-1, STORE-32), nil when it has none and its
     # title is the first user message (STORE-7).
     :title,
-    # The chat's own model selection (MODEL-1); nil until chosen or pinned.
-    :selection,
     # Sub-task metadata when the chat was started by `spawn_task` (STORE-16).
     :task_meta,
     messages: [],
@@ -55,19 +57,18 @@ defmodule Elia.Agent.Session do
     # source of truth for the request view; the loop's mid-turn pass reports back
     # into it (COMPACT-29).
     compaction: %Compaction{},
-    # Tool names the user lets run without asking in this chat (APPR-8).
-    auto_approve: MapSet.new(),
-    # Whether this chat's commands run in the jail (ISOL-16): on by default,
-    # and the host's own switch can only turn it off (ISOL-20).
-    jail: true,
-    # This chat's turn limits (LIMIT-1, LIMIT-2): a step limit, a time budget, a
-    # token budget and whether a limit pauses the turn. Empty means the loop's
-    # own default.
-    limits: %{max_steps: nil, max_minutes: nil, max_tokens: nil, pause_on_limit: false},
-    # This chat's own reasoning effort (SESS-40, LLM-39): one of "low",
-    # "medium" and "high", or nil, which leaves the configured effort in place
-    # (LLM-38).
-    effort: nil,
+    # The chat's per-chat settings as one map (SESS-41, SESS-7): the model
+    # selection of the chat (MODEL-1), the tool names it auto-approves (APPR-8),
+    # whether its commands run in the jail (ISOL-16), its turn limits (LIMIT-1)
+    # and its own reasoning effort (LLM-39), each at its own default until the
+    # chat sets it. One write path sets any of them (SESS-41).
+    settings: %{
+      model: nil,
+      auto_approve: MapSet.new(),
+      jail: true,
+      limits: Elia.Limits.defaults(),
+      effort: nil
+    },
     # call_id => :awaiting_approval | :awaiting_input | :answered | :running | :done
     tool_status: %{},
     # Provider-reported usage of the last completed model request (CTX-6).
@@ -107,19 +108,22 @@ defmodule Elia.Agent.Session do
       loop_opts: loop_opts,
       persist: persist,
       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
-      selection: opts[:selection] || if(persist, do: Elia.Store.load_model(opts[:id])),
+      settings: initial_settings(opts[:id], persist, opts),
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
-      jail: initial_jail(opts[:id], persist, opts[:jail]),
-      limits: initial_limits(opts[:id], persist, opts[:limits]),
-      effort: initial_effort(opts[:id], persist),
       title: if(persist, do: Elia.Store.load_title(opts[:id])),
       done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
     }
 
     # APPR-14: whether the chat is new is only known once its messages are
     # loaded, so the default set is worked out here.
-    state = %{state | auto_approve: initial_auto_approve(state, opts[:auto_approve])}
+    state = %{
+      state
+      | settings: %{
+          state.settings
+          | auto_approve: initial_auto_approve(state, opts[:auto_approve])
+        }
+    }
 
     # RESUME-2: the record of a turn the restart cut short is read before
     # anything saves the chat — a session's own state carries no turn (SESS-15),
@@ -136,18 +140,18 @@ defmodule Elia.Agent.Session do
   end
 
   @impl true
-  # SESS-15: upgrade state from before `:selection`, `:auto_approve`, `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause`, `:jail`, `:limits`,
-  # `:effort`, `:turn` (INTR-1), `:title`, `:input` (ASK) or `:done` (DONE-1)
-  # existed (a session that outlived a hot reload). Fields it already has are
-  # kept; `:turn` is not loaded from disk, since it belongs to the process that
-  # is running the turn.
+  # SESS-15: upgrade state from before `:settings` (SESS-41), `:task_meta`,
+  # `:project`, `:workspace`, `:compaction`, `:pause`, `:turn` (INTR-1),
+  # `:title`, `:input` (ASK) or `:done` (DONE-1) existed (a session that
+  # outlived a hot reload). Fields it already has are kept — including the five
+  # values a state from before the one map holds as fields of its own — and
+  # `:turn` is not loaded from disk, since it belongs to the process that is
+  # running the turn.
   def handle_call(msg, from, state)
-      when not is_map_key(state, :selection) or not is_map_key(state, :auto_approve) or
+      when not is_map_key(state, :settings) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
              not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
-             not is_map_key(state, :pause) or not is_map_key(state, :jail) or
-             not is_map_key(state, :limits) or not is_map_key(state, :effort) or
+             not is_map_key(state, :pause) or
              not is_map_key(state, :turn) or
              not is_map_key(state, :title) or not is_map_key(state, :input) or
              not is_map_key(state, :done) do
@@ -172,37 +176,14 @@ defmodule Elia.Agent.Session do
         }
 
     upgraded =
-      if is_map_key(state, :selection),
+      if is_map_key(state, :settings),
         do: upgraded,
-        else: %{
-          upgraded
-          | selection: if(upgraded.persist, do: Elia.Store.load_model(upgraded.id))
-        }
-
-    upgraded =
-      if is_map_key(state, :auto_approve),
-        do: upgraded,
-        else: %{upgraded | auto_approve: initial_auto_approve(upgraded, nil)}
+        else: %{upgraded | settings: upgraded_settings(state, upgraded)}
 
     upgraded =
       if is_map_key(state, :compaction),
         do: upgraded,
         else: %{upgraded | compaction: initial_compaction(upgraded.id, upgraded.persist, nil)}
-
-    upgraded =
-      if is_map_key(state, :jail),
-        do: upgraded,
-        else: %{upgraded | jail: initial_jail(upgraded.id, upgraded.persist, nil)}
-
-    upgraded =
-      if is_map_key(state, :limits),
-        do: upgraded,
-        else: %{upgraded | limits: initial_limits(upgraded.id, upgraded.persist, nil)}
-
-    upgraded =
-      if is_map_key(state, :effort),
-        do: upgraded,
-        else: %{upgraded | effort: initial_effort(upgraded.id, upgraded.persist)}
 
     upgraded =
       if is_map_key(state, :title),
@@ -228,19 +209,16 @@ defmodule Elia.Agent.Session do
         :status,
         :tool_status,
         :last_usage,
-        :selection,
         :project,
         :compaction,
         :pause,
-        :jail,
-        :limits,
-        :effort,
         :title,
         :done
       ])
+      |> Map.put(:settings, public_settings(state))
       |> Map.put(:task, Map.get(state, :task_meta))
 
-    {:reply, Map.put(snapshot, :auto_approve, names(state.auto_approve)), state}
+    {:reply, snapshot, state}
   end
 
   def handle_call({:send_message, _text}, _from, %{status: status} = state)
@@ -255,8 +233,8 @@ defmodule Elia.Agent.Session do
     # A chat without a selection pins the one it resolves to now (MODEL-16),
     # unless an explicit provider replaces the selection anyway.
     state =
-      if state.selection == nil and not is_map_key(explicit, :provider),
-        do: %{state | selection: Elia.LLM.pinnable_selection()},
+      if settings(state).model == nil and not is_map_key(explicit, :provider),
+        do: put_setting(state, :model, Elia.LLM.pinnable_selection()),
         else: state
 
     # SESS-36, DONE-9: a message continues a done chat, so starting the turn
@@ -272,13 +250,23 @@ defmodule Elia.Agent.Session do
     {:reply, :ok, start_turn(state, message: message)}
   end
 
-  def handle_call({:select_model, selection}, _from, state) do
-    state = %{state | selection: selection}
-    # A chat with no messages isn't written to disk; the selection is saved
-    # with its first message.
-    state = if state.messages == [], do: state, else: save(state)
-    broadcast(state, {:model, selection})
-    {:reply, :ok, state}
+  # SESS-41, SESS-42: the chat's per-chat settings — its model, auto-approved
+  # tools, jail, turn limits and effort — have one write path. A change is
+  # validated as a whole, applied as a whole, saved once and broadcast as one
+  # event; a change with anything wrong in it is no change at all.
+  def handle_call({:set_settings, changes}, _from, state) do
+    case validate_settings(state, changes) do
+      {:ok, changes} ->
+        state = apply_settings(state, changes)
+        # As with the model selection, an empty chat is saved with its first
+        # message (SESS-14, CSET-6).
+        state = if state.messages == [], do: state, else: save(state)
+        broadcast(state, {:settings, public_settings(state)})
+        {:reply, :ok, approve_newly_allowed(state, changes)}
+
+      {:error, message} ->
+        {:reply, {:error, message}, state}
+    end
   end
 
   # COMPACT-10: compact an idle chat on demand, ignoring the threshold and the
@@ -380,68 +368,6 @@ defmodule Elia.Agent.Session do
   # after the turn ended lands here).
   def handle_call({:answer, _call_id, _answer}, _from, state) do
     {:reply, {:error, :not_pending}, state}
-  end
-
-  def handle_call({:set_auto_approve, name, on?}, _from, state) do
-    if on? and not approvable?(state, name) do
-      {:reply, {:error, :not_approvable}, state}
-    else
-      auto =
-        if on?,
-          do: MapSet.put(state.auto_approve, name),
-          else: MapSet.delete(state.auto_approve, name)
-
-      state = %{state | auto_approve: auto}
-      # As with the model selection, an empty chat is saved with its first message.
-      state = if state.messages == [], do: state, else: save(state)
-      broadcast(state, {:auto_approve, names(auto)})
-      {:reply, :ok, if(on?, do: approve_pending(state, name), else: state)}
-    end
-  end
-
-  # SESS-30, ISOL-16: the chat's jail setting. Allowed mid-turn (ISOL-19): a
-  # command already running isn't killed, and later calls follow the new value.
-  def handle_call({:set_jail, on?}, _from, state) when is_boolean(on?) do
-    state = %{state | jail: on?}
-    # As with the model selection, an empty chat is saved with its first message.
-    state = if state.messages == [], do: state, else: save(state)
-    broadcast(state, {:jail, on?})
-    {:reply, :ok, state}
-  end
-
-  # SESS-40, LLM-39: this chat's own reasoning effort — "low", "medium",
-  # "high", or nil for the configured one (LLM-38). A value that is none of
-  # those is rejected and changes nothing.
-  def handle_call({:set_effort, effort}, _from, state)
-      when effort in [nil, "low", "medium", "high"] do
-    state = %{state | effort: effort}
-    # As with the chat's other settings, an empty chat is saved with its first
-    # message (CSET-6).
-    state = if state.messages == [], do: state, else: save(state)
-    broadcast(state, {:effort, effort})
-    {:reply, :ok, state}
-  end
-
-  def handle_call({:set_effort, _effort}, _from, state) do
-    {:reply, {:error, "Reasoning effort must be low, medium or high"}, state}
-  end
-
-  # SESS-31, LIMIT-2: this chat's turn limits (LIMIT-1), which the next turn is
-  # started with (LIMIT-3). A value that isn't valid is rejected and changes
-  # nothing (LIMIT-7).
-  def handle_call({:set_limits, changes}, _from, state) do
-    case Elia.Limits.validate(changes) do
-      {:ok, changes} ->
-        limits = Elia.Limits.new(Map.merge(Map.get(state, :limits, %{}), changes))
-        state = %{state | limits: limits}
-        # As with the model selection, an empty chat is saved with its first message.
-        state = if state.messages == [], do: state, else: save(state)
-        broadcast(state, {:limits, limits})
-        {:reply, :ok, state}
-
-      {:error, message} ->
-        {:reply, {:error, message}, state}
-    end
   end
 
   # SESS-33, TITLE-4: the chat's own title, set by the model's `set_title` tool
@@ -745,9 +671,9 @@ defmodule Elia.Agent.Session do
     |> Enum.map(& &1.name)
   end
 
-  # `auto_approve` is missing from state that predates it (see SESS-15).
-  defp auto_approved?(state, name),
-    do: MapSet.member?(Map.get(state, :auto_approve, MapSet.new()), name)
+  # APPR-8: whether a tool runs without asking in this chat. SESS-15: a state
+  # that predates the one map has none of its own.
+  defp auto_approved?(state, name), do: MapSet.member?(settings(state).auto_approve, name)
 
   defp names(set), do: set |> MapSet.to_list() |> Enum.sort()
 
@@ -788,6 +714,196 @@ defmodule Elia.Agent.Session do
   # and the configured one applies (LLM-38).
   defp initial_effort(id, true), do: Elia.Store.load_effort(id)
   defp initial_effort(_id, false), do: nil
+
+  # SESS-41, SESS-7: the five per-chat settings a session starts with — what its
+  # caller gave it (SESS-17, SUBTASK-30), else what the chat has saved, else
+  # each one's own default. The auto-approved set is worked out by the caller,
+  # once the chat's messages are loaded (APPR-14).
+  defp initial_settings(id, persist, opts) do
+    %{
+      model: opts[:selection] || if(persist, do: Elia.Store.load_model(id)),
+      auto_approve: MapSet.new(),
+      jail: initial_jail(id, persist, opts[:jail]),
+      limits: initial_limits(id, persist, opts[:limits]),
+      effort: initial_effort(id, persist)
+    }
+  end
+
+  # SESS-41: the chat's per-chat settings. A state that predates the one map is
+  # upgraded on its next call (SESS-15); one that reaches this without it from
+  # somewhere else (a message from a loop rather than a call, say) falls back to
+  # each setting's default, as it did when they were fields of their own.
+  defp settings(state), do: Map.get(state, :settings, default_settings())
+  defp default_settings, do: %__MODULE__{}.settings
+
+  # MODEL-16: the selection a chat pins at its first turn goes into the same map
+  # as any other setting; it is saved by the message that starts the turn, not
+  # here (SESS-14).
+  defp put_setting(state, key, value),
+    do: %{state | settings: Map.put(settings(state), key, value)}
+
+  # SESS-7, SESS-41: the settings as the snapshot and the `{:settings, …}` event
+  # carry them, with the auto-approved tools as their sorted names — the shape
+  # the snapshot has always given them.
+  defp public_settings(state) do
+    %{settings(state) | auto_approve: names(settings(state).auto_approve)}
+  end
+
+  # SESS-15: the one settings map of a state that predates it. A value the state
+  # already holds as a field of its own is kept, and only the ones it doesn't
+  # have are loaded from the chat.
+  defp upgraded_settings(old, upgraded) do
+    %{
+      model:
+        from_state(old, :selection, fn ->
+          if upgraded.persist, do: Elia.Store.load_model(upgraded.id)
+        end),
+      auto_approve: from_state(old, :auto_approve, fn -> initial_auto_approve(upgraded, nil) end),
+      jail: from_state(old, :jail, fn -> initial_jail(upgraded.id, upgraded.persist, nil) end),
+      limits:
+        from_state(old, :limits, fn -> initial_limits(upgraded.id, upgraded.persist, nil) end),
+      effort: from_state(old, :effort, fn -> initial_effort(upgraded.id, upgraded.persist) end)
+    }
+  end
+
+  defp from_state(old, key, load),
+    do: if(is_map_key(old, key), do: Map.get(old, key), else: load.())
+
+  # SESS-41: the changes of a validated request applied to the one map. The
+  # limits and the auto-approved tools are changed by key, the others set whole.
+  defp apply_settings(state, changes) do
+    settings =
+      Enum.reduce(changes, settings(state), fn
+        {:model, selection}, settings ->
+          Map.put(settings, :model, selection)
+
+        {:jail, on?}, settings ->
+          Map.put(settings, :jail, on?)
+
+        {:effort, effort}, settings ->
+          Map.put(settings, :effort, effort)
+
+        {:limits, limits}, settings ->
+          Map.put(settings, :limits, Elia.Limits.new(Map.merge(settings.limits, limits)))
+
+        {:auto_approve, tools}, settings ->
+          %{settings | auto_approve: put_auto_approve(settings.auto_approve, tools)}
+      end)
+
+    %{state | settings: settings}
+  end
+
+  # APPR-8: a tool turned on joins the chat's set, one turned off leaves it.
+  defp put_auto_approve(set, tools) do
+    Enum.reduce(tools, set, fn
+      {name, true}, set -> MapSet.put(set, name)
+      {name, false}, set -> MapSet.delete(set, name)
+    end)
+  end
+
+  # APPR-11: turning auto-approval on for a tool approves that tool's calls that
+  # are waiting right now, as part of the same change (SESS-16). Nothing more is
+  # saved or broadcast for it.
+  defp approve_newly_allowed(state, %{auto_approve: tools}) do
+    tools
+    |> Enum.filter(fn {_name, on?} -> on? end)
+    |> Enum.map(fn {name, _on?} -> name end)
+    |> Enum.reduce(state, fn name, state -> approve_pending(state, name) end)
+  end
+
+  defp approve_newly_allowed(state, _changes), do: state
+
+  # SESS-42: every key of a change is checked before any of it is applied, so a
+  # change with something wrong in it changes nothing at all.
+  defp validate_settings(state, changes) do
+    changes = Map.new(changes)
+
+    with :ok <- check_keys(changes),
+         :ok <- check_model(changes),
+         :ok <- check_jail(changes),
+         :ok <- check_effort(changes),
+         :ok <- check_auto_approve(state, changes),
+         {:ok, limits} <- check_limits(changes) do
+      changes =
+        if Map.has_key?(changes, :limits), do: Map.put(changes, :limits, limits), else: changes
+
+      {:ok, changes}
+    end
+  end
+
+  defp check_keys(changes) do
+    case Enum.reject(Map.keys(changes), &(&1 in @setting_keys)) do
+      [] -> :ok
+      keys -> {:error, "Unknown setting: #{Enum.map_join(keys, ", ", &inspect/1)}"}
+    end
+  end
+
+  # MODEL-1: the chat's selection, or nil for none of its own.
+  defp check_model(changes) do
+    case Map.fetch(changes, :model) do
+      :error -> :ok
+      {:ok, nil} -> :ok
+      {:ok, selection} when is_map(selection) -> :ok
+      {:ok, _other} -> {:error, "model must be a selection or nil"}
+    end
+  end
+
+  # ISOL-16: on or off.
+  defp check_jail(changes) do
+    case Map.fetch(changes, :jail) do
+      :error -> :ok
+      {:ok, on?} when is_boolean(on?) -> :ok
+      {:ok, _other} -> {:error, "jail must be true or false"}
+    end
+  end
+
+  # LLM-39, LLM-38: one of the three efforts, or nil for the configured one.
+  defp check_effort(changes) do
+    case Map.fetch(changes, :effort) do
+      :error -> :ok
+      {:ok, effort} when effort in [nil, "low", "medium", "high"] -> :ok
+      {:ok, _other} -> {:error, "Reasoning effort must be low, medium or high"}
+    end
+  end
+
+  # APPR-8, APPR-13: the tool names to turn on or off. A name can always be
+  # turned off; turning one on needs a tool that can need approval in this chat.
+  defp check_auto_approve(state, changes) do
+    case Map.fetch(changes, :auto_approve) do
+      :error ->
+        :ok
+
+      {:ok, tools} when is_map(tools) or is_list(tools) ->
+        tools |> Map.new() |> Enum.find_value(:ok, &check_tool(state, &1))
+
+      {:ok, _other} ->
+        {:error, "auto_approve must name the tools to turn on or off"}
+    end
+  end
+
+  defp check_tool(_state, {name, _on?}) when not is_binary(name),
+    do: {:error, "auto_approve must name its tools by name"}
+
+  defp check_tool(_state, {name, on?}) when not is_boolean(on?),
+    do: {:error, "auto_approve: #{name} must be true or false"}
+
+  defp check_tool(_state, {_name, false}), do: nil
+
+  defp check_tool(state, {name, true}) do
+    if approvable?(state, name),
+      do: nil,
+      else: {:error, "auto_approve: #{name} cannot need approval in this chat"}
+  end
+
+  # LIMIT-1, LIMIT-7: the limits of a change, checked by the module that owns
+  # them.
+  defp check_limits(changes) do
+    case Map.fetch(changes, :limits) do
+      :error -> {:ok, %{}}
+      {:ok, limits} when is_map(limits) or is_list(limits) -> Elia.Limits.validate(limits)
+      {:ok, _other} -> {:error, "limits must name the limits to change"}
+    end
+  end
 
   # COMPACT-9, COMPACT-24: the chat's saved compaction state, with any options
   # its session was started with.
@@ -870,7 +986,7 @@ defmodule Elia.Agent.Session do
     do: %{state | last_usage: Map.delete(state.last_usage, "estimated_input_tokens")}
 
   # The selected model's context window, or nil when it is unknown (CTX-7).
-  defp window(state), do: Elia.LLM.context_window(state.selection).context_length
+  defp window(state), do: Elia.LLM.context_window(settings(state).model).context_length
 
   # The system prompt and tool definitions of the request, which are not part of
   # the view's messages but are part of the estimated request (CTX-1).
@@ -889,12 +1005,14 @@ defmodule Elia.Agent.Session do
     llm =
       case Keyword.get(state.loop_opts, :llm, %{}) do
         %{provider: _} = llm -> llm
-        llm -> Map.merge(Elia.LLM.selection_request(state.selection), llm)
+        llm -> Map.merge(Elia.LLM.selection_request(settings(state).model), llm)
       end
 
     # SESS-40, LLM-39: the chat's own reasoning effort travels as the request's
     # `:effort`, unless the caller named one, which wins.
-    if Map.get(state, :effort), do: Map.put_new(llm, :effort, state.effort), else: llm
+    if settings(state).effort,
+      do: Map.put_new(llm, :effort, settings(state).effort),
+      else: llm
   end
 
   # The chat's project (PROJ-9): the saved one, else Elia's own. Read through
@@ -934,18 +1052,18 @@ defmodule Elia.Agent.Session do
   defp save(%{persist: false} = state), do: state
 
   defp save(state) do
-    auto = names(Map.get(state, :auto_approve, MapSet.new()))
+    auto = names(settings(state).auto_approve)
 
     with {:error, reason} <-
            Elia.Store.save(state.id, state.messages,
-             model: state.selection,
+             model: settings(state).model,
              auto_approve: auto,
              task: Map.get(state, :task_meta),
              project: project(state).id,
              compaction: saved_compaction(Map.get(state, :compaction)),
-             jail: Map.get(state, :jail, true),
-             limits: Map.get(state, :limits, Elia.Limits.defaults()),
-             effort: Map.get(state, :effort),
+             jail: settings(state).jail,
+             limits: settings(state).limits,
+             effort: settings(state).effort,
              # STORE-30, INTR-1: the turn in flight, or nothing when there is
              # none (which takes the entry off the file).
              turn: Map.get(state, :turn),
@@ -1027,7 +1145,7 @@ defmodule Elia.Agent.Session do
         workspace: workspace(state),
         # ISOL-15: the tool context carries this chat's jail setting, so the
         # shell tools follow it.
-        jail: Map.get(state, :jail, true),
+        jail: settings(state).jail,
         # TIME-2: the turn's start goes into every step's timing record, so the
         # record needs nothing from the chat's saved term, whose turn entry is
         # taken off when the turn ends (STORE-30, INTR-1).
@@ -1043,7 +1161,7 @@ defmodule Elia.Agent.Session do
 
     # LIMIT-3: the chat's own limits are the turn's, unless the caller passed
     # its own (a sub-task's spawn, or a test driving a limit directly).
-    opts = Keyword.merge(Elia.Limits.loop_opts(Map.get(state, :limits, %{})), opts)
+    opts = Keyword.merge(Elia.Limits.loop_opts(settings(state).limits), opts)
 
     task =
       Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->

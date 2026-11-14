@@ -322,7 +322,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   this chat, and a note that auto-approved tools run without review. A new chat
   starts with every switch on (APPR-14). Tools
   from folder skills appear after a skill
-  reload. The switch state follows `{:auto_approve, names}` events (SESS-16),
+  reload. The switch state follows `{:settings, settings}` events (SESS-41),
   so every view of the chat stays in sync.
 - **UI-40** A call awaiting approval has an "Always allow" button
   (`#always-allow-<call_id>`) that turns auto-approval on for its tool
@@ -337,7 +337,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (`#jail-toggle`) in its Jail section, with its state written out as text
   (`#jail-state`): "Jailed" when on, "Not jailed" when off. It reflects and
   toggles ISOL-16 for this chat, is saved with the chat, and follows
-  `{:jail, on?}` events (SESS-30) so every view of the chat stays in sync.
+  `{:settings, settings}` events (SESS-41) so every view of the chat stays in sync.
   Turning it off shows that commands can then read the settings database and
   the user's credentials (ISOL-16, ISOL-17), and while it is off the chat page
   says so next to its settings link (CSET-9).
