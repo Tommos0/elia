@@ -1845,10 +1845,12 @@ defmodule Elia.AgentTest do
     assert Enum.any?(third.messages, &(&1.meta[:compaction] == :marker))
 
     # COMPACT-32: the most recent step — its assistant message, its call and its
-    # result — is sent in full.
+    # result — is sent in full. The tool's own output is sent whole; the loop
+    # appends its standing-still notice to it because this step's call is the
+    # identical call to the one before it (LOOP-24).
     assert Enum.any?(third.messages, fn
              %Message{role: :tool, content: [%{content: content, tool_call_id: "c2"}]} ->
-               content == output
+               String.starts_with?(content, output)
 
              _ ->
                false
