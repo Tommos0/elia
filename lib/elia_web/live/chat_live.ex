@@ -302,6 +302,7 @@ defmodule EliaWeb.ChatLive do
             show={@show_context}
             buckets={@context_breakdown.buckets}
             provider_tokens={Context.provider_input_tokens(@last_usage)}
+            cache_usage={Context.provider_cached_tokens(@last_usage)}
             elided={@context_elided}
           />
           <%!-- UI-57: the turn paused at a limit; the user decides. --%>
@@ -1006,6 +1007,8 @@ defmodule EliaWeb.ChatLive do
   attr :show, :boolean, required: true
   attr :buckets, :list, required: true
   attr :provider_tokens, :integer, default: nil
+  # CTX-12: the prompt-cache part of the provider's figure, when it reported one.
+  attr :cache_usage, :map, default: nil
   attr :elided, :integer, default: 0
 
   defp context_header(assigns) do
@@ -1101,6 +1104,15 @@ defmodule EliaWeb.ChatLive do
             The model API reported {format_tokens(@provider_tokens)} input tokens on the last
             reply.
           </p>
+          <%!-- CTX-12, CTX-13: the cached part of that figure, only when the
+                provider reported one. --%>
+          <p
+            :if={@cache_usage}
+            id="context-cache-usage"
+            class="text-[11px] text-base-content/40"
+          >
+            {cache_usage_text(@cache_usage)}
+          </p>
         </div>
       </div>
     </div>
@@ -1148,6 +1160,19 @@ defmodule EliaWeb.ChatLive do
       <span class="tabular-nums text-base-content/60">{format_tokens(@bucket.tokens)}</span>
     </li>
     """
+  end
+
+  # CTX-12: the cached part of the input the provider reported, phrased for
+  # whichever halves it gave (a provider may report reads only).
+  defp cache_usage_text(%{read: read, write: write}) do
+    reads =
+      read > 0 && "#{format_tokens(read)} of them were read from the provider's prompt cache"
+
+    writes =
+      write > 0 &&
+        "#{format_tokens(write)} #{if read > 0, do: "were written to it", else: "of them were written to the provider's prompt cache"}"
+
+    [reads, writes] |> Enum.filter(&is_binary/1) |> Enum.join(", and ")
   end
 
   # CTX-10: the provider adjustment can be negative.

@@ -265,6 +265,47 @@ defmodule Elia.LLM.ContextTest do
     assert Context.provider_input_tokens(nil) == nil
   end
 
+  # CTX-12: the cached part of the provider's figure, whichever family sent it.
+  test "provider_cached_tokens reads Anthropic's cache fields, or OpenAI's cached_tokens" do
+    assert Context.provider_cached_tokens(%{
+             "input_tokens" => 5,
+             "cache_read_input_tokens" => 12_000,
+             "cache_creation_input_tokens" => 300
+           }) == %{read: 12_000, write: 300}
+
+    # A later step of a cached prefix reads it and writes nothing.
+    assert Context.provider_cached_tokens(%{
+             "input_tokens" => 5,
+             "cache_read_input_tokens" => 12_000,
+             "cache_creation_input_tokens" => 0
+           }) == %{read: 12_000, write: 0}
+
+    # The request that first cached the prefix writes it and reads nothing.
+    assert Context.provider_cached_tokens(%{
+             "input_tokens" => 5,
+             "cache_creation_input_tokens" => 300
+           }) == %{read: 0, write: 300}
+
+    # An OpenAI-compatible report carries reads only.
+    assert Context.provider_cached_tokens(%{
+             "prompt_tokens" => 100,
+             "prompt_tokens_details" => %{"cached_tokens" => 80}
+           }) == %{read: 80, write: 0}
+
+    # CTX-13: a report with no cache figure, or one of zero cached tokens, has
+    # nothing to show.
+    for usage <- [
+          nil,
+          %{},
+          %{"input_tokens" => 5},
+          %{"prompt_tokens" => 100},
+          %{"input_tokens" => 5, "cache_read_input_tokens" => 0},
+          %{"prompt_tokens" => 100, "prompt_tokens_details" => %{"cached_tokens" => 0}}
+        ] do
+      assert Context.provider_cached_tokens(usage) == nil
+    end
+  end
+
   # LOOP-22, LIMIT-12: what a request cost the turn, both halves together.
   test "provider_tokens adds output to input, whichever counts the provider sends" do
     assert Context.provider_tokens(%{"input_tokens" => 300, "output_tokens" => 200}) == 500

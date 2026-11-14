@@ -690,8 +690,8 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#transcript details:not([open]) summary", "1 word")
   end
 
-  # CTX-6: provider-reported input usage (with cache tokens) appears after a
-  # turn, and a reset clears it.
+  # CTX-6, CTX-12: provider-reported input usage (with cache tokens) appears
+  # after a turn, and a reset clears it and its cache line (CTX-13).
   test "provider-reported usage is shown after a turn", %{conn: conn} do
     id = Agent.new_id()
 
@@ -712,8 +712,37 @@ defmodule EliaWeb.ChatLiveTest do
     view |> element("#context-indicator") |> render_click()
     assert view |> element("#context-provider-usage") |> render() =~ "12K"
 
+    # CTX-12: the cached part of that figure is shown too.
+    cache = view |> element("#context-cache-usage") |> render()
+    assert cache =~ "12K"
+    assert cache =~ "prompt cache"
+
     send(view.pid, {:agent, id, {:reset, []}})
     refute has_element?(view, "#context-provider-usage")
+    refute has_element?(view, "#context-cache-usage")
+  end
+
+  # CTX-13: a report with no cache figure leaves the cache line out rather than
+  # showing a zero.
+  test "a report without cache figures shows no cache line", %{conn: conn} do
+    id = Agent.new_id()
+
+    FakeLLM.push(fn _request, _on_event ->
+      msg = FakeLLM.assistant([Message.text("No caching here.")])
+
+      {:ok,
+       %{message: msg, stop_reason: :end_turn, model: "fake", usage: %{"input_tokens" => 345}}}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "how big is my context?"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    view |> element("#context-indicator") |> render_click()
+    assert has_element?(view, "#context-provider-usage")
+    refute has_element?(view, "#context-cache-usage")
   end
 
   # CTX-10: the total follows the provider's figure, including on a remount, and

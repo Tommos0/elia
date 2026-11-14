@@ -8,6 +8,8 @@ tool definitions and the whole conversation. When the selected model's context
 window is known, the indicator also shows it and the percentage used. Clicking
 the indicator opens a breakdown listing what makes up the context — messages,
 files, skills, tool definitions and more — each with an estimated token count.
+The panel also reports what the model API said the last request's input was and
+how much of it the provider served from its prompt cache.
 
 ## Requirements
 
@@ -77,6 +79,16 @@ files, skills, tool definitions and more — each with an estimated token count.
   breakdown's "Elided by compaction (not sent)" row (`#context-elided`,
   COMPACT-26). The elided tokens are **not** part of the estimate: the total is
   what the model is sent.
+- **CTX-12** When the last usage report carries prompt-cache figures, the
+  breakdown panel shows them under the CTX-6 figure (`#context-cache-usage`):
+  the input tokens the provider read from its prompt cache and the ones it wrote
+  to it, taken from Anthropic's `cache_read_input_tokens` and
+  `cache_creation_input_tokens`, or from an OpenAI-compatible report's
+  `prompt_tokens_details.cached_tokens` as reads, with no write figure. These
+  tokens are part of the CTX-6 figure, not additional to it.
+- **CTX-13** A usage report carrying no cache figure, and a conversation reset
+  (which clears the CTX-6 figure), leaves the panel's cache line absent rather
+  than showing a zero.
 
 ## Implementation
 
@@ -88,14 +100,16 @@ estimate is over, COMPACT-26), `Elia.Agent.Session`, `Elia.Agent.Loop`,
 ## Tests
 
 - `test/elia/llm/context_test.exs` (the estimate and its breakdown, the request
-  view it is over, the calibration — CTX-3 to CTX-5, CTX-8, CTX-10).
+  view it is over, the calibration, the cache figures a report carries — CTX-3
+  to CTX-5, CTX-8, CTX-10, CTX-12).
 - `test/elia/llm/tokens_test.exs` (the estimator and a signed reasoning block,
   CTX-3, CTX-9).
 - `test/elia/llm/catalog_test.exs` (the window the catalog reports, CTX-7).
 - `test/elia/agent_test.exs` and `test/elia/step_timing_test.exs` (the
   provider's report, recorded with the step, CTX-6).
 - `test/elia_web/live/chat_live_test.exs` (the indicator, its breakdown, the
-  window and the provider's report — CTX-1, CTX-2, CTX-4 to CTX-8, CTX-10).
+  window, the provider's report and its cache figures — CTX-1, CTX-2, CTX-4 to
+  CTX-8, CTX-10, CTX-12, CTX-13).
 - `test/elia_web/live/compaction_test.exs` (the indicator after compaction,
   CTX-1, CTX-11).
 - `test/elia_web/browser/chat_browser_test.exs` (the indicator's place above the

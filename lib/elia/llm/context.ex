@@ -196,6 +196,34 @@ defmodule Elia.LLM.Context do
   def provider_input_tokens(_usage), do: nil
 
   @doc """
+  The prompt-cache part of the input the provider reported for the last request
+  (CTX-12): `%{read: n, write: n}` — the tokens it served from its prompt cache
+  and the ones it wrote to it. Anthropic reports both
+  (`cache_read_input_tokens`, `cache_creation_input_tokens`); an
+  OpenAI-compatible report carries reads only (`prompt_tokens_details.cached_tokens`),
+  so its write figure is zero. `nil` when the report carries no cache figure, or
+  none worth showing — a report of zero cached tokens says nothing.
+  """
+  @spec provider_cached_tokens(map() | nil) ::
+          %{read: non_neg_integer(), write: non_neg_integer()} | nil
+  def provider_cached_tokens(%{"input_tokens" => _} = usage) do
+    cache_figures(usage["cache_read_input_tokens"], usage["cache_creation_input_tokens"])
+  end
+
+  def provider_cached_tokens(%{"prompt_tokens" => _} = usage) do
+    cache_figures(get_in(usage, ["prompt_tokens_details", "cached_tokens"]), nil)
+  end
+
+  def provider_cached_tokens(_usage), do: nil
+
+  defp cache_figures(read, write) do
+    read = if is_integer(read), do: max(read, 0), else: 0
+    write = if is_integer(write), do: max(write, 0), else: 0
+
+    if read > 0 or write > 0, do: %{read: read, write: write}
+  end
+
+  @doc """
   Output tokens the provider reported for the last request: Anthropic's
   `output_tokens`, OpenRouter's `completion_tokens`.
   """
