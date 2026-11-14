@@ -30,6 +30,11 @@ defmodule Elia.Skills.Harness do
     2. Call `reload_skills` and fix any reported errors. New tools are available \
     from your next step.
 
+    Keep the compaction ledger current as you work, not at the end: call \
+    `update_ledger` for each decision, file path or open question as you make it \
+    (COMPACT-34). A step's reasoning is the first thing compaction drops, so a \
+    conclusion that never reached the ledger is lost with it.
+
     In a project of your own the skill goes in that project's `skills/` folder, \
     and it applies from your next step without `reload_skills`. Folder skills \
     need no approval to write, but their tools always ask the user before running.
@@ -56,7 +61,10 @@ defmodule Elia.Skills.Harness do
           "Append exact facts to this chat's compaction ledger (COMPACT-22). The " <>
             "ledger is sent with every request and is never elided or summarized, so " <>
             "file paths, decisions, requirement IDs and open questions survive a long " <>
-            "chat. One fact per entry.",
+            "chat. One fact per entry. Write as you go, not at the end: append a line " <>
+            "for each decision, path or open question as you make it, because a step's " <>
+            "reasoning is the first thing compaction drops (COMPACT-14) and a " <>
+            "conclusion that never reached the ledger goes with it.",
         input_schema: %{
           "type" => "object",
           "properties" => %{

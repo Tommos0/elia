@@ -22,6 +22,20 @@ defmodule Elia.Skills.HarnessTest do
              ~w(reload_skills update_ledger)
   end
 
+  # COMPACT-34
+  test "the ledger guidance says to write facts as you go, not at the end" do
+    instructions = Elia.Skills.Harness.instructions()
+
+    assert instructions =~ "update_ledger"
+    assert instructions =~ "as you work, not at the end"
+    assert instructions =~ "reasoning is the first thing compaction drops"
+
+    tool = Enum.find(Elia.Skills.Harness.tools(), &(&1.name == "update_ledger"))
+
+    assert tool.description =~ "as you go, not at the end"
+    assert tool.description =~ "reasoning is the first thing compaction drops"
+  end
+
   # COMPACT-22, COMPACT-21
   test "update_ledger appends exact facts to the chat's compaction ledger" do
     id = Elia.Agent.new_id()

@@ -73,6 +73,11 @@ defmodule Elia.LLM.Compaction do
   @ledger_entries 200
   @ledger_chars 20_000
 
+  # COMPACT-35: the oldest entries are kept beyond that cap, up to a smaller one,
+  # so writing a line per step cannot push out what the chat was founded on.
+  @ledger_founding_entries 10
+  @ledger_founding_chars 2_000
+
   # A tool result's output is cut to this before the summarizer sees it, and a
   # user turn to that, so the summarizer's own input stays bounded (COMPACT-18).
   @chunk_chars 1_000
@@ -949,7 +954,8 @@ defmodule Elia.LLM.Compaction do
 
   @doc """
   Appends `entries` of exact facts to the ledger. The ledger is append-and-trim
-  only: never re-summarized, and the oldest entries fall off past a cap.
+  only: never re-summarized, and once it fills the middle entries fall off — the
+  newest ones and the founding ones stay (COMPACT-35).
   """
   @spec add_ledger(t(), [binary()] | binary()) :: t()
   def add_ledger(state, entries) do
@@ -962,10 +968,30 @@ defmodule Elia.LLM.Compaction do
     %{state | ledger: ledger}
   end
 
+  # COMPACT-35: the newest entries fill the cap and the oldest are kept beyond
+  # it, up to a smaller founding cap, so a chat that writes a line per step does
+  # not push out the decisions it was founded on.
   defp trim_ledger(ledger) do
-    ledger
-    |> Enum.take(-@ledger_entries)
-    |> drop_oldest(0)
+    {founding, recent} = Enum.split(ledger, @ledger_founding_entries)
+
+    keep_founding(founding) ++
+      (recent |> Enum.take(-@ledger_entries) |> drop_oldest(0))
+  end
+
+  defp keep_founding(entries) do
+    {kept, _size} =
+      Enum.reduce_while(entries, {[], 0}, fn entry, {kept, size} ->
+        size = size + String.length(entry)
+
+        # The first entry stays however long it is, as `drop_oldest/2` keeps one.
+        if kept != [] and size > @ledger_founding_chars do
+          {:halt, {kept, size}}
+        else
+          {:cont, {[entry | kept], size}}
+        end
+      end)
+
+    Enum.reverse(kept)
   end
 
   defp drop_oldest(ledger, size) do

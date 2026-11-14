@@ -202,6 +202,18 @@ order, stopping as soon as the estimate is at or below the target:
   exact facts — file paths, decisions, requirement IDs, open questions — kept
   verbatim and sent in the request view. It is append-and-trim only, never
   re-summarized, so the identifiers that matter survive folding.
+- **COMPACT-34** The ledger is kept current **as the work happens**, not at the
+  end of it: the `update_ledger` tool's description and the `harness` skill's
+  instructions (SKILL-7, PROJ-16) tell the model to append a line for each
+  decision, file path or open question as it makes it — before the step that
+  produced it ages out of the working set (COMPACT-12) and its reasoning is
+  dropped (COMPACT-14), which is the first thing the ladder takes. Both are
+  re-read at every step (LOOP-1), so the guidance is there mid-turn and not only
+  at the turn's start.
+- **COMPACT-35** Trimming the ledger keeps its oldest entries as well as its
+  newest: the newest fill the character cap, and the oldest are kept beyond it
+  up to a smaller founding cap, so a chat that writes a line per step does not
+  push out the decisions it was founded on.
 - **COMPACT-23** The request view carries an explicit marker naming how much was
   elided and telling the model to re-read or re-run rather than rely on memory,
   so silent loss becomes a knowable gap.
@@ -250,7 +262,10 @@ restart (COMPACT-24), and the rung inside the turn being run keeps its progress
 there (COMPACT-33). The change is **backward compatible**: a state saved before
 that field existed loads with the field at its default — nothing elided inside
 the turn — and a build that does not know the field ignores it (`from_map/1`
-reads the fields it knows), so no migration is needed.
+reads the fields it knows), so no migration is needed. Keeping the ledger
+current (COMPACT-34) and the founding entries its trim keeps (COMPACT-35) add no
+stored field either: the ledger is still a list of strings and the guidance is
+prompt text, so there is nothing to migrate.
 
 ## Implementation
 
@@ -262,6 +277,12 @@ COMPACT-29), `Elia.Store` (saving the summary, ledger and pins),
 `Elia.LLM.Context` (estimate over the request view), `EliaWeb.ChatLive`
 (annotations, the summary notice, "compact now"),
 `EliaWeb.ChatSettingsLive` (this chat's compaction options, COMPACT-30).
+
+The guidance that keeps the ledger current is prompt text and lives with the
+tool it describes: the `update_ledger` description and
+`Elia.Skills.Harness.instructions/0` (COMPACT-34), both re-read at every step
+(LOOP-1). The founding cap the trim keeps is `Elia.LLM.Compaction.trim_ledger/1`
+(COMPACT-35).
 
 The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is a `level`
 (how far down the ladder the cold region has been taken), the `covered` index
@@ -305,10 +326,14 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 ## Tests
 
 - `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
-  boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
+  boundary safety, bounded folding, pinning, the ledger's cap and the founding
+  entries it keeps past it, the elision-only `trim/3` and its
   stopping point, and the rung inside the turn being run — COMPACT-1 to
   COMPACT-8, COMPACT-11 to COMPACT-18, COMPACT-20, COMPACT-23, COMPACT-25,
-  COMPACT-29, COMPACT-31 to COMPACT-33).
+  COMPACT-29, COMPACT-31 to COMPACT-33, COMPACT-35).
+- `test/elia/skills/harness_test.exs` (the guidance that keeps the ledger
+  current, in the tool's description and the skill's instructions —
+  COMPACT-34).
 - `test/elia/agent_test.exs` (the state, its persistence, the trigger, the
   manual action, the ledger, the working set a turn keeps, and the mid-turn pass
   end to end: a later request smaller than an earlier one, the most recent step
