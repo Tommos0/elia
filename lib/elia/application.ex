@@ -29,6 +29,12 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
+      # SUBTASK-11, RESUME-7: the registry of the running sub-tasks, which owns
+      # each child's entry and its watcher. It starts with the application
+      # rather than on first use: a session resuming a sub-task takes its entry
+      # while it is starting itself, and a child started from inside the
+      # supervisor that is starting it would deadlock.
+      Elia.Tasks,
       # TERM-1: a chat's terminal session is registered by chat id, so a chat
       # has one, and it runs under its own supervisor — a session that dies
       # takes its process tree with it (TERM-3) and leaves the rest alone.
@@ -51,7 +57,11 @@ defmodule Elia.Application do
       # started it.
       Elia.Deploy.Runner,
       # Start to serve requests, typically the last entry
-      EliaWeb.Endpoint
+      EliaWeb.Endpoint,
+      # RESUME-1: the turns a restart cut short are carried on from here, after
+      # everything they need is up. Its scan runs in its own process, so it
+      # never holds up the application's own start.
+      Elia.Agent.Resumer
     ]
   end
 

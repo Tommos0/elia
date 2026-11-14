@@ -119,6 +119,7 @@ it.
 | [File links](file-links.md) | `FLINK` | A file the agent mentions in a reply or on a tool card links to the Files page |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
+| [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included, with their watcher put back — once per turn and never when it was waiting on the user |
 | [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, the user's stop — writes why into the transcript |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Turn retries](turn-retries.md) | `RETRY` | A model call that failed transiently — a timeout, a dropped connection, an overloaded provider — is asked again after a wait, so the turn carries on by itself |

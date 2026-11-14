@@ -121,11 +121,18 @@ defmodule Elia.Agent.Session do
     # loaded, so the default set is worked out here.
     state = %{state | auto_approve: initial_auto_approve(state, opts[:auto_approve])}
 
+    # RESUME-2: the record of a turn the restart cut short is read before
+    # anything saves the chat — a session's own state carries no turn (SESS-15),
+    # so the save below would take the record off the file (INTR-1) before
+    # anything could decide what to do with it.
+    turn = if persist, do: Elia.Store.load_turn(opts[:id])
+
     # SESS-21: tool calls the app stopped in the middle of never got a result.
     state = close_dangling_tool_calls(state, "The app restarted while this tool was running.")
-    # INTR-3: and if the chat still carried a turn record, that turn was cut
-    # short by the restart, so the chat says so.
-    {:ok, note_interrupted_turn(state)}
+    # INTR-3, RESUME-2: and if the chat carried a turn record, that turn was cut
+    # short by the restart: it carries on when automatic resume applies
+    # (RESUME-3) and says so otherwise.
+    {:ok, resume_or_note(state, turn)}
   end
 
   @impl true
@@ -252,21 +259,6 @@ defmodule Elia.Agent.Session do
         do: %{state | selection: Elia.LLM.pinnable_selection()},
         else: state
 
-    # COMPACT-5: compaction happens at the start of the turn, before the user
-    # message, and again at every step of the loop below (COMPACT-29).
-    state = compact_at_turn_start(state)
-
-    session = self()
-    turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
-
-    # INTR-1: the turn is recorded in the chat as it starts — the save the user
-    # message triggers writes it — and cleared when it ends (finish_turn).
-    state = %{
-      state
-      | turn_start: length(state.messages),
-        turn: %{id: turn_id, started_at: DateTime.utc_now()}
-    }
-
     # SESS-36, DONE-9: a message continues a done chat, so starting the turn
     # takes the flag with it — the save the user message triggers writes it away.
     state =
@@ -277,44 +269,7 @@ defmodule Elia.Agent.Session do
         state
       end
 
-    state = append(state, message)
-    # The chat's model selected now is used for the whole turn. An explicit
-    # provider replaces the selection; other explicit options are merged over it.
-    llm = llm_request(state)
-
-    opts =
-      Keyword.merge(state.loop_opts,
-        session_id: state.id,
-        turn_id: turn_id,
-        llm: llm,
-        project: project(state),
-        workspace: workspace(state),
-        # ISOL-15: the tool context carries this chat's jail setting, so the
-        # shell tools follow it.
-        jail: Map.get(state, :jail, true),
-        # TIME-2: the turn's start goes into every step's timing record, so the
-        # record needs nothing from the chat's saved term, whose turn entry is
-        # taken off when the turn ends (STORE-30, INTR-1).
-        turn_started_at: state.turn.started_at,
-        # COMPACT-2, COMPACT-29: the loop is given the full history and derives
-        # the request view from it at every step, with the trigger, target and
-        # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
-        compaction: state.compaction,
-        compaction_trigger: auto_trigger(state),
-        compaction_target: target(state),
-        compaction_overhead: overhead(state)
-      )
-
-    # LIMIT-3: the chat's own limits are the turn's, unless the caller passed
-    # its own (a sub-task's spawn, or a test driving a limit directly).
-    opts = Keyword.merge(Elia.Limits.loop_opts(Map.get(state, :limits, %{})), opts)
-
-    task =
-      Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
-        Elia.Agent.Loop.run(session, state.messages, opts)
-      end)
-
-    {:reply, :ok, set_status(%{state | task: task}, :running)}
+    {:reply, :ok, start_turn(state, message: message)}
   end
 
   def handle_call({:select_model, selection}, _from, state) do
@@ -1017,20 +972,150 @@ defmodule Elia.Agent.Session do
     set_status(state, :idle)
   end
 
+  # SESS-3, INTR-1: a turn starts here. Its record goes into the chat first — the
+  # save the message that starts it triggers writes it — then that message, and
+  # the loop runs over the history in a task of its own. `message` is what the
+  # turn starts with: the user's, or the notice a resumed turn carries
+  # (RESUME-3, UI-73), and `resumed: true` says the turn was an automatic resume
+  # (RESUME-5, STORE-30).
+  defp start_turn(state, opts) do
+    # COMPACT-5: compaction happens at the start of the turn, before the message
+    # that starts it, and again at every step of the loop (COMPACT-29).
+    state = compact_at_turn_start(state)
+
+    session = self()
+    turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
+
+    # INTR-1: the turn is recorded in the chat as it starts and cleared when it
+    # ends (finish_turn).
+    turn = %{id: turn_id, started_at: DateTime.utc_now()}
+    turn = if opts[:resumed], do: Map.put(turn, :resumed, true), else: turn
+
+    state = %{state | turn_start: length(state.messages), turn: turn}
+    state = append(state, Keyword.fetch!(opts, :message))
+
+    # The chat's model selected now is used for the whole turn. An explicit
+    # provider replaces the selection; other explicit options are merged over it.
+    llm = llm_request(state)
+
+    opts =
+      Keyword.merge(state.loop_opts,
+        session_id: state.id,
+        turn_id: turn_id,
+        llm: llm,
+        project: project(state),
+        workspace: workspace(state),
+        # ISOL-15: the tool context carries this chat's jail setting, so the
+        # shell tools follow it.
+        jail: Map.get(state, :jail, true),
+        # TIME-2: the turn's start goes into every step's timing record, so the
+        # record needs nothing from the chat's saved term, whose turn entry is
+        # taken off when the turn ends (STORE-30, INTR-1).
+        turn_started_at: turn.started_at,
+        # COMPACT-2, COMPACT-29: the loop is given the full history and derives
+        # the request view from it at every step, with the trigger, target and
+        # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
+        compaction: state.compaction,
+        compaction_trigger: auto_trigger(state),
+        compaction_target: target(state),
+        compaction_overhead: overhead(state)
+      )
+
+    # LIMIT-3: the chat's own limits are the turn's, unless the caller passed
+    # its own (a sub-task's spawn, or a test driving a limit directly).
+    opts = Keyword.merge(Elia.Limits.loop_opts(Map.get(state, :limits, %{})), opts)
+
+    task =
+      Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
+        Elia.Agent.Loop.run(session, state.messages, opts)
+      end)
+
+    set_status(%{state | task: task}, :running)
+  end
+
   # INTR-3: the app stopped while the chat's last turn ran — the record is still
   # there (STORE-30) and no session of this one owned it — so the chat says so.
   # The notice goes into the history, where the transcript keeps it (UI-73), and
   # appending it saves the chat, which clears the record (INTR-1). The status
   # broadcast (SESS-19) is what drops the chat list's marker (UI-72) in every
-  # page, including the ones that are not showing this chat.
+  # page, including the ones that are not showing this chat. Only a chat that
+  # carried such a record gets here (RESUME-2), so it is written unconditionally.
   defp note_interrupted_turn(%{persist: false} = state), do: state
 
   defp note_interrupted_turn(state) do
-    if Elia.Store.load_turn(state.id) do
-      state |> append(interrupted_notice()) |> set_status(:idle)
-    else
-      state
+    state |> append(interrupted_notice()) |> set_status(:idle)
+  end
+
+  # RESUME-2: a session starting for an interrupted chat carries its turn on
+  # (RESUME-3) instead of only announcing it — unless the record says the turn
+  # was itself resumed automatically (RESUME-5), automatic resume is off
+  # (RESUME-6) or the turn had paused at a limit (RESUME-8), when INTR-3's notice
+  # is what the chat gets. Which caller started the session makes no difference,
+  # so a page opening the chat and the boot scan agree.
+  defp resume_or_note(state, nil), do: state
+  defp resume_or_note(state, %{resumed: true}), do: note_interrupted_turn(state)
+
+  defp resume_or_note(state, _turn) do
+    if resumable?(state), do: resume_turn(state), else: note_interrupted_turn(state)
+  end
+
+  defp resumable?(state), do: Elia.Agent.Resumer.enabled?() and not paused?(state)
+
+  # RESUME-8: a turn that was paused at a limit (SESS-27) was waiting for the
+  # user's decision, which is the last thing the chat's history holds (LIMIT-10).
+  defp paused?(state) do
+    case List.last(state.messages) do
+      %Message{meta: %{limit: _limit}} -> true
+      _ -> false
     end
+  end
+
+  # RESUME-3, RESUME-7: the turn carries on over the history the chat already
+  # holds, with the notice that says so and, for a sub-task chat, its watcher put
+  # back first. A child whose watcher can't be put back is not resumed.
+  defp resume_turn(state) do
+    case watch_again(state) do
+      :ok ->
+        state
+        |> put_child_skills()
+        |> start_turn(resumed: true, message: resumed_notice())
+
+      {:error, message} ->
+        Logger.error("Could not resume chat #{state.id}: #{message}")
+        note_interrupted_turn(state)
+    end
+  end
+
+  # RESUME-7: the wait for a sub-task chat lived in a watcher process, which the
+  # restart killed, so its entry is taken again and the wait set up before the
+  # resumed turn starts (SUBTASK-11, SUBTASK-28).
+  defp watch_again(%{task_meta: nil}), do: :ok
+
+  defp watch_again(state), do: Elia.Tasks.rewatch(state.id, self(), workspace(state))
+
+  # SUBTASK-1: a sub-task chat's own skill set — the spawn handed it to the
+  # child's session (SUBTASK-6), and a session started again has none of its own.
+  defp put_child_skills(%{task_meta: nil} = state), do: state
+
+  defp put_child_skills(state) do
+    project = project(state)
+
+    %{
+      state
+      | loop_opts:
+          Keyword.put_new(state.loop_opts, :skills, fn ->
+            Elia.Skills.Tasks.child_skills(project)
+          end)
+    }
+  end
+
+  # RESUME-3, UI-73: the notice a resumed turn starts with, marked as INTR-3's is
+  # so the transcript shows it as an error row, and part of the history the model
+  # is sent (STOP-3).
+  defp resumed_notice do
+    text = "The app restarted while this turn was running. Carrying on with it."
+    message = Message.harness(text)
+    %{message | meta: Map.put(message.meta, :interrupted, true)}
   end
 
   # INTR-3, UI-73: a harness message (UI-9), marked so the transcript can show

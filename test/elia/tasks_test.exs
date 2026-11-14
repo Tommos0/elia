@@ -1108,4 +1108,42 @@ defmodule Elia.TasksTest do
     assert %{"task_id" => ^task, "status" => "done", "result" => %{"summary" => "S"}} =
              Jason.decode!(json)
   end
+
+  # RESUME-7
+  test "rewatch/3 takes a running child's entry back, without sending its brief", %{
+    parent: parent
+  } do
+    child = Agent.new_id()
+    {head, 0} = git(["rev-parse", "HEAD"])
+
+    :ok =
+      Store.save(child, [Message.user("do it")],
+        task: %{
+          parent_id: parent,
+          title: "T",
+          brief: "B",
+          status: "running",
+          start_commit: String.trim(head)
+        }
+      )
+
+    {:ok, pid} = Agent.ensure_started(child)
+    on_exit(fn -> stop_session(child) end)
+
+    # The restart took its watcher, so the child holds no entry (SUBTASK-11).
+    refute Tasks.running?(child)
+
+    assert :ok = Tasks.rewatch(child, pid, Elia.Workspace.root())
+    assert Tasks.running?(child)
+    # Its brief is not sent again: the history the child holds already has it.
+    assert [%Message{role: :user}] = Store.load(child)
+
+    # Only a task that is still running is something to watch.
+    assert :ok = Tasks.rewatch(Agent.new_id(), pid, Elia.Workspace.root())
+
+    # The test ends the task itself, so its entry doesn't outlive it and hold the
+    # workspace against the next test.
+    :ok = Tasks.release(child)
+    refute Tasks.running?(child)
+  end
 end

@@ -387,6 +387,75 @@ defmodule Elia.Tasks do
 
   ## The watcher (SUBTASK-28)
 
+  @doc """
+  Puts a resumed child's watcher back (RESUME-7): the watcher that waited for it
+  died with the restart, so the session resuming the child takes its entry again
+  (SUBTASK-11) and waits for the end of its resumed turn as a spawn's watcher
+  waits for a fresh child's (SUBTASK-8, SUBTASK-13). It returns once the entry is
+  held, so the child's turn must not start before it.
+
+  `pid` is the child's session and `root` the workspace it works in. Nothing is
+  written for a task that has already ended; `{:error, message}` when another
+  running child already writes in that workspace, and when the task says nothing
+  about the commit it started from — a watcher needs one to build the result, so
+  such a child is not resumed (SUBTASK-4, SUBTASK-11).
+  """
+  @spec rewatch(binary(), pid(), binary()) :: :ok | {:error, binary()}
+  def rewatch(child_id, pid, root) do
+    case Store.load_task(child_id) do
+      %{status: "running", parent_id: parent_id, start_commit: start_commit} = task
+      when is_binary(start_commit) ->
+        meta = %{
+          child_id: child_id,
+          parent_id: parent_id,
+          child_pid: pid,
+          call_id: task[:parent_call_id],
+          start_commit: start_commit,
+          root: root,
+          spawner: self()
+        }
+
+        start_rewatch(meta, task)
+
+      %{status: "running"} ->
+        {:error, "the sub-task's task has no start commit to report its work against"}
+
+      _task ->
+        :ok
+    end
+  end
+
+  # The shape of `start_watcher/2`: the watcher takes the child's entry and says
+  # so before its caller goes on — here, before the child's turn is resumed.
+  defp start_rewatch(meta, task) do
+    case Task.Supervisor.start_child(Elia.Agent.TaskSupervisor, fn ->
+           watch_resumed(meta, task)
+         end) do
+      {:ok, watcher} ->
+        await_rewatch(watcher)
+
+      {:error, reason} ->
+        {:error, "The sub-task's watcher could not start: #{inspect(reason)}"}
+    end
+  end
+
+  defp await_rewatch(watcher) do
+    ref = Process.monitor(watcher)
+
+    receive do
+      {:subtask_acquired, ^watcher, :ok} ->
+        Process.demonitor(ref, [:flush])
+        :ok
+
+      {:subtask_acquired, ^watcher, {:error, message}} ->
+        Process.demonitor(ref, [:flush])
+        {:error, message}
+
+      {:DOWN, ^ref, :process, ^watcher, reason} ->
+        {:error, "The sub-task's watcher stopped: #{Exception.format_exit(reason)}"}
+    end
+  end
+
   # Starts the child's watcher and waits for it to take the child's entry, so a
   # spawn into a workspace another child writes in is refused (SUBTASK-4,
   # SUBTASK-11) and the entry is held before the child does anything.
@@ -443,9 +512,12 @@ defmodule Elia.Tasks do
 
     Process.demonitor(monitor, [:flush])
     Elia.Agent.unsubscribe(child_id)
+    announce(child_id, result)
+  end
 
-    # SUBTASK-27: the child's end is always announced per task, so a wait for it
-    # never misses it.
+  # SUBTASK-27: the child's end is always announced per task, so a wait for it
+  # never misses it.
+  defp announce(child_id, result) do
     if is_map(result) do
       Phoenix.PubSub.broadcast(
         Elia.PubSub,
@@ -453,6 +525,35 @@ defmodule Elia.Tasks do
         {:subtask_done, child_id, result}
       )
     end
+  end
+
+  # RESUME-7: the watcher a resumed child gets instead of a spawn's — its entry
+  # taken again, and the wait for its end set up before its resumed turn starts.
+  # No brief is sent: the child's history already holds its brief and everything
+  # it did with it. The caller waits for this process to report that it holds
+  # the entry, so the turn cannot report an end the wait would miss.
+  defp watch_resumed(meta, task) do
+    child_id = meta.child_id
+    Elia.Agent.subscribe(child_id)
+    monitor = Process.monitor(meta.child_pid)
+
+    result =
+      case acquire(meta.parent_id, child_id, meta.root, %{
+             call_id: meta.call_id,
+             start_commit: meta.start_commit
+           }) do
+        :ok ->
+          send(meta.spawner, {:subtask_acquired, self(), :ok})
+          finish(child_id, meta, task, monitor)
+
+        {:error, message} ->
+          send(meta.spawner, {:subtask_acquired, self(), {:error, message}})
+          nil
+      end
+
+    Process.demonitor(monitor, [:flush])
+    Elia.Agent.unsubscribe(child_id)
+    announce(child_id, result)
   end
 
   # SUBTASK-17: a stopped turn kills the process running `spawn_task`, which may

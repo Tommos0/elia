@@ -360,8 +360,47 @@ defmodule Elia.StoreTest do
     refute Map.has_key?(chat, :turn)
     assert [%Message{}, %Message{}] = Store.load(id)
 
+    # STORE-30, RESUME-5: a turn an automatic resume started says so.
+    resumed = Map.put(turn, :resumed, true)
+    :ok = Store.save(id, [Message.user("hi")], turn: resumed)
+    assert Store.load_turn(id) == resumed
+
     assert Store.load_turn("missing-chat") == nil
     assert Store.load_turn("../bad") == nil
+  end
+
+  # STORE-39, RESUME-1
+  test "interrupted/0 lists every chat that still holds a turn, and only those" do
+    # More than one page of `list/1` (STORE-12): a scan at boot sees them all.
+    ids = for _ <- 1..55, do: Elia.Agent.new_id()
+    on_exit(fn -> Enum.each(ids, &Store.delete/1) end)
+
+    turn = %{id: "turn-1", started_at: ~U[2026-01-01 00:00:00Z]}
+    for id <- ids, do: :ok = Store.save(id, [Message.user("hi")], turn: turn)
+
+    listed = Store.interrupted()
+
+    assert length(listed) >= 55
+    assert Enum.all?(ids, &(&1 in Enum.map(listed, fn entry -> entry.id end)))
+    assert Enum.all?(listed, &Map.get(&1, :interrupted))
+
+    # A chat whose turn ended, an id that isn't valid (STORE-4) and a file that
+    # can't be read are left out.
+    finished = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(finished) end)
+    :ok = Store.save(finished, [Message.user("hi")])
+
+    dir = Store.dir()
+    File.write!(Path.join(dir, "bad!.term"), :erlang.term_to_binary(%{turn: turn}))
+    File.write!(Path.join(dir, "junk.term"), "not a term")
+
+    found = Store.interrupted() |> Enum.map(& &1.id)
+    File.rm!(Path.join(dir, "bad!.term"))
+    File.rm!(Path.join(dir, "junk.term"))
+
+    refute finished in found
+    refute "bad!" in found
+    refute "junk" in found
   end
 
   # STORE-31, INTR-2

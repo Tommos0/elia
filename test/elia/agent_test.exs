@@ -1086,6 +1086,33 @@ defmodule Elia.AgentTest do
     assert [_, %Message{role: :assistant}] = Agent.snapshot(done).messages
   end
 
+  # INTR-3, SESS-21
+  test "an interrupted turn whose last message was a tool call still says so" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # The app stopped while a tool call was out, so its chat ends with a call
+    # that has no result — and closing that call is a save of the chat (SESS-21),
+    # which must not take the notice with it.
+    call = FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = Elia.Store.save(id, [Message.user("run it"), FakeLLM.assistant([call])], turn: turn)
+
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert [
+             %Message{role: :user},
+             %Message{role: :assistant},
+             %Message{role: :tool, content: [result]},
+             %Message{meta: %{interrupted: true}} = notice
+           ] = Elia.Store.load(id)
+
+    assert %{tool_call_id: "c1", is_error: true} = result
+    assert Message.text_content(notice) =~ "The app restarted while this turn was running"
+    assert Elia.Store.load_turn(id) == nil
+  end
+
   # INTR-4, STORE-17, SUBTASK-20
   test "a sub-task chat whose turn a restart cut short says so too" do
     id = Agent.new_id()

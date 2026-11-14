@@ -177,7 +177,9 @@ its own workspace; children that would share one workspace are serialized
 - **SUBTASK-20** After an app restart, a task saved as `"running"` is shown as
   `"interrupted"` (STORE-17), and a parent whose `await_task` call was still
   waiting gets that call closed with an error result when its session starts
-  (SESS-21). No entry is held: it lives in memory.
+  (SESS-21). No entry is held: it lives in memory. A sub-task chat is resumed
+  too, with its watcher put back before its turn starts, so its result still
+  reaches the parent that waits for it (RESUME-7).
 - **SUBTASK-21** The result (SUBTASK-9) also has `task_id` (the child's chat id)
   and `reason`, which is `null` unless the status is not `"done"` because of
   `"budget"`, `"cancelled"`, `"crashed"` (the child session died, SUBTASK-8) or
@@ -235,7 +237,9 @@ its own workspace; children that would share one workspace are serialized
   `"budget"` (SUBTASK-9, SUBTASK-21) and a summary naming the limit. Stopping
   the paused turn (SESS-8) instead ends that turn with no result — the child
   goes on running (SUBTASK-16), with its limits unchanged (LIMIT-5), so a later
-  turn of it pauses at the limit again unless the user continues that one.
+  turn of it pauses at the limit again unless the user continues that one. A
+  restart takes the paused turn and its watcher with it, and a paused child is
+  not resumed (RESUME-8): the user decides in its chat as before.
 
 ### Concurrency (phase 4)
 

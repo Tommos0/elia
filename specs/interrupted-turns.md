@@ -12,8 +12,10 @@ and a chat list that shows the chat as idle.
 
 This feature records the turn in the saved chat while it runs, so that a later
 session can tell that the previous process was cut short and say so: an error
-notice in the transcript, and a warning in the chat list. Both stay until the
-chat is opened, which is where the record is cleared (INTR-3).
+notice in the transcript, and a warning in the chat list. Both stay until a
+session for the chat starts, which resumes the turn when automatic resume
+applies ([auto resume](auto-resume.md), RESUME-2) and otherwise clears the
+record (INTR-3).
 
 A **hot reload** (DEPLOY-6) is not an interruption: it keeps the sessions and
 their running turns, so the record is reported as interrupted only while no
@@ -44,16 +46,24 @@ session for that chat is running (INTR-2).
   drops the chat list's marker (UI-72). The transcript keeps the notice (UI-73),
   so the chat says why the turn stopped however long afterwards it is opened.
   Tool calls the turn left unanswered are closed first (SESS-21), and a chat
-  with no such record is left untouched.
+  with no such record is left untouched. A session that resumes the turn
+  instead (RESUME-2) closes the same calls and writes the notice of its own
+  (RESUME-3).
 
 - **INTR-4** A sub-task chat (SUBTASK-1) whose turn was cut short gets the same
   notice in its own transcript, and its listed task status stays `interrupted`
-  (STORE-17, SUBTASK-20), which is what its parent's card shows.
+  (STORE-17, SUBTASK-20), which is what its parent's card shows — unless it is
+  resumed, when it and its task are `running` again and its watcher is put back
+  (RESUME-7).
 
 ## Out of scope
 
-- Resuming or re-running the interrupted turn: the user sends the next message.
-- A task that a restart interrupted is not restarted either (SUBTASK-20).
+- Resuming or re-running the interrupted turn as such: automatic resume is
+  [auto resume](auto-resume.md), and the notice this feature writes is what a
+  chat says when nothing resumes it (RESUME-5 to RESUME-8).
+- A task that a restart interrupted is not restarted by this feature either: it
+  is resumed with its watcher put back, so its result still reaches its parent
+  ([auto resume](auto-resume.md), RESUME-7).
 
 ## Implementation
 

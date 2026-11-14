@@ -125,8 +125,16 @@ reopened.
   before this change has no `effort` key and is read exactly as it was, so the
   change needs no migration.
 
+- **STORE-39** `Elia.Store.interrupted/0` returns the listed entry (STORE-12,
+  STORE-31) of every saved chat whose record holds a `turn` (STORE-30) and which
+  no session is running for, newest first. It reads every saved chat rather than
+  one page of `list/1` (STORE-12) and skips an id that isn't valid (STORE-4) and
+  a chat whose file can't be read, so a scan at boot sees the chats a restart
+  cut a turn short in and not only the ones its page holds (RESUME-1).
+
 - **STORE-30** `save/3` takes `turn:` (a map with the turn's `id` and
-  `started_at`) and stores it as `turn`; a save that doesn't give one writes no
+  `started_at`, and `resumed: true` for a turn an automatic resume started,
+  RESUME-5) and stores it as `turn`; a save that doesn't give one writes no
   `turn` entry, so the key is gone from the file as soon as the turn ends
   (INTR-1). `load_turn/1` returns it, or `nil` when the chat is missing,
   unreadable, corrupt or has none (INTR-2).

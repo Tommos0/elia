@@ -64,8 +64,11 @@ crash takes the VM down instead of leaving it empty.
   doesn't change.
 - Keeping the interactive IEx shell: `bin/serve` runs without one. Attach with
   `iex --sname dbg --remsh elia`.
-- Restoring in-memory state. Chats are on disk (`Elia.Store`), but a turn
-  that was running when the VM died isn't resumed.
+- Restoring in-memory state as it was: chats are on disk (`Elia.Store`), and a
+  turn that was running when the VM died is carried on from what the chat holds
+  ([auto resume](auto-resume.md), RESUME-3) — a pending approval, a question and
+  a pause are not restored, while a sub-task's watcher is put back with it
+  (RESUME-7).
 
 ## Implementation
 

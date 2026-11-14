@@ -44,6 +44,10 @@ config :phoenix,
 # Tests script model turns with a fake provider.
 config :elia, Elia.LLM, provider: Elia.FakeLLM
 
+# RESUME-6: a test run's own boot resumes nothing, so a test that covers a
+# resume turns it on for itself (specs/auto-resume.md).
+config :elia, Elia.Agent.Resumer, enabled: false
+
 # Settings (API keys, model selection) go to a scratch database.
 # A run's state can be pointed elsewhere, so several test runs share the machine
 # without colliding — `bin/test` gives each partition its own (SUITE-1).

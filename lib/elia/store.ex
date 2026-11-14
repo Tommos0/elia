@@ -312,6 +312,19 @@ defmodule Elia.Store do
   def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
 
   @doc """
+  The chats a restart cut a turn short in (STORE-39, RESUME-1): the listed
+  entries (STORE-12, STORE-31) of every saved chat that still holds a turn
+  record (STORE-30) while no session of it runs, newest first. Every saved chat
+  is read, not only one page of `list/1` (STORE-12); an id that isn't valid
+  (STORE-4) and a chat whose file can't be read are skipped.
+  """
+  @spec interrupted() :: [map()]
+  def interrupted do
+    all_entries()
+    |> Enum.filter(&(valid_id?(&1.id) and Map.get(&1, :interrupted, false)))
+  end
+
+  @doc """
   One chat's listed entry (STORE-36) — the same fields `list/1` gives it,
   derived the same way — without reading the other chats' files, or `nil` when
   the id is invalid (STORE-4) or has no saved chat (STORE-24).
