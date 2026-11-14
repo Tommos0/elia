@@ -1827,8 +1827,8 @@ defmodule Elia.AgentTest do
     # turn ends. Nothing is cold — the chat is one turn — and the marker is the
     # boundary of the turn's most recent step (COMPACT-31, COMPACT-32). The pass
     # takes the older step's reasoning and its tool result, so the deepest rung it
-    # went to is that of tool results (COMPACT-34, COMPACT-35): no whole step is
-    # dropped, since no message is cold (COMPACT-37).
+    # went to is that of tool results (COMPACT-36, COMPACT-37): no whole step is
+    # dropped, since no message is cold (COMPACT-39).
     assert_receive {:agent, ^id, {:compaction, %{level: 2, covered: 0, turn_covered: 3}}}, 5000
     assert Agent.snapshot(id).status == :running
 
@@ -1912,7 +1912,7 @@ defmodule Elia.AgentTest do
     assert Enum.all?(first.messages, &(&1.meta[:compaction] != :marker))
   end
 
-  # COMPACT-36, ## Stored data
+  # COMPACT-38, ## Stored data
   test "a saved state that predates the item list still elides what it described" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)

@@ -21,7 +21,7 @@ defmodule Elia.LLM.Compaction do
   `t:Elia.LLM.Compaction.t/0` is per chat and saved with the conversation
   (COMPACT-24):
 
-    * `items` - the items the ladder has elided (COMPACT-36): `{message index,
+    * `items` - the items the ladder has elided (COMPACT-38): `{message index,
       block index | nil}`, a block naming a reasoning block or a tool result and
       `nil` a whole step (message). The request view elides **exactly** these,
       plus the user-message cap (COMPACT-11), so nothing a pass elided comes
@@ -30,11 +30,11 @@ defmodule Elia.LLM.Compaction do
       reasoning dropped (COMPACT-14), `2` old tool results elided too
       (COMPACT-15), `3` whole old steps dropped too (COMPACT-16). It is
       bookkeeping: what the view elides is `items`, and the level never drives a
-      blanket whole-message drop (COMPACT-37);
+      blanket whole-message drop (COMPACT-39);
     * `covered` - the history index the cold region ended at the last time it
       was compacted, i.e. the aged-out marker: a message before it is *eligible*
       for the ladder. Falling out of the working set elides nothing by itself
-      (COMPACT-37);
+      (COMPACT-39);
     * `folded` - the index the summary has already been folded from
       (COMPACT-18), so a new fold only reads what aged out since;
     * `summary` - the folded summary (COMPACT-17), sent as a harness message at
@@ -83,7 +83,7 @@ defmodule Elia.LLM.Compaction do
   @result_level 2
   @top_level 3
 
-  # COMPACT-34: the two floor tiers. An item at or above `elide_floor` is worth
+  # COMPACT-36: the two floor tiers. An item at or above `elide_floor` is worth
   # eliding before any item below it.
   @at_floor 0
   @below_floor 1
@@ -122,7 +122,7 @@ defmodule Elia.LLM.Compaction do
             options: %{}
 
   @typedoc """
-  One item the ladder elided (COMPACT-36): a message and, for a reasoning block
+  One item the ladder elided (COMPACT-38): a message and, for a reasoning block
   or a tool result, the block within it — `nil` for the whole step (COMPACT-16).
   """
   @type item :: {non_neg_integer(), non_neg_integer() | nil}
@@ -186,7 +186,7 @@ defmodule Elia.LLM.Compaction do
     end
   end
 
-  # COMPACT-36, `## Stored data`: the items the ladder elided. A state saved
+  # COMPACT-38, `## Stored data`: the items the ladder elided. A state saved
   # before the list existed has none — a field this build does not know is
   # ignored — and `materialise/2` fills them in from the level and boundaries
   # that state does carry.
@@ -215,7 +215,7 @@ defmodule Elia.LLM.Compaction do
   end
 
   @doc """
-  COMPACT-36, `## Stored data`: the elision a state describes.
+  COMPACT-38, `## Stored data`: the elision a state describes.
 
   A state saved before the item list existed carries only its `level` and the
   boundaries that went with it, so the items that level elided are materialised
@@ -304,7 +304,7 @@ defmodule Elia.LLM.Compaction do
   reduce to, `:working_set` the number of recent turns kept verbatim,
   `:working_set_tokens` the size cap on those turns, `:user_cap` the token cap
   for one user message, `:elide_floor` the size below which an item is left for
-  last (COMPACT-34) and `:auto` whether a turn compacted on its own.
+  last (COMPACT-36) and `:auto` whether a turn compacted on its own.
   """
   @spec options(map() | keyword()) :: map()
   def options(overrides \\ %{}) do
@@ -550,7 +550,7 @@ defmodule Elia.LLM.Compaction do
   defp put_turn_covered(state, boundary),
     do: %{state | turn_covered: max(state.turn_covered, boundary)}
 
-  # COMPACT-34, COMPACT-35, COMPACT-36: one pass of the ladder.
+  # COMPACT-36, COMPACT-37, COMPACT-38: one pass of the ladder.
 
   # It collects the items it may take, orders them and takes them one at a time,
   # re-estimating the request view (CTX-1) after each — largest first — and stops
@@ -579,7 +579,7 @@ defmodule Elia.LLM.Compaction do
 
     {taken, level, step} = take(candidates, step, target)
 
-    # COMPACT-37: `level` is bookkeeping — the deepest rung the chat has gone to,
+    # COMPACT-39: `level` is bookkeeping — the deepest rung the chat has gone to,
     # never less than before. What the view elides is `items`.
     state = %{
       state
@@ -606,7 +606,7 @@ defmodule Elia.LLM.Compaction do
         if estimate(step) <= target do
           {:halt, {taken, deep, step}}
         else
-          # COMPACT-35: the gain is what the item still takes out of the view, not
+          # COMPACT-37: the gain is what the item still takes out of the view, not
           # what it would have taken at the start of the pass — a whole step
           # subsumes the block items of the same message taken before it.
           gain = remaining_gain(items, step.ctx, step.held)
@@ -627,7 +627,7 @@ defmodule Elia.LLM.Compaction do
     end)
   end
 
-  # COMPACT-35: re-estimating the request view (CTX-1) after an item, cheaply —
+  # COMPACT-37: re-estimating the request view (CTX-1) after an item, cheaply —
   # the gain is what the view counts as elided for it, and the marker that names
   # it comes along (COMPACT-23).
   defp take!(step, items, gain) do
@@ -672,11 +672,11 @@ defmodule Elia.LLM.Compaction do
     |> Enum.max(fn -> 0 end)
   end
 
-  # COMPACT-34, COMPACT-35: the items the pass may take, in the order it takes
-  # them: items at or above the floor before items below it (COMPACT-34), then
+  # COMPACT-36, COMPACT-37: the items the pass may take, in the order it takes
+  # them: items at or above the floor before items below it (COMPACT-36), then
   # the rungs in order — reasoning (COMPACT-14), then old tool results
   # (COMPACT-15), then whole old steps (COMPACT-16) — and within a tier and a
-  # rung the largest first (COMPACT-35), so the fewest items reach the target.
+  # rung the largest first (COMPACT-37), so the fewest items reach the target.
   defp candidates(messages, state, options) do
     covered = min(state.covered, length(messages))
 
@@ -702,7 +702,7 @@ defmodule Elia.LLM.Compaction do
     {candidates, ctx}
   end
 
-  # COMPACT-34: the floor splits the items into two tiers: one at or above
+  # COMPACT-36: the floor splits the items into two tiers: one at or above
   # `elide_floor` estimated tokens goes before one below it.
   defp tier(level, gain, items, floor) do
     if gain >= floor,
@@ -713,7 +713,7 @@ defmodule Elia.LLM.Compaction do
   # The items one message can still give, and what taking each would save. Only
   # the cold prefix and the turn being run's own older steps give anything; a
   # pinned message gives nothing (COMPACT-21) and neither does an item the state
-  # already holds (COMPACT-36).
+  # already holds (COMPACT-38).
   defp candidates_of(index, ctx) do
     pins = pins_of(ctx.pins, index)
     held = MapSet.new(Map.get(ctx.items, index, []))
@@ -985,11 +985,11 @@ defmodule Elia.LLM.Compaction do
     end
   end
 
-  # COMPACT-36: what a message elides is exactly the items the state holds for
+  # COMPACT-38: what a message elides is exactly the items the state holds for
   # it: `{index, nil}` for the whole step (COMPACT-16, the cold prefix only) and
   # `{index, block}` for one of its blocks — its reasoning (COMPACT-14) and its
   # tool results (COMPACT-15). Nothing here reads `level`, so aging out of the
-  # working set elides nothing by itself (COMPACT-37).
+  # working set elides nothing by itself (COMPACT-39).
   defp cold(message, index, ctx, pins) do
     case Map.get(ctx.items, index, []) do
       [] ->

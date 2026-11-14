@@ -882,10 +882,10 @@ defmodule Elia.LLM.CompactionTest do
     end
   end
 
-  ## The size floor and the selection (COMPACT-34..COMPACT-37)
+  ## The size floor and the selection (COMPACT-36..COMPACT-39)
 
   # Two cold turns whose reasoning blocks are below the size floor and whose
-  # first tool result is not, so the two tiers COMPACT-34 orders can be told
+  # first tool result is not, so the two tiers COMPACT-36 orders can be told
   # apart; turn 3 is the working set and stays verbatim.
   defp floor_history do
     big = String.duplicate("b ", 3_000)
@@ -916,7 +916,7 @@ defmodule Elia.LLM.CompactionTest do
   end
 
   # Three cold turns whose reasoning blocks are all above the size floor and of
-  # three sizes, so largest-first (COMPACT-35) can be told from oldest-first.
+  # three sizes, so largest-first (COMPACT-37) can be told from oldest-first.
   defp sized_history do
     Enum.flat_map([{1, 1_500}, {2, 1_250}, {3, 1_050}], fn {n, words} ->
       [
@@ -939,7 +939,7 @@ defmodule Elia.LLM.CompactionTest do
     end) ++ history(4..4)
   end
 
-  # COMPACT-34
+  # COMPACT-36
   test "an item below the size floor is left alone while one at the floor reaches the target" do
     messages = floor_history()
     covered = Compaction.working_set_start(messages, %{working_set: 1})
@@ -947,7 +947,7 @@ defmodule Elia.LLM.CompactionTest do
 
     # The target is the view with the one big tool result elided: an item at or
     # above the floor reaches it, so the below-floor reasoning blocks are left
-    # alone (COMPACT-34).
+    # alone (COMPACT-36).
     target = Compaction.view(messages, %Compaction{covered: covered, items: [{2, 0}]}).tokens
 
     trimmed =
@@ -963,12 +963,12 @@ defmodule Elia.LLM.CompactionTest do
     view = Compaction.view(messages, trimmed)
     assert view.tokens <= target
     # The big result was elided to its note; the small reasoning blocks are still
-    # sent (COMPACT-14, COMPACT-34).
+    # sent (COMPACT-14, COMPACT-36).
     assert view.statuses[2].status == :truncated
     assert view.statuses[1].status == :sent
     assert view.statuses[5].status == :sent
 
-    # COMPACT-9, COMPACT-34: the floor is a chat option like the others, so a
+    # COMPACT-9, COMPACT-36: the floor is a chat option like the others, so a
     # chat that lowers it takes the small reasoning blocks too — its rung comes
     # before the tool results' once nothing is below the floor.
     lowered =
@@ -985,7 +985,7 @@ defmodule Elia.LLM.CompactionTest do
     assert Compaction.options(elide_floor: 1).elide_floor == 1
   end
 
-  # COMPACT-34
+  # COMPACT-36
   test "an item below the size floor is elided once the items at it are exhausted" do
     huge = String.duplicate("huge ", 1_000)
     small = String.duplicate("s ", 30)
@@ -1025,7 +1025,7 @@ defmodule Elia.LLM.CompactionTest do
       })
 
     # The reasoning block at the floor is taken first, and the tool result below
-    # it only because that alone does not reach the target (COMPACT-34).
+    # it only because that alone does not reach the target (COMPACT-36).
     assert trimmed.items == [{1, 0}, {2, 0}]
     assert Compaction.view(messages, trimmed).tokens <= big_only - 1
     # The below-floor item on its own would not have reached it.
@@ -1038,7 +1038,7 @@ defmodule Elia.LLM.CompactionTest do
     assert view.statuses[4].status == :sent
   end
 
-  # COMPACT-35
+  # COMPACT-37
   test "a pass takes its largest items first and stops at the target" do
     messages = sized_history()
     covered = Compaction.working_set_start(messages, %{working_set: 1})
@@ -1065,11 +1065,11 @@ defmodule Elia.LLM.CompactionTest do
     view = Compaction.view(messages, trimmed)
     assert view.tokens <= target
     # The third, smaller reasoning block is still sent: the pass does not take
-    # the next item once it is at or below the target (COMPACT-35).
+    # the next item once it is at or below the target (COMPACT-37).
     assert view.statuses[9].status == :sent
   end
 
-  # COMPACT-36
+  # COMPACT-38
   test "what a pass elided stays elided, and a later pass only adds to it" do
     messages = bulky_history()
     covered = Compaction.working_set_start(messages, %{working_set: 2})
@@ -1127,7 +1127,7 @@ defmodule Elia.LLM.CompactionTest do
     end
   end
 
-  # COMPACT-37
+  # COMPACT-39
   test "aging out of the working set elides nothing on its own" do
     messages = history(1..3)
     view = Compaction.view(messages, %Compaction{})
@@ -1146,12 +1146,12 @@ defmodule Elia.LLM.CompactionTest do
 
     aged = Compaction.view(messages, state)
     assert Enum.all?(0..7, &(aged.statuses[&1].status == :sent))
-    # The aged-out turns' spoken record is still sent (COMPACT-1, COMPACT-37).
+    # The aged-out turns' spoken record is still sent (COMPACT-1, COMPACT-39).
     assert Enum.any?(aged.messages, &(Message.text_content(&1) == "done 1"))
     assert Message.text_content(Enum.at(aged.messages, 0)) =~ "task 1"
   end
 
-  # COMPACT-36, ## Stored data
+  # COMPACT-38, ## Stored data
   test "a state saved before the item list existed materialises its elision" do
     messages = history(1..3)
 
@@ -1172,7 +1172,7 @@ defmodule Elia.LLM.CompactionTest do
     assert state.items == []
 
     # The level's own elision is materialised when the chat loads, so nothing the
-    # chat had already elided comes back (COMPACT-36).
+    # chat had already elided comes back (COMPACT-38).
     materialised = Compaction.materialise(state, messages)
     assert materialised.items != []
 

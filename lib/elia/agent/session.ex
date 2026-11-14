@@ -115,7 +115,7 @@ defmodule Elia.Agent.Session do
       done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
     }
 
-    # COMPACT-36, `## Stored data`: a saved state carries the items the ladder
+    # COMPACT-38, `## Stored data`: a saved state carries the items the ladder
     # elided; one saved before the item list existed carries only its level and
     # boundaries, so the elision they describe is materialised here, when the
     # chat loads, and nothing a chat had already elided comes back.
@@ -191,7 +191,7 @@ defmodule Elia.Agent.Session do
         do: upgraded,
         else: %{upgraded | compaction: initial_compaction(upgraded.id, upgraded.persist, nil)}
 
-    # COMPACT-36, `## Stored data`: an upgraded session materialises its items
+    # COMPACT-38, `## Stored data`: an upgraded session materialises its items
     # the same way a loading one does.
     upgraded = %{
       upgraded
