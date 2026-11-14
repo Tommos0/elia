@@ -284,6 +284,86 @@ defmodule EliaWeb.ChatBrowserTest do
     assert_button_on_screen(conn)
   end
 
+  # UI-89 (specs/chat-ui.md): what was typed in the message box outlives the
+  # page. The draft is the browser's own — `localStorage`, one key per chat — so
+  # only a real browser can see it, and each step here is the navigation the
+  # page itself does: a reload, and the sidebar's live one, which reuses the
+  # page's DOM rather than loading it again.
+  test "a draft in the message box comes back when the chat is reopened (UI-89)", %{conn: conn} do
+    first = empty_chat()
+    second = empty_chat()
+    draft_key = "elia:draft:#{first}"
+
+    conn =
+      conn
+      |> visit("/c/#{first}")
+      |> connected()
+      |> type("#chat-input", "half a thought")
+      |> wait_for_input("half a thought")
+
+    # UI-89: the draft is kept under the key the requirement names, so it is
+    # still there to be found when the chat is opened again.
+    assert draft(conn, draft_key) == "half a thought"
+
+    # UI-89: another chat has a draft of its own — the one written here is this
+    # chat's, and the first chat's is left where it was.
+    conn =
+      conn
+      |> visit("/c/#{second}")
+      |> connected()
+      |> type("#chat-input", "another thought")
+      |> wait_for_input("another thought")
+
+    assert draft(conn, "elia:draft:#{second}") == "another thought"
+    assert draft(conn, draft_key) == "half a thought"
+
+    # UI-89: the sidebar's live navigation, so the page is patched rather than
+    # reloaded, and the box belongs to the chat it now shows — this chat's
+    # draft, not the one that was in it a moment ago.
+    conn =
+      conn
+      |> click("#chat-link-#{first}")
+      |> wait_for_input("half a thought")
+      |> assert_path("/c/#{first}")
+
+    # UI-23, UI-89: sending the draft is what drops it — the box clears, and the
+    # chat opened again comes back to an empty one.
+    FakeLLM.push(FakeLLM.assistant([Message.text("Answer from the fake model.")]))
+
+    conn =
+      conn
+      |> press("#chat-input", "Enter")
+      |> assert_has("#transcript", text: "half a thought")
+      |> wait_for_input("")
+
+    assert draft(conn, draft_key) == nil
+    assert draft(conn, "elia:draft:#{second}") == "another thought"
+
+    conn
+    |> visit("/c/#{first}")
+    |> connected()
+    |> wait_for_input("")
+  end
+
+  # UI-89: the message box reads what it is given, once the hook that keeps the
+  # draft has put it there. The server renders the box empty (the draft is the
+  # browser's), so waiting for a draft is what waits for that hook.
+  defp wait_for_input(conn, text) do
+    wait_until(
+      conn,
+      "document.querySelector('#chat-input').value === #{inspect(text)}",
+      "the message box to read #{inspect(text)}"
+    )
+  end
+
+  # UI-89: what the browser kept for a chat's draft, as `localStorage` holds it.
+  # `evaluate/3` hands the value to a function instead of returning it, so it is
+  # parked in the test process (where that function runs) and read back.
+  defp draft(conn, key) do
+    evaluate(conn, "localStorage.getItem(#{inspect(key)})", &Process.put(:elia_draft, &1))
+    Process.get(:elia_draft)
+  end
+
   # UI-87: a chat far longer than any screen shows at once, so the transcript
   # has an end to be away from and to jump back to.
   defp long_chat do

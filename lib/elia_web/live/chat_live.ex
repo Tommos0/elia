@@ -514,6 +514,7 @@ defmodule EliaWeb.ChatLive do
                 name={@form[:text].name}
                 rows="1"
                 phx-hook=".SubmitOnEnter"
+                data-draft-key={"elia:draft:#{@session_id}"}
                 placeholder={if @status == :idle, do: "Message Elia…", else: "Elia is working…"}
                 disabled={@status != :idle}
                 class="max-h-48 min-h-11 flex-1 resize-none rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-base-100 disabled:opacity-60"
@@ -578,22 +579,80 @@ defmodule EliaWeb.ChatLive do
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SubmitOnEnter">
+        // The composer's box: Enter sends, it grows with its content, it clears
+        // when the message was sent, and — UI-89 — what is typed in it outlives
+        // the page. The draft is the browser's own, keyed by the chat
+        // (`data-draft-key`), so a chat reopened later, in this tab or another,
+        // finds its half-written message where it was left, and nothing of it
+        // reaches the server or the saved chat.
         export default {
           mounted() {
             const resize = () => {
               this.el.style.height = "auto"
               this.el.style.height = this.el.scrollHeight + "px"
             }
-            this.el.addEventListener("input", resize)
+            this.resize = resize
+
+            this.el.addEventListener("input", () => {
+              resize()
+              this.save()
+            })
             this.el.addEventListener("keydown", e => {
               if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
                 e.preventDefault()
                 this.el.form.requestSubmit()
               }
             })
-            this.handleEvent("chat:clear", () => { this.el.value = ""; resize() })
+            // UI-23: the message went, so the draft goes with it.
+            this.handleEvent("chat:clear", () => {
+              this.el.value = ""
+              this.drop()
+              resize()
+            })
+
+            // UI-89: a LiveView patch can hand this element another chat's key
+            // (a live redirect reuses the page's DOM), so what is written down
+            // follows the chat the box now belongs to.
+            this.key = this.el.dataset.draftKey
+            this.restore()
           },
-          updated() { if (!this.el.disabled) this.el.focus() }
+          updated() {
+            if (this.key !== this.el.dataset.draftKey) {
+              this.key = this.el.dataset.draftKey
+              this.restore()
+            }
+            if (!this.el.disabled) this.el.focus()
+          },
+          // UI-89: the box on its way out keeps what is in it, for a page that
+          // was closed rather than navigated away from.
+          destroyed() {
+            this.save()
+          },
+          restore() {
+            if (!this.key) return
+            this.el.value = this.stored() || ""
+            this.resize()
+          },
+          save() {
+            if (!this.key) return
+            try {
+              if (this.el.value === "") localStorage.removeItem(this.key)
+              else localStorage.setItem(this.key, this.el.value)
+            } catch (_e) {}
+          },
+          drop() {
+            if (!this.key) return
+            try {
+              localStorage.removeItem(this.key)
+            } catch (_e) {}
+          },
+          stored() {
+            try {
+              return localStorage.getItem(this.key)
+            } catch (_e) {
+              return null
+            }
+          }
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatVisibility">

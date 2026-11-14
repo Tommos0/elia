@@ -311,6 +311,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-23** After a successful send the input clears.
 - **UI-24** While the agent isn't idle, the input is disabled and the send
   button is replaced by a Stop button that stops the turn (SESS-8).
+- **UI-89** Text typed into the message box is kept per chat in the browser's
+  `localStorage` (`elia:draft:<chat id>`), so leaving the chat — for another
+  page, another chat, a reload, or closing the tab — and coming back to it puts
+  the text back in the box, each chat with its own. The draft is dropped once
+  the message is sent (UI-23) and when the box is left empty.
 
 - **UI-38** The chat settings page (CSET-5) has an "Auto-approve" button
   (`#auto-approve-button`) in its Auto-approve section (the composer only links
@@ -580,6 +585,10 @@ page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
+The composer's draft (UI-89) is the browser's own: `EliaWeb.ChatLive`'s
+colocated hook keeps it in `localStorage` and puts it back on mount, and nothing
+of it reaches the server or a saved chat.
+
 The chat list's page size is `EliaWeb.ChatLive`'s (`@chat_page`, 30, UI-4). It
 lists the page's chats and asks `Elia.Store.list/1` for one chat more than it
 shows, so whether more are saved is known without reading the chats twice
@@ -635,7 +644,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
   browser: Enter sending a message, the transcript at its end and the
-  jump-to-the-end button — UI-14, UI-21, UI-87; a browser test, so it runs with
+  jump-to-the-end button — UI-14, UI-21, UI-87; the message box's draft,
+  stored and restored per chat — UI-89; a browser test, so it runs with
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and
   `test/elia_web/browser/interaction_feedback_test.exs` (a tool card and the
