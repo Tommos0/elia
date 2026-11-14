@@ -53,11 +53,11 @@ defmodule Elia.LLM.Compaction do
   ]
 
   @defaults %{
-    budget: 150_000,
-    fraction: 0.8,
+    budget: 100_000,
+    fraction: 0.6,
     target_fraction: 0.5,
     working_set: 6,
-    working_set_tokens: 40_000,
+    working_set_tokens: 25_000,
     user_cap: 8_000,
     auto: true
   }

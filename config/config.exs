@@ -89,11 +89,11 @@ config :elia, :step_retry, delays_ms: [15_000, 30_000, 60_000]
 # `user_cap` tokens with a marker. `auto` is whether that happens on its own; a
 # chat can override all of it (Elia.Agent.set_compaction/2).
 config :elia, Elia.LLM.Compaction,
-  budget: 150_000,
-  fraction: 0.8,
+  budget: 100_000,
+  fraction: 0.6,
   target_fraction: 0.5,
   working_set: 6,
-  working_set_tokens: 40_000,
+  working_set_tokens: 25_000,
   user_cap: 8_000,
   auto: true
 

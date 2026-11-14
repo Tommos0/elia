@@ -73,6 +73,25 @@ defmodule Elia.LLM.CompactionTest do
     assert Compaction.trigger(100_000, opts) == 80_000
   end
 
+  # COMPACT-6, COMPACT-28: the shipped defaults, which `options/1` merges the app
+  # config and a chat's own overrides under. A chat stops at 100,000 tokens or
+  # 60% of its window, whichever is lower, and its working set is a quarter of
+  # that budget, so the ladder still has room to reach the target (COMPACT-8).
+  test "the shipped defaults are a 100,000 budget, 60% of the window and a 25,000 working set" do
+    opts = Compaction.options()
+
+    assert opts.budget == 100_000
+    assert opts.fraction == 0.6
+    assert opts.working_set_tokens == 25_000
+
+    # A 200k model: 60% would be 120,000, so the budget binds.
+    assert Compaction.trigger(200_000, opts) == 100_000
+    # A small window: the fraction binds.
+    assert Compaction.trigger(100_000, opts) == 60_000
+    # A large window cannot lift the ceiling above the budget.
+    assert Compaction.trigger(1_000_000, opts) == 100_000
+  end
+
   # COMPACT-7
   test "there is no trigger without a known window" do
     assert Compaction.trigger(nil, options(budget: 10)) == nil
@@ -93,7 +112,7 @@ defmodule Elia.LLM.CompactionTest do
     assert opts.working_set == 2
     assert opts.user_cap == 5
     # The defaults are still there.
-    assert opts.fraction == 0.8
+    assert opts.fraction == 0.6
     assert Compaction.trigger(1000, opts) == 300
   end
 
@@ -255,7 +274,7 @@ defmodule Elia.LLM.CompactionTest do
 
   # COMPACT-9, COMPACT-28
   test "the token cap on the working set is an option" do
-    assert options(%{}).working_set_tokens == 40_000
+    assert options(%{}).working_set_tokens == 25_000
     assert options(working_set_tokens: 123).working_set_tokens == 123
     # The turn count is still there.
     assert options(working_set_tokens: 123).working_set == 6

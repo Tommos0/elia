@@ -65,8 +65,8 @@ are not.
 
 - **COMPACT-6** A turn compacts first when the estimated request context (CTX-1,
   over the request view) exceeds a trigger that is the **lower of two limits**:
-  an absolute token budget (150,000 by default) and a fraction of the model's
-  known context window (80% by default, CTX-7). The window is a hard ceiling; the
+  an absolute token budget (100,000 by default) and a fraction of the model's
+  known context window (60% by default, CTX-7). The window is a hard ceiling; the
   budget bounds cost and latency and keeps the context at a size the model still
   uses well, so a large window (e.g. 1M) does not let a chat grow to fill it:
   `trigger = min(budget, fraction * window)`.
@@ -94,14 +94,14 @@ are not.
   upper bound only: the working set is also bounded by size, so older turns fall
   out of it (COMPACT-28).
 - **COMPACT-28** The working set is the most recent turns that fit in
-  `working_set_tokens` estimated tokens (40,000 by default), but **never more
+  `working_set_tokens` estimated tokens (25,000 by default), but **never more
   than `working_set` turns and always at least the current (last) turn**, so a
   chat of few but very long turns — where the turn count alone puts every turn
   inside the working set and nothing can be elided (COMPACT-12) — can still be
   compacted, and the turn being worked on is never cold even when it alone
   exceeds the budget. The cold prefix starts at the user message that begins the
   oldest turn kept, so the boundary is always a turn boundary (COMPACT-4). The
-  default is about a quarter of the default budget of 150,000 (COMPACT-6), so
+  default is about a quarter of the default budget of 100,000 (COMPACT-6), so
   after the working set is set aside the ladder still has room to reach the
   target (COMPACT-8).
 - **COMPACT-13** The first user message (the task statement) and any sub-task's

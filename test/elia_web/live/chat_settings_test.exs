@@ -40,7 +40,7 @@ defmodule EliaWeb.ChatSettingsTest do
   end
 
   # Every compaction field, for the same reason.
-  defp compaction(budget \\ "150000", fraction \\ "80", target \\ "50", working_set \\ "6") do
+  defp compaction(budget \\ "100000", fraction \\ "60", target \\ "50", working_set \\ "6") do
     %{budget: budget, fraction: fraction, target_fraction: target, working_set: working_set}
   end
 
@@ -354,8 +354,8 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert has_element?(view, "#compaction-auto[aria-checked='true']")
     assert has_element?(view, "#compaction-auto-state", "On")
-    assert has_element?(view, "#compaction-budget[value='150000']")
-    assert has_element?(view, "#compaction-fraction[value='80']")
+    assert has_element?(view, "#compaction-budget[value='100000']")
+    assert has_element?(view, "#compaction-fraction[value='60']")
     assert has_element?(view, "#compaction-target[value='50']")
     assert has_element?(view, "#compaction-working-set[value='6']")
     assert has_element?(view, "#compaction-trigger")
@@ -406,7 +406,7 @@ defmodule EliaWeb.ChatSettingsTest do
       refute Agent.snapshot(id).compaction.options[:fraction]
       # CSET-7: the typed value stays, and the others with it.
       assert has_element?(view, "#compaction-fraction[value='#{bad}']")
-      assert has_element?(view, "#compaction-budget[value='150000']")
+      assert has_element?(view, "#compaction-budget[value='100000']")
     end
 
     submit_compaction(view, compaction("0", "80"))
@@ -420,7 +420,7 @@ defmodule EliaWeb.ChatSettingsTest do
     # CSET-7, CSET-11: a good value is accepted, and the save goes back to the
     # chat.
     assert_saved(view, %{compaction: compaction()}, id)
-    assert Agent.snapshot(id).compaction.options.fraction == 0.8
+    assert Agent.snapshot(id).compaction.options.fraction == 0.6
   end
 
   # CSET-7, CSET-11: the save is all or nothing — a value that isn't one in
