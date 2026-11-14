@@ -140,8 +140,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "var(--sidebar-width,16rem)"
   end
 
-  # UI-32, UI-36: on small screens the chat list opens as a drawer from the
-  # header's Chats button, which shows the list instead of leaving the chat.
+  # UI-32, UI-36, UI-91: on the chat page the header's Chats button is the chat
+  # list's small-screen shape — the list is on the page from `lg` up — and it
+  # never navigates.
   test "the header's Chats button opens and closes the drawer", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
@@ -265,14 +266,15 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#{time}[title='#{title}']")
     assert has_element?(view, time, "just now")
 
-    # Age the listed chat by an hour without rendering, then let the tick render it.
+    # Age the listed chat by an hour without rendering, then let the list's
+    # clock render it (UI-34, UI-92).
     :sys.replace_state(view.pid, fn state ->
-      update_in(state.socket.assigns.chats, fn chats ->
+      update_in(state.socket.assigns.chat_list.chats, fn chats ->
         Enum.map(chats, &%{&1 | created_at: DateTime.add(&1.created_at, -3600)})
       end)
     end)
 
-    send(view.pid, :tick_now)
+    send(view.pid, :chat_list_tick)
     assert has_element?(view, time, "1 hour ago")
   end
 
@@ -430,12 +432,12 @@ defmodule EliaWeb.ChatLiveTest do
     end
   end
 
-  # UI-32: the header's Chats control comes before the other pages' links. On
-  # the chat page it is the chat list's drawer toggle (UI-36), which shows the
-  # list and never navigates; a page without a chat list — the dashboard
-  # included (DASH-2) — keeps the link to `/chats`, the chat list's entry point,
-  # which resumes the most recent chat (UI-77).
-  test "the header's Chats control shows the chat list, or goes to /chats", %{conn: conn} do
+  # UI-32, UI-36, UI-91: the header's Chats control comes before the other
+  # pages' links, and it is the chat list's drawer toggle wherever it is — on the
+  # chat page (which draws the list itself, UI-4) and on a page that keeps no
+  # list of its own (UI-91). It never navigates: the drawer opens over the page
+  # and the page is still there afterwards.
+  test "the header's Chats control opens the chat list's drawer, on every page", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
     assert has_element?(view, "header #chats-toggle")
@@ -448,11 +450,18 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#chats-backdrop")
     assert has_element?(view, "#chat-form")
 
+    # UI-32, UI-91: on the chat page it opens the page's own list; elsewhere it
+    # opens the drawer that is that page's chat list, and the page stays put.
     {:ok, files, _html} = live(conn, ~p"/files")
-    assert has_element?(files, "header #chats-link[href='/chats']", "Chats")
-    refute has_element?(files, "header #chats-toggle")
-    files |> element("#chats-link") |> render_click()
-    assert_redirect(files, "/chats")
+    assert has_element?(files, "header #chats-toggle[aria-controls='chats-drawer']", "Chats")
+    refute has_element?(files, "header #chats-link")
+    refute has_element?(files, "#chats-backdrop")
+
+    files |> element("#chats-toggle") |> render_click()
+    assert has_element?(files, "#chats-backdrop")
+    refute has_element?(files, "#chats-drawer.hidden")
+    assert has_element?(files, "#chats-drawer #drawer-chat-list")
+    assert has_element?(files, "#file-viewer")
   end
 
   # UI-7, UI-18: an empty chat shows the empty state that says Elia can run shell

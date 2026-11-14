@@ -24,13 +24,15 @@ defmodule EliaWeb.Router do
   scope "/", EliaWeb do
     pipe_through :browser
 
-    live_session :default, on_mount: EliaWeb.ClientTracker do
+    # UI-32, UI-36, UI-91: `EliaWeb.ChatList` gives every page the chat list's
+    # state and its events, which is the drawer the header's "Chats" button
+    # opens on the pages that keep no list of their own.
+    live_session :default, on_mount: [EliaWeb.ClientTracker, EliaWeb.ChatList] do
       # DASH-1: `/` is the dashboard, the app's start URL (PWA-1) and the
       # header logo's target; it starts no chat.
       live "/", DashboardLive, :index
-      # UI-77: the chat list's entry point, where the header's Chats link leads
-      # on the pages without a chat list (UI-32) and where deleting the open
-      # chat lands (UI-65): it resumes the most recent chat, or starts one.
+      # UI-77: the chat list's entry point, where deleting the chat a page shows
+      # lands (UI-65, UI-93): it resumes the most recent chat, or starts one.
       live "/chats", ChatLive, :new
       live "/c/:id", ChatLive, :show
       # CSET-1: this chat's own settings — model, auto-approval, jail, limits

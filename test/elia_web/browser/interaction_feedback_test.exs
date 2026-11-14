@@ -207,10 +207,10 @@ defmodule EliaWeb.InteractionFeedbackTest do
     assert scale(conn, "#feed-disabled") == 1.0, "a disabled control took a press (FEED-6)"
     release(conn)
 
-    # FEED-7, FEED-9: and on another page, where the header is a plain nav (a
-    # chat's own header carries the chat-list toggle instead, UI-32), the same
-    # holds for a navigation link.
-    conn = conn |> visit("/settings") |> connected() |> press("#chats-link", "Tab")
+    # FEED-7, FEED-9: and on another page (a chat's own header carries the
+    # chat-list toggle as well, UI-32, UI-91), the same holds for a navigation
+    # link.
+    conn = conn |> visit("/settings") |> connected() |> press("#chats-toggle", "Tab")
     reached = state(conn, "#projects-link")
 
     assert js_get(reached, "focused"),

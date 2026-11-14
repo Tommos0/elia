@@ -18,10 +18,11 @@ left off in exactly as `/` used to (UI-1, UI-71).
   app again and again leaves no empty "New chat" behind (STORE-22). Its page
   title, and its heading, is "Home".
 - **DASH-2** The dashboard uses the standard page layout, so its header carries
-  the logo — which goes to `/`, the dashboard itself — and, like the other pages
-  with no chat list of their own, the "Chats" link (`#chats-link`) to `/chats`
-  (UI-32). The dashboard has no chat list, so it has no drawer toggle (UI-36)
-  and no sidebar.
+  the logo — which goes to `/`, the dashboard itself — and, like every page with
+  no chat list of its own, the "Chats" button, which opens the chat list's
+  drawer (UI-32, UI-36, UI-91) instead of navigating. The dashboard keeps no
+  chat list of its own: it has no sidebar, and the drawer is its chat list
+  (UI-91, UI-92).
 
 - **DASH-12** The dashboard is as wide as the screen and never wider, so nothing
   on it scrolls sideways. A long chat title — TITLE-2 allows 60 characters —
@@ -136,8 +137,8 @@ left off in exactly as `/` used to (UI-1, UI-71).
 
 - A second chat list: the dashboard shows recent chats and needs-attention
   rows, while listing every chat, grouping them by project and deleting them
-  stays on the chat page's sidebar (UI-4, UI-64) and on the chat list's entry
-  point `/chats` (UI-77).
+  stays in the one chat list — the chat page's sidebar (UI-4, UI-64) and the
+  drawer every other page opens (UI-91 to UI-93).
 - Per-chat actions on the dashboard: stopping a turn, approving a call, resuming
   a paused chat, deploying and the rest stay where they are, one tap away.
 - Configurable widgets, drag-to-rearrange, or a per-user dashboard.
@@ -158,6 +159,8 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
   "Deploy" and "What's new" — DASH-1, DASH-3 to DASH-11, DASH-13, DASH-14).
 - `test/elia_web/live/chat_live_test.exs` (the dashboard as `/`, DASH-1, DASH-2;
   what `/chats` opens, UI-77).
+- `test/elia_web/live/chat_drawer_test.exs` (the drawer the dashboard's header
+  opens, with the chat list in it — DASH-2, UI-91 to UI-93).
 - `test/elia_web/browser/chat_browser_test.exs` (the dashboard in a real
   browser, DASH-1).
 - `test/elia_web/browser/small_screen_layout_test.exs` (DASH-12 at a phone width).

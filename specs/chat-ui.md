@@ -35,9 +35,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   left off. Only when there is no such chat does it start a fresh one in the
   default project (PROJ-8), saved at once (STORE-22) — so browsing to it never
   leaves another empty "New chat" behind while a chat exists, and resuming
-  writes nothing (STORE-22, STORE-29). It is what the header's "Chats" control
-  opens on the pages that have no chat list of their own (UI-32) and where
-  deleting the open chat lands (UI-65). Starting a chat stays explicit: the
+  writes nothing (STORE-22, STORE-29). It is where deleting the open chat lands
+  (UI-65); the header's "Chats" control no longer leads here, since it opens the
+  chat list's drawer instead (UI-32, UI-91). Starting a chat stays explicit: the
   sidebar's "New chat" button (UI-31), `/p/<id>/new` (PROJ-26) and the
   dashboard's (DASH-4) always start a fresh chat, and `/chats` does while no
   chat exists.
@@ -111,22 +111,45 @@ stream in, approves or denies tool calls, and switches between saved chats.
   12rem and 40rem (and at most half the window), is kept in the browser's
   `localStorage`, and survives LiveView patches and navigation between chats.
 - **UI-32** The header on every page carries a "Chats" control first, to the
-  left of Projects, Files, Sessions, System and Settings. On the chat page it
-  shows the chat list rather than leaving the chat: it is the chat list's
-  drawer toggle (`#chats-toggle`, UI-36), which opens and closes the list below
-  the `lg` breakpoint, and it never navigates — pressing it never opens another
-  chat. On the other pages, which have no chat list to show, it is a link
-  (`#chats-link`) to `/chats`, the chat list's entry point, which resumes the
-  chat the user left off in (UI-77; the dashboard shows it there too, DASH-2),
-  so it never navigates to the dashboard and never opens another chat than that
-  one.
-- **UI-36** On small screens the chat list is a drawer: the header's "Chats"
-  button (`#chats-toggle`, UI-32) opens and closes it, its `aria-expanded`
-  follows, the drawer starts closed, and a backdrop (`#chats-backdrop`) or the
-  Escape key closes it. Neither the toggle nor the backdrop exists from the
-  `lg` breakpoint up, where the list (and the UI-35 drag handle) is always
-  visible — so the chat page's header shows no "Chats" control there, and
-  nothing in the header leaves the open chat.
+  left of Projects, Files, Sessions, System and Settings. It opens the chat
+  list's drawer (`#chats-toggle`, UI-36, UI-91) rather than leaving the page: it
+  is a button that opens the list and closes it again, and it never navigates —
+  pressing it opens no other chat and loads no other page. Nothing in the header
+  carries `#chats-link`: `/chats` (UI-77) is reached by deleting the open chat
+  (UI-65) and by the dashboard's "All chats" link (DASH-7), not from the
+  header. On the chat page, where the list is on the page anyway, there is no
+  control at all from the `lg` breakpoint up (UI-4, UI-36).
+- **UI-36** The chat list's drawer is closed until it is opened: the header's
+  "Chats" button (`#chats-toggle`, UI-32) opens and closes it, its
+  `aria-expanded` follows, and a backdrop (`#chats-backdrop`) or the Escape key
+  closes it. On the chat page it is the small-screen shape of the list: from the
+  `lg` breakpoint up the list (and the UI-35 drag handle) is on the page itself,
+  the drawer is not rendered and the header has no "Chats" control, so nothing
+  in the header leaves the open chat. A page that has no list of its own keeps
+  the button at every width, and the drawer is that page's chat list (UI-91).
+- **UI-91** The drawer is on every page that has no chat list of its own — the
+  dashboard (DASH-2), projects, files, sessions, system, logs, settings, and a
+  chat's own settings (CSET) and terminal (TERM) pages. Nothing is inline on
+  those pages, so the drawer opens at every width and the header's button is
+  there at every width (UI-32, UI-36). It starts closed, and opening or closing
+  it loads no other page and leaves the rest of that page as it is.
+- **UI-92** The drawer holds the chat list: the "New chat" button (UI-31), the
+  chats in the order, grouping and rows UI-4, UI-5, UI-33, UI-34, UI-45 to
+  UI-47, UI-59, UI-63, UI-64, UI-72, UI-76 and UI-80 describe, and "Load more
+  chats" (UI-84, UI-85). It draws the list's state, which is one state wherever
+  the list is shown, so it cannot drift from the sidebar's: the list is read as
+  the drawer opens, the statuses of the chats it lists follow the events that
+  keep them live (UI-47, UI-58, UI-59, UI-72, UI-76), and a deletion made in it
+  (UI-65) or a press of "Load more chats" updates it in place. On a page that
+  belongs to a chat (`/c/<id>/settings`, `/c/<id>/terminal`) that chat is
+  highlighted (UI-4) and "New chat" starts in its project (UI-31); elsewhere none
+  is highlighted and it starts in the default project (PROJ-8).
+- **UI-93** A chat row in the drawer opens that chat (UI-2), and its delete
+  button deletes it as UI-64 and UI-65 describe: the row leaves the list with a
+  "Chat deleted." flash, while the page the user is on stays where it is.
+  Deleting the chat that page belongs to (`/c/<id>/settings`,
+  `/c/<id>/terminal`) leaves for `/chats` instead (UI-65, UI-77), as deleting
+  the open chat does.
 - **UI-37** The header never overflows horizontally on narrow screens. Below
   the `sm` breakpoint the header buttons show only their icon (the label stays
   in the DOM for screen readers and as the control's `title`), with tighter
@@ -590,6 +613,21 @@ page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
+The chat list lives in one place: `EliaWeb.ChatList` draws it (the "New chat"
+button, the project groups, the rows with their status indicators and delete
+buttons, the empty state and "Load more chats"), and its hook in the session's
+`on_mount` list gives every page the list's state — the listed chats and whether
+more are saved, the page size (UI-84, UI-85), the projects, the statuses a row
+is marked with (UI-47, UI-58, UI-59, UI-72, UI-76) and whether the drawer is
+open — and handles the events that drive it (`toggle_chats`, `close_chats`,
+`more_chats`, `chat_page`, `delete_chat`). A page that draws the drawer therefore
+needs no wiring of its own, and one page's sidebar and another page's drawer are
+one list with one state, kept in step by construction. `EliaWeb.Layouts` renders
+the header's "Chats" button on every page, and the drawer (`#chats-drawer`, with
+its backdrop, UI-36) on every page that is not `chats_sidebar` — which
+`EliaWeb.ChatLive` is, since it lays the list out as its own page's sidebar
+(UI-4, UI-35, UI-36).
+
 The composer's draft (UI-89) is the browser's own: `EliaWeb.ChatLive`'s
 colocated hook keeps it in `localStorage` and puts it back on mount, and nothing
 of it reaches the server or a saved chat.
@@ -641,6 +679,12 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
   button, the pages that stay loaded, and a list that had no more to begin with —
   UI-2, UI-4, UI-65, UI-84, UI-85).
+- `test/elia_web/live/chat_drawer_test.exs` (the drawer on the pages that have
+  no chat list of their own — the dashboard, files, settings and a chat's
+  terminal: the button at every width, the backdrop and Escape, the list it
+  holds, "Load more chats" and the pages that stay loaded, a delete, the
+  highlighted chat, the project "New chat" starts in, and that pressing the
+  button never navigates — UI-32, UI-36, UI-91 to UI-93).
 - `test/elia_web/live/dashboard_test.exs` (the rows and indicators it shows,
   UI-32, UI-34, UI-45 to UI-47, UI-59).
 - `test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when

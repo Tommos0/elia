@@ -102,12 +102,14 @@ defmodule EliaWeb.DashboardTest do
       assert Store.list(1000) == []
       refute has_element?(view, "#chat-form")
 
-      # DASH-2: the standard header, with the logo home and Chats to the chat
-      # list's entry point (UI-32, UI-77); no chat list of its own.
+      # DASH-2: the standard header, with the logo home and Chats opening the
+      # chat list's drawer (UI-32, UI-36, UI-91); the dashboard keeps no chat
+      # list of its own — no sidebar, and the list is the drawer's (UI-91).
       assert has_element?(view, "header a[href='/'][title='Home']")
-      assert has_element?(view, "header #chats-link[href='/chats']")
-      refute has_element?(view, "#chats-toggle")
+      assert has_element?(view, "header #chats-toggle")
+      refute has_element?(view, "header #chats-link")
       refute has_element?(view, "#sidebar")
+      assert has_element?(view, "#chats-drawer.hidden")
     end)
   end
 

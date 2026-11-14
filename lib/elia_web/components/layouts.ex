@@ -31,17 +31,19 @@ defmodule EliaWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
-  # UI-32: on the chat page the header's Chats control is the chat list's
-  # drawer toggle (`#chats-toggle`, UI-36) instead of navigating, so it shows
-  # the list rather than leaving the open chat. On every other page — the
-  # dashboard included (DASH-2) — it is the link (`#chats-link`) to `/chats`,
-  # the chat list's entry point, which resumes the chat the user left off in
-  # (UI-77). The logo at the top left goes home, `/`, the dashboard (DASH-1).
-  attr :chats_drawer, :boolean,
+  # UI-32, UI-91: the header's "Chats" button opens the chat list — the drawer
+  # this layout renders — rather than leaving the page. A page that keeps the
+  # list itself, as its own sidebar (UI-4, UI-35), says so with `chats_sidebar`:
+  # then the button is that list's small-screen shape and the layout renders no
+  # drawer (UI-36). The logo at the top left goes home, `/`, the dashboard
+  # (DASH-1); the other pages' links (PROJ-25) are below the button.
+  attr :chats_sidebar, :boolean,
     default: false,
-    doc: "render the Chats control as the chat list's drawer toggle (UI-32, UI-36)"
+    doc: "the page draws the chat list itself, so no drawer here (UI-36, UI-91)"
 
-  attr :chats_open, :boolean, default: false, doc: "whether that drawer is open (UI-36)"
+  # UI-91, UI-92: the chat list's state (`EliaWeb.ChatList`), which is what the
+  # drawer draws. Every page in the live session has it assigned.
+  attr :chats, :map, default: nil, doc: "the chat list's state (UI-91, UI-92)"
 
   slot :inner_block, required: true
 
@@ -70,28 +72,26 @@ defmodule EliaWeb.Layouts do
           Elia
         </.link>
         <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
-          <%!-- UI-32, UI-36: the drawer's toggle, which only exists where the
-          drawer does (`lg:hidden`); from `lg` up the list is always visible. --%>
+          <%!-- UI-32, UI-36, UI-91: the chat list's drawer toggle, on every
+          page. Where the page keeps the list itself the drawer is that list's
+          small-screen shape and the button goes with it (`lg:hidden`); on a
+          page without a list of its own the drawer is the page's chat list, so
+          the button is there at every width. --%>
           <button
-            :if={@chats_drawer}
             type="button"
             id="chats-toggle"
             phx-click="toggle_chats"
-            aria-expanded={to_string(@chats_open)}
-            aria-controls="sidebar"
+            aria-expanded={to_string(@chats && @chats.open)}
+            aria-controls={if @chats_sidebar, do: "sidebar", else: "chats-drawer"}
             title="Chats"
-            class="flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 sm:px-3 sm:py-1.5 lg:hidden"
+            class={[
+              "flex items-center gap-1.5 rounded-lg p-2 text-sm transition hover:bg-base-200 sm:px-3 sm:py-1.5",
+              @chats_sidebar && "lg:hidden"
+            ]}
           >
             <.icon name="hero-chat-bubble-left-right" class="size-4" />
             <span class="sr-only sm:not-sr-only">Chats</span>
           </button>
-          <.nav_link
-            :if={!@chats_drawer}
-            to={~p"/chats"}
-            id="chats-link"
-            icon="hero-chat-bubble-left-right"
-            label="Chats"
-          />
           <.nav_link
             to={~p"/projects"}
             id="projects-link"
@@ -107,9 +107,37 @@ defmodule EliaWeb.Layouts do
 
       <%!-- UI-78: a flex column, so a page fills the rest of the shell by
       growing into it rather than by a percentage height, and so the element a
-      page scrolls itself (the chat transcript) can shrink to nothing. --%>
-      <main class="flex min-h-0 flex-1 flex-col">
+      page scrolls itself (the chat transcript) can shrink to nothing. UI-91:
+      it is also where the drawer is anchored — below the header, over the page
+      — so the header's own control stays reachable while it is open. --%>
+      <main class="relative flex min-h-0 flex-1 flex-col">
         {render_slot(@inner_block)}
+        <%!-- UI-36, UI-91: the chat list's drawer and its backdrop, on the pages
+        that keep no chat list of their own. It starts closed; the header's
+        button opens it, a backdrop or Escape closes it. FEED-1: a backdrop is
+        not a control, so it does not press — shrinking it would show the page's
+        edges through it. --%>
+        <button
+          :if={@chats && @chats.open && !@chats_sidebar}
+          type="button"
+          id="chats-backdrop"
+          phx-click="toggle_chats"
+          aria-label="Close chats"
+          class="absolute inset-0 z-20 bg-black/40"
+          data-press="none"
+        ></button>
+        <aside
+          :if={@chats && !@chats_sidebar}
+          id="chats-drawer"
+          phx-window-keydown={@chats.open && "close_chats"}
+          phx-key="Escape"
+          class={[
+            "absolute inset-y-0 left-0 z-30 flex w-72 max-w-[85vw] flex-col border-r border-base-300 bg-base-100 shadow-xl",
+            !@chats.open && "hidden"
+          ]}
+        >
+          <EliaWeb.ChatList.chat_list state={@chats} scope="drawer-" />
+        </aside>
       </main>
     </div>
 

@@ -114,8 +114,8 @@ kept apart from the ones that apply in every project.
   its parent, oldest first (UI-45). Projects with no chats still show their
   header.
 - **PROJ-25** The header on every page has a "Projects" link (`#projects-link`)
-  next to the header's "Chats" control (UI-32, the chat list's drawer toggle on
-  the chat page).
+  next to the header's "Chats" control (UI-32, the chat list's drawer toggle
+  wherever there is no chat list on the page itself).
 - **PROJ-26** `/p/<project id>/new` starts a chat in that project (PROJ-11) and
   redirects to `/c/<new id>`; an unknown project id redirects to `/`. The
   sidebar's "New chat" button (UI-31) starts a chat in the default project
