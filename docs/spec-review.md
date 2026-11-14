@@ -147,10 +147,17 @@ it.
    behaviour never under `Out of scope`, whether a stored shape needs a
    migration) and TRACE-9 adds whether a citation is the right one. A periodic
    read is what keeps them; there is no test that can.
-7. **The suite was intermittently red on `master`** for a while — different
-   tests each run (`task_ui_test.exs`'s chat-status tests, once the deployment
-   tests), all passing alone. Another chat fixed it (`7bbc87f test: fix the two
-   flakes the gate fails on`), and one flake of this review's own was fixed
+7. **The suite is still intermittently red on `master`.** Over this session's
+   runs, three `mix precommit` runs failed on *different* tests each time —
+   `task_ui_test.exs`'s chat-status tests, once the deployment tests, and
+   `Elia.TerminalTest`'s "stopping kills the whole tree and keeps the screen" —
+   every one of them passing in isolation and in repeat runs of its partition.
+   Another chat fixed two of them (`7bbc87f test: fix the two flakes the gate
+   fails on`), which is what a green run after that suggested, but the terminal
+   one and at least one partition-4 test remain. A gate whose result depends on
+   the run wants the remaining flakes found the ordinary way: run the suite
+   repeatedly, and treat a failure in a file the change does not touch as a
+   flake to report, not to paper over. One flake of this review's own was fixed
    along the way: B2's `reload_skills` test asserted a clean registry, which any
    other test's leftover folder skill can break.
 
