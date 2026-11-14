@@ -57,7 +57,11 @@ defmodule Elia.LLM.LlamaServerTest do
     LlamaServer.start_server()
   end
 
-  defp await_status(status, timeout \\ 3_000) do
+  # LOCAL-11: the status a start reports, once the stub has booted. The stub is
+  # a real process and the wait is for its health check to answer, so the
+  # deadline leaves room for a machine running the suite in partitions: three
+  # seconds was enough on an idle one and not on a loaded one.
+  defp await_status(status, timeout \\ 10_000) do
     LlamaServer.subscribe()
     assert_receive {:llama_server, %{status: ^status}}, timeout
   end
