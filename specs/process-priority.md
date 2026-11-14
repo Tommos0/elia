@@ -121,7 +121,10 @@ PRIO-8).
   PRIO-3 to PRIO-7).
 - `test/elia/terminal_test.exs` (a process Elia spawns directly rather than as a
   shell command gets the same wrapper — PRIO-2, PRIO-3).
-- `test/elia/llm/llama_server_test.exs` (`llama-server` is wrapped the same way,
-  PRIO-9).
+- No test: PRIO-9 — that `llama-server` is started through
+  `Elia.Priority.spawn_argv/3` is read from the code; the test drives a stub
+  binary and asserts the command it was given, not the niceness the wrapper gave
+  it. The terminal's own wrapper is asserted in `test/elia/terminal_test.exs`
+  (PRIO-2).
 - `test/elia/skills/shell_test.exs` (the tool's description and the skill's
   instructions say what runs lower, PRIO-8).

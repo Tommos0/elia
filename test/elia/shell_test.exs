@@ -28,6 +28,17 @@ defmodule Elia.ShellTest do
     end
   end
 
+  # SHELL-5: output longer than the cap is cut in the middle, with a marker that
+  # gives the number of characters removed.
+  test "long output is cut in the middle with a marker" do
+    assert Shell.truncate("short", 30_000) == "short"
+
+    cut = Shell.truncate(String.duplicate("a", 50), 20)
+    assert cut =~ "... [30 characters truncated] ..."
+    assert String.starts_with?(cut, String.duplicate("a", 10))
+    assert String.ends_with?(cut, String.duplicate("a", 10))
+  end
+
   # SHELL-3, ISOL-10: a timeout kills the command and everything it started,
   # jailed or not. Unjailed is the case that leaked: the pid the port reports
   # has to be the process group leader for the negative-pid kill to reach the
@@ -357,6 +368,22 @@ defmodule Elia.ShellMountTest do
     end)
 
     %{live: live, worktree: worktree}
+  end
+
+  # ISOL-2: the jail is bubblewrap with its own namespaces — a fresh pid, UTS,
+  # IPC and cgroup namespace, its own `/proc`, `/dev` and `/tmp` — and a `chdir`
+  # into the workspace.
+  test "the jail is bubblewrap with its own namespaces", %{worktree: worktree} do
+    {_exe, args} = Shell.argv("echo hi", worktree, jail: true)
+
+    for flag <-
+          ~w(--die-with-parent --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try --proc --dev --tmpfs) do
+      assert flag in args
+    end
+
+    assert Enum.take(args, -4) == ["--", Shell.shell([]), "-c", "echo hi"]
+    chdir = Enum.find_index(args, &(&1 == "--chdir"))
+    assert Enum.at(args, chdir + 1) == worktree
   end
 
   # ISOL-28: the report is what ends the mount lock, so the jail that mounts the

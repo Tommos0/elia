@@ -45,8 +45,9 @@ itself.
 
 - `test/elia/self_modification_test.exs` (the `folder skills` block: the
   directories it finds, `SKILL.md` and its frontmatter, `tools.json`, the errors
-  a load reports, a script tool run with its input beside the command and its
-  output formatted as the shell tool's — FOLDER-1, FOLDER-2, FOLDER-4 to
+  a load reports — FOLDER-1, FOLDER-2, FOLDER-4, FOLDER-5).
+- `test/elia/agent_test.exs` (a script tool written into the folder and run with
+  its input in `ELIA_ARG_<FIELD>`, its output formatted as the shell tool's —
   FOLDER-7, FOLDER-9).
 - `test/elia/skills_test.exs` (the "Skill folder:" line and a name conflict,
   FOLDER-3).

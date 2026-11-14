@@ -318,7 +318,7 @@ defmodule Elia.DeploymentTest do
 
   ## Requirements
 
-  # DEPLOY-2
+  # DEPLOY-2, PROJ-13, WS-4
   test "the live tree is the runtime root and holds Elia's data", %{tree: tree} do
     assert Workspace.runtime_root() == tree
     assert Workspace.data_dir() == Path.join(tree, ".elia")
@@ -360,7 +360,7 @@ defmodule Elia.DeploymentTest do
     assert Deploy.workspace(Projects.harness(), id) == path
   end
 
-  # DEPLOY-3, PROJ-12
+  # DEPLOY-3, PROJ-12, PROJ-14
   test "a chat in another project works in its folder, with no worktree" do
     folder = Path.join(System.tmp_dir!(), "elia-project-#{System.unique_integer([:positive])}")
     File.mkdir_p!(folder)
@@ -777,7 +777,7 @@ defmodule Elia.DeploymentTest do
     assert {:ok, %{behind?: false, loaded: ^live}} = Deploy.status()
   end
 
-  # DEPLOY-5, DEPLOY-8, HOT-4
+  # DEPLOY-5, DEPLOY-8, HOT-3, HOT-4
   test "failing tests merge nothing, so the live tree is unaffected", %{tree: tree} do
     {_id, path} = new_worktree()
 

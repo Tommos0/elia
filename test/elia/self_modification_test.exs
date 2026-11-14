@@ -14,6 +14,8 @@ defmodule Elia.SelfModificationTest do
   end
 
   describe "workspace policy" do
+    # WS-2: paths are fully expanded before they are classified, so `..` can't
+    # escape the workspace.
     test "classifies paths" do
       assert {_, :extension} = Workspace.resolve("skills/foo/SKILL.md")
       assert {_, :core} = Workspace.resolve("lib/elia/agent.ex")
@@ -24,6 +26,8 @@ defmodule Elia.SelfModificationTest do
       assert {_, :outside} = Workspace.resolve("skills/../../etc")
     end
 
+    # WS-3: a path under `skills/` that goes through a symlink is `:core`, so a
+    # link can't give extension rights to files elsewhere.
     test "symlinks under skills/ are treated as core" do
       File.mkdir_p!(in_root("skills"))
       File.mkdir_p!(in_root("lib"))
@@ -33,6 +37,8 @@ defmodule Elia.SelfModificationTest do
       File.rm(in_root("skills/sneaky"))
     end
 
+    # FILE-5: `write_file` and `edit_file` follow the path's class — extension
+    # without approval, core with it, protected or outside refused.
     test "file tools ask, allow or deny accordingly" do
       assert Files.write_policy(%{"path" => "skills/x/SKILL.md"}, %{}) == :never
       assert Files.write_policy(%{"path" => "lib/x.ex"}, %{}) == :required
@@ -242,6 +248,9 @@ defmodule Elia.SelfModificationTest do
   end
 
   describe "file tools" do
+    # FILE-2, FILE-3, FILE-6: `read_file` starts at `offset` for up to `limit`
+    # lines and says which lines it returned, and `write_file` creates the
+    # directories a path needs.
     test "write, read and edit" do
       path = "skills/notes/a.txt"
       assert {:ok, _} = Files.write_file(%{"path" => path, "content" => "one\ntwo\ntwo\n"}, %{})
@@ -264,8 +273,9 @@ defmodule Elia.SelfModificationTest do
       File.rm_rf!(in_root("skills/notes"))
     end
 
-    # FILE-31: the exact match is preferred, and it is the match that can cover
-    # part of a line — the tolerant retry only ever covers whole lines.
+    # FILE-9, FILE-31: the exact match is preferred, and it is the match that can
+    # cover part of a line — the tolerant retry only ever covers whole lines —
+    # and the result names the path and the number of replacements.
     test "an exact match is used even where a tolerant one exists" do
       path = "skills/notes/exact.txt"
       File.mkdir_p!(in_root("skills/notes"))
@@ -317,9 +327,10 @@ defmodule Elia.SelfModificationTest do
       File.rm_rf!(in_root("skills/notes"))
     end
 
-    # FILE-33: the same block at two indentation levels — the shape a language
-    # where indentation is code makes dangerous — is two candidates, so it is an
-    # error that names both and nothing is written.
+    # FILE-8, FILE-33: the same block at two indentation levels — the shape a
+    # language where indentation is code makes dangerous — is two candidates, so
+    # it is an error that names both and nothing is written: the match is
+    # settled before the file is touched.
     test "a tolerant match that is not unique is an error, and nothing is written" do
       path = "skills/notes/two-blocks.txt"
       text = "if a:\n    x = 1\n    y = 2\nif b:\n    x = 1\n    y = 2\n"
@@ -845,6 +856,10 @@ defmodule Elia.SelfModificationTest do
       %{dir: dir}
     end
 
+    # FOLDER-1, FOLDER-2, FOLDER-4, FOLDER-5: a directory under `skills/` is a
+    # candidate skill and must hold a `SKILL.md` with `name` and `description`
+    # frontmatter; `tools.json` is a list of entries that need `description` and
+    # `command` too; and each load failure says what is wrong.
     test "reports helpful errors", %{dir: dir} do
       assert {:error, "cannot read SKILL.md" <> _} = Folder.load(dir)
 
@@ -857,6 +872,32 @@ defmodule Elia.SelfModificationTest do
       File.write!(Path.join(dir, "SKILL.md"), "---\nname: ok\ndescription: x\n---\nBody")
       File.write!(Path.join(dir, "tools.json"), ~s([{"name": "t"}]))
       assert {:error, "tools.json entry 0: missing description"} = Folder.load(dir)
+    end
+
+    # SKILL-6: `reload_skills` rescans the skills folder and answers with the
+    # skills it loaded and their tool names, plus any folder that failed.
+    test "reload_skills answers with the loaded skills and a folder that failed", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "SKILL.md"),
+        "---\nname: tmp-skill\ndescription: x\n---\nUse it."
+      )
+
+      File.write!(
+        Path.join(dir, "tools.json"),
+        ~s([{"name": "tmp_tool", "description": "d", "command": "echo hi"}])
+      )
+
+      [tool] = Enum.filter(Elia.Skills.Harness.tools(), &(&1.name == "reload_skills"))
+
+      assert {:ok, output} = tool.run.(%{})
+      assert output =~ "- tmp-skill (tools: tmp_tool)"
+
+      # A folder that fails to load is named with its reason instead.
+      File.write!(Path.join(dir, "SKILL.md"), "no frontmatter")
+      assert {:error, output} = tool.run.(%{})
+      assert output =~ "skills/tmp-skill"
+    after
+      Elia.Skills.reload()
     end
 
     test "registry reports load errors and conflicts", %{dir: dir} do
@@ -898,6 +939,7 @@ defmodule Elia.SelfModificationTest do
   end
 
   describe "run_tests" do
+    # VERIFY-2: only arguments that can't run arbitrary code are accepted.
     test "rejects arguments that could run arbitrary code" do
       assert {:error, "Unsupported test argument: skills/x_test.exs"} =
                Harness.run_tests(["skills/x_test.exs"])
@@ -907,9 +949,9 @@ defmodule Elia.SelfModificationTest do
       assert {:error, _} = Harness.run_tests(["--include-anything"])
     end
 
-    # VERIFY-8: the per-test timeout is `mix test`'s own, so a test that sets no
-    # timeout of its own fails the run instead of holding it. A real run in a
-    # throwaway project, because the flag has to reach ExUnit.
+    # VERIFY-1, VERIFY-8: the per-test timeout is `mix test`'s own, so a test that
+    # sets no timeout of its own fails the run instead of holding it. A real run
+    # in a throwaway project, because the flag has to reach ExUnit.
     test "the per-test timeout reaches ExUnit", %{hangs_tree: tree} do
       assert {:error, output} =
                Harness.run_tests(["test/hangs_test.exs"], tree,

@@ -44,6 +44,18 @@ defmodule Elia.Skills.ShellTest do
     end
   end
 
+  # PRIO-8: the model is told a command runs below the server's priority, so a
+  # command that seems slow while a compile runs reads as expected rather than
+  # broken.
+  test "instructions and tool description say a command runs below the server" do
+    assert [%{description: description}] = Shell.tools()
+
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "lower"
+      assert text =~ "priority"
+    end
+  end
+
   # ISOL-21
   test "instructions and tool description explain the jail and when it is off" do
     assert [%{description: description}] = Shell.tools()

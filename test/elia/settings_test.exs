@@ -64,6 +64,8 @@ defmodule Elia.SettingsTest do
   end
 
   # CONF-6
+  # LLM-16: a provider may implement `check_key/1` (CONF-6) — `list_models/1` and
+  # `balance/1` are the other two — so checking a key asks the provider itself.
   test "checking a key asks the provider" do
     Req.Test.stub(OpenRouter, fn conn ->
       assert conn.request_path == "/api/v1/key"

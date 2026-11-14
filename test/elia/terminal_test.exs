@@ -175,7 +175,7 @@ defmodule Elia.TerminalTest do
     assert collect_until("12 40") =~ "12 40"
   end
 
-  # TERM-8: the session's tree is started with the same priority wrapper a
+  # TERM-8, PRIO-2: the session's tree is started with the same priority wrapper a
   # command gets (PRIO-1, PRIO-3), so a terminal can't take the machine from the
   # UI either. The app reads its own niceness out of its process table.
   test "the session's tree runs below the server's priority", %{id: id, dir: dir} do

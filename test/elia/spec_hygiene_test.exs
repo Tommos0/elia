@@ -162,6 +162,18 @@ defmodule Elia.SpecHygieneTest do
              "numbers its requirements THING"
   end
 
+  test "two prefixes in one spec fail the lint (SPEC-1)" do
+    assert lint_tree(
+             spec:
+               thing(
+                 requirements: """
+                 - **THING-1** It is a thing.
+                 - **OTHER-2** It is another thing.
+                 """
+               )
+           ) =~ "numbers its requirements under THING and OTHER (SPEC-1)"
+  end
+
   test "a ## section outside the shape fails the lint (SPEC-10)" do
     assert lint_tree(spec: thing() <> "\n## Data\n\nNothing is stored.\n") =~
              "## Data is not a section a spec uses"

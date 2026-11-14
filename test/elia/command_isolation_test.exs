@@ -219,6 +219,8 @@ defmodule Elia.CommandIsolationTest do
       refute output =~ notice
     end
 
+    # FOLDER-6: a script tool runs its `command` through `Elia.Shell.run/2` like
+    # the shell tool, so it follows the call's jail and workspace (ISOL-15).
     test "a folder skill's script tool follows the context", %{notice: notice} do
       dir = Path.join(System.tmp_dir!(), "elia-jail-folder-#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)

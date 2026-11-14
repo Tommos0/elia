@@ -31,6 +31,9 @@ defmodule Elia.LLM.AnthropicTest do
     end)
   end
 
+  # LLM-2, LLM-3, LLM-4, LLM-5: the request a provider is handed (its messages,
+  # system, tools and model), the streaming events it emits, the stop reason it
+  # answers with and the neutral message it builds.
   test "streams text, thinking and tool calls into a neutral message" do
     thinking = %{"type" => "thinking", "thinking" => "", "signature" => ""}
 
@@ -193,6 +196,8 @@ defmodule Elia.LLM.AnthropicTest do
     assert body["output_config"] == %{"effort" => "low"}
   end
 
+  # LLM-9: a tool result and the user message after it are merged into one user
+  # turn, and what the provider can't use is dropped rather than sent.
   test "drops reasoning from other providers and merges consecutive user turns" do
     history = [
       Message.user("one"),
@@ -229,6 +234,96 @@ defmodule Elia.LLM.AnthropicTest do
 
     assert {:error, "Anthropic API error 400: bad request"} =
              Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+  end
+
+  # LLM-11: tool input that isn't valid JSON becomes empty input, with the raw
+  # text kept in `invalid_input` (LOOP-6).
+  test "unparsable tool input becomes empty input, keeping the raw text" do
+    stub_stream(self(), [
+      %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+      %{
+        "type" => "content_block_start",
+        "index" => 0,
+        "content_block" => %{"type" => "tool_use", "id" => "toolu_1", "name" => "shell"}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "input_json_delta", "partial_json" => "{bad"}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{"type" => "message_delta", "delta" => %{"stop_reason" => "tool_use"}}
+    ])
+
+    assert {:ok, %{message: message}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    assert [%{type: :tool_call, input: %{}, invalid_input: "{bad"}] = message.content
+  end
+
+  # LLM-12: a `fallback` block emits a notice, and the declined model's thinking
+  # and tool calls before the last of them are dropped.
+  test "a fallback block emits a notice and drops the declined part" do
+    stub_stream(self(), [
+      %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+      %{
+        "type" => "content_block_start",
+        "index" => 0,
+        "content_block" => %{"type" => "thinking", "thinking" => "", "signature" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "thinking_delta", "thinking" => "Declined."}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{
+        "type" => "content_block_start",
+        "index" => 1,
+        "content_block" => %{"type" => "fallback"}
+      },
+      %{"type" => "content_block_stop", "index" => 1},
+      %{
+        "type" => "content_block_start",
+        "index" => 2,
+        "content_block" => %{"type" => "text", "text" => "Fine."}
+      },
+      %{"type" => "content_block_stop", "index" => 2},
+      %{"type" => "message_delta", "delta" => %{"stop_reason" => "end_turn"}}
+    ])
+
+    test_pid = self()
+
+    assert {:ok, %{message: message}} =
+             Anthropic.stream(%{messages: [Message.user("hi")]}, &send(test_pid, {:event, &1}))
+
+    assert_received {:event, {:notice, "Request was rerouted to a fallback model"}}
+
+    refute Enum.any?(message.content, &(&1.type == :reasoning))
+    assert Enum.any?(message.content, &(&1.type == :text and &1.text == "Fine."))
+  end
+
+  # LLM-14: the API's stop reasons, mapped to the neutral ones.
+  test "maps the API's stop reasons" do
+    reasons = [
+      {"end_turn", :end_turn},
+      {"stop_sequence", :end_turn},
+      {"tool_use", :tool_use},
+      {"max_tokens", :max_tokens},
+      {"model_context_window_exceeded", :max_tokens},
+      {"refusal", :refusal},
+      {"something_else", :other}
+    ]
+
+    for {api, neutral} <- reasons do
+      stub_stream(self(), [
+        %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},
+        %{"type" => "message_delta", "delta" => %{"stop_reason" => api}}
+      ])
+
+      assert {:ok, %{stop_reason: ^neutral}} =
+               Anthropic.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+    end
   end
 
   # LLM-30

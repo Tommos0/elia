@@ -74,8 +74,9 @@ defmodule Elia.AutoApproveTest do
     assert %{auto_approve: ["shell"]} = Agent.snapshot(saved)
   end
 
-  # APPR-14: the default set is worked out from the project's skills, so a
-  # folder skill's script tool is in it (FOLDER).
+  # APPR-14, FOLDER-8: the default set is worked out from the project's skills,
+  # so a folder skill's script tool — which always needs approval, because the
+  # agent can write it without approval — is in it.
   test "the default set includes a folder skill's script tools" do
     dir = Path.join(Elia.Workspace.skills_dir(), "defaulter")
     File.mkdir_p!(dir)
@@ -145,7 +146,8 @@ defmodule Elia.AutoApproveTest do
     await_status(id, :idle)
   end
 
-  # APPR-9
+  # APPR-9, STORE-8: `.elia` is a protected path, so the file tools can't write
+  # the harness's own data even where auto-approval is on.
   test "auto-approval does not override a policy denial", %{id: id} do
     :ok = Agent.set_auto_approve(id, "write_file", true)
 

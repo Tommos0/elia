@@ -51,9 +51,9 @@ defmodule EliaWeb.ChatBrowserTest do
     on_exit(fn -> for id <- session_ids() -- opened, do: Store.delete(id) end)
   end
 
-  # BROWSER-8: a message typed in the browser is sent and answered. Enter comes
-  # from the colocated `.SubmitOnEnter` hook, so this covers JavaScript that the
-  # LiveView tests never run.
+  # BROWSER-8, UI-21: a message typed in the browser is sent and answered. Enter
+  # comes from the colocated `.SubmitOnEnter` hook, so this covers JavaScript that
+  # the LiveView tests never run.
   test "Enter in the message box sends the message and shows the answer", %{conn: conn} do
     id = Agent.new_id()
     :ok = Store.save(id, [], project: "harness")

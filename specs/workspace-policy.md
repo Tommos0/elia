@@ -43,6 +43,8 @@ in a class that decides what the agent's tools may do with it.
 
 - `test/elia/self_modification_test.exs` (each class a path can be, a `..` and a
   link resolved before it is judged, a write target that isn't there, the real
-  location of a path — WS-1 to WS-5).
+  location of a path — WS-1 to WS-3, WS-5).
+- `test/elia/deployment_test.exs` (the workspace root, and the live tree Elia's
+  own data and skills folder live under — WS-4).
 - `test/elia_web/file_links_test.exs` (the class a mentioned path falls in,
   WS-1).

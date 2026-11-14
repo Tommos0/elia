@@ -146,8 +146,9 @@ Implementation).
   reused (SPEC-3, SPEC-4), a `Status:` line with prose and one outside the four
   (SPEC-6), a spec file missing from the index and a plan missing from the plans
   list (SPEC-8), an index row whose file is gone (SPEC-9), an index prefix that
-  differs from the file's IDs (SPEC-1, SPEC-9), a retired spec whose row doesn't
-  say so (SPEC-7), a retirement with a reason and one without (SPEC-5), a `##`
+  differs from the file's IDs (SPEC-9), a file whose requirements use two
+  prefixes (SPEC-1), a retired spec whose row doesn't say so (SPEC-7), a
+  retirement with a reason and one without (SPEC-5), a `##`
   section outside SPEC-10's list (SPEC-10), a requirement defined under
   `Out of scope` (SPEC-14), and a `PREFIX-n` no spec defines (SPEC-15).
 - One test runs the same lint against the real `specs/`: that is the gate the

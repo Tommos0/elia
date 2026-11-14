@@ -192,8 +192,11 @@ reopened.
 
 - `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
   listing and the fields an entry carries, saving and loading each one, deleting
-  a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-29, STORE-36 to
-  STORE-38).
+  a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
+  STORE-29, STORE-36 to STORE-38).
+- `test/elia/auto_approve_test.exs` (`.elia` is a protected path, so the file
+  tools can't write the harness's own data even where auto-approval is on,
+  STORE-8).
 - `test/elia_web/file_links_test.exs` (an id is 12 URL-safe characters,
   STORE-5).
 - `test/elia/agent_test.exs` (history survives a restart, STORE-4).

@@ -273,13 +273,14 @@ OpenAI-compatible encoding that both of them share, LOCAL-10),
 
 ## Tests
 
-- `test/elia/llm/message_test.exs` (the request, the streaming events, the stop
-  reasons and the message roles — LLM-2 to LLM-5, LLM-32).
-- `test/elia/llm/anthropic_test.exs` (the request body and thinking, merged
-  tool results, the retried statuses, unparsable tool input, a fallback notice,
-  the stop reasons, a signed thinking block and the display setting, a
-  connection closed before data arrived, the key that is missing — LLM-7 to
-  LLM-12, LLM-14, LLM-28 to LLM-31, LLM-38, LLM-39).
+- `test/elia/llm/message_test.exs` (a tool result and a harness message are
+  always valid UTF-8 — LLM-32).
+- `test/elia/llm/anthropic_test.exs` (the neutral request, the streaming events
+  and the message's own blocks — LLM-2 to LLM-5; the request body and thinking,
+  merged tool results, the retried statuses, unparsable tool input, a fallback
+  notice, the stop reasons it maps, a signed thinking block and the display
+  setting, a connection closed before data arrived, the key that is missing —
+  LLM-7 to LLM-12, LLM-14, LLM-28 to LLM-31, LLM-38, LLM-39).
 - `test/elia/llm/open_router_test.exs` (the OpenAI-compatible call, its
   streamed deltas, finish reasons and retries, the model family it routes
   around, the balance endpoint, the key that is missing — LLM-6, LLM-17 to

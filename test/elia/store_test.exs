@@ -151,6 +151,29 @@ defmodule Elia.StoreTest do
     assert Store.title(Store.load(id)) == "hi"
   end
 
+  # STORE-6: a listing returns up to the number of chats it was asked for, and
+  # nothing more.
+  test "list/1 returns up to the number of chats it is asked for" do
+    with_empty_store(fn ->
+      for _ <- 1..3, do: Store.save(Elia.Agent.new_id(), [Message.user("hi")])
+
+      assert length(Store.list(1000)) == 3
+      assert length(Store.list(2)) == 2
+    end)
+  end
+
+  # STORE-2: a save goes through a `.tmp` file that is renamed into place, so a
+  # reader never sees a half-written chat and no temporary file is left behind.
+  test "a save leaves no temporary file behind" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")])
+
+    refute File.exists?(Path.join(Store.dir(), id <> ".term.tmp"))
+    assert [%Message{}] = Store.load(id)
+  end
+
   # STORE-7, STORE-10
   test "listed chats carry a 60-char title and a 1000-char description" do
     id = Elia.Agent.new_id()

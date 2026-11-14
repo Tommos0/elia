@@ -34,6 +34,18 @@ defmodule Elia.Skills.FilesTest do
     assert shell.description =~ "search_files"
   end
 
+  # FILE-14: the instructions say that with the jail on the tools reach the
+  # workspace and nothing else — a path outside it is refused rather than offered
+  # for the user's approval (FILE-12) — and that a symlink is followed no further
+  # than the workspace (FILE-13).
+  test "the instructions say what the jail confines" do
+    instructions = Elia.Skills.Files.instructions()
+
+    assert instructions =~ "jail"
+    assert instructions =~ "refused"
+    assert instructions =~ "symlink"
+  end
+
   defp tool(name), do: Elia.Skills.Files.tools() |> Enum.find(&(&1.name == name))
 
   # FILE-37: no argument of `edit_file` defaults. `new_string` in particular

@@ -19,6 +19,8 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:status, ^status}}, 5000
   end
 
+  # LOOP-2, SESS-5: the loop's text deltas reach the session as they stream, and
+  # what it produces lands in the history.
   test "plain reply streams and lands in history", %{id: id} do
     FakeLLM.push(FakeLLM.assistant([Message.text("Hello!")]))
 
@@ -37,6 +39,9 @@ defmodule Elia.AgentTest do
              ~w(ask_user await_task delete_file edit_file list_chats list_files list_tasks mark_done read_chat read_file reload_skills search_chats search_files set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger write_file)
   end
 
+  # LOOP-9, LOOP-11, SHELL-1, SESS-3: the call is approved before it runs
+  # (LOOP-9, SHELL-1), its status is reported as `:running` (LOOP-11), and a
+  # message sent while the turn is in progress is refused (SESS-3).
   test "shell call waits for approval, runs, and feeds the result back", %{id: id} do
     FakeLLM.push(
       FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo elia"})])
@@ -90,7 +95,54 @@ defmodule Elia.AgentTest do
              List.last(second.messages)
   end
 
-  # ASK-2, ASK-3, ASK-5, ASK-6
+  # LOOP-6, LOOP-7, LOOP-12: a call that can't run is answered rather than run —
+  # the raw input when it wasn't valid JSON, the name when there is no such tool,
+  # and the crash when the tool raises — and the turn carries on.
+  test "a call that can't run gets an error result, and the turn goes on" do
+    id = Agent.new_id()
+
+    boom = %Elia.Tool{
+      name: "boom",
+      description: "raises",
+      input_schema: %{"type" => "object", "properties" => %{}},
+      approval: :never,
+      run: fn _input, _ctx -> raise "the tool broke" end
+    }
+
+    skills = [%Elia.Skill{name: "boom", description: "boom", tools: [boom]}]
+
+    {:ok, pid} =
+      Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM}, skills: skills])
+
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(id)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        %{type: :tool_call, id: "j1", name: "shell", input: %{}, invalid_input: "{not json"},
+        FakeLLM.tool_call("u1", "no_such_tool", %{}),
+        FakeLLM.tool_call("b1", "boom", %{})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carried on.")]))
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    [_user, _call, %Message{role: :tool, content: results}] =
+      List.last(FakeLLM.requests()).messages
+
+    assert Enum.map(results, & &1.content) == [
+             Jason.encode!(%{"INVALID_JSON" => "{not json"}),
+             "Unknown tool: no_such_tool",
+             "Tool crashed: the tool broke"
+           ]
+
+    # The turn went on: the reply after the results is the transcript's last.
+    assert Message.text_content(List.last(Agent.snapshot(id).messages)) == "Carried on."
+  end
+
+  # ASK-2, ASK-3, ASK-5, ASK-6, LOOP-21
   test "a question waits for the user's answer, which the turn goes on with", %{id: id} do
     FakeLLM.push(
       FakeLLM.assistant([
@@ -436,7 +488,7 @@ defmodule Elia.AgentTest do
     refute id in Agent.paused()
   end
 
-  # LIMIT-1, LIMIT-2, LIMIT-3, LIMIT-12, STOP-1, STOP-2
+  # LIMIT-1, LIMIT-2, LIMIT-3, LIMIT-12, SESS-31, STOP-1, STOP-2
   test "a chat's own token budget is what its turn runs with, and failing the pause ends it",
        %{} do
     id = start_fake_skill_session([])
@@ -468,7 +520,7 @@ defmodule Elia.AgentTest do
     assert Message.text_content(stopped) =~ "Stopped after 600 tokens: the token budget ran out"
   end
 
-  # RETRY-1, RETRY-2, RETRY-3
+  # RETRY-1, RETRY-2, RETRY-3, SESS-39
   test "a model call that fails transiently is retried, and the turn carries on", %{} do
     id = start_fake_skill_session(step_retry: [delays_ms: [0, 0]])
 
@@ -505,7 +557,7 @@ defmodule Elia.AgentTest do
     assert first.messages == second.messages
   end
 
-  # RETRY-4, RETRY-5, STOP-1, STOP-2
+  # RETRY-4, RETRY-5, STOP-1, STOP-2, LOOP-23
   test "a failure that outlasts the schedule ends the turn, saying it was retried", %{} do
     id = start_fake_skill_session(step_retry: [delays_ms: [0, 0]])
     for _ <- 1..3, do: FakeLLM.push(transient_failure())
@@ -607,7 +659,8 @@ defmodule Elia.AgentTest do
   end
 
   # Starts a session whose only skill is `fake_skill/1`, plus the given loop
-  # options, subscribed like the setup's (LOOP-3, LOOP-16).
+  # options, subscribed like the setup's (LOOP-3, LOOP-16). LOOP-17: the `skills`
+  # option takes a function of no arguments, which the loop calls every step.
   defp start_fake_skill_session(loop_opts) do
     id = Agent.new_id()
     opts = Keyword.put(loop_opts, :skills, fn -> fake_skill("ok") end)
@@ -647,6 +700,8 @@ defmodule Elia.AgentTest do
     for _ <- 1..times, do: FakeLLM.push(fun)
   end
 
+  # SESS-38: the user's stop goes through the same path as the loop's error, its
+  # refusal and its death — the marked harness message STOP-2 describes.
   test "stopping while awaiting approval closes the dangling call", %{id: id} do
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "sleep 5"})]))
 
@@ -663,6 +718,8 @@ defmodule Elia.AgentTest do
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
   end
 
+  # SESS-2: a session loads its saved history on start, so a restart shows the
+  # same conversation.
   test "history survives a session restart", %{id: id} do
     FakeLLM.push(FakeLLM.assistant([Message.text("Remember me.")]))
     :ok = Agent.send_message(id, "hi")
@@ -677,6 +734,8 @@ defmodule Elia.AgentTest do
     assert %{title: "hi"} = Enum.find(Elia.Store.list(), &(&1.id == id))
   end
 
+  # LOOP-1: skills and the project's instructions are read again every step, so a
+  # skill reloaded mid-turn applies from the next one.
   test "writing a skill and reloading makes its tool available in the same turn", %{id: id} do
     skill_md = "---\nname: greeter\ndescription: Greets people\n---\nUse greet to say hello."
 
@@ -720,7 +779,8 @@ defmodule Elia.AgentTest do
     Elia.Skills.reload()
   end
 
-  # CTX-6: a refused request's usage is cleared with it.
+  # CTX-6, STOP-5: a refused request's usage is cleared with it — and only a stop
+  # is written for it, so the rollback stays the reset it is.
   test "a refusal clears the usage and the turn's messages", %{id: id} do
     FakeLLM.push(fn _request, _on_event ->
       {:ok,
@@ -754,7 +814,7 @@ defmodule Elia.AgentTest do
     assert Agent.snapshot(id).last_usage == nil
   end
 
-  # STOP-1, STOP-2, STOP-4
+  # STOP-1, STOP-2, STOP-4, SESS-11, LOOP-23
   test "a provider that failed is written into the transcript as the stop it is", %{} do
     id = start_fake_skill_session([])
 
@@ -1205,7 +1265,7 @@ defmodule Elia.AgentTest do
     assert project_id == project.id
   end
 
-  # PROJ-12, FILE-1, FILE-4
+  # PROJ-12, FILE-1, FILE-4, LOOP-10, SESS-23
   test "a chat's project folder is its workspace for the file tools" do
     dir = tmp_dir("files")
     # APPR-14: an empty set, so the writes below still ask (this test approves one).
@@ -2063,8 +2123,9 @@ defmodule Elia.AgentTest do
     assert Elia.Store.load_jail(id) == false
   end
 
-  # ISOL-15: the tool context of a turn carries the chat's jail setting, so the
-  # tools jail a call according to the chat they run in.
+  # ISOL-15, LOOP-18: the tool context of a turn carries the chat's jail setting,
+  # so the tools jail a call according to the chat they run in — and it is the
+  # context LOOP-18 describes that a tool's `run/2` is handed.
   test "the turn's tool context carries the chat's jail setting" do
     id = Agent.new_id()
     test_pid = self()

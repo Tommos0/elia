@@ -455,6 +455,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert_redirect(files, "/chats")
   end
 
+  # UI-7, UI-18: an empty chat shows the empty state that says Elia can run shell
+  # commands and that the user approves each one, and a call awaiting approval
+  # offers its Approve and Deny buttons (`#approve-<call_id>`, `#deny-<call_id>`).
   test "chatting with an approval round-trip", %{conn: conn} do
     id = Agent.new_id()
 
@@ -575,7 +578,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert html =~ "Assistant"
   end
 
-  # UI-25: saved and streaming assistant text both render as Markdown.
+  # UI-8, UI-10, UI-25: assistant text renders as Markdown, and the text that is
+  # still streaming lives in a draft block below the transcript — which is gone
+  # once the assistant message lands.
   test "assistant text renders as Markdown", %{conn: conn} do
     id = Agent.new_id()
     test_pid = self()
@@ -657,7 +662,8 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#transcript details .reasoning-text", "Let me weigh this")
   end
 
-  # UI-29, UI-30: streaming reasoning is collapsed too and marked as in progress.
+  # UI-10, UI-29, UI-30: streaming reasoning is collapsed too and marked as in
+  # progress, and its draft clears when the message lands.
   test "streaming reasoning is collapsed and marked in progress", %{conn: conn} do
     id = Agent.new_id()
     test_pid = self()

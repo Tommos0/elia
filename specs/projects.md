@@ -139,10 +139,11 @@ kept apart from the ones that apply in every project.
 ## Tests
 
 - `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
-  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`,
-  where Elia's own data lives — PROJ-1 to PROJ-9, PROJ-13).
-- `test/elia/deployment_test.exs` (the deploy bound to Elia's own project,
-  PROJ-3, PROJ-14, PROJ-22).
+  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0` —
+  PROJ-1 to PROJ-9).
+- `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
+  the tree Elia's own data lives in whatever project a chat belongs to —
+  PROJ-3, PROJ-13, PROJ-14, PROJ-22).
 - `test/elia/skills_test.exs` (a project's own skills, re-read for every step —
   PROJ-18 to PROJ-21).
 - `test/elia/agent_test.exs` (a chat's project as its workspace, its system

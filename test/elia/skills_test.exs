@@ -10,7 +10,7 @@ defmodule Elia.SkillsTest do
 
   defp write_agents(dir, content), do: File.write!(Path.join(dir, "AGENTS.md"), content)
 
-  # SKILL-10, SKILL-5
+  # SKILL-1, SKILL-5, SKILL-10
   test "the project section sits between the base prompt and the skills" do
     prompt = Skills.system_prompt([@skill], "Be nice.")
 
@@ -145,7 +145,7 @@ defmodule Elia.SkillsTest do
     refute "self-modification" in names(other)
   end
 
-  # PROJ-16, PROJ-18
+  # SKILL-2, PROJ-16, PROJ-18
   test "for_project/1 is Elia's skills plus the project's own", %{tmp_dir: dir} do
     write_skill(dir, "project-skill")
 
@@ -180,7 +180,7 @@ defmodule Elia.SkillsTest do
     assert names(same) == Enum.uniq(names(same))
   end
 
-  # PROJ-19
+  # SKILL-4, PROJ-19
   test "a broken project skill folder is reported and the rest still load", %{tmp_dir: dir} do
     write_skill(dir, "good-skill")
     File.mkdir_p!(Path.join([dir, "skills", "broken"]))
