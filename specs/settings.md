@@ -125,6 +125,13 @@ server is brought up to date with the trunk `master`.
   deploy buttons are (CONF-20). The section also says `#recover-note` the
   address of the recovery page (`/recover`, RECOVER-10), for when this page's
   own UI is what a deploy broke.
+- **CONF-24** The elapsed time (CONF-21) comes from the clock rather than from
+  what the runner last reported, and the page keeps it current itself: while an
+  operation runs, `#deploy-elapsed` is re-rendered about once a second, so it
+  counts on with no reload, no click and nothing new from the runner, and it
+  stops moving once the operation has ended. A page that mounts while one runs
+  (CONF-21) counts from the runner's own start time (DEPLOY-22), the same as
+  the value it renders first.
 
 ## Configuration
 

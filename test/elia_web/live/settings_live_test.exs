@@ -371,6 +371,38 @@ defmodule EliaWeb.SettingsLiveTest do
     end
   end
 
+  # CONF-24: the elapsed time the page has rendered — what the client sees,
+  # which moves only when the page renders it again.
+  defp elapsed_text(view) do
+    view
+    |> element("#deploy-elapsed")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
+  # CONF-24: the elapsed time once the page has rendered it again by itself.
+  # Nothing here sends the view an event, so the only thing that can have moved
+  # it is the tick the page scheduled; it gives back the value it started from
+  # when nothing moved it.
+  defp await_elapsed_moving(view, before, tries \\ 100) do
+    now = elapsed_text(view)
+
+    cond do
+      tries == 0 ->
+        before
+
+      now != before ->
+        now
+
+      true ->
+        Process.sleep(50)
+        await_elapsed_moving(view, before, tries - 1)
+    end
+  end
+
   # CONF-14, CONF-16
   test "shows the OpenRouter account balance and can refresh it", %{conn: conn} do
     configure(OpenRouter, api_key: "sk-or-env-1234")
@@ -787,6 +819,9 @@ defmodule EliaWeb.SettingsLiveTest do
     assert has_element?(during, "#deploy-steps", "Running the tests in the live tree")
     assert has_element?(during, "#deploy-step", "Hot reloading the running app")
     assert has_element?(during, "#deploy-elapsed")
+    # CONF-24: and it counts on by itself from there — a page that mounts while
+    # one runs has the tick that keeps the elapsed time current.
+    refute is_nil(:sys.get_state(during.pid).socket.assigns.deploy_timer)
 
     # CONF-23: going back is offered, and its controls are disabled while an
     # operation runs, the way the deploy buttons are (CONF-20).
@@ -821,6 +856,39 @@ defmodule EliaWeb.SettingsLiveTest do
     # section says what it did rather than only how it turned out.
     assert has_element?(view, "#deploy-steps", "Running the tests in the live tree")
     refute has_element?(view, "#deploy-step")
+  end
+
+  # CONF-24: the elapsed time comes from the clock, and the page keeps it
+  # current by itself while an operation runs — so it counts on with no reload,
+  # no click and nothing new from the runner — and stops once one has ended.
+  test "the elapsed time advances by itself while an operation runs", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # An operation in flight (CONF-21, DEPLOY-22), started over a minute ago, so
+    # what the section renders is the time since then rather than a fraction of
+    # a second.
+    started = DateTime.add(DateTime.utc_now(), -65, :second)
+    send(view.pid, {:deploy_started, %{mode: :reload, started: started}})
+    _ = :sys.get_state(view.pid)
+
+    assert has_element?(view, "#deploy-elapsed", "1m ")
+    # CONF-24: the page has scheduled the tick that keeps it current.
+    refute is_nil(:sys.get_state(view.pid).socket.assigns.deploy_timer)
+
+    # CONF-24: it moves with nothing sent to the page and no reload — the tick
+    # it scheduled is what renders it again.
+    before = elapsed_text(view)
+
+    assert await_elapsed_moving(view, before) != before,
+           "the elapsed time never moved: nothing re-rendered it"
+
+    # CONF-24: nothing ticks for an operation that has ended, so a page left
+    # open renders no more than it has to.
+    send(view.pid, {:deploy_finished, %{mode: :reload, result: {:ok, "done"}}})
+    _ = :sys.get_state(view.pid)
+
+    refute has_element?(view, "#deploy-elapsed")
+    assert :sys.get_state(view.pid).socket.assigns.deploy_timer == nil
   end
 
   # CONF-22, DEPLOY-23: a page that comes back after a restart deploy — whose

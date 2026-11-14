@@ -4,6 +4,10 @@ defmodule EliaWeb.SettingsLive do
   alias Elia.{Deploy, LLM, Push}
   alias Elia.LLM.LlamaServer
 
+  # CONF-24: how often the Deployment section re-renders the elapsed time while
+  # an operation runs — the resolution that text is shown at.
+  @deploy_tick :timer.seconds(1)
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -29,7 +33,15 @@ defmodule EliaWeb.SettingsLive do
         # key => :check | :save | :check_current while a request is in flight
         pending: %{},
         # key => :loading | {:ok, balance} | {:error, message}
-        balances: %{}
+        balances: %{},
+        # CONF-24: the tick that keeps the elapsed time current while an
+        # operation runs, as `Process.send_after/3` returned it — nil when
+        # nothing is scheduled.
+        deploy_timer: nil,
+        # CONF-24: the clock the section's elapsed time is read against. It is
+        # an assign because a render only recomputes what a tracked assign says
+        # has changed, so the tick moves this one.
+        now: DateTime.utc_now()
       )
       # CONF-19..CONF-23, DEPLOY-16: the Deployment section's state — what the
       # live tree needs, the operation in flight and the steps it has finished,
@@ -702,7 +714,7 @@ defmodule EliaWeb.SettingsLive do
                   <span id="deploy-step">{step_in_flight(@deploy_op)}</span>
                 </span>
                 <span id="deploy-elapsed" class="font-mono font-normal text-base-content/60">
-                  {elapsed(@deploy_op.started)}
+                  {elapsed(@deploy_op.started, @now)}
                 </span>
               </div>
               <div
@@ -1642,10 +1654,15 @@ defmodule EliaWeb.SettingsLive do
   def handle_info({:deploy_started, %{mode: mode, started: started}}, socket) do
     # CONF-21: the operation's steps belong to the runner; this page only needs
     # to know one is on, so that it shows where it is rather than the last
-    # result.
+    # result. CONF-24: and so that it counts the elapsed time from here.
     operation = Deploy.Runner.state().running || started_operation(mode, started)
 
-    {:noreply, assign(socket, deploy_op: operation, deploy_result: nil)}
+    # CONF-24: the clock comes with it, so the first elapsed time this page
+    # shows is counted from now rather than from when it last rendered.
+    {:noreply,
+     socket
+     |> assign(deploy_op: operation, deploy_result: nil, now: DateTime.utc_now())
+     |> deploy_ticker()}
   end
 
   def handle_info({:deploy_finished, _event}, socket) do
@@ -1669,6 +1686,15 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, assign(socket, server: status)}
   end
 
+  # CONF-24: the tick that keeps the elapsed time current. Nothing has changed
+  # but the clock, so this re-render is the whole point of it.
+  def handle_info(:deploy_tick, socket) do
+    # CONF-24: the clock is an assign, and a render only recomputes what a
+    # tracked assign says has changed — so the tick has to move this one for the
+    # elapsed time to be read again at all.
+    {:noreply, socket |> assign(now: DateTime.utc_now(), deploy_timer: nil) |> deploy_ticker()}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # CONF-21: a step event, applied to the operation this page is showing. A page
@@ -1687,6 +1713,26 @@ defmodule EliaWeb.SettingsLive do
     # The event carries no outcome; the runner's own copy of the step does, and
     # this page reads it once the operation has ended.
     %{operation | step: nil, steps: operation.steps ++ [%{step: step, ms: ms, status: nil}]}
+  end
+
+  # CONF-24: while an operation runs the section's elapsed time comes from the
+  # clock, so the page re-renders it about once a second rather than only when
+  # the runner reports a step. Nothing is scheduled for an idle page, a page
+  # that isn't connected yet, or twice for the same operation, and the tick
+  # stops the moment the operation ends.
+  defp deploy_ticker(socket) do
+    cond do
+      socket.assigns.deploy_op == nil -> stop_deploy_ticker(socket)
+      socket.assigns.deploy_timer -> socket
+      not connected?(socket) -> socket
+      true -> assign(socket, deploy_timer: Process.send_after(self(), :deploy_tick, @deploy_tick))
+    end
+  end
+
+  defp stop_deploy_ticker(socket) do
+    if socket.assigns.deploy_timer, do: Process.cancel_timer(socket.assigns.deploy_timer)
+
+    assign(socket, deploy_timer: nil)
   end
 
   defp started_operation(mode, started) do
@@ -1719,8 +1765,16 @@ defmodule EliaWeb.SettingsLive do
       # CONF-21: while an operation runs, the section shows where it is rather
       # than the outcome of the one before it.
       deploy_result: if(state.running, do: nil, else: last_result(last)),
-      rollback: rollback_target(deployment)
+      rollback: rollback_target(deployment),
+      # CONF-24: reading the runner also reads the clock, so what the section
+      # shows from here on is the time since that read rather than since the
+      # page last rendered for another reason.
+      now: DateTime.utc_now()
     )
+    # CONF-24: reading the state is also where the tick that keeps the elapsed
+    # time current is started or stopped, so every path that reports what the
+    # runner holds leaves the page counting — or done counting.
+    |> deploy_ticker()
   end
 
   # CONF-22, DEPLOY-23: the last operation. The runner knows the one it ran; the
@@ -1804,10 +1858,11 @@ defmodule EliaWeb.SettingsLive do
   defp step_icon({:failed, _reason}), do: "hero-x-mark"
   defp step_icon(_status), do: nil
 
-  # CONF-21: how long an operation has been running — from the runner's own
-  # start time (DEPLOY-22), so a page that mounts mid-operation says the same.
-  defp elapsed(%DateTime{} = started),
-    do: duration(DateTime.diff(DateTime.utc_now(), started, :millisecond))
+  # CONF-21, CONF-24: how long an operation has been running — from the runner's
+  # own start time (DEPLOY-22), so a page that mounts mid-operation says the
+  # same, against the clock the page holds (CONF-24).
+  defp elapsed(%DateTime{} = started, %DateTime{} = now),
+    do: duration(DateTime.diff(now, started, :millisecond))
 
   defp duration(nil), do: "—"
   defp duration(ms) when ms < 1000, do: "#{ms} ms"
