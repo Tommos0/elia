@@ -200,8 +200,19 @@ Anthropic family only. The user asked for more than the review proposed: a
 per-chat reasoning-effort row on the chat settings page (`CSET-13`), which the
 chat carries into its requests (`SESS-40`) and saves only when it has one of its
 own (`STORE-37/38`, so a chat saved before this reads as "no effort of its own"
-and no migration was needed). Still open from this finding: the lower compaction
-trigger, which nobody took.
+and no migration was needed).
+
+**The lower compaction trigger too**, 2026-11-13 (`db414ac feat: compact earlier,
+at 100k or 60% of the window (COMPACT-6, COMPACT-28)`): the trigger is
+`min(100,000, 60% of the window)` instead of `min(150,000, 80%)`, and
+`COMPACT-28`'s working set dropped from 40,000 estimated tokens to 25,000 to keep
+its quarter-of-the-budget relationship, so the ladder still has room to reach the
+50,000 target. For the 200k model the chats run on, that is 50% of the window
+rather than 75%, and a large window can no longer grow past 100,000 whatever its
+size. The cost is honest: more chats will compact — mostly by elision, with a
+summary only when the ladder cannot reach the target — and an elided file has to
+be re-read. A chat that saved its own compaction settings keeps them; one that
+never did picks the new defaults up.
 
 ## 7. Nothing records how long a step took
 
@@ -259,7 +270,6 @@ Still open:
   the single-lookup habit that 2 instructs against, the orientation tax of 3, nor
   what 5 and 6 saved. A measurement pass has to run outside a chat's jail:
   `.elia/sessions`, and so the `.timing` files, is masked inside one.
-- The lower compaction trigger from finding 6 was not taken.
 
 Landed alongside this review's proposals, but not one of them (2026-11-13): the
 worktree build cache (`BUILD-1..BUILD-6`, `d35be55`/`1f9d17a` — a chat's first
