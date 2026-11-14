@@ -36,10 +36,6 @@ defmodule Elia.Store do
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
     true = valid_id?(id)
-    File.mkdir_p!(dir())
-    path = path(id)
-    tmp = path <> ".tmp"
-
     now = DateTime.utc_now()
     chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
     chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
@@ -90,9 +86,59 @@ defmodule Elia.Store do
         _none -> chat
       end
 
-    data = :erlang.term_to_binary(chat)
+    write(id, chat)
+  end
 
-    with :ok <- File.write(tmp, data), do: File.rename(tmp, path)
+  @doc """
+  Changes some keys of a saved chat and keeps the rest of its file as it was
+  (STORE-43): `fun` gets the saved chat's map and returns the new one, and
+  `updated_at` is set to now. Writes nothing for an invalid id or a chat with
+  no file, so it never creates a chat.
+  """
+  @spec update(binary(), (map() -> map())) :: :ok | {:error, term()}
+  def update(id, fun) when is_function(fun, 1) do
+    with true <- valid_id?(id),
+         {:ok, data} <- File.read(path(id)),
+         %{} = chat <- decode(data) do
+      # STORE-11: a file older than `created_at` gets the date it would have
+      # been listed with, before this write changes its modification time.
+      chat
+      |> Map.put_new_lazy(:created_at, fn -> created_at(id) end)
+      |> fun.()
+      |> Map.put(:updated_at, DateTime.utc_now())
+      |> then(&write(id, &1))
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  # STORE-2: each write has a temporary file of its own, flushed before it is
+  # renamed into place, so saves of one chat at the same time never write into
+  # or rename away each other's. The name doesn't end in `.term`, so a file a
+  # crash leaves behind is never listed (`all_entries/0`).
+  defp write(id, chat) do
+    File.mkdir_p!(dir())
+    path = path(id)
+    tmp = "#{path}.#{System.os_time()}-#{System.unique_integer([:positive])}.tmp"
+
+    with :ok <- write_synced(tmp, :erlang.term_to_binary(chat)),
+         :ok <- File.rename(tmp, path) do
+      :ok
+    else
+      error ->
+        _ = File.rm(tmp)
+        error
+    end
+  end
+
+  defp write_synced(path, data) do
+    with {:ok, io} <- :file.open(path, [:write, :binary, :raw]) do
+      try do
+        with :ok <- :file.write(io, data), do: :file.sync(io)
+      after
+        :file.close(io)
+      end
+    end
   end
 
   @spec load(binary()) :: [Message.t()]

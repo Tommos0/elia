@@ -724,6 +724,63 @@ defmodule Elia.TasksTest do
     assert %{status: "failed"} = Store.load_task(child)
   end
 
+  # SUBTASK-32, SUBTASK-29: with the child's session gone, the watcher saves the
+  # final metadata straight to disk, and changes nothing else in the file.
+  test "the straight-to-disk save keeps the rest of the child's chat", %{parent: parent} do
+    test_pid = self()
+
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
+        fn request ->
+          if after_tools?(request) do
+            reply([Message.text("Hm.")])
+          else
+            send(test_pid, {:child_blocked, self(), active_child()})
+            receive do: (:never -> :ok)
+          end
+        end
+      )
+    )
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+    assert_receive {:child_blocked, loop, child}, 20_000
+
+    # What the child's own session would have saved over its life: the session
+    # writes nothing while its turn waits on the model, nor when it is killed.
+    compaction = %{level: 1, covered: 1, summary: "so far", pins: [], ledger: ["x"]}
+
+    :ok =
+      Store.update(child, fn chat ->
+        Map.merge(chat, %{
+          title: "The child's title",
+          compaction: compaction,
+          limits: %{max_steps: 7},
+          effort: "high",
+          done: true
+        })
+      end)
+
+    file = Path.join(Store.dir(), child <> ".term")
+    before = :erlang.binary_to_term(File.read!(file))
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, child)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    Process.exit(loop, :kill)
+    await_status(parent, :idle)
+
+    later = :erlang.binary_to_term(File.read!(file))
+    assert %{status: "failed"} = later.task
+    assert Map.drop(later, [:task, :updated_at]) == Map.drop(before, [:task, :updated_at])
+    assert later.title == "The child's title"
+    assert later.compaction == compaction
+    assert later.limits == %{max_steps: 7}
+    assert later.effort == "high"
+    assert later.done == true
+  end
+
   # SUBTASK-4, 11
   test "a second child in the same workspace is refused", %{parent: parent} do
     other = new_session()

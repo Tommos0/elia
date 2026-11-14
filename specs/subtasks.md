@@ -297,6 +297,12 @@ its own workspace; children that would share one workspace are serialized
   (SUBTASK-24), its session dies (SUBTASK-8, SUBTASK-19), or the user deletes
   the child's chat (SESS-29, SUBTASK-29).
 
+- **SUBTASK-32** The straight-to-disk save of a child's final metadata
+  (SUBTASK-29) changes only the child's `task` metadata, through
+  `Elia.Store.update/2` (STORE-43): every other key the child's file holds — its
+  messages, title, model, auto-approved tools, project, compaction state, jail,
+  limits, reasoning effort, turn and done flag — is kept as it was.
+
 ## Out of scope
 
 Read-only children (phase 5).
@@ -324,7 +330,7 @@ removed their last callers (see `specs/checkpoints.md`).)
   its commit, the child's settings and limits, the events, the child's end, the
   result, the registry, stopping a child and the watcher, `list_tasks` and
   `await_task`, the metadata — SUBTASK-1 to SUBTASK-13, SUBTASK-15 to
-  SUBTASK-21, SUBTASK-24, SUBTASK-26 to SUBTASK-31).
+  SUBTASK-21, SUBTASK-24, SUBTASK-26 to SUBTASK-32).
 - `test/elia/tasks_concurrency_test.exs` (two children at once, each in its own
   worktree — SUBTASK-2, SUBTASK-5, SUBTASK-7, SUBTASK-11, SUBTASK-16,
   SUBTASK-17, SUBTASK-21, SUBTASK-23, SUBTASK-26, SUBTASK-27, SUBTASK-31).

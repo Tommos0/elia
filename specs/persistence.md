@@ -37,8 +37,14 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `turn` | a map: the turn's `id` and `started_at`, and `resumed: true` for a turn an automatic resume started (STORE-30, RESUME-5) | while a turn is in flight | yes — the turn's end takes the entry off the file (STORE-30) |
   | `done` | `true` | only when the chat is marked done (STORE-34) | yes — a chat is open by default (STORE-34) |
 
-- **STORE-2** Writes are atomic: the data goes to a `.tmp` file, which is then
-  renamed into place.
+- **STORE-2** Writes are atomic: the data goes to a temporary file of that
+  write's own, which is flushed to disk and then renamed into place. Saves of
+  one chat that run at the same time each leave the file whole — one of them,
+  whichever renames last — and never a truncated or mixed file, nor one that
+  fails because another save renamed its temporary file away. A write that fails
+  leaves no temporary file behind, and a temporary file a crash left behind is
+  never read or listed as a chat. *Changed:* every save of a chat used to share
+  the one `<id>.term.tmp`.
 - **STORE-3** Loading a chat that is missing, unreadable or corrupt returns
   an empty history. Decoding is safe and never creates new atoms; all of
   Elia's modules are loaded first, so atoms a saved chat uses exist even
@@ -219,6 +225,12 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-24** `Elia.Store.exists?/1` reports whether a valid id has a saved
   chat file, without decoding it; it is `false` for an invalid id and for an id
   with no file.
+- **STORE-43** `Elia.Store.update/2` changes some keys of a saved chat and
+  keeps every other key the file holds as it was — the messages exactly as
+  stored, `created_at`, and each optional key of STORE-1's table — with
+  `updated_at` the moment of the update. It writes as a save does (STORE-2). For
+  an invalid id, or a chat with no file, it writes nothing and returns
+  `{:error, :not_found}`, so it never creates a chat.
 
 ### The shape, stated once
 
@@ -237,11 +249,11 @@ values a save can carry, deleting a chat, and the two tables themselves.
 
 ## Stored data
 
-Unchanged: this change is spec text and one test, and nothing that reads or
-writes `.elia/sessions/<id>.term` is touched, so the shape the table under
-STORE-1 now states is the one the code already wrote and still writes. It is
-backward compatible, with nothing to migrate: an older file loads as it did
-before, and a file written now is what an older version wrote.
+Unchanged and backward compatible, with nothing to migrate. STORE-2 changes
+only the name of the temporary file a write goes through, and STORE-43 writes
+the same keys STORE-1's table states, so an older file loads as it did before
+and a file written now is what an older version wrote. A `<id>.term.tmp` an
+older version left behind after a crash is ignored, as before.
 
 ## Implementation
 
@@ -252,7 +264,7 @@ before, and a file written now is what an older version wrote.
 - `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
   listing and the fields an entry carries, saving and loading each one, deleting
   a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
-  STORE-29, STORE-36 to STORE-38).
+  STORE-29, STORE-36 to STORE-38, STORE-43).
 - `test/elia/store_shape_test.exs` (the two tables in this spec read out of it
   and compared with what `save/3` writes and what a listed chat carries,
   STORE-40 to STORE-42).

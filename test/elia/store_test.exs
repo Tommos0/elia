@@ -162,16 +162,114 @@ defmodule Elia.StoreTest do
     end)
   end
 
-  # STORE-2: a save goes through a `.tmp` file that is renamed into place, so a
-  # reader never sees a half-written chat and no temporary file is left behind.
+  defp temp_files(id),
+    do: Store.dir() |> File.ls!() |> Enum.filter(&String.starts_with?(&1, id <> ".term."))
+
+  # STORE-2: a save goes through a temporary file that is renamed into place, so
+  # a reader never sees a half-written chat and no temporary file is left behind.
   test "a save leaves no temporary file behind" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
 
     :ok = Store.save(id, [Message.user("hi")])
 
-    refute File.exists?(Path.join(Store.dir(), id <> ".term.tmp"))
+    assert temp_files(id) == []
     assert [%Message{}] = Store.load(id)
+  end
+
+  # STORE-2: saves of one chat at the same time each have a temporary file of
+  # their own, so every one succeeds and the file is always one of them, whole.
+  test "saves of one chat at the same time never truncate or mix it" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    big = String.duplicate("x", 200_000)
+
+    results =
+      1..20
+      |> Task.async_stream(
+        fn n -> Store.save(id, [Message.user("#{n} #{big}")], title: "save #{n}") end,
+        max_concurrency: 20
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    assert Enum.all?(results, &(&1 == :ok))
+    assert temp_files(id) == []
+
+    assert [%Message{} = message] = Store.load(id)
+    "save " <> n = Store.load_title(id)
+    assert Message.text_content(message) == "#{n} #{big}"
+  end
+
+  # STORE-2: a temporary file a crash left behind — of this version's naming, or
+  # the older shared `<id>.term.tmp` — is never listed or read as a chat.
+  test "a temporary file left behind is not a chat" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    :ok = Store.save(id, [Message.user("hi")])
+
+    leftovers = [id <> ".term.tmp", id <> ".term.123-4.tmp"]
+    for name <- leftovers, do: File.write!(Path.join(Store.dir(), name), "half a chat")
+    on_exit(fn -> for name <- leftovers, do: File.rm(Path.join(Store.dir(), name)) end)
+
+    assert [%{id: ^id}] = Enum.filter(Store.list(1000), &String.starts_with?(&1.id, id))
+    assert [%Message{}] = Store.load(id)
+  end
+
+  # STORE-43: an update changes the keys it is asked to and keeps every other
+  # key of the file as it was.
+  test "an update keeps every key it doesn't change" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok =
+      Store.save(id, [Message.user("hi"), Message.user("there")],
+        model: %{provider: "openrouter", model: "vendor/m"},
+        auto_approve: ["shell"],
+        task: %{parent_id: "p", status: "running"},
+        project: "proj",
+        compaction: %{level: 1, covered: 1, summary: "s", pins: [], ledger: []},
+        jail: false,
+        limits: %{max_steps: 5},
+        effort: "high",
+        title: "Kept",
+        turn: %{id: "t1", started_at: DateTime.utc_now()},
+        done: true
+      )
+
+    read = fn -> :erlang.binary_to_term(File.read!(Path.join(Store.dir(), id <> ".term"))) end
+    before = read.()
+
+    assert :ok = Store.update(id, &Map.put(&1, :task, %{parent_id: "p", status: "done"}))
+
+    later = read.()
+    assert later.task == %{parent_id: "p", status: "done"}
+    assert Map.drop(later, [:task, :updated_at]) == Map.drop(before, [:task, :updated_at])
+    assert DateTime.compare(later.updated_at, before.updated_at) in [:gt, :eq]
+    assert temp_files(id) == []
+  end
+
+  # STORE-43, STORE-11: a file saved before `created_at` existed keeps the
+  # start date its modification time gave it.
+  test "an update of a file with no created_at keeps its start date" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    File.mkdir_p!(Store.dir())
+    path = Path.join(Store.dir(), id <> ".term")
+    File.write!(path, :erlang.term_to_binary(%{version: 1, messages: [Message.user("old")]}))
+    File.touch!(path, 1_600_000_000)
+
+    assert :ok = Store.update(id, &Map.put(&1, :title, "Old chat"))
+    assert Store.entry(id).created_at == DateTime.from_unix!(1_600_000_000)
+    assert Store.load_title(id) == "Old chat"
+  end
+
+  # STORE-43: an update never creates a chat.
+  test "an update of a chat with no file, or an invalid id, writes nothing" do
+    id = Elia.Agent.new_id()
+
+    assert Store.update(id, &Map.put(&1, :title, "x")) == {:error, :not_found}
+    refute Store.exists?(id)
+    assert Store.update("../bad", &Map.put(&1, :title, "x")) == {:error, :not_found}
   end
 
   # STORE-7, STORE-10

@@ -698,21 +698,11 @@ defmodule Elia.Tasks do
     Elia.Agent.update_task(child_id, changes)
   catch
     :exit, _ ->
-      # SUBTASK-29: a session that is gone can mean the user deleted the chat
-      # (SESS-29), and writing the metadata to disk would recreate it. Save the
-      # fallback only while the chat's file is still there.
-      if Store.exists?(child_id) do
-        Store.save(child_id, Store.load(child_id),
-          model: Store.load_model(child_id),
-          auto_approve: Store.load_auto_approve(child_id),
-          task: Map.merge(task, changes),
-          project: Store.load_project(child_id),
-          # SUBTASK-30, STORE-25: the child's own jail setting comes back too, so
-          # this rare fallback save can't silently re-jail a child whose jail the
-          # user turned off (a `true` here writes nothing).
-          jail: Store.load_jail(child_id)
-        )
-      end
+      # SUBTASK-32: only the task metadata changes; the rest of the child's file
+      # is kept as it was. SUBTASK-29: a session that is gone can mean the user
+      # deleted the chat (SESS-29), and `update/2` writes nothing for a chat with
+      # no file, so it is never recreated.
+      Store.update(child_id, &Map.put(&1, :task, Map.merge(task, changes)))
   end
 
   defp saved_status(child_id) do
