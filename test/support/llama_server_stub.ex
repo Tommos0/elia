@@ -17,6 +17,8 @@ defmodule Elia.LLM.LlamaServerStub do
   Modes other than `healthy` are passed through `extra_args`.
   """
 
+  import ExUnit.Callbacks, only: [on_exit: 1]
+
   @script """
   #!/usr/bin/env elixir
   defmodule EliaLlamaServerStub do
@@ -123,6 +125,50 @@ defmodule Elia.LLM.LlamaServerStub do
     File.chmod!(path, 0o755)
 
     path
+  end
+
+  @doc """
+  Starts the stub on `port` (a free one when none is given) as a port, as a
+  `llama-server` started outside Elia is, and registers an `on_exit` that kills
+  it. Returns `{port, os_pid}`.
+
+  Kill a stub started this way with `stop!/1`, never with
+  `Elia.Shell.kill(port_ref)`: a port is closed when the process that opened it
+  ends, and closing a port does not kill the program it started. A kill from
+  `on_exit` therefore finds no port, does nothing, and leaves the stub running —
+  where it holds a piped run's pipe open, so `mix test | tail` waits for an EOF
+  that never comes.
+  """
+  @spec start!(non_neg_integer() | nil, [binary()]) :: {non_neg_integer(), non_neg_integer()}
+  def start!(port \\ nil, args \\ ["--stub", "healthy"]) do
+    port = port || free_port()
+
+    port_ref =
+      Port.open({:spawn_executable, install!()}, [
+        :binary,
+        :exit_status,
+        :hide,
+        args: ["--port", to_string(port) | args]
+      ])
+
+    {:os_pid, os_pid} = Port.info(port_ref, :os_pid)
+    on_exit(fn -> stop!(os_pid) end)
+
+    true = wait_until(fn -> listening?(port) end, 10_000)
+    {port, os_pid}
+  end
+
+  @doc """
+  Kills a stub `start!/2` started, by pid: by the time an `on_exit` callback
+  runs the port it was started on is closed and cannot be asked for one.
+  """
+  @spec stop!(non_neg_integer()) :: :ok
+  def stop!(os_pid) do
+    # The kill `Elia.Shell.kill/1` gives a live port (SHELL-3): the group first,
+    # then the pid itself, in case the group is already gone.
+    System.cmd("kill", ["-KILL", "--", "-#{os_pid}"], stderr_to_stdout: true)
+    System.cmd("kill", ["-KILL", "#{os_pid}"], stderr_to_stdout: true)
+    :ok
   end
 
   @doc "A port nothing is listening on, for a server to be started on."

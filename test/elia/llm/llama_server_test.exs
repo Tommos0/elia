@@ -176,18 +176,7 @@ defmodule Elia.LLM.LlamaServerTest do
     # A real socket this time, not a stub: nothing may intercept the health check.
     configure(LlamaCpp, req_options: [])
 
-    port = LlamaServerStub.free_port()
-    stub = LlamaServerStub.install!()
-
-    port_ref =
-      Port.open({:spawn_executable, stub}, [
-        :binary,
-        :exit_status,
-        :hide,
-        args: ["--port", to_string(port), "--stub", "healthy"]
-      ])
-
-    on_exit(fn -> Elia.Shell.kill(port_ref) end)
+    {port, _os_pid} = LlamaServerStub.start!()
 
     assert LlamaServerStub.wait_until(fn ->
              LlamaCpp.check_base_url("http://127.0.0.1:#{port}") == :ok

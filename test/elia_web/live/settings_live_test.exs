@@ -150,8 +150,7 @@ defmodule EliaWeb.SettingsLiveTest do
   # LOCAL-24, LOCAL-3: Check asks the server without storing anything, Save
   # stores the URL the server answered on.
   test "the card's Check and Save use the server that answers", %{conn: conn} do
-    {port, port_ref} = start_stub_server()
-    on_exit(fn -> Elia.Shell.kill(port_ref) end)
+    {port, _os_pid} = start_stub_server()
     # A real socket, not Req.Test: this is the health check (LOCAL-24).
     configure(LlamaCpp, req_options: [])
 
@@ -332,24 +331,10 @@ defmodule EliaWeb.SettingsLiveTest do
   end
 
   # LOCAL-24: a stub llama-server, listening and healthy, for the tests above.
-  defp start_stub_server do
-    stub = LlamaServerStub.install!()
-    port = LlamaServerStub.free_port()
-
-    port_ref =
-      Port.open({:spawn_executable, stub}, [
-        :binary,
-        :exit_status,
-        :hide,
-        args: ["--port", to_string(port), "--stub", "healthy"]
-      ])
-
-    assert LlamaServerStub.wait_until(fn ->
-             LlamaCpp.check_base_url("http://127.0.0.1:#{port}") == :ok
-           end)
-
-    {port, port_ref}
-  end
+  # `start!/0` registers its own cleanup, and that cleanup has to be by pid: the
+  # port is closed once the test process ends, so an `on_exit` kill of the port
+  # finds nothing and leaves the stub running.
+  defp start_stub_server, do: LlamaServerStub.start!()
 
   defp model_file do
     path = Path.join(System.tmp_dir!(), "elia-settings-model.gguf")
