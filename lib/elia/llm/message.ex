@@ -36,6 +36,26 @@ defmodule Elia.LLM.Message do
       meta: %{harness: true}
     }
 
+  @doc """
+  The moment the chat appended this message, as a `DateTime` in UTC, or `nil`
+  for a message that carries none — one saved before stamps existed (MSGAT-3).
+  """
+  @spec at(t()) :: DateTime.t() | nil
+  def at(%__MODULE__{meta: meta}), do: Map.get(meta, :at)
+
+  @doc """
+  Stamps the message with the moment it is appended to a chat's history, in its
+  `meta`, which a provider is never sent (MSGAT-1, LLM-5). A message that already
+  carries a stamp keeps it (MSGAT-2).
+  """
+  @spec stamp(t()) :: t()
+  def stamp(%__MODULE__{meta: meta} = message) do
+    case Map.get(meta, :at) do
+      %DateTime{} -> message
+      _none -> %{message | meta: Map.put(meta, :at, DateTime.utc_now())}
+    end
+  end
+
   def text(text), do: %{type: :text, text: text}
 
   def tool_result(tool_call_id, content, is_error \\ false) do

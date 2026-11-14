@@ -187,6 +187,17 @@ defmodule Elia.PreviewTest do
       assert Enum.count(results, &(not &1.is_error)) == 3
     end
 
+    # MSGAT-9: each message carries the moment it arrived, oldest first, so a
+    # picture of the chat shows the times the transcript puts under its items.
+    test "carries a stamp on every message" do
+      assert Preview.seed() == :ok
+
+      stamps = Preview.sample_id() |> Elia.Store.load() |> Enum.map(&Elia.LLM.Message.at/1)
+      assert length(stamps) == length(Preview.sample_messages())
+      assert Enum.all?(stamps, &match?(%DateTime{}, &1))
+      assert stamps == Enum.sort(stamps, DateTime)
+    end
+
     # PREVIEW-10, TITLE-1: it is a named chat, so a preview shows the title a
     # chat the agent named shows.
     test "carries a title of its own, set by its own set_title call" do

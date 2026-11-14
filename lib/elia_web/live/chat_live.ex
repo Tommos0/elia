@@ -129,6 +129,10 @@ defmodule EliaWeb.ChatLive do
         parent_title: parent_title(snapshot.task),
         chats_open: false,
         now: DateTime.utc_now(),
+        # MSGAT-6: the transcript items that carry a stamp, by id, so the tick
+        # can send one again when its relative text has moved on — a streamed
+        # item is only re-rendered when it is sent again.
+        timed_items: %{},
         selection: LLM.selection(snapshot.selection),
         # CSET-9: the chat page names the jail setting (ISOL-16) and whether
         # the host has one at all (ISOL-12, ISOL-20); the switch itself is on
@@ -356,7 +360,15 @@ defmodule EliaWeb.ChatLive do
                   >
                     <.item item={item} jail={@jail} links={@links} />
                   </div>
-                  <.item_meta :if={!@compact_view and Map.get(item, :request_status)} item={item} />
+                  <%!-- MSGAT-5, MSGAT-7: when this item was added, in relative
+                  form, under it — with the request annotation it may carry. --%>
+                  <div
+                    :if={Map.get(item, :at) || (!@compact_view && Map.get(item, :request_status))}
+                    class={["mt-1 flex items-center gap-2", item.kind == :user && "justify-end"]}
+                  >
+                    <.item_time id={"at-#{item.id}"} at={Map.get(item, :at)} now={@now} />
+                    <.item_meta :if={!@compact_view and Map.get(item, :request_status)} item={item} />
+                  </div>
                 </div>
               </div>
 
@@ -1506,6 +1518,28 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
+  attr :id, :string, required: true
+  attr :at, :any, default: nil
+  attr :now, :any, required: true
+
+  # MSGAT-5, MSGAT-6: when an item was added, small and dim, in relative form
+  # with the exact moment on hover; `now` is the page's tick, so the text keeps
+  # up with the clock. An item with no stamp shows nothing (MSGAT-7).
+  defp item_time(%{at: %DateTime{}} = assigns) do
+    ~H"""
+    <time
+      id={@id}
+      datetime={DateTime.to_iso8601(@at)}
+      title={Calendar.strftime(@at, "%Y-%m-%d %H:%M:%S UTC")}
+      class="shrink-0 text-[11px] tabular-nums text-base-content/40"
+    >
+      {EliaWeb.TimeAgo.format(@at, @now)}
+    </time>
+    """
+  end
+
+  defp item_time(assigns), do: ~H""
+
   attr :item, :map, required: true
 
   # COMPACT-25: what the model was sent of this item. The
@@ -1519,7 +1553,7 @@ defmodule EliaWeb.ChatLive do
       |> assign(:pinned, Map.get(assigns.item, :pinned, false))
 
     ~H"""
-    <div class="mt-1 flex items-center gap-2 text-[11px]">
+    <div class="flex items-center gap-2 text-[11px]">
       <span
         :if={@label}
         id={"status-#{@id}"}
@@ -1891,10 +1925,13 @@ defmodule EliaWeb.ChatLive do
     end
   end
 
-  # Keeps the sidebar's relative times current (UI-34).
+  # Keeps the sidebar's relative times current (UI-34) and the transcript's item
+  # times too (MSGAT-6), by sending again the items whose text has moved on.
   def handle_info(:tick_now, socket) do
     Process.send_after(self(), :tick_now, 60_000)
-    {:noreply, assign(socket, now: DateTime.utc_now())}
+    now = DateTime.utc_now()
+
+    {:noreply, socket |> refresh_item_times(socket.assigns.now, now) |> assign(now: now)}
   end
 
   # UI-62: while a turn runs, refresh the compact view's "working on" summary
@@ -2115,8 +2152,14 @@ defmodule EliaWeb.ChatLive do
   # the session writes the stop into the transcript first (STOP-1), and that
   # message is the row, so a stop reads once (UI-82, STOP-4).
   defp apply_event({:notice, text}, socket) do
-    item = %{id: "notice-#{System.unique_integer([:positive])}", kind: :notice, text: text}
-    stream_insert(socket, :items, item)
+    item = %{
+      id: "notice-#{System.unique_integer([:positive])}",
+      kind: :notice,
+      text: text,
+      at: DateTime.utc_now()
+    }
+
+    put_item(socket, item)
   end
 
   defp apply_event({:error, _text}, socket), do: socket
@@ -2127,8 +2170,15 @@ defmodule EliaWeb.ChatLive do
   # written to the transcript and the turn keeps running.
   defp apply_event({:retry, info}, socket) do
     socket = assign(socket, draft: "", draft_reasoning: "", activity: nil)
-    item = %{id: "notice-#{System.unique_integer([:positive])}", kind: :notice, text: info.text}
-    stream_insert(socket, :items, item)
+
+    item = %{
+      id: "notice-#{System.unique_integer([:positive])}",
+      kind: :notice,
+      text: info.text,
+      at: DateTime.utc_now()
+    }
+
+    put_item(socket, item)
   end
 
   defp apply_event({:reset, messages}, socket) do
@@ -2338,7 +2388,7 @@ defmodule EliaWeb.ChatLive do
 
     socket =
       socket
-      |> assign(calls: %{}, view: view, context_elided: view.elided)
+      |> assign(calls: %{}, view: view, context_elided: view.elided, timed_items: %{})
       |> stream(:items, [], reset: true)
 
     socket =
@@ -2360,7 +2410,7 @@ defmodule EliaWeb.ChatLive do
     with %Compaction{summary: summary, folded: folded} <- socket.assigns.compaction,
          true <- is_binary(summary) and String.trim(summary) != "",
          true <- index == folded or (index == count and folded >= count) do
-      stream_insert(socket, :items, %{
+      put_item(socket, %{
         id: "compaction-summary",
         kind: :summary,
         text: summary
@@ -2389,7 +2439,13 @@ defmodule EliaWeb.ChatLive do
 
     stream_item(
       socket,
-      %{id: "m#{index}", kind: kind, text: Message.text_content(message), index: index},
+      %{
+        id: "m#{index}",
+        kind: kind,
+        text: Message.text_content(message),
+        index: index,
+        at: Message.at(message)
+      },
       status
     )
   end
@@ -2397,7 +2453,13 @@ defmodule EliaWeb.ChatLive do
   defp insert_message(socket, %Message{role: :user} = message, index, status) do
     stream_item(
       socket,
-      %{id: "m#{index}", kind: :user, text: Message.text_content(message), index: index},
+      %{
+        id: "m#{index}",
+        kind: :user,
+        text: Message.text_content(message),
+        index: index,
+        at: Message.at(message)
+      },
       status
     )
   end
@@ -2435,14 +2497,26 @@ defmodule EliaWeb.ChatLive do
     end)
   end
 
-  defp insert_message(socket, %Message{role: :assistant, content: content}, index, status) do
+  defp insert_message(
+         socket,
+         %Message{role: :assistant, content: content} = message,
+         index,
+         status
+       ) do
     content
     |> Enum.with_index()
     |> Enum.reduce(socket, fn
       {%{type: :text, text: text}, i}, socket when text != "" ->
         stream_item(
           socket,
-          %{id: "m#{index}-#{i}", kind: :assistant, text: text, index: index, block: i},
+          %{
+            id: "m#{index}-#{i}",
+            kind: :assistant,
+            text: text,
+            index: index,
+            block: i,
+            at: Message.at(message)
+          },
           status,
           i
         )
@@ -2450,7 +2524,14 @@ defmodule EliaWeb.ChatLive do
       {%{type: :reasoning, text: text}, i}, socket when text != "" ->
         stream_item(
           socket,
-          %{id: "m#{index}-#{i}", kind: :reasoning, text: text, index: index, block: i},
+          %{
+            id: "m#{index}-#{i}",
+            kind: :reasoning,
+            text: text,
+            index: index,
+            block: i,
+            at: Message.at(message)
+          },
           status,
           i
         )
@@ -2469,7 +2550,8 @@ defmodule EliaWeb.ChatLive do
               task: task_card(socket, call.id),
               status: Map.get(socket.assigns.tool_status, call.id, :pending),
               output: nil,
-              is_error: false
+              is_error: false,
+              at: Message.at(message)
             },
             status,
             i,
@@ -2485,10 +2567,43 @@ defmodule EliaWeb.ChatLive do
 
   defp stream_item(socket, item, status, block \\ nil) do
     if visible?(socket.assigns.compact_view, item) do
-      stream_insert(socket, :items, annotate(item, status, block, socket.assigns.compaction))
+      put_item(socket, annotate(item, status, block, socket.assigns.compaction))
     else
       socket
     end
+  end
+
+  # MSGAT-6: an item that carries a stamp is kept by id, so the tick can send it
+  # again once its relative text has moved on; every later version of it —
+  # a card that gained its output, say — replaces what is kept here, so the tick
+  # never puts an older item back.
+  defp put_item(socket, item) do
+    socket
+    |> track_item(item)
+    |> stream_insert(:items, item)
+  end
+
+  defp track_item(socket, item) do
+    if Map.get(item, :at) || Map.has_key?(socket.assigns.timed_items, item.id),
+      do: assign(socket, timed_items: Map.put(socket.assigns.timed_items, item.id, item)),
+      else: socket
+  end
+
+  # MSGAT-6, UI-34: an item whose relative text has changed since the page last
+  # rendered is sent again, so the transcript keeps up with the clock; an item
+  # whose text reads the same is left alone.
+  defp refresh_item_times(socket, was, now) do
+    Enum.reduce(socket.assigns.timed_items, socket, fn {_id, item}, socket ->
+      case Map.get(item, :at) do
+        %DateTime{} = at ->
+          if EliaWeb.TimeAgo.format(at, was) == EliaWeb.TimeAgo.format(at, now),
+            do: socket,
+            else: put_item(socket, item)
+
+        _none ->
+          socket
+      end
+    end)
   end
 
   # UI-61: the compact view keeps the direct messages and hides tool calls and
@@ -2527,7 +2642,7 @@ defmodule EliaWeb.ChatLive do
     # UI-61: the card is still tracked in `calls`, but a compact view doesn't
     # render it.
     if visible?(socket.assigns.compact_view, call),
-      do: stream_insert(socket, :items, call),
+      do: put_item(socket, call),
       else: socket
   end
 end

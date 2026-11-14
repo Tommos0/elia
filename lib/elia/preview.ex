@@ -220,9 +220,13 @@ defmodule Elia.Preview do
   @spec sample_messages() :: [Message.t()]
   def sample_messages do
     [
-      Message.user("What does a chat look like once it has done some work?"),
+      %{
+        Message.user("What does a chat look like once it has done some work?")
+        | meta: %{at: minutes_ago(12)}
+      },
       %Message{
         role: :assistant,
+        meta: %{at: minutes_ago(11)},
         content: [
           %{
             type: :reasoning,
@@ -260,6 +264,7 @@ defmodule Elia.Preview do
       },
       %Message{
         role: :tool,
+        meta: %{at: minutes_ago(10)},
         content: [
           Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
           Message.tool_result(
@@ -276,12 +281,18 @@ defmodule Elia.Preview do
       },
       %Message{
         role: :assistant,
+        meta: %{at: minutes_ago(9)},
         content: [
           Message.text("The suite passes. Nothing is pushed: there is no upstream branch yet.")
         ]
       }
     ]
   end
+
+  # MSGAT-9: the sample chat carries stamps, so a picture of a chat shows the
+  # times the transcript puts under each item.
+  defp minutes_ago(minutes),
+    do: DateTime.add(DateTime.utc_now(), -minutes * 60, :second)
 
   defp markdown do
     """

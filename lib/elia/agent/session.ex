@@ -922,6 +922,9 @@ defmodule Elia.Agent.Session do
   defp append(state, %Message{content: []}), do: state
 
   defp append(state, message) do
+    # MSGAT-2: the one place a message is stamped as it enters the history, so
+    # the item the page is told about and the message saved carry the same moment.
+    message = Message.stamp(message)
     broadcast(state, {:message, message})
 
     state = %{state | messages: state.messages ++ [message]}
