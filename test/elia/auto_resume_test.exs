@@ -13,15 +13,33 @@ defmodule Elia.AutoResumeTest do
     {_, 0} = git(["commit", "-q", "--allow-empty", "-m", "start"])
     {head, 0} = git(["rev-parse", "HEAD"])
 
+    # SUITE-10: the boot scan reads a store of this test's own, so it resumes
+    # only the chats this test saved and never one another test left behind in
+    # the store the suite shares. The workspace stays the shared scratch one:
+    # only Elia's data (PROJ-13) moves.
+    shared = Elia.Workspace.runtime_root()
+    data = Path.join(System.tmp_dir!(), "elia-resume-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(data)
+    previous = Application.get_env(:elia, :runtime_root)
+    Application.put_env(:elia, :runtime_root, data)
+
     start_supervised!(FakeLLM)
 
     on_exit(fn ->
       File.rm(Path.join(root, ".gitignore"))
       git(["update-ref", "-d", "HEAD"])
       git(["rm", "-r", "--cached", "-q", "-f", "."])
+
+      if previous do
+        Application.put_env(:elia, :runtime_root, previous)
+      else
+        Application.delete_env(:elia, :runtime_root)
+      end
+
+      File.rm_rf(data)
     end)
 
-    %{start_commit: String.trim(head)}
+    %{start_commit: String.trim(head), shared_root: shared}
   end
 
   ## Helpers
@@ -66,6 +84,26 @@ defmodule Elia.AutoResumeTest do
     :ok = Store.save(id, messages, Keyword.merge([turn: turn], Keyword.drop(opts, [:turn])))
     on_exit(fn -> Store.delete(id) end)
     :ok
+  end
+
+  # SUITE-10: saves a chat into the store the suite shares — the one this test's
+  # scan must not read — rather than into the store this test's scan runs
+  # against.
+  defp save_elsewhere(shared_root, id, messages, opts) do
+    here = Application.get_env(:elia, :runtime_root)
+    Application.put_env(:elia, :runtime_root, shared_root)
+
+    try do
+      :ok = Store.save(id, messages, opts)
+      dir = Store.dir()
+      on_exit(fn -> File.rm(Path.join(dir, id <> ".term")) end)
+    after
+      if here do
+        Application.put_env(:elia, :runtime_root, here)
+      else
+        Application.delete_env(:elia, :runtime_root)
+      end
+    end
   end
 
   defp git(args) do
@@ -117,6 +155,26 @@ defmodule Elia.AutoResumeTest do
     assert Agent.live?(parent)
     assert Agent.live?(child)
     refute Agent.live?(untouched)
+  end
+
+  # SUITE-10
+  test "the scan reads a store of this test's own, so another test's chat is left alone", %{
+    shared_root: shared_root
+  } do
+    resume_on()
+
+    # A chat another test left behind in the store the suite shares, with the
+    # turn record a restart leaves on it (STORE-30, INTR-2).
+    other = Agent.new_id()
+    turn = %{id: "turn-1", started_at: DateTime.utc_now()}
+    :ok = save_elsewhere(shared_root, other, [Message.user("left behind")], turn: turn)
+    refute Agent.live?(other)
+
+    # SUITE-10: the scan read this test's own store, so the chat got no session
+    # and stays interrupted — where a scan of the shared store would have
+    # resumed it and started a session that outlives this test.
+    assert :ok = Elia.Agent.Resumer.resume_interrupted()
+    refute Agent.live?(other)
   end
 
   # RESUME-1

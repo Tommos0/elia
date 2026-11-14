@@ -39,8 +39,8 @@ it asked for and got last stays in front of it (COMPACT-32).
 Elision is a matter of what pays: replacing a small item with a note saves almost
 nothing and loses something the model may still need, while a big stale tool dump
 is worth its weight. So a rung takes its largest items first and stops as soon as
-the target is met (COMPACT-35), and an item below the size floor is left for last
-(COMPACT-34).
+the target is met (COMPACT-37), and an item below the size floor is left for last
+(COMPACT-36).
 
 ## Requirements
 
@@ -127,9 +127,9 @@ the target is met (COMPACT-35), and an item below the size floor is left for las
 Compaction elides the cold prefix (the turns older than the working set),
 stopping as soon as the estimate is at or below the target (COMPACT-8). The
 order is a composition of three rules: the items at or above the size floor
-before any item below it (COMPACT-34); within a tier, the rungs below in the
+before any item below it (COMPACT-36); within a tier, the rungs below in the
 order they are given (COMPACT-14, COMPACT-15, COMPACT-16); and within a rung,
-the largest items first (COMPACT-35). A rung therefore takes a few big items
+the largest items first (COMPACT-37). A rung therefore takes a few big items
 where it once took every one of them.
 
 - **COMPACT-14** First, **reasoning blocks** in the cold prefix are elided (they
@@ -144,18 +144,18 @@ where it once took every one of them.
 - **COMPACT-16** Then whole old **steps** — an assistant message with its text
   and calls, and the tool results answering them — are dropped together, never a
   call without its result (COMPACT-4).
-- **COMPACT-34** An item of fewer than `elide_floor` estimated tokens (1,000 by
+- **COMPACT-36** An item of fewer than `elide_floor` estimated tokens (1,000 by
   default, an option like the others, COMPACT-9) is elided only when the items at
-  or above the floor do not reach the target (COMPACT-35).
-- **COMPACT-35** A pass takes its items largest first (COMPACT-14..16,
-  COMPACT-34) and stops as soon as the estimate (CTX-1) is at or below the
+  or above the floor do not reach the target (COMPACT-37).
+- **COMPACT-37** A pass takes its items largest first (COMPACT-14..16,
+  COMPACT-36) and stops as soon as the estimate (CTX-1) is at or below the
   target, so it elides no more than reaching the target needs.
-- **COMPACT-36** The items a pass elided are recorded in the chat's compaction
+- **COMPACT-38** The items a pass elided are recorded in the chat's compaction
   state (COMPACT-24), and a later pass adds to them rather than deriving them
   again, so nothing a pass elided comes back (COMPACT-12, COMPACT-33).
-- **COMPACT-37** A turn that ages out of the working set is not elided by aging
+- **COMPACT-39** A turn that ages out of the working set is not elided by aging
   out: its items become eligible for a pass (COMPACT-14..16, COMPACT-31) and are
-  elided only when a pass needs them (COMPACT-35).
+  elided only when a pass needs them (COMPACT-37).
 
 ### Within a turn
 
@@ -169,7 +169,7 @@ where it once took every one of them.
   valid (COMPACT-4, COMPACT-5). The pass is **elision only**: it may take the
   ladder (COMPACT-14, COMPACT-15, COMPACT-16) deeper towards the target
   (COMPACT-8), adding to what the chat has already elided — the ladder never
-  moves back up (COMPACT-12, COMPACT-36) — but it never folds a summary
+  moves back up (COMPACT-12, COMPACT-38) — but it never folds a summary
   (COMPACT-17), so no model call happens inside a step, and a ladder that cannot
   reach the target leaves the pruned view and no error (COMPACT-20). What it is
   measured against is the view's tokens plus the request's overhead (CTX-1): at
@@ -184,7 +184,7 @@ where it once took every one of them.
 
 - **COMPACT-31** The turn being run is cold up to its most recent step: a pass
   (COMPACT-29) elides the machinery of that turn's own older steps — the ones
-  COMPACT-34 and COMPACT-35 select — when the view is over the trigger
+  COMPACT-36 and COMPACT-37 select — when the view is over the trigger
   (COMPACT-6, COMPACT-29), and the manual action's pass (COMPACT-10) elides them
   too, at the depth it takes, since no turn is running then and the chat's last
   turn stands where the turn being run does.
@@ -226,6 +226,18 @@ where it once took every one of them.
   exact facts — file paths, decisions, requirement IDs, open questions — kept
   verbatim and sent in the request view. It is append-and-trim only, never
   re-summarized, so the identifiers that matter survive folding.
+- **COMPACT-34** The ledger is kept current **as the work happens**, not at the
+  end of it: the `update_ledger` tool's description and the `harness` skill's
+  instructions (SKILL-7, PROJ-16) tell the model to append a line for each
+  decision, file path or open question as it makes it — before the step that
+  produced it ages out of the working set (COMPACT-12) and its reasoning is
+  dropped (COMPACT-14), which is the first thing the ladder takes. Both are
+  re-read at every step (LOOP-1), so the guidance is there mid-turn and not only
+  at the turn's start.
+- **COMPACT-35** Trimming the ledger keeps its oldest entries as well as its
+  newest: the newest fill the character cap, and the oldest are kept beyond it
+  up to a smaller founding cap, so a chat that writes a line per step does not
+  push out the decisions it was founded on.
 - **COMPACT-23** The request view carries an explicit marker naming how much was
   elided and telling the model to re-read or re-run rather than rely on memory,
   so silent loss becomes a knowable gap.
@@ -233,7 +245,7 @@ where it once took every one of them.
 ### State and the UI
 
 - **COMPACT-24** The summary, the ledger, the pin set, what the ladder elided
-  (COMPACT-36) and the aged-out marker are saved with the conversation (STORE)
+  (COMPACT-38) and the aged-out marker are saved with the conversation (STORE)
   and reloaded on restart, so a restart neither re-summarizes nor loses pins.
 - **COMPACT-25** The transcript annotates each message and block with its
   request-view status — **Sent**, **Truncated** (with the elided amount and a
@@ -263,7 +275,7 @@ where it once took every one of them.
 ## Configuration
 
 `config :elia, Elia.LLM.Compaction` holds the defaults every chat starts from,
-the size floor among them (`elide_floor`, 1,000 tokens, COMPACT-34). A chat can
+the size floor among them (`elide_floor`, 1,000 tokens, COMPACT-36). A chat can
 override any of them (`Elia.Agent.set_compaction/2`, COMPACT-9); the chat
 settings page sets the budget, the fraction, the target and the working set
 (COMPACT-30).
@@ -278,13 +290,16 @@ settings page sets the budget, the fraction, the target and the working set
 ## Stored data
 
 The chat's compaction state is saved with the conversation and reloaded on
-restart (COMPACT-24): the items the ladder elided (COMPACT-36) and how far the
+restart (COMPACT-24): the items the ladder elided (COMPACT-38) and how far the
 rung inside the turn being run went (COMPACT-33) are part of it. The change is
 **backward compatible**: a state saved before the item list existed keeps the
 elision its own level and boundaries describe — the ladder materialises those
 items when the chat loads, so nothing a chat had elided comes back — and a build
 that does not know a field ignores it (`from_map/1` reads the fields it knows),
-so no migration is needed.
+so no migration is needed. Keeping the ledger current (COMPACT-34) and the
+founding entries its trim keeps (COMPACT-35) add no stored field either: the
+ledger is still a list of strings and the guidance is prompt text, so there is
+nothing to migrate.
 
 ## Implementation
 
@@ -297,8 +312,14 @@ COMPACT-29), `Elia.Store` (saving the summary, ledger and pins),
 (annotations, the summary notice, "compact now"),
 `EliaWeb.ChatSettingsLive` (this chat's compaction options, COMPACT-30).
 
+The guidance that keeps the ledger current is prompt text and lives with the
+tool it describes: the `update_ledger` description and
+`Elia.Skills.Harness.instructions/0` (COMPACT-34), both re-read at every step
+(LOOP-1). The founding cap the trim keeps is `Elia.LLM.Compaction.trim_ledger/1`
+(COMPACT-35).
+
 The state the session keeps per chat (`Elia.LLM.Compaction.t/0`) is the **items
-the ladder elided** (COMPACT-36) — `{message index, block index | nil}`, a block
+the ladder elided** (COMPACT-38) — `{message index, block index | nil}`, a block
 for a reasoning block or a tool result and the message for a whole step — a
 `level` (how far down the ladder the chat has gone), the `covered` index the cold
 region ended at last time (the aged-out marker), the `folded` index the summary
@@ -308,7 +329,7 @@ option overrides and how far the turn being run has been elided inside itself
 plus the user-message cap (COMPACT-11): the cold prefix's items are eligible
 before `covered`, the turn being run's own older steps up to its most recent one
 (COMPACT-32), and the ladder never moves back up — the list only grows
-(COMPACT-12, COMPACT-36).
+(COMPACT-12, COMPACT-38).
 
 The cold prefix starts where the working set does, and
 `Elia.LLM.Compaction.working_set_start/2` finds it: the last `working_set`
@@ -321,10 +342,10 @@ uncompactable.
 
 A pass collects the items it may take — the eligible reasoning blocks and tool
 results, and, in the cold prefix, whole steps with the results answering their
-calls (COMPACT-4) — and takes them in the order COMPACT-34 and COMPACT-35 give:
+calls (COMPACT-4) — and takes them in the order COMPACT-36 and COMPACT-37 give:
 floor tier, then rung, then size, largest first, one at a time until the estimate
 is at or below the target. What it took is added to the state's item list
-(COMPACT-36), so the cost is a sort and one estimate per item rather than a
+(COMPACT-38), so the cost is a sort and one estimate per item rather than a
 re-derivation of the view for each one.
 
 Two things are deliberately not literal, and the code is where the choice
@@ -350,19 +371,24 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 ## Tests
 
 - `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
-  boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
+  boundary safety, bounded folding, pinning, the ledger's cap and the founding
+  entries it keeps past it, the elision-only `trim/3` and its
   stopping point, the rung inside the turn being run, the size floor and the
   largest-first selection, and a state saved before the item list existed —
   COMPACT-1 to COMPACT-8, COMPACT-11 to COMPACT-18, COMPACT-20, COMPACT-23,
-  COMPACT-25, COMPACT-29, COMPACT-31 to COMPACT-37).
+  COMPACT-25, COMPACT-29, COMPACT-31 to COMPACT-33, COMPACT-35 to COMPACT-39).
+- `test/elia/skills/harness_test.exs` (the guidance that keeps the ledger
+  current, in the tool's description and the skill's instructions —
+  COMPACT-34).
 - `test/elia/agent_test.exs` (the state, its persistence, the trigger, the
-  manual action, the ledger, the working set a turn keeps, and the mid-turn pass
-  end to end: a later request smaller than an earlier one, the most recent step
-  of the turn being run sent in full, a chat whose whole history is one turn
-  compacted while its turn runs, the `{:compaction, state}` broadcast before the
-  turn ends — COMPACT-1, COMPACT-2, COMPACT-5 to COMPACT-7, COMPACT-9,
-  COMPACT-10, COMPACT-17 to COMPACT-24, COMPACT-26, COMPACT-28, COMPACT-29,
-  COMPACT-31 to COMPACT-33).
+  manual action, the ledger, the working set a turn keeps, a state saved before
+  the item list existed, and the mid-turn pass end to end: a later request
+  smaller than an earlier one, the most recent step of the turn being run sent
+  in full, a chat whose whole history is one turn compacted while its turn runs,
+  the `{:compaction, state}` broadcast before the turn ends — COMPACT-1,
+  COMPACT-2, COMPACT-5 to COMPACT-7, COMPACT-9, COMPACT-10, COMPACT-17 to
+  COMPACT-24, COMPACT-26, COMPACT-28, COMPACT-29, COMPACT-31 to COMPACT-33,
+  COMPACT-38).
 - `test/elia_web/live/compaction_test.exs` (the annotations, the notice, the
   estimate, the pin, the aged-out marker, "compact now" — COMPACT-1, COMPACT-4,
   COMPACT-9 to COMPACT-11, COMPACT-14 to COMPACT-16, COMPACT-19, COMPACT-24 to

@@ -54,6 +54,21 @@ machines that have spare cores, without weakening a single test.
   compile, which is what a path or tag argument to `mix test` gets, and what the
   deploy's own suite run is (VERIFY-1).
 
+- **SUITE-9** A test's scripted provider (`Elia.FakeLLM`) serves only the chats
+  of the test that started it: a model call from a chat whose session was
+  already running when that provider started is refused with an error that ends
+  that turn (not a transient one, RETRY-1) and takes no scripted turn out of the
+  queue. A session that outlived the test that scripted its provider therefore
+  cannot take a turn another test scripted, which is how a test saw a tool call
+  it scripted come back as the reply after it instead of an approval request.
+
+- **SUITE-10** A test that runs the boot scan (RESUME-6) runs it against a
+  scratch store of its own, so it resumes only the chats that test saved: a chat
+  another test left behind in the shared scratch store gets no session and stays
+  interrupted. Without that, the scan is the one place in the suite that starts
+  sessions for chats it did not save — and a session it starts for another
+  test's chat outlives that test and posts into the fake provider.
+
 ## Configuration
 
 | Env var | Meaning | Default |
@@ -66,7 +81,12 @@ machines that have spare cores, without weakening a single test.
 | `ELIA_TEST_CMD` | Command a partition runs, for the script's own tests | `mix test` |
 
 A partition's state lives under `<tmp>/elia-test-p<n>/`, which each partition's
-`test_helper.exs` clears as it starts (it already does for the single run).
+`test_helper.exs` clears as it starts (it already does for the single run). A
+run the harness starts itself — the deploy's suite run — needs no variable: it
+is a jailed single run (VERIFY-1, ISOL-14) and the jail mounts its own tmpfs
+`/tmp` (ISOL-2), so its scratch workspace, settings database and temp directory
+are already its own, and a `mix test` or `bin/test` on the same machine cannot
+clear them mid-run.
 
 ## Tests
 
@@ -77,10 +97,18 @@ A partition's state lives under `<tmp>/elia-test-p<n>/`, which each partition's
 - SUITE-6, SUITE-7 and SUITE-8 are covered by running `bin/test` on a one-file
   argument and reading what it prints (SUITE-6, SUITE-7), and by asserting the
   `precommit` alias (SUITE-8).
+- `test/elia/fake_llm_test.exs` covers SUITE-9: a session started before the
+  test's provider is refused, and the turn the test scripted is still there for
+  the chat the test started.
+- `test/elia/auto_resume_test.exs` covers SUITE-10: a chat saved in the shared
+  scratch store is not resumed by the test that runs the scan.
 
 ## Implementation
 
 - `bin/test` — the runner (POSIX `sh`, like `bin/serve`).
 - `config/test.exs` — the env-overridable paths and port (SUITE-1).
 - `mix.exs` — the `precommit` alias's test step (SUITE-8).
+- `test/support/fake_llm.ex` — which chats the scripted provider serves
+  (SUITE-9).
+- `test/elia/auto_resume_test.exs` — the store the scan runs against (SUITE-10).
 - `docs/agents/testing.md` — how to run the suite, and why.

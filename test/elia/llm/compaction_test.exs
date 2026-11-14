@@ -1255,12 +1255,33 @@ defmodule Elia.LLM.CompactionTest do
     assert Message.text_content(ledger) =~ "lib/elia/llm/compaction.ex"
   end
 
-  # COMPACT-22
+  # COMPACT-22, COMPACT-35
   test "the ledger is trimmed, not re-summarized, past its cap" do
     state = Enum.reduce(1..300, %Compaction{}, &Compaction.add_ledger(&2, "entry #{&1}"))
 
-    assert length(state.ledger) <= 200
     assert List.last(state.ledger) == "entry 300"
+
+    # COMPACT-35: the newest entries fill the cap and the founding ones are kept
+    # beyond it, so writing a line per step does not push out what the chat was
+    # founded on.
+    assert Enum.take(state.ledger, 10) == Enum.map(1..10, &"entry #{&1}")
+    assert length(state.ledger) <= 210
+  end
+
+  # COMPACT-35
+  test "the founding entries are kept up to their own, smaller cap" do
+    entry = fn i -> "#{i}:" <> String.duplicate("x", 500) end
+    state = Enum.reduce(1..300, %Compaction{}, &Compaction.add_ledger(&2, entry.(&1)))
+
+    # 502 characters each: the founding cap holds three of them, and the middle
+    # entries are the ones that fall off.
+    assert Enum.take(state.ledger, 3) == Enum.map(1..3, &entry.(&1))
+    refute entry.(4) in state.ledger
+    assert length(state.ledger) <= 203
+
+    # The first entry stays however long it is, as the newest one does.
+    huge = String.duplicate("y", 30_000)
+    assert Compaction.add_ledger(%Compaction{}, [huge]).ledger == [huge]
   end
 
   # COMPACT-23
