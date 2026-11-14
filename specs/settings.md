@@ -144,9 +144,10 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   loads: only its header is shown — an icon, the section's title, a one-line
   description and a chevron — and clicking that header expands the section and
   collapses it again, without a round trip to the server. Nothing about the
-  open state is stored or sent, so every load — a reload, a reconnect, a page
-  that comes back after a restart deploy (CONF-22) — starts with all four
-  collapsed.
+  open state is stored or sent, so every load — a reload, a page that comes
+  back after a restart deploy (CONF-22) — starts with all four collapsed, and
+  what a re-render the user did not ask for leaves is the browser's own state
+  (CONF-27).
 - **CONF-26** What a collapsed section holds is in the page all the same, so
   its controls keep their ids (CONF-9–CONF-11, CONF-17, CONF-19, PUSH-2–PUSH-8)
   and their state: a check that is running, a deploy in flight and the push
@@ -154,6 +155,12 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   the section is expanded, and expanding one after something happened in it
   shows it as it is. The settings database location (CONF-12) stays outside the
   sections and is always visible.
+- **CONF-27** A section keeps the open or collapsed state the user gave it while
+  the page the server renders is patched: the open state belongs to the browser
+  (CONF-25), so a re-render the user did not ask for — the elapsed-time tick of
+  a running operation (CONF-24), the local model server's own status (LOCAL-26),
+  the re-render a reconnect leaves behind — changes nothing about it, and only
+  the section's own header expands or collapses it.
 
 ## Configuration
 
@@ -173,7 +180,9 @@ Tests use a scratch file under the system temp directory.
 `Elia.Settings`, `Elia.LLM` (`api_key/1`, `check_key/2`, `save_key/2`,
 `delete_key/1`, `balance/1`), `Elia.Deploy` (the deploy, DEPLOY-5; its steps,
 record and rollback, DEPLOY-21–DEPLOY-26), `Elia.Deploy.Runner` (the operation
-in flight, DEPLOY-22), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
+in flight, DEPLOY-22), `EliaWeb.SettingsLive` (whose collapsible sections keep
+the browser's own `open` state out of a patch, `JS.ignore_attributes/1`),
+`EliaWeb.Layouts`.
 
 ## Tests
 
@@ -184,6 +193,10 @@ in flight, DEPLOY-22), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
   checking, saving and removing a key, the credits line and its refresh,
   appearance, the Deployment section and its steps, the elapsed time, the
   collapsible sections — CONF-7 to CONF-26).
+- `test/elia_web/browser/settings_sections_test.exs` (the four sections in a
+  real browser: all four collapsed on load, a header expanding and collapsing
+  one, and an open one that a re-render the user did not ask for leaves open —
+  CONF-25, CONF-27).
 - `test/elia/command_isolation_test.exs` (the settings path is outside what a
   jailed command reaches, CONF-1).
 - `test/elia/deployment_test.exs` (the deploy the page starts, CONF-19).

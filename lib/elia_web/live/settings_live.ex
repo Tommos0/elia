@@ -1262,12 +1262,16 @@ defmodule EliaWeb.SettingsLive do
 
   defp collapsible(assigns) do
     ~H"""
+    <%!-- CONF-25, CONF-27: whether a section is open is the browser's own
+    `<details>` state, and the server never renders the attribute — so a patch
+    must leave it alone rather than read it as an attribute to remove. --%>
     <details
       id={@id}
       class={[
         "group rounded-2xl border border-base-300 transition duration-200 hover:border-base-content/20 hover:shadow-sm",
         @class
       ]}
+      phx-mounted={JS.ignore_attributes("open")}
       {@rest}
     >
       <summary class="flex cursor-pointer list-none items-center gap-3 rounded-2xl p-5 hover:bg-base-200/40">
