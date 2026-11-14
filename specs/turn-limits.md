@@ -3,7 +3,9 @@
 Status: Draft
 
 A turn can run long: many steps, and — with a slow provider, or a shell command
-that hangs — a lot of wall-clock time. It also spends tokens, request after
+that hangs — a lot of wall-clock time. It can also stand still, running the same
+call over and over for the same answer (LOOP-25): that is a limit of its own,
+beside the ones a chat sets. It also spends tokens, request after
 request, which neither a step limit nor a clock says anything about: a hundred
 steps over a long context cost far more than a hundred over a short one, and a
 turn paused at one of the other two limits has already spent what it spent. A
@@ -101,7 +103,8 @@ turn that stopped for the user says so however much later the chat is opened.
   session appends a harness message (UI-9) that names the limit and what the
   decision does — "Step limit reached (100 steps). The turn is paused: Continue
   starts the count over, Fail ends it." (and the time budget's own wording,
-  LOOP-20, and the token budget's, LIMIT-12) — marked as the pause it is
+  LOOP-20, the token budget's, LIMIT-12, and the standing-still limit's,
+  LIMIT-13) — marked as the pause it is
   (`meta.limit`, SESS-37), saved with the chat (STORE-1, STORE-2) so the
   transcript keeps it however long
   afterwards the chat is opened, and rendered as an error row (UI-81, UI-12)
@@ -137,6 +140,13 @@ turn that stopped for the user says so however much later the chat is opened.
   plain count, so a small budget reads as it was typed. What the turn has spent
   so far is not shown anywhere while it runs; the context indicator reports the
   last request alone (CTX-6).
+- **LIMIT-13** The standing-still limit (LOOP-25) is not one of the chat's
+  settings: the settings page does not show it (LIMIT-6) and nothing the user
+  sets brings it about (LIMIT-1). It reads as the other limits do (LIMIT-10):
+  paused, the harness message says "Standing still: <tool> returned the same
+  result 4 times. The turn is paused: Continue starts the count over, Fail ends
+  it."; ended, the stop message says "Stopped standing still: <tool> returned the
+  same result 4 times" (STOP-1, STOP-2).
 
 ## Implementation
 
@@ -151,9 +161,10 @@ Limits section), `EliaWeb.ChatLive` (the pause's row, UI-81).
 
 `test/elia/agent_test.exs` (the limits in a turn: a step limit, a budget and a
 token budget pausing a turn, the defaults — a chat with no limits pauses at 100
-steps (LIMIT-9) — the pause's message and what the transcript keeps of it
-(LIMIT-10), and the stop a limit ends in (STOP-1, STOP-2), persistence across a
-restart, LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10, LIMIT-12),
+  steps (LIMIT-9) — the pause's message and what the transcript keeps of it
+  (LIMIT-10), the standing-still limit's message (LIMIT-13), and the stop a
+  limit ends in (STOP-1, STOP-2), persistence across a
+  restart, LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10, LIMIT-12, LIMIT-13),
 `test/elia/store_test.exs` (STORE-27, STORE-28),
 `test/elia/tasks_test.exs` (a child's limits come from its spawn,
 LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,

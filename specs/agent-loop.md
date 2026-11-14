@@ -69,8 +69,8 @@ results back, and repeat until the model answers without calling a tool.
 
 - **LOOP-19** With the `:pause_on_limit` option (default false), a limit pauses
   the turn instead of ending it: the loop sends the session
-  `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}`, `{:time, ms}` or
-  `{:tokens, n}`, LOOP-22) and blocks. `{:pause_decision, :continue}` resumes it
+  `{:loop_pause, pid, limit}` (`limit` is `{:steps, n}`, `{:time, ms}`,
+  `{:tokens, n}` (LOOP-22) or `{:repetition, name, n}` (LOOP-25)) and blocks. `{:pause_decision, :continue}` resumes it
   with the step count, the wall-clock budget and the token total started over;
   `{:pause_decision, :fail}` ends the turn, reporting the limit the turn was
   paused at (LOOP-3, LOOP-20, LOOP-22), so the session says the turn stopped
@@ -109,6 +109,22 @@ results back, and repeat until the model answers without calling a tool.
   kept — not its text, reasoning or tool calls, and not its place in the step
   count (RETRY-2) — so a turn that recovered holds only its completed steps.
 
+- **LOOP-24** The loop recognises a call it has already made in this turn: a
+  call whose tool name and input are identical to an earlier call's in that turn
+  is a **repeated call**. When a repeated call's result is byte-identical to what
+  that call returned the time before it, the result the model is sent (LOOP-10)
+  carries a notice the loop appends — not the tool's output — naming the tool,
+  saying how many times the identical call has now returned the identical result
+  in this turn, and saying that nothing has changed since. The call itself still
+  runs.
+- **LOOP-25** A turn stands still when a repeated call (LOOP-24) has returned
+  the byte-identical result four times: the step that made it four finishes
+  (LOOP-10), and the turn is then at a limit like LOOP-3, LOOP-20 and LOOP-22,
+  reported as `{:repetition, name, n}` (LOOP-19) with `name` the tool and `n` the
+  number of identical results, so with `pause_on_limit` the turn pauses for the
+  user's decision and without it the turn ends with that limit; a resume starts
+  the count over (LOOP-19).
+
 ## Implementation
 
 `Elia.Agent.Loop`, `Elia.Tool`.
@@ -118,7 +134,7 @@ results back, and repeat until the model answers without calling a tool.
 - `test/elia/agent_test.exs` (the loop end to end: each step's prompt and tools,
   forwarded deltas and notices, the step limit, the error results, input
   validation, approval, the concurrent tools and their statuses, the options,
-  and a step's error ending the turn — LOOP-1 to LOOP-12, LOOP-16 to LOOP-23).
+  and a step's error ending the turn — LOOP-1 to LOOP-12, LOOP-16 to LOOP-25).
 - `test/elia/step_timing_test.exs` (the outcome a record keeps, LOOP-4).
 - `test/elia_web/live/chat_settings_test.exs` (a chat's own step limit, LOOP-3).
 - `test/elia/llm/context_test.exs` (the token budget, LOOP-22).
