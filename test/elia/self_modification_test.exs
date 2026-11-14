@@ -248,6 +248,15 @@ defmodule Elia.SelfModificationTest do
   end
 
   describe "file tools" do
+    # FILE-2: these write into the workspace's own `skills/` folder, which is
+    # the folder the skills registry scans — a file left behind there is a
+    # folder that failed to load, and `reload_skills` then answers with an error
+    # (SKILL-6), so a test that ran earlier in the same module could fail this
+    # one by its seed alone. Each test clears what it wrote.
+    setup do
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+    end
+
     # FILE-2, FILE-3, FILE-6: `read_file` starts at `offset` for up to `limit`
     # lines and says which lines it returned, and `write_file` creates the
     # directories a path needs.

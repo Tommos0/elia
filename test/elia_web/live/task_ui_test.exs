@@ -58,6 +58,23 @@ defmodule EliaWeb.TaskUITest do
   defp activity_send(id, status),
     do: Phoenix.PubSub.broadcast(Elia.PubSub, Agent.activity_topic(), {:chat_status, id, status})
 
+  # UI-47, UI-59: the row a listed chat shows, once the page has caught up with
+  # the event it follows. The page's own copy of a status event is sent in the
+  # same broadcast as the test's, so an assertion right after one races it.
+  defp await_status(view, id, status, tries \\ 100)
+
+  defp await_status(_view, id, status, 0),
+    do: flunk("#chat-status-#{id} never showed #{status}")
+
+  defp await_status(view, id, status, tries) do
+    if has_element?(view, "#chat-status-#{id}[data-status='#{status}']") do
+      :ok
+    else
+      Process.sleep(50)
+      await_status(view, id, status, tries - 1)
+    end
+  end
+
   # UI-43
   test "a spawn_task call shows its title and brief instead of raw JSON", %{
     conn: conn,
@@ -192,7 +209,11 @@ defmodule EliaWeb.TaskUITest do
     child: child
   } do
     save_parent(parent)
-    Agent.subscribe(child)
+    # UI-47, SESS-19: the page follows the activity topic, and the registry it
+    # reads on mount is set between the chat's own status event and that
+    # broadcast (`Elia.Agent.Session.set_status/2`), so this waits for the event
+    # the page itself follows rather than the chat's, which comes first.
+    Agent.subscribe_activity()
 
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
 
@@ -204,15 +225,16 @@ defmodule EliaWeb.TaskUITest do
       Agent.ensure_started(child, loop_opts: [llm: %{provider: FakeLLM}], auto_approve: [])
 
     :ok = Agent.send_message(child, "run it")
-    assert_receive {:agent, ^child, {:status, :awaiting_approval}}, 5000
+    assert_receive {:chat_status, ^child, :awaiting_approval}, 5000
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
     assert has_element?(view, "#chat-status-#{child}[data-status='awaiting_approval']")
 
     :ok = Agent.deny(child, "c1")
-    assert_receive {:agent, ^child, {:status, :idle}}, 5000
-    _ = render(view)
-    assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
+    assert_receive {:chat_status, ^child, :idle}, 5000
+    # UI-47: the page's own copy of that event is sent in the same broadcast, so
+    # a single render is not enough to see it — wait for the row it renders.
+    await_status(view, child, "idle")
   end
 
   # UI-72, STORE-31, INTR-2, INTR-3: a turn a restart cut short is flagged in the
@@ -313,7 +335,9 @@ defmodule EliaWeb.TaskUITest do
 
     {:ok, pid} = Agent.ensure_started(running, loop_opts: [llm: %{provider: FakeLLM}])
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
-    Agent.subscribe(running)
+    # SESS-19: the page follows the activity topic, so this waits for the same
+    # event the page does rather than the chat's own, which is broadcast first.
+    Agent.subscribe_activity()
 
     :ok = Agent.send_message(running, "go")
     assert_receive {:blocking_model_call, loop}, 5000
@@ -324,8 +348,8 @@ defmodule EliaWeb.TaskUITest do
 
     # The sidebar follows the status to idle when the turn ends (SESS-19).
     send(loop, :release)
-    assert_receive {:agent, ^running, {:status, :idle}}, 5000
-    assert has_element?(view, "#chat-status-#{running}[data-status='idle']")
+    assert_receive {:chat_status, ^running, :idle}, 5000
+    await_status(view, running, "idle")
   end
 
   # UI-48
@@ -419,9 +443,12 @@ defmodule EliaWeb.TaskUITest do
 
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
 
-    Agent.subscribe(child)
+    # UI-58, SESS-19: the page reads the registry on mount, and that is set
+    # between the chat's own status event and the activity one, so this waits
+    # for the event the page itself follows.
+    Agent.subscribe_activity()
     :ok = Agent.send_message(child, "go")
-    assert_receive {:agent, ^child, {:status, :paused}}, 5000
+    assert_receive {:chat_status, ^child, :paused}, 5000
 
     # UI-58: the sidebar and the parent's card are flagged on first render.
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
