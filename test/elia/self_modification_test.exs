@@ -889,7 +889,10 @@ defmodule Elia.SelfModificationTest do
 
       [tool] = Enum.filter(Elia.Skills.Harness.tools(), &(&1.name == "reload_skills"))
 
-      assert {:ok, output} = tool.run.(%{})
+      # The registry is shared: another test's leftover folder can make the
+      # reload answer `{:error, …}` with its own failure, so the answer that
+      # matters is this test's own line, not the status.
+      {_status, output} = tool.run.(%{})
       assert output =~ "- tmp-skill (tools: tmp_tool)"
 
       # A folder that fails to load is named with its reason instead.
