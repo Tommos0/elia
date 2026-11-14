@@ -102,6 +102,8 @@ reports it to the session as `{:loop_usage, usage}` already is,
 
 ## Tests
 
-`test/elia/step_timing_test.exs` for the requirements themselves, with the loop
-and session requirements (TIME-1 to TIME-4, TIME-7) driven through a turn and
-checked in the file.
+- `test/elia/step_timing_test.exs` covers every requirement, with the loop and
+  session ones driven through a turn and checked in the file: the record and
+  what it names, the durations and the tools, the usage, the file it is
+  appended to, when it is written, a record that can't be written, reading it
+  back and deleting it with the chat — TIME-1 to TIME-10.

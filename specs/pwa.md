@@ -62,5 +62,8 @@ offline mode.
 
 ## Tests
 
-- `test/elia_web/pwa_test.exs`. PWA-5 (JS registration) is checked by hand, as
-  there is no JS test runner.
+- `test/elia_web/pwa_test.exs` (the manifest and its icons, the layout's links,
+  the service worker's scope and the viewport meta — PWA-1 to PWA-4, PWA-6,
+  PWA-7).
+- No test: PWA-5 — the registration is JavaScript in `assets/js/app.js`, the
+  project has no JS test runner, and it is checked by hand.

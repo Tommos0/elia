@@ -73,4 +73,9 @@ LiveViews), `EliaWeb.UserAgent`, `EliaWeb.SessionsLive`.
 
 ## Tests
 
-`test/elia_web/live/sessions_live_test.exs`, `test/elia_web/user_agent_test.exs`.
+- `test/elia_web/live/sessions_live_test.exs` (the tracked page and what it
+  records, the list and its rows, the live updates, the header link — CLIENT-1
+  to CLIENT-3, CLIENT-5 to CLIENT-7, CLIENT-9, CLIENT-10).
+- `test/elia_web/user_agent_test.exs` (the browser and OS summary, CLIENT-8).
+- No test: CLIENT-4 — tracking across nodes needs more than one node, and the
+  suite runs none.

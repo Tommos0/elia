@@ -99,6 +99,15 @@ committed.
 - `test/elia_web/browser_assets_test.exs` (BROWSER-10): the check's message
   names `npm install` in the workspace's `assets/`, and it passes where
   Playwright is installed.
+- `test/elia_web/browser/preview_test.exs` and
+  `test/elia_web/browser/push_test.exs` (the browser case and its asset check,
+  BROWSER-6; the user-wide CLI it validates, BROWSER-2).
+- `test/test_helper.exs` (the supervisor it starts and the `:base_url` it sets,
+  BROWSER-4; the opt-in test server, BROWSER-3), with `config/test.exs` and
+  `mix.exs` beside it (the dependency and the config a test reads, BROWSER-1,
+  BROWSER-2).
+- No test: BROWSER-9 — the layer's documentation is checked by reading
+  `docs/agents/testing.md`, not by a test.
 
 Run with `ELIA_BROWSER_TESTS=1 mix test --only real_browser`, after
 `mix assets.build`.

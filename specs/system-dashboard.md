@@ -62,5 +62,11 @@ now?" without opening a terminal.
 
 ## Tests
 
-`test/elia/system_stats_test.exs`, `test/elia_web/live/system_live_test.exs`,
-`test/elia_web/browser/small_screen_layout_test.exs` (SYS-12 at a phone width).
+- `test/elia/system_stats_test.exs` (each section of the metrics, the CPU
+  share, memory and disks, the network rates, the percentages' status and the
+  units — SYS-1 to SYS-6, SYS-9, SYS-10).
+- `test/elia_web/live/system_live_test.exs` (the page, its refresh and its
+  history, the header link — SYS-2, SYS-5 to SYS-8, SYS-11).
+- `test/elia_web/live/dashboard_test.exs` (the system card, SYS-1, SYS-2, SYS-7).
+- `test/elia_web/browser/small_screen_layout_test.exs` (SYS-1's sections and
+  SYS-12 at a phone width).

@@ -115,4 +115,10 @@ results back, and repeat until the model answers without calling a tool.
 
 ## Tests
 
-`test/elia/agent_test.exs`.
+- `test/elia/agent_test.exs` (the loop end to end: each step's prompt and tools,
+  forwarded deltas and notices, the step limit, the error results, input
+  validation, approval, the concurrent tools and their statuses, the options,
+  and a step's error ending the turn — LOOP-1 to LOOP-12, LOOP-16 to LOOP-23).
+- `test/elia/step_timing_test.exs` (the outcome a record keeps, LOOP-4).
+- `test/elia_web/live/chat_settings_test.exs` (a chat's own step limit, LOOP-3).
+- `test/elia/llm/context_test.exs` (the token budget, LOOP-22).

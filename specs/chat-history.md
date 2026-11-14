@@ -122,8 +122,8 @@ from the same file. No migration is needed.
 
 ## Tests
 
-`test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
-filtering and statuses, reading a chat with paging and truncation, reading by
-query and the errors, searching and the cap), `test/elia/store_test.exs`
-(`entry/1`, STORE-36), `test/elia/agent_test.exs` (a session's tool list names
-the three, HIST-1).
+- `test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
+  filtering and statuses, reading a chat with paging and truncation, reading by
+  query and the errors, searching and the cap — HIST-2 to HIST-10).
+- `test/elia/store_test.exs` (`entry/1`, STORE-36) and `test/elia/agent_test.exs`
+  (a session's tool list names the three, HIST-1).

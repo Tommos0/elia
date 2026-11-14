@@ -87,6 +87,16 @@ estimate is over, COMPACT-26), `Elia.Agent.Session`, `Elia.Agent.Loop`,
 
 ## Tests
 
-`test/elia/llm/tokens_test.exs`, `test/elia/llm/context_test.exs`,
-`test/elia/llm/catalog_test.exs`, `test/elia_web/live/chat_live_test.exs`,
-`test/elia_web/live/compaction_test.exs`.
+- `test/elia/llm/context_test.exs` (the estimate and its breakdown, the request
+  view it is over, the calibration — CTX-3 to CTX-5, CTX-8, CTX-10).
+- `test/elia/llm/tokens_test.exs` (the estimator and a signed reasoning block,
+  CTX-3, CTX-9).
+- `test/elia/llm/catalog_test.exs` (the window the catalog reports, CTX-7).
+- `test/elia/agent_test.exs` and `test/elia/step_timing_test.exs` (the
+  provider's report, recorded with the step, CTX-6).
+- `test/elia_web/live/chat_live_test.exs` (the indicator, its breakdown, the
+  window and the provider's report — CTX-1, CTX-2, CTX-4 to CTX-8, CTX-10).
+- `test/elia_web/live/compaction_test.exs` (the indicator after compaction,
+  CTX-1, CTX-11).
+- `test/elia_web/browser/chat_browser_test.exs` (the indicator's place above the
+  transcript, in a real browser, CTX-1).

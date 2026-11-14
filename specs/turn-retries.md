@@ -101,7 +101,7 @@ config :elia, :step_retry, delays_ms: [15_000, 30_000, 60_000]
 `test/elia/agent_test.exs` (a transient failure retried and the turn finishing,
 the schedule running out and the stop saying so, a permanent failure not
 retried, no step counted and no history written by a failed attempt, RETRY-1 to
-RETRY-5), `test/elia/llm/anthropic_test.exs` and
+RETRY-6), `test/elia/llm/anthropic_test.exs` and
 `test/elia/llm/open_router_test.exs` (which failures are marked transient,
 LLM-36), `test/elia_web/live/chat_live_test.exs` (the notice row and the
 cleared drafts, UI-86).

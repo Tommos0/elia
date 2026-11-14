@@ -113,5 +113,14 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 
 ## Tests
 
-`test/elia/explorer_test.exs`, `test/elia_web/live/files_live_test.exs` (the
-project and the chat in view, EXPL-15 - EXPL-18).
+- `test/elia/explorer_test.exs` (path safety, the listing, reading and its
+  refusals, the language a path maps to — EXPL-1 to EXPL-5, EXPL-11).
+- `test/elia_web/live/files_live_test.exs` (the page, its breadcrumbs, the
+  viewer and its refusals, the language attribute, the header link, the project
+  and the chat in view — EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to
+  EXPL-18).
+- `test/elia_web/file_links_test.exs` (the paths a link may name, EXPL-1,
+  EXPL-2, EXPL-6, EXPL-9).
+- `test/elia/preview_test.exs` (a path through a symlink refused, EXPL-2).
+- No test: EXPL-14 — the colours come from the daisyUI theme variables in CSS,
+  which a reviewer reads rather than a test.

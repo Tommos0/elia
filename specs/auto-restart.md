@@ -74,4 +74,10 @@ crash takes the VM down instead of leaving it empty.
 
 ## Tests
 
-`test/elia/serve_script_test.exs`, `test/elia/install_service_test.exs`.
+- `test/elia/serve_script_test.exs` (the loop and the command it runs, its
+  exits, its signals, the backoff and the crash dump, RESTART-1 to RESTART-7).
+- `test/elia/install_service_test.exs` (the unit template, the installer and
+  its refusals, RESTART-8 to RESTART-10).
+- `test/elia/shell_test.exs` (the jail reaches the unit file, RESTART-8).
+- `test/elia/deployment_test.exs` and `test/elia_web/live/settings_live_test.exs`
+  (the Settings page's restart control, RESTART-11).

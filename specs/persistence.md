@@ -182,14 +182,24 @@ reopened.
 
 ## Tests
 
-`test/elia/agent_test.exs` (history survives a restart),
-`test/elia/store_test.exs` (STORE-29, the chat to resume, including one that is
-done),
-`test/elia/chat_done_test.exs` (the saved flag and the listing, STORE-34,
-STORE-35),
-`test/elia/chat_titles_test.exs` (the stored title and the listing's
-precedence, STORE-32, STORE-33),
-`test/elia_web/live/page_title_test.exs`,
-`test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
-STORE-22; `/chats` resumes the most recent chat, UI-77),
-`test/elia_web/live/dashboard_test.exs` (the "Continue" card, DASH-3).
+- `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
+  listing and the fields an entry carries, saving and loading each one, deleting
+  a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-29, STORE-36 to
+  STORE-38).
+- `test/elia_web/file_links_test.exs` (an id is 12 URL-safe characters,
+  STORE-5).
+- `test/elia/agent_test.exs` (history survives a restart, STORE-4).
+- `test/elia/chat_done_test.exs` (the saved flag and the listing, STORE-34,
+  STORE-35).
+- `test/elia/chat_titles_test.exs` (the stored title and the listing's
+  precedence, STORE-32, STORE-33).
+- `test/elia/auto_approve_test.exs` (the auto-approved set saved and loaded,
+  STORE-14, STORE-15).
+- `test/elia_web/live/chat_title_test.exs` and
+  `test/elia_web/live/page_title_test.exs` (the title a saved chat gives a
+  page, STORE-7, STORE-10).
+- `test/elia_web/live/chat_live_test.exs` (a started chat is saved and listed,
+  STORE-22; `/chats` resumes the most recent chat, UI-77).
+- `test/elia_web/live/chat_list_test.exs` (a page is a prefix of the order,
+  STORE-12).
+- `test/elia_web/live/dashboard_test.exs` (the "Continue" card, DASH-3).

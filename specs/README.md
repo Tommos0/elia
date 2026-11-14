@@ -86,6 +86,12 @@ it.
   requirement counts as defined — or a bare prefix, or a range within one
   prefix; never a number that names a different requirement than the one meant
   (SPEC-15).
+- **Traceability.** Every requirement is accounted for by a test file that
+  exists, named in a `## Tests` section, or by a `No test:` line in its own
+  spec's section saying why; a retired requirement is exempt, and every path a
+  section names under `test/` is there (TRACE,
+  `specs/test-traceability.md`). `test/elia/spec_tests_test.exs` fails the
+  suite on the rest.
 - **The lint** is `test/elia/spec_hygiene_test.exs` (SPEC-16, SPEC-17): it reads
   `specs/**/*.md` and nothing else, so it runs in `mix test`, `bin/test` and
   `mix precommit`. One statement per requirement, rationale inside one, required
@@ -150,6 +156,7 @@ it.
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |
 | [Spec hygiene](spec-hygiene.md) | `SPEC` | The rules that keep `specs/` coherent, and the lint that fails the suite on the ones a machine can decide |
+| [Test traceability](test-traceability.md) | `TRACE` | Every requirement is accounted for by a test file that exists or by a `No test:` line saying why, and a lint keeps it true |
 
 ## Plans
 

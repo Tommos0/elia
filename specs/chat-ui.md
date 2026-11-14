@@ -589,27 +589,50 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 
 ## Tests
 
-`test/elia_web/live/chat_live_test.exs` (including what `/chats` opens, UI-77),
-`test/elia_web/live/auto_approve_test.exs`,
-`test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69),
-`test/elia_web/live/chat_settings_test.exs` (the settings page, CSET),
-`test/elia_web/live/compaction_test.exs`, `test/elia_web/live/compact_view_test.exs`,
-`test/elia_web/live/page_title_test.exs`, `test/elia_web/live/chat_title_test.exs`
-(UI-74, the stored title and `{:title, title}`),
-`test/elia_web/live/task_ui_test.exs`,
-`test/elia_web/live/user_input_test.exs` (the question card and the indicators,
-UI-75, UI-76, UI-83),
-`test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
-UI-79, UI-80),
-`test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
-button, the pages that stay loaded, and a list that had no more to begin with,
-UI-4, UI-84, UI-85),
-`test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when
-another chat is opened, and the button outside the list's scroll box, UI-84,
-UI-85; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
-`test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
-a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
-`test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
-browser: the transcript at its end and the jump-to-the-end button, UI-14,
-UI-87; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5),
-`test/elia_web/markdown_test.exs`, `test/elia_web/time_ago_test.exs`.
+- `test/elia_web/live/chat_live_test.exs` (the page and its empty states, the
+  bubbles and the harness messages, the streaming drafts and the indicators, the
+  notices and a reset, the tool cards and their badges, the composer and its
+  disabled state, the sidebar and its rows, a delete, the Markdown in a reply,
+  the sidebar's events, and what `/chats` opens — UI-2, UI-5 to UI-13, UI-17,
+  UI-18, UI-22 to UI-25, UI-29 to UI-37, UI-45, UI-49, UI-59, UI-63 to UI-66,
+  UI-77).
+- `test/elia_web/live/chat_title_test.exs` (UI-3, UI-6, UI-33, UI-74, and the
+  stored title and `{:title, title}`), with
+  `test/elia_web/live/page_title_test.exs` for the page title a chat gives the
+  browser (UI-3).
+- `test/elia_web/live/auto_approve_test.exs` (UI-38 to UI-40, UI-42).
+- `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69).
+- `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET; the
+  controls it took over, UI-2, UI-3, UI-38).
+- `test/elia_web/live/compaction_test.exs` (the transcript's annotations,
+  UI-20, UI-51, UI-53, UI-56, UI-88), and
+  `test/elia_web/live/compact_view_test.exs` (the Focus view, UI-60 to UI-62).
+- `test/elia_web/live/task_ui_test.exs` (the task card and its statuses, the
+  nested rows, the header, the pause banner — UI-43 to UI-48, UI-50, UI-57 to
+  UI-59, UI-64).
+- `test/elia_web/live/user_input_test.exs` (the question card and the
+  indicators, the collapsible output, the card in the Focus view — UI-15, UI-16,
+  UI-44, UI-61, UI-62, UI-75, UI-76, UI-83).
+- `test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
+  UI-46, UI-79, UI-80).
+- `test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
+  button, the pages that stay loaded, and a list that had no more to begin with —
+  UI-2, UI-4, UI-65, UI-84, UI-85).
+- `test/elia_web/live/dashboard_test.exs` (the rows and indicators it shows,
+  UI-32, UI-34, UI-45 to UI-47, UI-59).
+- `test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when
+  another chat is opened, and the button outside the list's scroll box, UI-84,
+  UI-85; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+- `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
+  a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+- `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
+  browser: Enter sending a message, the transcript at its end and the
+  jump-to-the-end button — UI-14, UI-21, UI-87; a browser test, so it runs with
+  `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+- `test/elia_web/browser/small_screen_layout_test.exs` and
+  `test/elia_web/browser/interaction_feedback_test.exs` (a tool card and the
+  pressed state at a phone width, UI-15, UI-20, UI-32).
+- `test/elia_web/markdown_test.exs` (UI-25 to UI-27), and
+  `test/elia_web/time_ago_test.exs` (UI-34).
+- No test: UI-28 — the scroll box inside a long code block or a wide table is
+  CSS, checked by eye rather than asserted.

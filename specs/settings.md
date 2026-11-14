@@ -177,4 +177,19 @@ in flight, DEPLOY-22), `EliaWeb.SettingsLive`, `EliaWeb.Layouts`.
 
 ## Tests
 
-`test/elia/settings_test.exs`, `test/elia_web/live/settings_live_test.exs`.
+- `test/elia/settings_test.exs` (the database and its file, the directory mode,
+  a write that is synced, the stored and configured keys, checking one, removing
+  one — CONF-1 to CONF-8).
+- `test/elia_web/live/settings_live_test.exs` (the page, a card per provider,
+  checking, saving and removing a key, the credits line and its refresh,
+  appearance, the Deployment section and its steps, the elapsed time, the
+  collapsible sections — CONF-7 to CONF-26).
+- `test/elia/command_isolation_test.exs` (the settings path is outside what a
+  jailed command reaches, CONF-1).
+- `test/elia/deployment_test.exs` (the deploy the page starts, CONF-19).
+- `test/elia/llm/open_router_test.exs` (where the credit line's number comes
+  from, CONF-14).
+- `test/elia_web/recovery_test.exs` (the last operation the section reports,
+  CONF-22).
+- `test/elia_web/browser/push_test.exs` (the push section among the four,
+  CONF-25).

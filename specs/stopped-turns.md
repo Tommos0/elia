@@ -86,7 +86,8 @@ and saved, so the chat says why it stopped whenever it is opened again.
 ## Tests
 
 `test/elia/agent_test.exs` (each kind: a limit ending, a provider error, a
-refusal, a crash and a stop — written, marked and saved, STOP-1 to STOP-3),
+refusal, a crash and a stop — written, marked and saved — and only a stop being
+written — STOP-1 to STOP-5),
 `test/elia_web/live/chat_live_test.exs` (the row, once per stop, UI-82),
 `test/elia/tasks_test.exs` (a child that fails still reports its failure,
 SUBTASK-13).

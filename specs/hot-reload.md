@@ -82,11 +82,14 @@ and the notice it adds (`Elia.Deploy.restart_notice/1`).
 
 ## Tests
 
-`test/elia/deployment_test.exs`, `test/elia_web/live/settings_live_test.exs`;
-HOT-8 is what the image viewer's browser test holds to
-(`test/elia_web/browser/chat_browser_test.exs`, IMG-7). HOT-9 is the deploy
-runner's own test: the page may go away, the deploy goes on
-(`test/elia_web/live/settings_live_test.exs`, DEPLOY-15). HOT-10 is what
-`test/elia/deployment_test.exs` holds to: no child changed is no notice, a child
-the running server lacks is named as missing, one it runs that the code no
-longer asks for is named too, and a reload that failed says nothing extra.
+- `test/elia/deployment_test.exs` (the deploy, hot reload included: available
+  only with Mix loaded, the suite it always runs first, the rollback when it
+  fails, the tree it loads, the compile error, the children the running server
+  lacks — HOT-2 to HOT-7, HOT-10).
+- `test/elia_web/live/settings_live_test.exs` (the page's hot-reload control,
+  and a deploy that outlives the page that started it — HOT-2, HOT-5, HOT-7,
+  HOT-9, DEPLOY-15).
+- `test/elia_web/recovery_test.exs` (the page a failed load leads to — HOT-2,
+  HOT-5, HOT-7).
+- `test/elia_web/browser/chat_browser_test.exs` (a reload reaching an open page
+  as markup, HOT-8, IMG-7).

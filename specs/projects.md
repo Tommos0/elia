@@ -138,7 +138,23 @@ kept apart from the ones that apply in every project.
 
 ## Tests
 
-`test/elia/projects_test.exs`, `test/elia/store_test.exs`,
-`test/elia/skills_test.exs`, `test/elia/agent_test.exs`,
-`test/elia_web/live/projects_live_test.exs`,
-`test/elia_web/live/chat_live_test.exs`, `test/elia_web/live/files_live_test.exs`.
+- `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
+  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`,
+  where Elia's own data lives — PROJ-1 to PROJ-9, PROJ-13).
+- `test/elia/deployment_test.exs` (the deploy bound to Elia's own project,
+  PROJ-3, PROJ-14, PROJ-22).
+- `test/elia/skills_test.exs` (a project's own skills, re-read for every step —
+  PROJ-18 to PROJ-21).
+- `test/elia/agent_test.exs` (a chat's project as its workspace, its system
+  prompt and its skills — PROJ-9, PROJ-12, PROJ-15, PROJ-17, PROJ-18).
+- `test/elia/skills/harness_test.exs` (the instructions that apply in every
+  project, PROJ-16).
+- `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
+- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23).
+- `test/elia_web/live/chat_live_test.exs` (a chat started in a project, the
+  sidebar's groups, the header link — PROJ-8, PROJ-11, PROJ-12, PROJ-24 to
+  PROJ-26).
+- `test/elia_web/live/dashboard_test.exs` (the projects card and the default
+  project, PROJ-8, PROJ-9, PROJ-24).
+- `test/elia_web/live/files_live_test.exs` (the project a page browses,
+  PROJ-12).

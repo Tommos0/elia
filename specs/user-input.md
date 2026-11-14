@@ -86,8 +86,8 @@ result, so a chat reopened later shows both (STORE-1).
 
 ## Tests
 
-`test/elia/user_input_test.exs` (the tool: its schema, the result text,
-ASK-1, ASK-5, ASK-11), `test/elia/agent_test.exs` (the turn waits and carries
+`test/elia/user_input_test.exs` (the tool: its schema, the result text, and a
+call whose input doesn't match the schema — ASK-1, ASK-5, ASK-11, ASK-12), `test/elia/agent_test.exs` (the turn waits and carries
 on, the statuses, `answer/3`, several questions, stop, the budget, ASK-2 to
 ASK-9), `test/elia_web/live/user_input_test.exs` (the card, the buttons, the
 text answer, the indicators, ASK-10, UI-75, UI-76).

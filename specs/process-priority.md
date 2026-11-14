@@ -112,8 +112,16 @@ PRIO-8).
 
 ## Tests
 
-`test/elia/priority_test.exs` (the argv: the nice value, the I/O level and
-class, the two switches, a missing program, a per-call override),
-`test/elia/shell_test.exs` (a run reports the configured niceness and I/O
-class for itself, `priority: [nice: 0]` reports none, a niced command is still
-its own session leader, and a timeout still leaves nothing running).
+- `test/elia/priority_test.exs` (the argv: the nice value, the I/O level and
+  class, the two switches, a missing program, a per-call override — PRIO-1,
+  PRIO-4 to PRIO-7).
+- `test/elia/shell_test.exs` (a run reports the configured niceness and I/O
+  class for itself, `priority: [nice: 0]` reports none, a niced command is still
+  its own session leader, and a timeout still leaves nothing running — PRIO-1,
+  PRIO-3 to PRIO-7).
+- `test/elia/terminal_test.exs` (a process Elia spawns directly rather than as a
+  shell command gets the same wrapper — PRIO-2, PRIO-3).
+- `test/elia/llm/llama_server_test.exs` (`llama-server` is wrapped the same way,
+  PRIO-9).
+- `test/elia/skills/shell_test.exs` (the tool's description and the skill's
+  instructions say what runs lower, PRIO-8).

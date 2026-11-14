@@ -183,7 +183,7 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   the payload a browser decrypts out of the body (PUSH-15), 404/410 removing a
   subscription (PUSH-16), a failure being counted and logged rather than raised
   (PUSH-17), `notify/1` sending off the caller's process (PUSH-17) and the test
-  notification (PUSH-8).
+  notification (PUSH-8), with the VAPID contact it sends (PUSH-18).
 - `test/elia/push_subscriptions_test.exs` — storing a subscription, replacing
   one by endpoint, refusing an unusable one (PUSH-3), removing one (PUSH-4,
   PUSH-16), counting and clearing them (PUSH-7).

@@ -43,4 +43,14 @@ itself.
 
 ## Tests
 
-`test/elia/self_modification_test.exs`, `test/elia/agent_test.exs`.
+- `test/elia/self_modification_test.exs` (the `folder skills` block: the
+  directories it finds, `SKILL.md` and its frontmatter, `tools.json`, the errors
+  a load reports, a script tool run with its input beside the command and its
+  output formatted as the shell tool's — FOLDER-1, FOLDER-2, FOLDER-4 to
+  FOLDER-7, FOLDER-9).
+- `test/elia/skills_test.exs` (the "Skill folder:" line and a name conflict,
+  FOLDER-3).
+- `test/elia/auto_approve_test.exs` (a script tool always needs approval, so a
+  chat's default set holds it, FOLDER-8).
+- `test/elia/command_isolation_test.exs` (a script tool follows the call's jail
+  and workspace, FOLDER-6).

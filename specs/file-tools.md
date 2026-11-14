@@ -247,8 +247,12 @@ paths filtered out, symlinks refused — so `list_files` doesn't share it.
 
 ## Tests
 
-`test/elia/self_modification_test.exs` (the policies, jail on and off, the
-symlink escape, and the tools, including `search_files` and `edit_file`'s
-matching), `test/elia/shell_test.exs` (the jail's reach),
-`test/elia/skills/files_test.exs` (the instructions, the tool descriptions and
-schemas, and the naming of FILE-24).
+- `test/elia/self_modification_test.exs` (the policies, jail on and off, the
+  symlink escape, each tool's result and refusals, `search_files`,
+  `edit_file`'s matching — FILE-1 to FILE-9, FILE-11, FILE-15 to FILE-22,
+  FILE-25 to FILE-36).
+- `test/elia/agent_test.exs` (which calls need approval, FILE-1, FILE-4).
+- `test/elia/shell_test.exs` (the jail's reach, FILE-12).
+- `test/elia/skills/files_test.exs` (the instructions, the tool descriptions and
+  schemas, and the naming of FILE-24 — FILE-10, FILE-14, FILE-23, FILE-37,
+  FILE-38).

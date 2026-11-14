@@ -89,6 +89,7 @@ of a linked mention, FLINK-7).
 
 `test/elia_web/file_links_test.exs` (which mentions link and which don't,
 FLINK-2 - FLINK-6, and that the link is the chat's workspace),
-`test/elia_web/markdown_test.exs` (a mention in a reply, FLINK-1, FLINK-6),
+`test/elia_web/markdown_test.exs` (a mention in a reply, FLINK-1, FLINK-6,
+FLINK-7),
 `test/elia_web/live/chat_live_test.exs` (a mention in the transcript and on a
 tool card, FLINK-1, FLINK-4).

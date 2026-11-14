@@ -139,7 +139,12 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
 
 ## Tests
 
-`test/elia_web/live/dashboard_test.exs` (the "Continue" card, DASH-3, including
-a done chat being skipped),
-`test/elia_web/live/chat_live_test.exs` (what `/chats` opens, UI-77),
-`test/elia_web/browser/small_screen_layout_test.exs` (DASH-12 at a phone width).
+- `test/elia_web/live/dashboard_test.exs` (the page and its header, the
+  "Continue" card and a done chat being skipped, "Needs attention", "Recent
+  chats" and the room its title gets, the refresh, "Projects", "System" and
+  "Deploy" — DASH-1, DASH-3 to DASH-11, DASH-13).
+- `test/elia_web/live/chat_live_test.exs` (the dashboard as `/`, DASH-1, DASH-2;
+  what `/chats` opens, UI-77).
+- `test/elia_web/browser/chat_browser_test.exs` (the dashboard in a real
+  browser, DASH-1).
+- `test/elia_web/browser/small_screen_layout_test.exs` (DASH-12 at a phone width).

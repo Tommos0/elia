@@ -262,12 +262,19 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 
 ## Tests
 
-`test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
-boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
-stopping point, COMPACT-29), `test/elia/agent_test.exs` (state, persistence, the
-trigger, the manual action, the ledger, and the mid-turn pass end to end: a later
-request smaller than an earlier one, the current turn sent in full, the
-`{:compaction, state}` broadcast before the turn ends, COMPACT-29),
-`test/elia_web/live/compaction_test.exs` (annotations, the notice, the estimate,
-the pin, "compact now"), `test/elia_web/live/chat_settings_test.exs` (the
-Context section, COMPACT-30).
+- `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
+  boundary safety, bounded folding, pinning, the elision-only `trim/3` and its
+  stopping point — COMPACT-1 to COMPACT-8, COMPACT-11 to COMPACT-18, COMPACT-20,
+  COMPACT-23, COMPACT-25, COMPACT-29).
+- `test/elia/agent_test.exs` (the state, its persistence, the trigger, the
+  manual action, the ledger, the working set a turn keeps, and the mid-turn pass
+  end to end: a later request smaller than an earlier one, the current turn sent
+  in full, the `{:compaction, state}` broadcast before the turn ends —
+  COMPACT-1, COMPACT-2, COMPACT-5 to COMPACT-7, COMPACT-9, COMPACT-10,
+  COMPACT-17 to COMPACT-24, COMPACT-26, COMPACT-28, COMPACT-29).
+- `test/elia_web/live/compaction_test.exs` (the annotations, the notice, the
+  estimate, the pin, the aged-out marker, "compact now" — COMPACT-1, COMPACT-4,
+  COMPACT-9 to COMPACT-11, COMPACT-14 to COMPACT-16, COMPACT-19, COMPACT-24 to
+  COMPACT-27).
+- `test/elia_web/live/chat_settings_test.exs` (the Context section, COMPACT-9,
+  COMPACT-10, COMPACT-12, COMPACT-30).

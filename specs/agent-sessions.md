@@ -291,6 +291,14 @@ progress so any number of UIs can follow it.
 
 ## Tests
 
-`test/elia/agent_test.exs`, `test/elia/chat_titles_test.exs` (SESS-33, the
-title's event and its refusals), `test/elia/chat_done_test.exs` (SESS-35,
-SESS-36).
+- `test/elia/agent_test.exs` (a session's identity, its load and its turns, its
+  statuses, its events, its snapshot, a stop and the truncation it writes, a
+  crash, a late message, the model, auto-approve, jail, effort, limits and turn
+  it loads, `ensure_started/2`'s options, task metadata, `compact/1`, the
+  session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
+  held, a pause recorded and the stop a turn ends in — SESS-1 to SESS-32,
+  SESS-34, SESS-37 to SESS-40).
+- `test/elia/chat_titles_test.exs` (SESS-33, the
+  title's event and its refusals).
+- `test/elia/chat_done_test.exs` (SESS-35,
+  SESS-36).

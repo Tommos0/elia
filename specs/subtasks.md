@@ -316,7 +316,17 @@ removed their last callers (see `specs/checkpoints.md`).)
 
 ## Tests
 
-`test/elia/tasks_test.exs`, `test/elia/tasks_concurrency_test.exs` (two
-children at once, each in its own worktree), `test/elia/store_test.exs`,
-`test/elia/agent_test.exs`, `test/elia/deployment_test.exs`,
-`test/elia_web/live/task_ui_test.exs`.
+- `test/elia/tasks_test.exs` (the skill's tools and their errors, spawning and
+  its commit, the child's settings and limits, the events, the child's end, the
+  result, the registry, stopping a child and the watcher, `list_tasks` and
+  `await_task`, the metadata — SUBTASK-1 to SUBTASK-13, SUBTASK-15 to
+  SUBTASK-21, SUBTASK-24, SUBTASK-26 to SUBTASK-31).
+- `test/elia/tasks_concurrency_test.exs` (two children at once, each in its own
+  worktree — SUBTASK-2, SUBTASK-5, SUBTASK-7, SUBTASK-11, SUBTASK-16,
+  SUBTASK-17, SUBTASK-21, SUBTASK-23, SUBTASK-26, SUBTASK-27, SUBTASK-31).
+- `test/elia/deployment_test.exs` (the child's own worktree, and the merge the
+  harness never makes — SUBTASK-23, SUBTASK-25, SUBTASK-28).
+- `test/elia/store_test.exs` (the metadata a saved task chat keeps, SUBTASK-15).
+- `test/elia/agent_test.exs` (a task whose turn a restart cut short, SUBTASK-20).
+- `test/elia_web/live/task_ui_test.exs` (the card, the statuses and the child's
+  events — SUBTASK-7, UI-43 to UI-48, UI-50, UI-57, UI-58).

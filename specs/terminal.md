@@ -291,13 +291,13 @@ TERM-15 — and that is a spec change, not a silent substitution.
 `test/elia/terminal_test.exs` (the argv: jail and priority, one session per
 chat, the stop leaving nothing running, the missing tmux, the screen and resize
 commands, and the keys reaching a real app — a name expanded by tmux for the
-pane's own mode), `test/elia/terminal/keys_test.exs` (the notation, its aliases
+pane's own mode — TERM-1 to TERM-11), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
 `test/elia_web/live/terminal_live_test.exs` (the page's states,
-TERM-19..TERM-23), `test/elia_web/channels/terminal_channel_test.exs` (join,
+TERM-19..TERM-23), `test/elia_web/terminal_channel_test.exs` (join,
 keystrokes to the command's stdin, output to the client, resize, a join for an
 ended session, TERM-12..TERM-18), `test/elia/skills/terminal_test.exs` (the
-tools, TERM-25..TERM-28 and TERM-30..TERM-34), and
+tools, TERM-24 to TERM-28 and TERM-30 to TERM-34), and
 `test/elia_web/browser/terminal_test.exs` for the parts that are a browser:
 typing into a running shell and seeing its echo, and a resize that reaches the
 pty (BROWSER-1). A test that needs tmux skips where it isn't installed

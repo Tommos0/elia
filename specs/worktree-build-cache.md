@@ -77,6 +77,5 @@ from, whether the jail is on or off.
 
 - `test/elia/deployment_test.exs` — seeding at creation, the idempotent second
   call, the private copy (a write in the worktree leaves the live tree's
-  `_build` alone) and the failure path.
-- `test/elia/deps_test.exs` — if the seed lives in `Elia.Deps` rather than
-  `Elia.Deploy`.
+  `_build` alone), what Mix considers current, the failure path, and the copy
+  going with the worktree — BUILD-1 to BUILD-6.

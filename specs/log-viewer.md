@@ -64,6 +64,10 @@ logger handler that forwards events), `EliaWeb.LogsLive` (the page).
 
 ## Tests
 
-`test/elia/logs_test.exs`, `test/elia_web/live/logs_live_test.exs`, and
-`test/elia_web/browser/small_screen_layout_test.exs` for the phone layout
-(LOG-11), which is geometry and so needs a browser (BROWSER-1).
+- `test/elia/logs_test.exs` (the buffer, its entries, its cap, a capture that
+  never fails, the level filter and clearing it — LOG-1 to LOG-4, LOG-7, LOG-8).
+- `test/elia_web/live/logs_live_test.exs` (the page and its count, its live
+  updates, the filter, clearing, an entry's fields — LOG-5 to LOG-9).
+- `test/elia_web/live/system_live_test.exs` (the header link, LOG-10).
+- `test/elia_web/browser/small_screen_layout_test.exs` (LOG-11 at a phone width,
+  which is geometry and so needs a browser, BROWSER-1).

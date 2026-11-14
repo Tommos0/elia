@@ -59,5 +59,5 @@ becomes an inert no-op (DEPLOY-8); the guarded-file banner in
 
 ## Tests
 
-`test/elia/guarded_test.exs` is removed; the guarded-file assertions in
-`test/elia/self_modification_test.exs` are removed.
+The retired guarded-file test file is removed, as are the guarded-file
+assertions in `test/elia/self_modification_test.exs`.

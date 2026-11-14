@@ -93,7 +93,14 @@ in the session when the loop asks for approval, so the loop is unchanged).
 
 ## Tests
 
-`test/elia/agent_test.exs`, `test/elia/auto_approve_test.exs`,
-`test/elia/self_modification_test.exs`,
-`test/elia_web/live/chat_live_test.exs`,
-`test/elia_web/live/auto_approve_test.exs`.
+- `test/elia/agent_test.exs` (a tool's approval, a denial by policy, the calls of
+  a step shown together and decided one at a time, nothing running until every
+  one is decided, the result a denied call gets — APPR-1 to APPR-6).
+- `test/elia/self_modification_test.exs` (each built-in tool's approval, APPR-7).
+- `test/elia/auto_approve_test.exs` (the saved set, a chat's own set, what
+  auto-approval replaces, a step all auto-approved, a tool turned on, the
+  default set — APPR-8 to APPR-14).
+- `test/elia_web/live/chat_live_test.exs` (the approval prompt and the toolbar,
+  APPR-14).
+- `test/elia_web/live/auto_approve_test.exs` (the popover, its switches and what
+  turning one on does — APPR-8, APPR-11 to APPR-14).

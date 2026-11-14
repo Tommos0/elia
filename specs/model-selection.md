@@ -87,5 +87,13 @@ MODEL-13).
 
 ## Tests
 
-`test/elia/llm/catalog_test.exs`, `test/elia/agent_test.exs`,
-`test/elia_web/live/model_picker_test.exs`.
+- `test/elia/llm/catalog_test.exs` (a selection and its resolution, the
+  default, the refusals, each provider's catalog, its cache and the prices it
+  lacks — MODEL-1, MODEL-2, MODEL-4 to MODEL-8, MODEL-14).
+- `test/elia/agent_test.exs` (the selection a session reads and uses, and the
+  model a chat pins — MODEL-1, MODEL-3, MODEL-16).
+- `test/elia_web/live/model_picker_test.exs` (the picker, its search, its
+  loading state, choosing a model, a provider with no key, the stored default —
+  MODEL-1, MODEL-9 to MODEL-13, MODEL-15).
+- `test/elia_web/live/chat_settings_test.exs` (the page's Model section and the
+  stored default — MODEL-9, MODEL-15).

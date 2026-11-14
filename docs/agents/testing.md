@@ -6,6 +6,7 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
 
 - Every requirement you add or change needs a test. Cite its ID in the test name or a comment, e.g. `# SHELL-3`.
 - The corpus is checked too: `test/elia/spec_hygiene_test.exs` fails the suite on the rules `specs/README.md` states (SPEC), so an ID defined twice, a section outside the shape or a citation of an ID no spec defines is a test failure rather than a review comment.
+- Traceability is checked too: every requirement must be accounted for by a test file that exists, named in a spec's `## Tests` section, or by a `No test:` line saying why, and a named path must be there (TRACE, `specs/test-traceability.md`); `test/elia/spec_tests_test.exs` fails the suite on the rest. That is what a spec's `## Tests` section is for — name the file and the IDs it covers — and why a test cites its own IDs.
 - If code and spec disagree, one is a bug. Fix the code or update the spec deliberately. See `specs/README.md`.
 - Worktree and deploy tests use a throwaway live tree (`Elia.LiveTree.create/0`, `test/support/live_tree.ex`), never the server's own tree.
 - A test that deploys by hot reload replaces the loader — `config :elia, Elia.Deploy, load: fun` — instead of calling `Phoenix.CodeReloader.reload/1`: a real recompile inside a test run rebuilds Elia's own endpoint and leaves `_build/test` broken for every later test.

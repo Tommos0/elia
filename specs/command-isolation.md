@@ -350,27 +350,43 @@ lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
 
 ## Tests
 
-`test/elia/shell_test.exs` (the argv, the profiles, the environment allowlist,
-what a jailed command can reach, the fallback when bubblewrap is missing, the
-readiness report that ends the mount lock, and the read-only fallback of
-ISOL-27), `test/elia/shell_lock_test.exs` (the per-worktree lock: one holder at
-a time, the next waiter granted in order, a dead holder released — ISOL-28),
-`test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
-and its removal, ISOL-7, DEPLOY-10),
-`test/elia/command_isolation_test.exs`
-(the settings path and `$HOME` absent, the browser cache and the user-wide
-Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
-workspace writable, a command writing inside the shared `deps` and leaving it
-unchanged, a timeout still cleaning up, a command waiting for the mount lock
-before it runs, two commands started at once in one worktree both running, and
-`Elia.Harness.run_tests/3` jailed — ISOL-28),
-`test/elia/deployment_test.exs` (the worktree
-administration and the deploy's fetch, DEPLOY-18),
-`test/elia/tasks_git_test.exs` (the harness's git calls),
-`test/elia/self_modification_test.exs` (the file
-tools' confinement, FILE-12, FILE-13),
-`test/elia/store_test.exs` and `test/elia/tasks_test.exs` (the setting and its
-inheritance), `test/elia_web/live/jail_test.exs` (UI-67..UI-69).
+- `test/elia/shell_test.exs` (the bubblewrap argv and the mounting of the jail,
+  the profiles and what each one holds, the environment allowlist, what a jailed
+  command can reach, the fallback when bubblewrap is missing, the readiness
+  report that ends the mount lock, and the read-only fallback of ISOL-27 —
+  ISOL-1 to ISOL-3, ISOL-5, ISOL-6, ISOL-8 to ISOL-10, ISOL-12 to ISOL-14,
+  ISOL-20, ISOL-22, ISOL-24, ISOL-25).
+- `test/elia/shell_lock_test.exs` (the per-worktree lock: one holder at
+  a time, the next waiter granted in order, a dead holder released — ISOL-28).
+- `test/elia/command_isolation_test.exs`
+  (the settings path and `$HOME` absent, the browser cache and the user-wide
+  Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
+  workspace writable, a command writing inside the shared `deps` and leaving it
+  unchanged, a timeout still cleaning up, a command waiting for the mount lock
+  before it runs, two commands started at once in one worktree both running, and
+  `Elia.Harness.run_tests/3` jailed — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to
+  ISOL-10, ISOL-15, ISOL-28).
+- `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
+  and its removal, ISOL-7, DEPLOY-10).
+- `test/elia/deployment_test.exs` (the worktree
+  administration and the deploy's fetch, DEPLOY-18; the jail the deploy's own
+  commands run in, ISOL-13, ISOL-14, ISOL-20).
+- `test/elia/tasks_git_test.exs` (the harness's git calls, jailed — ISOL-1,
+  ISOL-3, ISOL-8, ISOL-13, ISOL-20).
+- `test/elia/self_modification_test.exs` (the file
+  tools' confinement, FILE-12, FILE-13; the classes it is confined by, ISOL-13,
+  ISOL-15, ISOL-16, ISOL-20, ISOL-25).
+- `test/elia/agent_test.exs` and `test/elia/tasks_test.exs` (the setting, what
+  the tool context carries, and a child that inherits it — ISOL-15, ISOL-16,
+  ISOL-18).
+- `test/elia/store_test.exs` (the setting saved and loaded, ISOL-16).
+- `test/elia/skills/shell_test.exs` (the tool's description and the skill's
+  instructions say the command is jailed, ISOL-21).
+- `test/elia_web/live/jail_test.exs` (the switch, the prompts it changes, and
+  the chat that owns the setting — ISOL-16, ISOL-17, ISOL-19, ISOL-20, UI-67 to
+  UI-69).
+- No test: ISOL-11 — that the jail leaves the network alone is read from the
+  profile's own argv (ISOL-13), which no test asserts.
 
 A test that needs the jail's effect skips when bubblewrap isn't available
 (ISOL-12); the ones that build the argv don't.

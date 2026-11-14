@@ -273,14 +273,30 @@ OpenAI-compatible encoding that both of them share, LOCAL-10),
 
 ## Tests
 
-`test/elia/llm/anthropic_test.exs`, `test/elia/llm/open_router_test.exs`,
-`test/elia/llm/open_ai_test.exs` (the shared encoding, LOCAL-10),
-`test/elia/llm/llama_cpp_test.exs` (the local provider, LOCAL-1 to LOCAL-9),
-`test/elia/llm/retry_test.exs`, `test/elia/llm/message_test.exs`. The
-stream idle timeout and the stalled-stream retry (LLM-34, LLM-35) are also
-exercised over a real socket in `test/elia/llm/stream_timeout_test.exs`, since
-a `Req.Test` plug never applies `receive_timeout`. The pairing rule (LLM-33) is
-covered where it is kept: `test/elia/llm/compaction_test.exs` (a call and its
-result are kept or dropped together) and `test/elia/agent_test.exs` (a stopped
-turn, a crash and an app restart each close every unanswered call, SESS-8,
-SESS-12, SESS-21).
+- `test/elia/llm/message_test.exs` (the request, the streaming events, the stop
+  reasons and the message roles — LLM-2 to LLM-5, LLM-32).
+- `test/elia/llm/anthropic_test.exs` (the request body and thinking, merged
+  tool results, the retried statuses, unparsable tool input, a fallback notice,
+  the stop reasons, a signed thinking block and the display setting, a
+  connection closed before data arrived, the key that is missing — LLM-7 to
+  LLM-12, LLM-14, LLM-28 to LLM-31, LLM-38, LLM-39).
+- `test/elia/llm/open_router_test.exs` (the OpenAI-compatible call, its
+  streamed deltas, finish reasons and retries, the model family it routes
+  around, the balance endpoint, the key that is missing — LLM-6, LLM-17 to
+  LLM-27, LLM-31, LLM-37 to LLM-39).
+- `test/elia/llm/open_ai_test.exs` (the shared encoding, LLM-21, LLM-37,
+  LOCAL-10).
+- `test/elia/llm/retry_test.exs` (the retry schedule, LLM-31).
+- `test/elia/llm/catalog_test.exs` (the providers it lists, LLM-15).
+- `test/elia/settings_test.exs` (a provider's own key check, LLM-16).
+- `test/elia/step_timing_test.exs` (a provider's `stream/2` as a step drives
+  it, LLM-1).
+- `test/elia/llm/stream_timeout_test.exs` (the stream idle timeout and the
+  stalled-stream retry over a real socket, since a `Req.Test` plug never applies
+  `receive_timeout` — LLM-30, LLM-34, LLM-35).
+- The pairing rule (LLM-33) is covered where it is kept:
+  `test/elia/llm/compaction_test.exs` (a call and its result are kept or dropped
+  together) and `test/elia/agent_test.exs` (an error event in the stream,
+  LLM-13; a stopped turn, a crash and an app restart each close every
+  unanswered call, SESS-8, SESS-12, SESS-21).
+- `test/elia/llm/llama_cpp_test.exs` (the local provider, LOCAL-1 to LOCAL-9).

@@ -79,4 +79,4 @@ rollback with it.
 
 The checkpoint tests in `test/elia/self_modification_test.exs`,
 `test/elia/agent_test.exs` and `test/elia/tasks_test.exs` are removed, as is
-`test/support/fake_checkpoints.ex`.
+the fake checkpoints helper under `test/support/`.

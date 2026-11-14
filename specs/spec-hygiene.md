@@ -95,7 +95,9 @@ Implementation).
 - `specs/README.md`: the rules above, beside the workflow and format it already
   states, and a `## Plans` list holding `specs/plans/`. `AGENTS.md` needs no
   change: it already points at `specs/README.md`, which owns the corpus.
-- `test/elia/spec_hygiene_test.exs`: the lint. `Elia.SpecHygiene.Lint.lint/1`
+- `test/support/spec_lint.ex`: the lint, `Elia.SpecLint` — `hygiene/1` for SPEC
+  and `traceability/1` for TRACE (`specs/test-traceability.md`), sharing one
+  reader of the corpus. It
   reads `specs/**/*.md` from the workspace root, takes each file's title,
   `Status:` line, `##` sections, requirement entries (`- **PREFIX-n**`, or
   `- ~~**PREFIX-n**` retired) and cited `PREFIX-n` tokens, and returns one
@@ -140,17 +142,18 @@ Implementation).
 ## Tests
 
 - `test/elia/spec_hygiene_test.exs` covers SPEC-16 and SPEC-17 with one fixture
-  per failure mode: a duplicate ID within a prefix, a retired number reused, a
-  `Status:` line with prose, a `Status:` line that isn't one of the four, a spec
-  file missing from the index, a plan missing from the plans list, an index row
-  whose file is gone, an index prefix that differs from the file's IDs, a
-  retired spec whose row doesn't say so, a `PREFIX-n` no spec defines, a `##`
-  section outside SPEC-10's list, a requirement defined under `Out of scope`,
-  and a retirement without a reason.
+  per failure mode: a duplicate ID within a prefix (SPEC-2), a retired number
+  reused (SPEC-3, SPEC-4), a `Status:` line with prose and one outside the four
+  (SPEC-6), a spec file missing from the index and a plan missing from the plans
+  list (SPEC-8), an index row whose file is gone (SPEC-9), an index prefix that
+  differs from the file's IDs (SPEC-1, SPEC-9), a retired spec whose row doesn't
+  say so (SPEC-7), a retirement with a reason and one without (SPEC-5), a `##`
+  section outside SPEC-10's list (SPEC-10), a requirement defined under
+  `Out of scope` (SPEC-14), and a `PREFIX-n` no spec defines (SPEC-15).
 - One test runs the same lint against the real `specs/`: that is the gate the
-  repairs above have to pass.
-- SPEC-11, SPEC-12, SPEC-13, SPEC-14's prose half and SPEC-18 have no test:
-  they are what a reviewer decides, not what the text can.
+  repairs above have to pass (SPEC-16).
+- No test: SPEC-11, SPEC-12, SPEC-13, SPEC-14's prose half, SPEC-18 — they are
+  what a reviewer decides, not what the text can.
 
 ## Out of scope
 
@@ -159,5 +162,7 @@ Implementation).
 - The corpus' prose: no rewriting, no splitting `chat-ui.md`, and no citation
   fixes in code and docs beyond the repairs named above.
 - Whether code matches a requirement: each spec's own `## Tests` owns that.
-- Linting `AGENTS.md`, `docs/`, `lib/` or `test/`, and checking that a spec's
-  `## Tests` names a file that exists.
+- Linting `AGENTS.md`, `docs/`, `lib/` or `test/`.
+- Checking that every requirement is accounted for by a test or a `No test:`
+  line, and that a `## Tests` section names a file that exists:
+  `test-traceability.md` (TRACE) owns that.

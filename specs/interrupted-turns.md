@@ -63,6 +63,6 @@ session for that chat is running (INTR-2).
 
 ## Tests
 
-`test/elia/agent_test.exs` (INTR-1 to INTR-3), `test/elia/store_test.exs`
+`test/elia/agent_test.exs` (INTR-1 to INTR-4), `test/elia/store_test.exs`
 (STORE-30, STORE-31), `test/elia_web/live/task_ui_test.exs` (UI-72),
 `test/elia_web/live/chat_live_test.exs` (UI-73).

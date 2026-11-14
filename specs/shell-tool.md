@@ -86,6 +86,11 @@ config :elia, Elia.Skills.Shell,
 
 ## Tests
 
-`test/elia/skills/shell_test.exs` (the clamped timeout and the rejected value,
-SHELL-10), `test/elia/shell_test.exs` (a run that floods stdout still ends at
-its deadline, SHELL-11), `test/elia/agent_test.exs`.
+- `test/elia/skills/shell_test.exs` (the clamped timeout and the rejected value,
+  SHELL-10; the instructions and the tool description — SHELL-8, SHELL-9).
+- `test/elia/shell_test.exs` (the shell it runs the command with, the process
+  group, the result's shape, the output cap, a run that floods stdout still
+  ending at its deadline — SHELL-2 to SHELL-5, SHELL-11).
+- `test/elia/agent_test.exs` (a call needs approval before it runs, SHELL-1).
+- No test: SHELL-7 — that an approved command is not confined by the workspace
+  policy is not asserted anywhere; the approval prompt is the safeguard.

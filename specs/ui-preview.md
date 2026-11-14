@@ -211,6 +211,10 @@ CLI is not among them — it is user-wide, installed once for the user
 - `test/elia/preview_test.exs` (naming and path safety, PREVIEW-4, PREVIEW-7;
   the sample chat, PREVIEW-10 - PREVIEW-11; the paused question's id, path and
   input, PREVIEW-15; the chats seeded past the list's first page, PREVIEW-16).
+- `test/elia_web/browser/preview_test.exs` (a preview run itself: the paths it
+  writes and its report, the theme and width it emulates, the sample chat as a
+  saved chat, its own tag — PREVIEW-1 to PREVIEW-3, PREVIEW-5, PREVIEW-6,
+  PREVIEW-12, PREVIEW-13).
 - `test/elia_web/controllers/preview_controller_test.exs` (PREVIEW-7), against a
   throwaway live tree with a chat worktree (`Elia.LiveTree.create/0`).
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).

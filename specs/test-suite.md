@@ -70,8 +70,8 @@ A partition's state lives under `<tmp>/elia-test-p<n>/`, which each partition's
 
 ## Tests
 
-- `test/elia/test_script_test.exs` covers SUITE-3, SUITE-4 and SUITE-5 with
-  `--plan` and with `ELIA_TEST_CMD` standing in for `mix test`.
+- `test/elia/test_script_test.exs` covers SUITE-2, SUITE-3, SUITE-4 and SUITE-5
+  with `--plan` and with `ELIA_TEST_CMD` standing in for `mix test`.
 - SUITE-1 is covered where the paths are read: a test asserts the env var
   overrides win and the defaults apply when it is unset.
 - SUITE-6, SUITE-7 and SUITE-8 are covered by running `bin/test` on a one-file

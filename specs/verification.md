@@ -136,8 +136,9 @@ are `reload_skills` and `update_ledger`.
 
 ## Tests
 
-`test/elia/self_modification_test.exs` (`run_tests`: the command it builds and
-the flags it adds, VERIFY-8; the configured timeout and its clamp, VERIFY-9;
+`test/elia/self_modification_test.exs` (the command it builds and the flags it
+adds, VERIFY-8; the arguments it refuses, VERIFY-2; the environment and the
+runner it uses, VERIFY-1; the configured timeout and its clamp, VERIFY-9;
 what a timed-out run says, VERIFY-10), `test/elia/skills/harness_test.exs` (the
 skill's tools hold no `run_tests` and its instructions send a test run to the
 shell, VERIFY-11).

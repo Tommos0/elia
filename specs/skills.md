@@ -103,5 +103,10 @@ config :elia, Elia.Skills,
 
 ## Tests
 
-`test/elia/self_modification_test.exs`, `test/elia/agent_test.exs`,
-`test/elia/skills_test.exs`.
+- `test/elia/skills_test.exs` (a skill's shape, the built-ins and their order, a
+  rejected folder skill, the system prompt, `AGENTS.md` and its cap, the
+  resolver, the base prompt — SKILL-1 to SKILL-5, SKILL-7, SKILL-10 to SKILL-16).
+- `test/elia/self_modification_test.exs` (reloading the folder, SKILL-6, SKILL-9).
+- `test/elia/agent_test.exs` (the skills a turn is given, SKILL-7).
+- `test/elia/skills/harness_test.exs` (the instructions that apply in every
+  project, SKILL-8).
