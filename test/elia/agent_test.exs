@@ -1983,6 +1983,95 @@ defmodule Elia.AgentTest do
     assert %{level: 3} = Elia.Store.load_compaction(id)
   end
 
+  # COMPACT-10, COMPACT-31, COMPACT-32, COMPACT-33
+  test "compact now reaches inside a chat whose whole history is one turn" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    # One turn only, so there is no cold prefix at all (COMPACT-28) and the
+    # manual pass (COMPACT-10) is the only one that can bound it (COMPACT-31).
+    output = String.duplicate("out ", 700)
+    reasoning = String.duplicate("think ", 2_000)
+
+    messages = [
+      Message.user("do the work"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :reasoning, text: reasoning},
+          %{type: :tool_call, id: "c1", name: "read_file", input: %{"path" => "lib/a.ex"}}
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("c1", output)]},
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :tool_call, id: "c2", name: "read_file", input: %{"path" => "lib/b.ex"}}
+        ]
+      },
+      %Message{role: :tool, content: [Message.tool_result("c2", "the newest output")]}
+    ]
+
+    :ok = Elia.Store.save(id, messages)
+
+    start_compaction_session(id,
+      loop_opts: [
+        llm: %{provider: FakeLLM},
+        summarizer: fn _ -> {:ok, "The one turn, folded."} end
+      ]
+    )
+
+    assert Agent.snapshot(id).compaction.level == 0
+
+    :ok = Agent.compact(id)
+    assert_receive {:agent, ^id, {:compaction, _compaction}}, 5000
+
+    compaction = Agent.snapshot(id).compaction
+    view = Elia.LLM.Compaction.view(messages, compaction)
+
+    # The request view is smaller than the history, which is what nothing could
+    # do for a chat of one turn before (COMPACT-31).
+    assert view.tokens < Elia.LLM.Compaction.tokens(messages)
+
+    # COMPACT-32: the turn's most recent step — its call and its result — is sent
+    # in full, and so is the user message that began the turn.
+    assert Enum.any?(view.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c2"}]} ->
+               content == "the newest output"
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(view.messages, &(Message.text_content(&1) == "do the work"))
+
+    # COMPACT-33: the older step was elided by the rungs only — its reasoning is
+    # gone and its result is a note — and its call is still there (COMPACT-4).
+    refute Enum.any?(view.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :reasoning and &1.text == reasoning))
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(view.messages, fn
+             %Message{role: :tool, content: [%{content: content, tool_call_id: "c1"}]} ->
+               content =~ "output elided by compaction"
+
+             _ ->
+               false
+           end)
+
+    assert Enum.any?(view.messages, fn
+             %Message{role: :assistant, content: content} ->
+               Enum.any?(content, &(&1.type == :tool_call and &1.id == "c1"))
+
+             _ ->
+               false
+           end)
+  end
+
   # COMPACT-10, SESS-25
   test "compact now refuses while a turn is running" do
     id = Agent.new_id()

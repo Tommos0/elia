@@ -361,6 +361,14 @@ defmodule Elia.LLM.Compaction do
     covered = max(state.covered, working_set_start(messages, options))
     state = %{state | covered: covered}
 
+    # COMPACT-10, COMPACT-31: a manual pass (no target, from the "compact now"
+    # action) reaches inside the last turn too — the chat is idle, so no turn is
+    # being run — up to the boundary of that turn's most recent step
+    # (COMPACT-32), which is where the rungs stop. Only the manual action passes
+    # no target: the turn start always passes one (COMPACT-6, COMPACT-8), so a
+    # completed turn the working set keeps is left whole there (COMPACT-12).
+    state = if is_nil(target), do: put_turn_covered(state, step_boundary(messages)), else: state
+
     {level, reached?} = walk(messages, state, options, target, overhead)
     state = %{state | level: level}
 

@@ -160,7 +160,10 @@ order, stopping as soon as the estimate is at or below the target:
 
 - **COMPACT-31** The turn being run is cold up to its most recent step: a pass
   (COMPACT-29) elides the machinery of that turn's own older steps, oldest first,
-  when the view is over the trigger (COMPACT-6, COMPACT-29).
+  when the view is over the trigger (COMPACT-6, COMPACT-29), and the manual
+  action's pass (COMPACT-10) elides them too, at the depth it takes, since no
+  turn is running then and the chat's last turn stands where the turn being run
+  does.
 - **COMPACT-32** Inside the turn being run the ladder never elides the turn's
   user message (COMPACT-11, COMPACT-13), a `tool_call` block (COMPACT-15), or a
   message from its most recent step on: that step's assistant message, its calls
