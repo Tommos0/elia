@@ -130,7 +130,7 @@ defmodule EliaWeb.ChatLive do
         parent_title: parent_title(snapshot.task),
         chats_open: false,
         now: DateTime.utc_now(),
-# MSGAT-6: the transcript items that carry a stamp, by id, so the tick
+        # MSGAT-6: the transcript items that carry a stamp, by id, so the tick
         # can send one again when its relative text has moved on — a streamed
         # item is only re-rendered when it is sent again.
         timed_items: %{},
