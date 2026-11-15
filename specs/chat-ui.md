@@ -499,7 +499,8 @@ an item compaction hid so it stays in the model's context.
 
 A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
 so it opens at `/c/<child id>` like any chat. What a task finished with is in
-the chat's own transcript, as its `finish_task` call at the end of it, so the
+the chat's own transcript, as its `finish_task` call at the end of it — the
+commit and the changed files are in the parent's `await_task` result — so the
 header does not repeat it.
 
 - ~~**UI-55** A `{:subtask, …}` agent event is accepted and ignored by the chat
