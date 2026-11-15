@@ -484,10 +484,14 @@ defmodule Elia.Terminal.Session do
     deliver(%{state | reply: nil}, owner, text, result)
   end
 
-  # TERM-14: the screen a joining client is sent, and then the stream.
-  defp deliver(state, {:join, pid}, text, _result) do
+  # TERM-14: the screen a joining client is sent, and then the stream. A screen
+  # that was captured is also the last one the session knows of, which is what
+  # an ended session keeps when its port closed before the stop's own capture
+  # could run (TERM-35, TERM-23).
+  defp deliver(state, {:join, pid}, text, result) do
     send(pid, {:terminal_screen, text})
-    %{state | joining: MapSet.delete(state.joining, pid)}
+    state = %{state | joining: MapSet.delete(state.joining, pid)}
+    if result == :ok, do: %{state | screen: text}, else: state
   end
 
   # TERM-26: what terminal_read asked for.
@@ -538,12 +542,40 @@ defmodule Elia.Terminal.Session do
   # and the order of the queue is the order of the replies. An entry with no
   # owner is one whose reply nobody needs (`send-keys`, `refresh-client`).
   defp send_command(state, command, owner \\ nil) do
-    if state.port do
-      Port.command(state.port, command <> "\n")
+    with port when not is_nil(port) <- state.port,
+         :ok <- port_send(port, command <> "\n") do
       %{state | pending: :queue.in(owner, state.pending)}
     else
-      state
+      nil -> state
+      :closed -> answer_closed(state, owner)
     end
+  end
+
+  # TERM-35: the port's program has exited and its `exit_status` is still on its
+  # way, so the command will get no reply. Whoever was waiting on it is answered
+  # now instead, as its reply would have — a stop ends the session as stopped,
+  # keeping the last screen, and replies — since queueing it would leave the
+  # caller waiting out its timeout.
+  defp answer_closed(state, {:read, _from} = owner),
+    do: deliver(state, owner, "its command has exited", :error)
+
+  defp answer_closed(state, owner), do: deliver(state, owner, state.screen || "", :error)
+
+  # TERM-35: a port whose program has exited is closed, and `Port.command/2` and
+  # `Port.close/1` raise on a closed port. Whether it is still open can change
+  # between any check and the call, so the call itself is what is guarded.
+  defp port_send(port, data) do
+    Port.command(port, data)
+    :ok
+  rescue
+    ArgumentError -> :closed
+  end
+
+  defp port_close(port) do
+    Port.close(port)
+    :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   defp pop_pending(pending) do
@@ -708,10 +740,12 @@ defmodule Elia.Terminal.Session do
   # gone has nothing to ask), which is why both are here. The port is closed
   # here and the field cleared, so the `exit_status` the kill produces is not
   # mistaken for a session that crashed.
+  # TERM-35: the port can close at any point here — the kill is what closes it
+  # — so each call on it is the guarded one rather than checked first.
   defp kill_port(port) do
-    if Port.info(port), do: Port.command(port, "kill-server\n")
+    _ = port_send(port, "kill-server\n")
     Shell.kill(port)
-    if Port.info(port), do: Port.close(port)
+    port_close(port)
   end
 
   defp status_map(state) do

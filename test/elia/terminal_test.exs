@@ -130,6 +130,63 @@ defmodule Elia.TerminalTest do
     assert screen =~ "bye now"
   end
 
+  # TERM-35: the race, put in place rather than waited for. The session is
+  # suspended with a stop queued in its mailbox, and only then does its port's
+  # program exit, so the port is closed and its `exit_status` is queued behind
+  # the stop. Resumed, the session handles the stop first, with a port it can
+  # no longer write to: the stop still answers, as ended by the stop.
+  test "a stop whose port closed under it still answers, ended by the stop", %{
+    id: id,
+    dir: dir
+  } do
+    pidfile = Path.join(dir, "app.pid")
+
+    # The pid is written after the words, so once it is there the pane shows
+    # them, and the join below captures a screen that holds them.
+    assert {:ok, _} =
+             Terminal.start(id,
+               command: "printf 'last words\\n'; echo $$ > #{pidfile}; sleep 60",
+               workspace: dir,
+               jail: false
+             )
+
+    app_pid = wait_for_pid(pidfile)
+    :ok = Terminal.subscribe(id)
+    assert_receive {:terminal_screen, joined}, 15_000
+    assert joined =~ "last words"
+    {:ok, session} = Terminal.fetch(id)
+    %{port: port, socket: socket} = :sys.get_state(session)
+    {:os_pid, client} = Port.info(port, :os_pid)
+
+    # What only killing the port's program leaves behind: the tmux server, and
+    # the app in its pane.
+    on_exit(fn ->
+      System.cmd(System.find_executable("tmux"), ["-L", socket, "kill-server"],
+        stderr_to_stdout: true
+      )
+
+      System.cmd("kill", ["-KILL", "#{app_pid}"], stderr_to_stdout: true)
+    end)
+
+    :ok = :sys.suspend(session)
+    stop = Task.async(fn -> Terminal.stop(id) end)
+    assert until(fn -> stop_queued?(session) end)
+
+    System.cmd("kill", ["-KILL", "--", "-#{client}"], stderr_to_stdout: true)
+    assert until(fn -> Port.info(port) == nil end)
+
+    :ok = :sys.resume(session)
+
+    assert {:ok, status} = Task.await(stop, 15_000)
+    assert status.ended == :stopped
+    refute status.running
+
+    # Still an ended session that answers, with the screen it last had.
+    assert {:ok, screen} = Terminal.read(id)
+    assert screen =~ "last words"
+    assert {:ok, %{ended: :stopped}} = Terminal.status(id)
+  end
+
   # TERM-12, TERM-13: what the app writes reaches a subscriber, and what is
   # typed goes into the app's stdin — into a shell that is reading, so the
   # program's answer comes back.
@@ -384,6 +441,26 @@ defmodule Elia.TerminalTest do
   end
 
   defp app_running?(pid), do: File.exists?("/proc/#{pid}")
+
+  # TERM-35: whether a `:stop` call is waiting in the session's mailbox. A
+  # suspended process still answers this from outside.
+  defp stop_queued?(session) do
+    {:messages, messages} = Process.info(session, :messages)
+    Enum.any?(messages, &match?({:"$gen_call", _from, :stop}, &1))
+  end
+
+  # Whether `check` holds within 10 s, asked every 20 ms: an OS process exiting
+  # and a port closing send this test nothing to wait on.
+  defp until(check, tries \\ 500)
+  defp until(_check, 0), do: false
+
+  defp until(check, tries) do
+    check.() or
+      receive do
+      after
+        20 -> until(check, tries - 1)
+      end
+  end
 
   defp eventually_gone?(pid, tries \\ 200)
   defp eventually_gone?(_pid, 0), do: false

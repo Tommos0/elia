@@ -215,6 +215,15 @@ guardrails: it is the same confinement as a command, held open.
 - **TERM-34** Sending is refused, saying which, when the chat has no terminal
   and when its command has ended: there is nothing to type into, and a send
   never starts or restarts a session (TERM-1, TERM-23, TERM-26).
+- **TERM-35** A stop always completes, however the session's command ends
+  around it. When the command exits while the stop is under way — on its own,
+  or because the stop's kill (TERM-3) reached it before the session had let go
+  of it — the stop still answers as it would have (TERM-27): the session reads
+  as ended by the stop (TERM-4), keeps its last screen (TERM-23), and stays an
+  ended session that a later read or status answers from. The session process
+  never crashes over it, and nothing is logged as a crash. The same holds for
+  every path that ends a session this way: the user's Stop, `terminal_stop`, and
+  a chat's deletion (TERM-3).
 
 ### Availability
 
@@ -293,7 +302,8 @@ TERM-15 — and that is a spec change, not a silent substitution.
 `test/elia/terminal_test.exs` (the argv: jail and priority, one session per
 chat, the stop leaving nothing running, the missing tmux, the screen and resize
 commands, and the keys reaching a real app — a name expanded by tmux for the
-pane's own mode — TERM-1 to TERM-11), `test/elia/terminal/keys_test.exs` (the notation, its aliases
+pane's own mode — TERM-1 to TERM-11; a stop whose command exits under it,
+TERM-35), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
 `test/elia_web/live/terminal_live_test.exs` (the page's states,
 TERM-19..TERM-23), `test/elia_web/terminal_channel_test.exs` (join,
