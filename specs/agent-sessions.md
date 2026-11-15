@@ -23,7 +23,8 @@ every view.
   `:awaiting_approval`, `:awaiting_input` (SESS-34) or `:paused` (SESS-27).
   Every change is broadcast.
 - **SESS-5** Every message the loop produces is appended to the history,
-  saved (STORE-1) and broadcast. Messages with empty content are dropped.
+  saved (STORE-1) — when SESS-44 says — and broadcast. Messages with empty
+  content are dropped. *Changed:* each one used to be saved as it was appended.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
@@ -197,6 +198,23 @@ every view.
   stop. The same goes for the sub-task turns the stop ends (SESS-22) and for
   deleting a chat whose turn is running (SESS-29).
 
+- **SESS-44** The messages a running turn's loop appends (SESS-5) are saved at
+  most once per save interval (`save_interval_ms`, default 5,000): the first
+  unsaved one starts the interval, and the one save at its end writes every
+  message appended within it. Every other save the session makes happens at
+  once and writes any unsaved messages with it — the message that starts a turn
+  (SESS-3), the end of a turn however it ends (the model finishing, a stop,
+  SESS-8, a refusal, SESS-10, an error or the loop's death, a limit's pause,
+  SESS-27), and every change to the chat's settings, title, done flag, task
+  metadata, pins or compaction state. A session that is shut down — the app
+  stopping or restarting (DEPLOY-7), or its chat being deleted (SESS-29) —
+  first saves what it has not. Only an end of the VM that runs no shutdown (it
+  is killed, or the machine loses power) can lose messages: at most those of
+  the last interval, and the next start closes their dangling tool calls as
+  SESS-21 says. Every message is still broadcast as it is appended (SESS-6), so
+  an open page sees it at once; a listing read from the saved file (STORE-6)
+  can lag by up to the interval.
+
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets this chat's step
@@ -327,9 +345,20 @@ every view.
   typed setter reports the refusal as its own signature promises, so
   `set_auto_approve/3` still answers `{:error, :not_approvable}` (APPR-13).
 
+## Configuration
+
+```elixir
+config :elia, Elia.Agent.Session,
+  save_interval_ms: 5_000   # the most often a running turn's messages are saved (SESS-44)
+```
+
 ## Out of scope
 
 - Several turns running at once in one session.
+- Making a save cost less than the whole chat. A chat is one term (STORE-1), so
+  every save serialises and writes all of it; SESS-44 makes those saves fewer,
+  not smaller. Writing only what changed needs a different file shape (an
+  append-only log of messages, say), which is a stored-data change of its own.
 - Folding a chat's title, its done flag or its compaction state into the
   `settings` map (SESS-41): a title and a done flag are chat state rather than
   settings — a message clears the done flag (DONE-9) and a chat with task
@@ -340,13 +369,11 @@ every view.
 
 ## Stored data
 
-Unchanged: the one `settings` map is the session's own shape (SESS-41), and the
-saved chat keeps the keys it already had — `model`, `auto_approve`, `jail`,
-`limits` and `effort`, each one written and loaded by its own rule (STORE-1's
-table, STORE-9, STORE-14, STORE-15, STORE-25 to STORE-28, STORE-37, STORE-38).
-Nothing that reads or writes `.elia/sessions/<id>.term` is touched, so the change
-is backward compatible and there is nothing to migrate: an older file loads as it
-did before, and a file written now is what an older version wrote.
+Unchanged, backward compatible, nothing to migrate. SESS-44 changes when a
+session saves, not what it saves: every save still writes the whole chat in the
+shape of STORE-1's table, through `Elia.Store.save/3` and its atomic write
+(STORE-2, STORE-43 untouched), so an older file loads as it did before and a file
+written now is what an older version wrote.
 
 ## Implementation
 
@@ -361,7 +388,7 @@ did before, and a file written now is what an older version wrote.
   options, task metadata, `compact/1`, the
   session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
   held, a pause recorded and the stop a turn ends in — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-43).
+  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-44).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

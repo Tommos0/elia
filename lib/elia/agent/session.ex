@@ -83,7 +83,11 @@ defmodule Elia.Agent.Session do
     persist: true,
     # Whether the chat is marked done (DONE-1, STORE-34): its work has landed
     # and it needs nothing more, though a message still continues it (DONE-8).
-    done: false
+    done: false,
+    # SESS-44: `{timer, token}` while the loop's appended messages wait for
+    # their save, nil when everything is saved. Read with `Map.get/2`: a session
+    # that outlived a hot reload has no such key.
+    save_timer: nil
   ]
 
   def start_link(opts) do
@@ -95,6 +99,8 @@ defmodule Elia.Agent.Session do
 
   @impl true
   def init(opts) do
+    # SESS-44: a shutdown reaches `terminate/2`, which saves what is unsaved.
+    Process.flag(:trap_exit, true)
     persist = Keyword.get(opts, :persist, true)
     loop_opts = Keyword.get(opts, :loop_opts, [])
     project = opts[:project] || load_project(opts[:id], persist)
@@ -458,8 +464,17 @@ defmodule Elia.Agent.Session do
     {:reply, :ok, set_status(%{state | pause: nil}, :running)}
   end
 
-  # Messages a stopped loop sent before it died.
+  # SESS-44: the save interval is over. A token that isn't the pending one is a
+  # timer an earlier save already covered.
   @impl true
+  def handle_info({:save_due, token}, state) do
+    case Map.get(state, :save_timer) do
+      {_timer, ^token} -> {:noreply, save(state)}
+      _ -> {:noreply, state}
+    end
+  end
+
+  # Messages a stopped loop sent before it died.
   def handle_info({tag, _}, %{task: nil} = state)
       when tag in [:loop_event, :loop_append, :loop_compaction, :loop_retry] do
     {:noreply, state}
@@ -481,7 +496,10 @@ defmodule Elia.Agent.Session do
     {:noreply, state}
   end
 
-  def handle_info({:loop_append, message}, state), do: {:noreply, append(state, message)}
+  # SESS-5, SESS-44: the loop's messages are saved once per interval, not one
+  # write of the whole chat each.
+  def handle_info({:loop_append, message}, state),
+    do: {:noreply, append(state, message, :later)}
 
   # COMPACT-29: the loop's mid-turn pass advanced the ladder. The session owns
   # the state, so it takes the reported one, saves it and broadcasts it, exactly
@@ -1050,21 +1068,69 @@ defmodule Elia.Agent.Session do
   defp workspace(state),
     do: Map.get(state, :workspace) || Elia.Deploy.workspace(project(state), state.id)
 
-  defp append(state, %Message{content: []}), do: state
+  # `when` is `:now` for a message that is a boundary of the turn — what starts
+  # it, a stop, a pause, the results that close dangling calls — and `:later`
+  # for the loop's own (SESS-44).
+  defp append(state, message, timing \\ :now)
 
-  defp append(state, message) do
+  defp append(state, %Message{content: []}, _timing), do: state
+
+  defp append(state, message, timing) do
     # MSGAT-2: the one place a message is stamped as it enters the history, so
     # the item the page is told about and the message saved carry the same moment.
     message = Message.stamp(message)
     broadcast(state, {:message, message})
 
     state = %{state | messages: state.messages ++ [message]}
-    save(state)
+    if timing == :later, do: save_later(state), else: save(state)
+  end
+
+  # SESS-44: the first unsaved message starts the interval, and the one save at
+  # its end writes all of them. The exit trap is set here too, for a session
+  # that outlived a hot reload and so never ran this `init/1`.
+  defp save_later(%{persist: false} = state), do: state
+
+  defp save_later(state) do
+    case Map.get(state, :save_timer) do
+      nil ->
+        Process.flag(:trap_exit, true)
+        token = make_ref()
+        timer = Process.send_after(self(), {:save_due, token}, save_interval())
+        Map.put(state, :save_timer, {timer, token})
+
+      _pending ->
+        state
+    end
+  end
+
+  defp save_interval,
+    do: Application.get_env(:elia, __MODULE__, [])[:save_interval_ms] || 5_000
+
+  # SESS-44: a shutdown — the app stopping or restarting, the chat deleted —
+  # saves what the interval had not yet. So does a crash in a callback: the
+  # state `terminate/2` gets is the last one a callback returned, which holds
+  # only messages that were appended whole.
+  @impl true
+  def terminate(_reason, state) do
+    if Map.get(state, :save_timer), do: save(state)
+    :ok
   end
 
   defp save(%{persist: false} = state), do: state
 
   defp save(state) do
+    # SESS-44: every save writes the whole chat, so it covers any message that
+    # was waiting for the interval.
+    state =
+      case Map.get(state, :save_timer) do
+        {timer, _token} ->
+          Process.cancel_timer(timer)
+          Map.put(state, :save_timer, nil)
+
+        nil ->
+          state
+      end
+
     auto = names(settings(state).auto_approve)
 
     with {:error, reason} <-

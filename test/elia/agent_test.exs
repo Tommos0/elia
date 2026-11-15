@@ -929,6 +929,120 @@ defmodule Elia.AgentTest do
     assert eventually(fn -> sleeping(marker) == 0 end)
   end
 
+  # SESS-44: the save interval for this test, put back afterwards.
+  defp save_interval(ms) do
+    previous = Application.get_env(:elia, Elia.Agent.Session)
+    Application.put_env(:elia, Elia.Agent.Session, save_interval_ms: ms)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:elia, Elia.Agent.Session, previous),
+        else: Application.delete_env(:elia, Elia.Agent.Session)
+    end)
+  end
+
+  # SESS-44: a step that calls the fake tool, then a model call that waits for
+  # `:go` — so the loop's two messages (the call and its result) are appended
+  # and the turn is still running. Answers `{:model_waiting, loop}`.
+  defp push_held_step(test_pid) do
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "fake_tool", %{})]))
+
+    FakeLLM.push(fn _request, _on_event ->
+      send(test_pid, {:model_waiting, self()})
+      receive do: (:go -> :ok)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("Done.")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+  end
+
+  defp saved_count(id), do: length(Elia.Store.load(id))
+
+  # SESS-44, SESS-5: the loop's messages wait for the interval and go in one
+  # save, while the message that started the turn was saved at once.
+  test "a running turn's messages are saved together at the end of the interval" do
+    save_interval(3_000)
+    id = start_fake_skill_session([])
+    push_held_step(self())
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:model_waiting, loop}, 10_000
+
+    # The call and its result are in the history and were broadcast…
+    assert [_user, _call, _result] = Agent.snapshot(id).messages
+    # …but only the turn's own message is on disk yet.
+    assert saved_count(id) == 1
+
+    # One save at the end of the interval writes both.
+    assert eventually(fn -> saved_count(id) == 3 end)
+
+    send(loop, :go)
+    await_status(id, :idle)
+    assert saved_count(id) == 4
+  end
+
+  # SESS-44: the end of a turn saves at once, with whatever the interval held.
+  test "the end of a turn saves at once, interval or not" do
+    save_interval(60_000)
+    id = start_fake_skill_session([])
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "fake_tool", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    assert saved_count(id) == 4
+    assert Elia.Store.load_turn(id) == nil
+  end
+
+  # SESS-44, SESS-21: a session that is shut down saves what the interval had
+  # not — the turn's record included, so the next start sees a turn cut short.
+  test "a session that is shut down first saves its unsaved messages" do
+    save_interval(60_000)
+    id = start_fake_skill_session([])
+    push_held_step(self())
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:model_waiting, loop}, 10_000
+    assert saved_count(id) == 1
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    Process.exit(loop, :kill)
+
+    assert saved_count(id) == 3
+    assert %{id: _} = Elia.Store.load_turn(id)
+  end
+
+  # SESS-44, `## Stored data`: the saved shape is unchanged, so a chat written
+  # before this change loads in a session as it always did.
+  test "a chat saved by an older version still loads" do
+    id = Agent.new_id()
+    File.mkdir_p!(Elia.Store.dir())
+    path = Path.join(Elia.Store.dir(), id <> ".term")
+
+    old = %{
+      version: 1,
+      messages: [Message.user("from before"), FakeLLM.assistant([Message.text("hi")])]
+    }
+
+    File.write!(path, :erlang.term_to_binary(old))
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    {:ok, pid} = Agent.ensure_started(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert [%Message{role: :user} = user, %Message{role: :assistant}] =
+             Agent.snapshot(id).messages
+
+    assert Message.text_content(user) == "from before"
+  end
+
   # How many processes run `sleep <marker>`.
   defp sleeping(marker) do
     {count, _} = System.cmd("pgrep", ["-c", "-x", "-f", "sleep #{marker}"])
