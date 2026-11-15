@@ -216,7 +216,10 @@ tools reach no further than a jailed command does (ISOL-25).
   own path and the link is deleted, never followed (FILE-20).
 - **FILE-41** The class and the operation use one resolution of the real
   location (WS-5), so a link swapped while the call runs does not move the write
-  or the delete to a different file than the one the class was decided on.
+  or the delete to a different file than the one the class was decided on. The
+  run refuses a real location that is protected or outside on the same terms as
+  the policy (WS-7, WS-8), so a path a link moved onto one of those after it was
+  approved is refused, and not only left un-approved (FILE-39, FILE-40).
 - **FILE-42** The per-file lock (FILE-11) is keyed by the path's real location,
   so two calls that spell one file differently — one through a symlink, one
   naming the file — are serialised with each other.

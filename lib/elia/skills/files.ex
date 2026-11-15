@@ -221,44 +221,102 @@ defmodule Elia.Skills.Files do
 
   ## Policies
 
-  # FILE-4, FILE-18: `list_files` with no path means the workspace root, which
-  # is inside the workspace like any other.
+  # WS-5, WS-7 to WS-9, FILE-41: a path is judged by where it lands, and the
+  # real location is resolved here, once, so the class and the operation are
+  # decided on the same path — a link swapped while the call runs can't move the
+  # work to a file other than the one that was judged. The two last values are
+  # `:unresolvable` for a path whose links can't be followed within the bound
+  # (WS-6): it has no class, and no location to operate on.
+  defp referent(path, ctx) do
+    root = root(ctx)
+    abs = Path.expand(path, root)
+
+    case Workspace.real_location(abs) do
+      :unresolvable -> {abs, :unresolvable, :unresolvable}
+      real -> {abs, real, Workspace.classify(real, root)}
+    end
+  end
+
+  # FILE-4, FILE-18, WS-8, WS-9: approval for a read (`list_files` with no path
+  # means the workspace root, which is inside the workspace like any other).
+  # Under the jail, reaching the path is the whole answer, and that is
+  # deliberate: `deps` and `.git` in a worktree are symlinks into the live tree,
+  # which the jail's profile binds (ISOL-7, ISOL-25), so their real location
+  # classifies as outside the worktree and a routine read of
+  # `deps/req/lib/req.ex` must not start asking for approval. Unjailed, where the
+  # user can still hand the agent a file outside the workspace by approving the
+  # read (FILE-12), the class of where the path lands decides: outside is offered
+  # for approval, everything else is inside the workspace and needs none.
   def read_policy(input, ctx) do
-    {abs, class} = Workspace.resolve(input["path"] || ".", root(ctx))
+    {abs, _real, class} = referent(input["path"] || ".", ctx)
 
     cond do
       unreachable?(abs, ctx) -> {:deny, refusal(abs)}
+      class == :unresolvable -> {:deny, unknown(abs)}
+      confined?(ctx) -> :never
       class == :outside -> :required
       true -> :never
     end
   end
 
-  def write_policy(%{"path" => path}, ctx) do
-    {abs, class} = Workspace.resolve(path, root(ctx))
+  # FILE-5, FILE-21, FILE-39, FILE-40: a change follows the class of where the
+  # path lands — under `skills/` without approval, a core path with it, a
+  # protected or outside one refused — and deleting follows the write policy
+  # (FILE-21) exactly, judging its path as FILE-40 says.
+  def write_policy(%{"path" => path}, ctx), do: change_policy(referent(path, ctx), ctx)
 
+  def delete_policy(%{"path" => path}, ctx), do: change_policy(delete_referent(path, ctx), ctx)
+
+  defp change_policy({abs, real, class}, ctx) do
     cond do
-      unreachable?(abs, ctx) ->
-        {:deny, refusal(abs)}
-
-      class == :extension ->
-        :never
-
-      class == :core ->
-        :required
-
-      class == :protected ->
-        {:deny,
-         "#{Workspace.relative(abs, root(ctx))} is protected and cannot be changed by tools."}
-
-      class == :outside ->
-        {:deny, "#{abs} is outside the workspace."}
+      unreachable?(abs, ctx) -> {:deny, refusal(abs)}
+      class == :extension -> :never
+      class == :core -> :required
+      class == :protected -> {:deny, protected_change(abs, real, ctx)}
+      class == :outside -> {:deny, outside_change(abs, real, ctx)}
+      # WS-9: a path with no real location is refused rather than taken for the
+      # workspace path it stops at.
+      class == :unresolvable -> {:deny, unknown(abs)}
     end
   end
 
-  # FILE-21: deleting is a change to the workspace, so it follows the write
-  # policy (FILE-5) exactly: extension → no approval, core → approval, and a
-  # protected or outside path refused.
-  def delete_policy(input, ctx), do: write_policy(input, ctx)
+  # FILE-40: deleting judges a path by where it lands as well (FILE-39). Both
+  # cases fall out of one rule: the real location of the path's *parent*
+  # directory, with the path's own name. A child reached through a symlinked
+  # directory is therefore judged by where the child lands, while a path that is
+  # itself a link is judged where the link sits — its own directory and name,
+  # never its target — and the link is what goes (FILE-20).
+  defp delete_referent(path, ctx) do
+    root = root(ctx)
+    abs = Path.expand(path, root)
+
+    case Workspace.real_location(Path.dirname(abs)) do
+      :unresolvable ->
+        {abs, :unresolvable, :unresolvable}
+
+      dir ->
+        real = Path.join(dir, Path.basename(abs))
+        {abs, real, Workspace.classify(real, root)}
+    end
+  end
+
+  # FILE-39: a path that is written as an ordinary workspace file but lands on a
+  # protected or an outside one is refused as that location's class, saying
+  # where it lands. A path that is written as the location itself keeps the
+  # message it always had.
+  defp protected_change(abs, real, ctx) do
+    rel = Workspace.relative(abs, root(ctx))
+
+    if real == abs,
+      do: "#{rel} is protected and cannot be changed by tools.",
+      else: "#{rel} resolves to #{real}, which is protected and cannot be changed by tools."
+  end
+
+  defp outside_change(abs, real, ctx) do
+    if real == abs,
+      do: "#{abs} is outside the workspace.",
+      else: "#{Workspace.relative(abs, root(ctx))} resolves to #{real}, outside the workspace."
+  end
 
   # FILE-12, FILE-13: with the jail on, the tools reach what a jailed command in
   # this workspace reaches and nothing else (ISOL-25). It follows the jail
@@ -270,13 +328,19 @@ defmodule Elia.Skills.Files do
 
   defp reachable?(abs, ctx), do: Elia.Shell.reachable?(abs, root(ctx))
 
+  # WS-9: a link chain past the bound, or a loop, has no real location, so where
+  # it leads is unknown and it is refused by name.
+  defp unknown(abs) do
+    "#{abs} goes through more symlinks than can be followed, so where it leads is unknown"
+  end
+
   # FILE-13: a path that only looks inside the workspace says where it goes.
   defp refusal(abs) do
     where =
       case Workspace.real_location(abs) do
         # WS-6
         :unresolvable ->
-          "#{abs} goes through more symlinks than can be followed, so where it leads is unknown"
+          unknown(abs)
 
         ^abs ->
           "#{abs} is outside the workspace"
@@ -289,18 +353,40 @@ defmodule Elia.Skills.Files do
   end
 
   # The refusal is a policy, not an approval prompt, so the run enforces it too:
-  # what the tools may touch doesn't depend on anything else checking first.
-  defp allowed(abs, ctx) do
-    if unreachable?(abs, ctx), do: {:error, refusal(abs)}, else: :ok
+  # what the tools may touch doesn't depend on anything else checking first. A
+  # path with no real location is refused on the same terms wherever it is run
+  # from (WS-9).
+  defp allowed(abs, class, ctx) do
+    cond do
+      unreachable?(abs, ctx) -> {:error, refusal(abs)}
+      class == :unresolvable -> {:error, unknown(abs)}
+      true -> :ok
+    end
+  end
+
+  # FILE-39, FILE-40, FILE-41: a change carries the class of where it lands into
+  # the run as well (WS-7, WS-8), so a path a link moved onto a protected or an
+  # outside location after it was approved is refused by the run, and not only
+  # by the policy. A read keeps the plain rule — an outside path is read with the
+  # user's approval (FILE-4), so only the jail and WS-9 stop it here.
+  defp allowed_change(abs, real, class, ctx) do
+    with :ok <- allowed(abs, class, ctx) do
+      case class do
+        :protected -> {:error, protected_change(abs, real, ctx)}
+        :outside -> {:error, outside_change(abs, real, ctx)}
+        _ -> :ok
+      end
+    end
   end
 
   ## Tools
 
   def read_file(%{"path" => path} = input, ctx \\ %{}) do
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, real, class} = referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx) do
-      case File.read(abs) do
+    # FILE-41: the file opened is the one the class was decided on.
+    with :ok <- allowed(abs, class, ctx) do
+      case File.read(real) do
         {:ok, text} ->
           lines = String.split(text, "\n")
           offset = max(input["offset"] || 1, 1)
@@ -322,12 +408,14 @@ defmodule Elia.Skills.Files do
   end
 
   def write_file(%{"path" => path, "content" => content}, ctx) do
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, real, class} = referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx) do
-      with_file_lock(abs, fn ->
-        with :ok <- File.mkdir_p(Path.dirname(abs)),
-             :ok <- File.write(abs, content) do
+    # FILE-39, FILE-41: the write lands on the resolved path, which is the one
+    # the class was decided on; the result still names the path as written.
+    with :ok <- allowed_change(abs, real, class, ctx) do
+      with_file_lock(real, fn ->
+        with :ok <- File.mkdir_p(Path.dirname(real)),
+             :ok <- File.write(real, content) do
           {:ok, "Wrote #{Workspace.relative(abs, root(ctx))} (#{byte_size(content)} bytes)"}
         else
           {:error, reason} when is_atom(reason) ->
@@ -341,16 +429,17 @@ defmodule Elia.Skills.Files do
   end
 
   def edit_file(%{"path" => path, "old_string" => old, "new_string" => new} = input, ctx) do
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, real, class} = referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx) do
-      # The whole read-modify-write runs under the file's lock (FILE-11), so
-      # concurrent edits of one file each see the previous edit's result.
-      with_file_lock(abs, fn ->
-        with {:ok, text} <- File.read(abs) |> file_error(path),
+    with :ok <- allowed_change(abs, real, class, ctx) do
+      # The whole read-modify-write runs under the file's lock (FILE-11) and on
+      # the path the class was decided on (FILE-39, FILE-41), so concurrent
+      # edits of one file each see the previous edit's result.
+      with_file_lock(real, fn ->
+        with {:ok, text} <- File.read(real) |> file_error(path),
              {:ok, updated, count, matched} <-
                replace(text, old, new, input["replace_all"] == true),
-             :ok <- File.write(abs, updated) |> file_error(path) do
+             :ok <- File.write(real, updated) |> file_error(path) do
           {:ok,
            "Edited #{Workspace.relative(abs, root(ctx))} " <>
              "(#{count} replacement#{plural(count)}#{how(matched)})"}
@@ -372,9 +461,9 @@ defmodule Elia.Skills.Files do
   # most @max_list_entries entries.
   def list_files(input, ctx \\ %{}) do
     path = input["path"] || "."
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, _real, class} = referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx),
+    with :ok <- allowed(abs, class, ctx),
          {:ok, names} <- ls(abs, path) do
       entries = names |> Enum.map(&entry(abs, root(ctx), &1)) |> order()
       limit = min(input["limit"] || @max_list_entries, @max_list_entries)
@@ -393,9 +482,9 @@ defmodule Elia.Skills.Files do
   # regions, so a search doesn't need a `grep -n` and a `read_file` after it.
   def search_files(%{"pattern" => pattern} = input, ctx \\ %{}) do
     path = input["path"] || "."
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, _real, class} = referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx),
+    with :ok <- allowed(abs, class, ctx),
          :ok <- non_empty(pattern),
          {:ok, files} <- targets(abs, path, input["glob"], root(ctx)) do
       context = clamp(input["context"] || @default_context, 0, @max_context)
@@ -588,13 +677,16 @@ defmodule Elia.Skills.Files do
   defp clamp(value, min, max) when is_integer(value), do: value |> max(min) |> min(max)
   defp clamp(_value, min, _max), do: min
 
-  # FILE-19, FILE-20, FILE-22: delete a file, a symlink or an empty directory,
-  # under the same lock as a write (FILE-11) so the two can't race.
+  # FILE-19, FILE-20, FILE-22, FILE-40: delete a file, a symlink or an empty
+  # directory, under the same lock as a write (FILE-11) so the two can't race.
+  # What goes is the path as written — `lstat` then `rm`, so a link is removed
+  # as a link (FILE-20) — while it is judged, and locked, by the resolution of
+  # its parent directory with its own name (FILE-40, FILE-42).
   def delete_file(%{"path" => path}, ctx \\ %{}) do
-    {abs, _} = Workspace.resolve(path, root(ctx))
+    {abs, real, class} = delete_referent(path, ctx)
 
-    with :ok <- allowed(abs, ctx) do
-      with_file_lock(abs, fn ->
+    with :ok <- allowed_change(abs, real, class, ctx) do
+      with_file_lock(real, fn ->
         with {:ok, type} <- type_of(abs, path),
              :ok <- remove(abs, type, path) do
           {:ok, "Deleted #{Workspace.relative(abs, root(ctx))}"}
@@ -675,9 +767,12 @@ defmodule Elia.Skills.Files do
     end
   end
 
-  # Serialises writers of one absolute path across processes (FILE-11).
-  defp with_file_lock(abs, fun) do
-    :global.trans({{__MODULE__, abs}, self()}, fun, [node()])
+  # Serialises writers of one file across processes (FILE-11). The key is the
+  # path's real location (FILE-42), so two calls that spell one file
+  # differently — one through a symlink, one naming the file — are serialised
+  # with each other.
+  defp with_file_lock(real, fun) do
+    :global.trans({{__MODULE__, real}, self()}, fun, [node()])
   end
 
   defp replace(_text, "", _new, _all?), do: {:error, "old_string must not be empty"}

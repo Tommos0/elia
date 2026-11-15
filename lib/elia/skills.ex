@@ -120,24 +120,73 @@ defmodule Elia.Skills do
   The contents of `AGENTS.md` in the workspace root, trimmed and capped at
   #{@project_max_bytes} bytes, or `nil` when it is missing, unreadable or blank.
   Read on every call, so edits apply from the next request.
+
+  The file is read only when where it really lands is inside `root` and is
+  neither protected nor unresolvable (SKILL-17): a link out of the folder, into
+  a protected location or with no real location adds no section and is refused
+  by name alone, without ever being read (SKILL-18).
   """
   @spec project_instructions(Path.t()) :: binary() | nil
   def project_instructions(root \\ Elia.Workspace.root()) do
-    case File.read(Path.join(root, @project_file)) do
-      {:ok, text} ->
-        case String.trim(text) do
-          "" -> nil
-          text -> cap_project(text)
-        end
+    path = Path.join(root, @project_file)
 
-      {:error, :enoent} ->
-        nil
-
-      {:error, reason} ->
-        Logger.warning("Could not read #{@project_file}: #{:file.format_error(reason)}")
-        nil
+    case instruction_file(path, root) do
+      {:ok, real} -> read_project(File.read(real))
+      :refused -> nil
     end
   end
+
+  defp read_project({:ok, text}) do
+    case String.trim(text) do
+      "" -> nil
+      text -> cap_project(text)
+    end
+  end
+
+  defp read_project({:error, :enoent}), do: nil
+
+  defp read_project({:error, reason}) do
+    Logger.warning("Could not read #{@project_file}: #{:file.format_error(reason)}")
+    nil
+  end
+
+  # SKILL-17, SKILL-18: where the instructions really land decides whether they
+  # are read at all (WS-5): only a location inside `root` that is neither
+  # protected nor unresolvable (WS-7, WS-9) is read, and a refused one is named
+  # with where it goes and nothing of what it holds — the target is never opened,
+  # so none of its contents can reach the prompt.
+  #
+  # Unlike `read_file` (FILE-4, FILE-12) this rule does not follow the chat's
+  # jail switch: this read is never offered for the user's approval, so nothing
+  # else stands behind it.
+  defp instruction_file(path, root) do
+    case Elia.Workspace.real_location(path) do
+      :unresolvable ->
+        Logger.warning(
+          "Refusing #{@project_file} at #{path}: it goes through more symlinks than can be " <>
+            "followed, so where it leads is unknown"
+        )
+
+        :refused
+
+      real ->
+        case Elia.Workspace.classify(real, root) do
+          class when class in [:core, :extension] ->
+            {:ok, real}
+
+          class ->
+            Logger.warning(
+              "Refusing #{@project_file} at #{path}: it resolves to #{real}, which is " <>
+                refusal_reason(class)
+            )
+
+            :refused
+        end
+    end
+  end
+
+  defp refusal_reason(:protected), do: "a protected location"
+  defp refusal_reason(_class), do: "outside the workspace"
 
   defp cap_project(text) when byte_size(text) <= @project_max_bytes, do: text
 

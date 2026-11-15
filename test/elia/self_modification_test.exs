@@ -223,11 +223,74 @@ defmodule Elia.SelfModificationTest do
                  %{jail: true}
                )
 
-      # Unjailed the link is an ordinary workspace path (FILE-12, FILE-13): it
-      # is the jail that refuses it.
-      assert Files.read_policy(%{"path" => "link-out"}, %{jail: false}) == :never
+      # Unjailed the class of where the path lands decides (WS-8): the link is
+      # read only with the user's approval, and a write through the link
+      # directory is refused because it would land outside the workspace.
+      assert Files.read_policy(%{"path" => "link-out"}, %{jail: false}) == :required
       assert {:ok, "not for the tools"} = Files.read_file(%{"path" => "link-out"}, %{jail: false})
-      assert Files.write_policy(%{"path" => "link-dir/evil.txt"}, %{jail: false}) == :required
+
+      assert {:deny, reason} =
+               Files.write_policy(%{"path" => "link-dir/evil.txt"}, %{jail: false})
+
+      assert reason =~ "resolves to #{Path.join(Path.dirname(outside), "evil.txt")}"
+    end
+
+    # WS-8, FILE-39: a path inside the workspace that resolves out of it is
+    # treated as an outside path however it is written — refused for a write,
+    # and nothing lands outside.
+    test "a link landing outside is refused for a write, and nothing is created" do
+      dir = Path.join(System.tmp_dir!(), "elia-land-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      File.ln_s!(dir, in_root("land-out"))
+
+      on_exit(fn ->
+        File.rm(in_root("land-out"))
+        File.rm_rf!(dir)
+      end)
+
+      path = "land-out/evil.txt"
+
+      # Under the jail the run refuses it too, so nothing outside is created
+      # (FILE-12, FILE-13).
+      assert {:deny, _} = Files.write_policy(%{"path" => path}, %{jail: true})
+      assert {:error, _} = Files.write_file(%{"path" => path, "content" => "x"}, %{jail: true})
+      refute File.exists?(Path.join(dir, "evil.txt"))
+
+      # Unjailed it is refused as the outside path it lands on (FILE-5, WS-8),
+      # rather than offered for approval.
+      assert {:deny, reason} = Files.write_policy(%{"path" => path}, %{jail: false})
+      assert reason == "#{path} resolves to #{Path.join(dir, "evil.txt")}, outside the workspace."
+
+      assert {:deny, _} = Files.delete_policy(%{"path" => path}, %{jail: false})
+
+      # FILE-39, FILE-41: the run refuses it too, not only the policy, so nothing
+      # outside is created even when the jail is off.
+      assert {:error, reason} =
+               Files.write_file(%{"path" => path, "content" => "x"}, %{jail: false})
+
+      assert reason =~ "outside the workspace"
+      refute File.exists?(Path.join(dir, "evil.txt"))
+    end
+
+    # FILE-40, FILE-13: a delete through a symlinked directory is judged by the
+    # child's real location, so one landing out of the workspace is refused under
+    # the jail, and what is out there is left alone.
+    test "deleting a child through a symlinked directory out of the workspace is refused" do
+      dir = Path.join(System.tmp_dir!(), "elia-del-child-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "keep.txt"), "keep me")
+      File.ln_s!(dir, in_root("del-child"))
+
+      on_exit(fn ->
+        File.rm(in_root("del-child"))
+        File.rm_rf!(dir)
+      end)
+
+      assert {:error, reason} =
+               Files.delete_file(%{"path" => "del-child/keep.txt"}, %{jail: true})
+
+      assert reason =~ "resolves to #{Path.join(dir, "keep.txt")}"
+      assert File.read!(Path.join(dir, "keep.txt")) == "keep me"
     end
 
     # FILE-18: listing follows the read policy, so under the jail a path
@@ -629,6 +692,164 @@ defmodule Elia.SelfModificationTest do
       assert {:ok, "Deleted skills/notes/locked.txt"} = Task.await(deleter, 5_000)
       assert Task.await(holder, 5_000) == :ok
       refute File.exists?(abs)
+    end
+
+    # WS-7, FILE-39: a path whose real location is protected is treated as
+    # protected however it is written, so a link — or a directory reached
+    # through one — cannot make a protected target an ordinary write.
+    test "a link to a protected target is refused as protected" do
+      File.ln_s!(in_root(".git"), in_root("prot-link"))
+
+      on_exit(fn -> File.rm(in_root("prot-link")) end)
+
+      path = "prot-link/hooks/pre-commit"
+
+      assert {:deny, reason} = Files.write_policy(%{"path" => path}, %{})
+      assert reason =~ "resolves to #{in_root(".git/hooks/pre-commit")}"
+      assert reason =~ "protected"
+
+      assert {:deny, _} = Files.delete_policy(%{"path" => path}, %{})
+
+      # The protected path itself keeps the message it always had.
+      assert {:deny, ".git/hooks/pre-commit is protected and cannot be changed by tools."} =
+               Files.write_policy(%{"path" => ".git/hooks/pre-commit"}, %{})
+    end
+
+    # WS-9: a path with no real location — a chain past the bound, or a loop —
+    # is refused, naming the path, by every read and write that judges one,
+    # rather than taken for the workspace path it stops at.
+    test "a loop or an over-long chain is refused for a read and a write" do
+      dir = "links-#{System.unique_integer([:positive])}"
+      %{outside: outside} = link_chain(dir, 12)
+      File.ln_s!("loop-b", in_root("#{dir}/loop-a"))
+      File.ln_s!("loop-a", in_root("#{dir}/loop-b"))
+
+      on_exit(fn ->
+        File.rm_rf!(in_root(dir))
+        File.rm_rf!(outside)
+      end)
+
+      for path <- ["#{dir}/l11/file.txt", "#{dir}/loop-a/file.txt"] do
+        assert {:deny, reason} = Files.read_policy(%{"path" => path}, %{})
+        assert reason =~ "more symlinks than can be followed"
+        assert reason =~ in_root(path)
+
+        assert {:error, reason} = Files.read_file(%{"path" => path}, %{})
+        assert reason =~ "more symlinks than can be followed"
+
+        assert {:deny, _} = Files.write_policy(%{"path" => path, "content" => "x"}, %{})
+        assert {:error, _} = Files.write_file(%{"path" => path, "content" => "x"}, %{})
+
+        assert {:deny, _} = Files.delete_policy(%{"path" => path}, %{})
+      end
+
+      # Where it stops is untouched: nothing was written on the way.
+      assert File.read!(in_root("#{dir}/l11/file.txt")) == "not for the tools"
+    end
+
+    # FILE-40: deleting judges a path by where it lands, so a child reached
+    # through a symlinked directory goes by the child's real location.
+    test "a delete through a symlinked directory is judged where the child lands" do
+      File.mkdir_p!(in_root("del-target"))
+      File.write!(in_root("del-target/child.txt"), "child")
+      File.ln_s!(in_root("del-target"), in_root("del-link"))
+
+      dir = Path.join(System.tmp_dir!(), "elia-del-out-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "keep.txt"), "keep me")
+      File.ln_s!(dir, in_root("del-out"))
+
+      on_exit(fn ->
+        File.rm(in_root("del-link"))
+        File.rm(in_root("del-out"))
+        File.rm_rf!(in_root("del-target"))
+        File.rm_rf!(dir)
+      end)
+
+      # Inside the workspace: an ordinary core path, and the real child goes.
+      assert Files.delete_policy(%{"path" => "del-link/child.txt"}, %{}) == :required
+
+      assert {:ok, "Deleted del-link/child.txt"} =
+               Files.delete_file(%{"path" => "del-link/child.txt"}, %{})
+
+      refute File.exists?(in_root("del-target/child.txt"))
+
+      # Out of the workspace: refused as the outside path it lands on, and the
+      # file out there is left alone.
+      assert {:deny, reason} = Files.delete_policy(%{"path" => "del-out/keep.txt"}, %{})
+      assert reason =~ "resolves to #{Path.join(dir, "keep.txt")}"
+      assert reason =~ "outside the workspace"
+      assert File.read!(Path.join(dir, "keep.txt")) == "keep me"
+    end
+
+    # FILE-40, FILE-20: a path that is itself a symlink is judged where the link
+    # sits — its own directory and name, never its target — and the delete
+    # removes the link and leaves what it points at alone.
+    test "deleting a link itself is judged where the link sits" do
+      dir = Path.join(System.tmp_dir!(), "elia-del-link-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      target = Path.join(dir, "target.txt")
+      File.write!(target, "keep me")
+      File.ln_s!(target, in_root("link-sits"))
+
+      on_exit(fn ->
+        File.rm(in_root("link-sits"))
+        File.rm_rf!(dir)
+      end)
+
+      # The link's own path is an ordinary workspace path, so it is an approval
+      # rather than the refusal its target would get.
+      assert Files.delete_policy(%{"path" => "link-sits"}, %{}) == :required
+
+      assert {:ok, "Deleted link-sits"} = Files.delete_file(%{"path" => "link-sits"}, %{})
+      refute File.exists?(in_root("link-sits"))
+      assert File.read!(target) == "keep me"
+    end
+
+    # FILE-42: the per-file lock is keyed by the real location, so one file
+    # spelled two ways — through a link and by its own name — is one lock. A
+    # smoke test of the key rather than a proof of FILE-11: it shows a write
+    # through the link waiting for a lock held on the file it names.
+    test "the lock is the file's real location, so two spellings share it" do
+      dir = "skills/notes/lock"
+      File.mkdir_p!(in_root(dir))
+      real = in_root("#{dir}/real.txt")
+      File.write!(real, "one")
+      File.ln_s!("real.txt", in_root("#{dir}/alias.txt"))
+      parent = self()
+
+      # The link really does name that file.
+      assert Workspace.real_location(in_root("#{dir}/alias.txt")) == real
+
+      on_exit(fn -> File.rm_rf!(in_root("skills/notes")) end)
+
+      holder =
+        Task.async(fn ->
+          :global.trans(
+            {{Files, real}, self()},
+            fn ->
+              send(parent, :held)
+
+              receive do
+                :release -> :ok
+              end
+            end,
+            [node()]
+          )
+        end)
+
+      assert_receive :held, 500
+
+      writer =
+        Task.async(fn ->
+          Files.write_file(%{"path" => "#{dir}/alias.txt", "content" => "two"}, %{})
+        end)
+
+      assert Task.yield(writer, 100) == nil
+      send(holder.pid, :release)
+      assert {:ok, _} = Task.await(writer, 5_000)
+      assert Task.await(holder, 5_000) == :ok
+      assert File.read!(real) == "two"
     end
   end
 

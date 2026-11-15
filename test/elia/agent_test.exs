@@ -1649,6 +1649,30 @@ defmodule Elia.AgentTest do
     assert content =~ "outside the workspace"
   end
 
+  # SKILL-17, SKILL-18: the project instructions a request carries are the
+  # confined ones — an `AGENTS.md` that is a link out of the project folder is
+  # not read, so nothing of the file it points at reaches the request at all.
+  test "an AGENTS.md link out of the project folder never reaches the request" do
+    dir = tmp_dir("agents")
+    outside = Path.join(System.tmp_dir!(), "elia-agents-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outside)
+    target = Path.join(outside, "secrets.md")
+    File.write!(target, "SENTINEL-never-in-the-prompt")
+    File.ln_s!(target, Path.join(dir, "AGENTS.md"))
+    on_exit(fn -> File.rm_rf!(outside) end)
+
+    id = start_project_session(other_project(dir), loop_opts: [llm: %{provider: FakeLLM}])
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+    :ok = Agent.send_message(id, "hello")
+    await_status(id, :idle)
+
+    # The whole request: no section was added, and none of the file is in it.
+    [request] = FakeLLM.requests()
+    refute inspect(request) =~ "SENTINEL-never-in-the-prompt"
+    refute inspect(request) =~ "Project instructions"
+  end
+
   # PROJ-12, SHELL-2
   test "the shell runs in the chat's project folder" do
     dir = tmp_dir("shell")

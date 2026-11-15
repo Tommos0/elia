@@ -106,6 +106,68 @@ defmodule Elia.SkillsTest do
     assert Skills.project_instructions(dir) == "See docs/agents/elixir.md"
   end
 
+  # SKILL-18: a marker standing in for whatever a refused file could hold. It
+  # must not appear in the log — which is only possible if the file was never
+  # read at all.
+  @sentinel "SENTINEL-never-in-the-prompt"
+
+  defp refused(dir) do
+    ExUnit.CaptureLog.capture_log(fn ->
+      send(self(), {:instructions, Skills.project_instructions(dir)})
+    end)
+  end
+
+  # SKILL-17, SKILL-18, WS-8: a `AGENTS.md` that is a link resolving out of the
+  # folder adds no section, is named with where it goes, and its target is never
+  # read — so none of what it holds can reach the prompt or the log.
+  test "an AGENTS.md link out of the folder adds nothing", %{tmp_dir: dir} do
+    outside = Path.join(System.tmp_dir!(), "elia-agents-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outside)
+    target = Path.join(outside, "secrets.md")
+    File.write!(target, @sentinel)
+    File.ln_s!(target, Path.join(dir, "AGENTS.md"))
+
+    on_exit(fn -> File.rm_rf!(outside) end)
+
+    log = refused(dir)
+
+    assert_received {:instructions, nil}
+    assert log =~ "Refusing AGENTS.md"
+    assert log =~ Path.join(dir, "AGENTS.md")
+    assert log =~ target
+    refute log =~ @sentinel
+  end
+
+  # SKILL-17, SKILL-18, WS-7: a link into a protected location is refused as
+  # protected, and its target is never read either.
+  test "an AGENTS.md link into a protected location adds nothing", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, ".git"))
+    target = Path.join([dir, ".git", "AGENTS.md"])
+    File.write!(target, @sentinel)
+    File.ln_s!(target, Path.join(dir, "AGENTS.md"))
+
+    log = refused(dir)
+
+    assert_received {:instructions, nil}
+    assert log =~ "Refusing AGENTS.md"
+    assert log =~ target
+    assert log =~ "protected"
+    refute log =~ @sentinel
+  end
+
+  # SKILL-17, WS-9: one that can't be resolved — a loop, or a chain past the
+  # bound — is refused too, rather than read as the file it stops at.
+  test "an AGENTS.md that cannot be resolved adds nothing", %{tmp_dir: dir} do
+    File.ln_s!("AGENTS.md-b", Path.join(dir, "AGENTS.md"))
+    File.ln_s!("AGENTS.md", Path.join(dir, "AGENTS.md-b"))
+
+    log = refused(dir)
+
+    assert_received {:instructions, nil}
+    assert log =~ "Refusing AGENTS.md"
+    assert log =~ "more symlinks than can be followed"
+  end
+
   defp project(folder), do: %{id: "prj-1", name: "Other", folder: folder, harness?: false}
 
   defp write_skill(root, name) do
