@@ -5,6 +5,9 @@ defmodule EliaWeb.Layouts do
   """
   use EliaWeb, :html
 
+  # PWA-8: the shell's asset links carry a version of the built file.
+  alias EliaWeb.AssetVersion
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers

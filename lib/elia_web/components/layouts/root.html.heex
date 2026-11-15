@@ -14,8 +14,20 @@
     <meta name="theme-color" content="#111827" />
     <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
     <.live_title default="Elia" prefix="Elia - " phx-no-format>{assigns[:page_title]}</.live_title>
-    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    <%!-- PWA-8: the bundle is fetched under a version read from the built file,
+    so a page that loads again on a new build does not get the old one from the
+    browser's cache. --%>
+    <link
+      phx-track-static
+      rel="stylesheet"
+      href={AssetVersion.versioned(~p"/assets/css/app.css")}
+    />
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={AssetVersion.versioned(~p"/assets/js/app.js")}
+    >
     </script>
     <script>
       (() => {

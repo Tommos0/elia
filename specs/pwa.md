@@ -7,7 +7,9 @@ Elia can be installed on a phone's home screen (Android Chrome: menu →
 the browser chrome. This needs a web app manifest, icons, a registered service
 worker, and a secure origin (HTTPS, or `localhost`). Elia is a live,
 server-driven app, so the service worker does no caching and there is no
-offline mode.
+offline mode. What a browser's own cache can still hold on to is the page's
+assets, so the shell's links to them carry a version that changes with the
+build (PWA-8).
 
 ## Requirements
 
@@ -38,10 +40,24 @@ offline mode.
   bottom of it — the composer in a chat (UI-78). A browser that doesn't know the
   directive ignores it, and so does a desktop browser, where there is no
   keyboard to resize for.
+- **PWA-8** The root layout's links to the shell's own CSS and JS carry a
+  version query, `?v=<version>`, whose value is read from the built file itself
+  — its modification time and size — so a rebuild gives the page a new URL for
+  the bundle. A page that loads again on a new build (an installed app reopened,
+  a reload) therefore fetches the new bundle rather than one the browser's cache
+  still holds, which is the case the worker does not cover (PWA-4). The version
+  is read from the app's own `priv/static` as the layout renders, and a bundle
+  that is not there yet gives a stable placeholder rather than an error, so a
+  page renders before the assets are built.
 
 ## Out of scope
 
 - Offline use, caching, push notifications.
+- The document itself: the HTML an installed app opens carries no version, and a
+  page that keeps the bundle it already loaded, without loading the document
+  again, is not reached (HOT-8). What an installed app does with a document its
+  own window holds on to is the browser's site data, not something the server
+  sends.
 - The browser only offers installation on a secure origin. Over plain HTTP on a
   LAN address, Chrome only offers a shortcut, not an installed app. Use HTTPS
   (e.g. a tunnel or reverse proxy) or `chrome://flags` "Insecure origins treated
@@ -58,12 +74,14 @@ offline mode.
   `priv/static/images/icon-*.png`, `priv/static/images/apple-touch-icon.png`
 - `assets/pwa_icons.exs` (icon generator)
 - `EliaWeb.static_paths/0` (serves the files), `root.html.heex` (head tags,
-  the viewport meta of PWA-7), `assets/js/app.js` (registration)
+  the viewport meta of PWA-7, the versioned asset links of PWA-8),
+  `assets/js/app.js` (registration)
+- `EliaWeb.AssetVersion` (the version of PWA-8)
 
 ## Tests
 
 - `test/elia_web/pwa_test.exs` (the manifest and its icons, the layout's links,
-  the service worker's scope and the viewport meta — PWA-1 to PWA-4, PWA-6,
-  PWA-7).
+  the service worker's scope and the viewport meta, the version on the asset
+  links — PWA-1 to PWA-4, PWA-6 to PWA-8).
 - No test: PWA-5 — the registration is JavaScript in `assets/js/app.js`, the
   project has no JS test runner, and it is checked by hand.
