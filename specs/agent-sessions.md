@@ -359,6 +359,13 @@ config :elia, Elia.Agent.Session,
   every save serialises and writes all of it; SESS-44 makes those saves fewer,
   not smaller. Writing only what changed needs a different file shape (an
   append-only log of messages, say), which is a stored-data change of its own.
+- Holding the history reversed, or in a `:queue`, to make appending it cheaper.
+  The `messages ++ [message]` append was measured and kept on purpose: at 2,000
+  messages with 10 KB tool outputs it costs about 0.1 ms, against about 14 ms
+  and 20 MB for the save it was paired with, so the write was the cost SESS-44
+  addresses. Every step also builds the request view from the whole history
+  (COMPACT-29), so a cheaper append would not change how a step's cost grows
+  with the history.
 - Folding a chat's title, its done flag or its compaction state into the
   `settings` map (SESS-41): a title and a done flag are chat state rather than
   settings — a message clears the done flag (DONE-9) and a chat with task
