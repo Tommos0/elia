@@ -7,6 +7,7 @@ defmodule Elia.Store do
   """
 
   alias Elia.LLM.Message
+  alias Elia.Store.Cache
 
   @id_format ~r/^[A-Za-z0-9_-]{1,64}$/
 
@@ -123,6 +124,9 @@ defmodule Elia.Store do
 
     with :ok <- write_synced(tmp, :erlang.term_to_binary(chat)),
          :ok <- File.rename(tmp, path) do
+      # STORE-45: the rename already changed the file's identity; the entry
+      # goes now rather than waiting for a listing to find it stale.
+      Cache.drop(id)
       :ok
     else
       error ->
@@ -152,14 +156,27 @@ defmodule Elia.Store do
     end
   end
 
+  @doc """
+  A chat's saved keys other than `messages`, as one map (STORE-44), or `nil`
+  for an invalid id or a chat that is missing, unreadable or corrupt. Every
+  per-key loader below reads it, so they decode the file once between them —
+  and not at all while it is unchanged (STORE-45).
+  """
+  @spec load_meta(binary()) :: map() | nil
+  def load_meta(id) do
+    with true <- valid_id?(id),
+         %{meta: %{} = meta} <- record(id) do
+      meta
+    else
+      _ -> nil
+    end
+  end
+
   @doc "The chat's saved model selection, or `nil` (STORE-9)."
   @spec load_model(binary()) :: map() | nil
   def load_model(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{model: %{} = model} <- decode(data) do
-      model
-    else
+    case load_meta(id) do
+      %{model: %{} = model} -> model
       _ -> nil
     end
   end
@@ -171,12 +188,9 @@ defmodule Elia.Store do
   """
   @spec load_title(binary()) :: binary() | nil
   def load_title(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{} = chat <- decode(data) do
-      shape_title(Map.get(chat, :title))
-    else
-      _ -> nil
+    case load_meta(id) do
+      %{} = meta -> shape_title(Map.get(meta, :title))
+      nil -> nil
     end
   end
 
@@ -206,9 +220,8 @@ defmodule Elia.Store do
   @spec chat_title(binary()) :: binary()
   def chat_title(id) do
     with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{messages: messages} = chat <- decode(data) do
-      shape_title(Map.get(chat, :title)) || title(messages)
+         %{meta: %{} = meta, title: derived} <- record(id) do
+      shape_title(Map.get(meta, :title)) || derived
     else
       _ -> "New chat"
     end
@@ -221,21 +234,16 @@ defmodule Elia.Store do
   """
   @spec load_done(binary()) :: boolean()
   def load_done(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{} = chat <- decode(data) do
-      Map.get(chat, :done) == true
-    else
-      _ -> false
+    case load_meta(id) do
+      %{} = meta -> Map.get(meta, :done) == true
+      nil -> false
     end
   end
 
   @doc "The chat's saved auto-approved tool names, or `[]` (STORE-15)."
   @spec load_auto_approve(binary()) :: [binary()]
   def load_auto_approve(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{auto_approve: [_ | _] = names} <- decode(data),
+    with %{auto_approve: [_ | _] = names} <- load_meta(id),
          true <- Enum.all?(names, &is_binary/1) do
       names
     else
@@ -250,9 +258,7 @@ defmodule Elia.Store do
   """
   @spec load_jail(binary()) :: boolean()
   def load_jail(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{jail: jail} <- decode(data),
+    with %{jail: jail} <- load_meta(id),
          true <- is_boolean(jail) do
       jail
     else
@@ -267,11 +273,8 @@ defmodule Elia.Store do
   """
   @spec load_limits(binary()) :: Elia.Limits.t()
   def load_limits(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{limits: %{} = limits} <- decode(data) do
-      Elia.Limits.new(limits)
-    else
+    case load_meta(id) do
+      %{limits: %{} = limits} -> Elia.Limits.new(limits)
       _ -> Elia.Limits.defaults()
     end
   end
@@ -284,9 +287,7 @@ defmodule Elia.Store do
   """
   @spec load_effort(binary()) :: binary() | nil
   def load_effort(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{effort: effort} <- decode(data),
+    with %{effort: effort} <- load_meta(id),
          true <- effort in @efforts do
       effort
     else
@@ -301,11 +302,8 @@ defmodule Elia.Store do
   """
   @spec load_task(binary()) :: map() | nil
   def load_task(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{task: %{parent_id: _} = task} <- decode(data) do
-      task
-    else
+    case load_meta(id) do
+      %{task: %{parent_id: _} = task} -> task
       _ -> nil
     end
   end
@@ -313,9 +311,7 @@ defmodule Elia.Store do
   @doc "The id of the project a chat belongs to, or `nil` (STORE-19, PROJ-9)."
   @spec load_project(binary()) :: binary() | nil
   def load_project(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{project_id: project_id} <- decode(data),
+    with %{project_id: project_id} <- load_meta(id),
          true <- is_binary(project_id) do
       project_id
     else
@@ -329,11 +325,8 @@ defmodule Elia.Store do
   """
   @spec load_compaction(binary()) :: map() | nil
   def load_compaction(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{compaction: %{} = compaction} <- decode(data) do
-      compaction
-    else
+    case load_meta(id) do
+      %{compaction: %{} = compaction} -> compaction
       _ -> nil
     end
   end
@@ -345,11 +338,8 @@ defmodule Elia.Store do
   """
   @spec load_turn(binary()) :: map() | nil
   def load_turn(id) do
-    with true <- valid_id?(id),
-         {:ok, data} <- File.read(path(id)),
-         %{turn: %{id: _} = turn} <- decode(data) do
-      turn
-    else
+    case load_meta(id) do
+      %{turn: %{id: _} = turn} -> turn
       _ -> nil
     end
   end
@@ -406,12 +396,17 @@ defmodule Elia.Store do
     |> Enum.reverse()
   end
 
+  # STORE-45: a chat whose file is gone by the time it is read is not listed,
+  # and its cache entry goes with the rest of the files no longer there.
   defp all_entries do
     case File.ls(dir()) do
       {:ok, files} ->
+        files = Enum.filter(files, &String.ends_with?(&1, ".term"))
+        Cache.keep_only(MapSet.new(files, &Path.rootname/1))
+
         files
-        |> Enum.filter(&String.ends_with?(&1, ".term"))
         |> Enum.map(&listed/1)
+        |> Enum.reject(&is_nil/1)
         |> Enum.sort_by(&DateTime.to_unix(&1.created_at, :microsecond), :desc)
 
       {:error, _} ->
@@ -421,22 +416,36 @@ defmodule Elia.Store do
 
   # A file's listed entry: the saved fields, plus the title and description the
   # chat list shows (STORE-10, STORE-33, STORE-35) and a task chat's own listed
-  # status (STORE-17).
+  # status (STORE-17), or `nil` when the file is gone. A corrupt or unreadable
+  # file is listed as a chat with nothing saved, as it always was.
   defp listed(file) do
-    entry = list_entry(file)
-    {messages, entry} = Map.pop(entry, :messages)
-    {task, entry} = Map.pop(entry, :task)
+    id = Path.rootname(file)
 
-    entry
-    |> Map.merge(%{
-      # STORE-33, TITLE-1: the chat's own title when it has one, else the
-      # derivation from its first user message (STORE-7). The description
-      # is that derivation either way (STORE-10), so hovering a row still
-      # shows what was asked.
-      title: Map.get(entry, :title) || title(messages),
-      description: title(messages, 1000)
-    })
-    |> put_task(task)
+    with %{} = record <- record(id) do
+      meta = if is_map(record.meta), do: record.meta, else: %{}
+      mtime = DateTime.from_unix!(record.mtime)
+
+      %{
+        id: id,
+        project_id: Map.get(meta, :project_id),
+        # STORE-31, STORE-45: a chat that still holds a turn record (STORE-30)
+        # while no session for it runs was interrupted by a restart (INTR-2).
+        # Running state, so worked out here at every listing, never cached.
+        interrupted: not is_nil(Map.get(meta, :turn)) and not Elia.Agent.live?(id),
+        # STORE-33, TITLE-1: the chat's own title when it has one (STORE-32),
+        # else the derivation from its first user message (STORE-7). The
+        # description is that derivation either way (STORE-10), so hovering a
+        # row still shows what was asked.
+        title: shape_title(Map.get(meta, :title)) || record.title,
+        description: record.description,
+        # STORE-35, DONE-1: whether the chat is marked done, a boolean like
+        # STORE-31's `interrupted`, so a chat nobody marked reads as open.
+        done: Map.get(meta, :done) == true,
+        created_at: Map.get(meta, :created_at) || mtime,
+        updated_at: Map.get(meta, :updated_at) || mtime
+      }
+      |> put_task(Map.get(meta, :task))
+    end
   end
 
   # STORE-17: a sub-task chat is listed under its task title, with its parent
@@ -461,46 +470,62 @@ defmodule Elia.Store do
 
   defp put_task(entry, _task), do: entry
 
-  defp list_entry(file) do
-    id = Path.rootname(file)
-    path = Path.join(dir(), file)
-    mtime = path |> File.stat!(time: :posix) |> Map.fetch!(:mtime) |> DateTime.from_unix!()
+  # STORE-45: what the store knows of a chat's file without its messages — the
+  # saved keys other than `messages` (`:corrupt` for a file that doesn't decode
+  # to a chat), the title and description derived from the messages, and the
+  # modification time listing falls back on — or `nil` when there is no file.
+  # It is decoded only when the file's identity differs from the cached one.
+  defp record(id) do
+    path = path(id)
 
-    chat =
-      with {:ok, data} <- File.read(path),
-           %{} = chat <- decode(data) do
-        chat
-      else
-        _ -> %{}
-      end
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} ->
+        identity = {inode, size, mtime}
+        Cache.fetch(id, identity) || decode_record(id, path, identity, mtime)
 
-    %{
-      id: id,
-      messages: Map.get(chat, :messages, []),
-      task: Map.get(chat, :task),
-      project_id: Map.get(chat, :project_id),
-      # STORE-31: a chat that still holds a turn record (STORE-30) while no
-      # session for it runs was interrupted by a restart (INTR-2).
-      interrupted: not is_nil(Map.get(chat, :turn)) and not Elia.Agent.live?(id),
-      # The chat's own title (STORE-32), nil when it has none (STORE-33).
-      title: shape_title(Map.get(chat, :title)),
-      # STORE-35, DONE-1: whether the chat is marked done, a boolean like
-      # STORE-31's `interrupted`, so a chat nobody marked reads as open.
-      done: Map.get(chat, :done) == true,
-      created_at: Map.get(chat, :created_at) || mtime,
-      updated_at: Map.get(chat, :updated_at) || mtime
-    }
+      {:error, _} ->
+        nil
+    end
   end
 
-  # The start date of an already saved chat, or `nil` (STORE-11).
-  defp created_at(id) do
-    with {:ok, data} <- File.read(path(id)),
-         %{} = chat <- decode(data) do
-      case chat do
-        %{created_at: %DateTime{} = at} -> at
-        _ -> path(id) |> File.stat!(time: :posix) |> Map.fetch!(:mtime) |> DateTime.from_unix!()
+  defp decode_record(id, path, identity, mtime) do
+    :telemetry.execute([:elia, :store, :decode], %{count: 1}, %{id: id})
+
+    record =
+      case File.read(path) do
+        {:ok, data} ->
+          case decode(data) do
+            %{} = chat ->
+              {messages, meta} = Map.pop(chat, :messages, [])
+              %{meta: meta, title: title(messages), description: title(messages, 1000)}
+
+            _ ->
+              corrupt()
+          end
+
+        # Gone between the stat and the read.
+        {:error, :enoent} ->
+          nil
+
+        {:error, _} ->
+          corrupt()
       end
-    else
+
+    if record do
+      record = Map.put(record, :mtime, mtime)
+      Cache.put(id, identity, record)
+      record
+    end
+  end
+
+  defp corrupt, do: %{meta: :corrupt, title: title([]), description: title([], 1000)}
+
+  # The start date of an already saved chat, or `nil` (STORE-11): its own, or
+  # for a file saved before there was one, its modification time.
+  defp created_at(id) do
+    case record(id) do
+      %{meta: %{created_at: %DateTime{} = at}} -> at
+      %{meta: %{}, mtime: mtime} -> DateTime.from_unix!(mtime)
       _ -> nil
     end
   end
@@ -525,6 +550,9 @@ defmodule Elia.Store do
     if valid_id?(id) do
       Elia.Deploy.remove_worktree(id)
       Elia.StepTiming.delete(id)
+
+      # STORE-45: the entry goes now, not at the next listing.
+      Cache.drop(id)
 
       case File.rm(path(id)) do
         :ok -> :ok

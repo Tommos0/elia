@@ -148,9 +148,37 @@ values a save can carry, deleting a chat, and the two tables themselves.
   one page of `list/1` (STORE-12) and skips an id that isn't valid (STORE-4) and
   a chat whose file can't be read, so a scan at boot sees the chats a restart
   cut a turn short in and not only the ones its page holds (RESUME-1).
+- **STORE-45** Listing (`list/1`, `entry/1`, `latest/0`, `children/1`,
+  `interrupted/0`) and the per-chat loaders (`load_meta/1`, STORE-44, and the
+  `load_*` loaders it backs) decode a chat's file only when the file has changed
+  since it was last decoded. A cache keeps, per chat, the file's identity — its
+  inode, size and modification time — with the saved keys other than
+  `messages` and the fields STORE-6 derives from the messages (its title and
+  description, STORE-7, STORE-10). An entry is used only while the file's
+  identity is the one it was made from, so a file written or replaced by
+  anything — this session, another one, the sub-task fallback (STORE-43), another
+  OS process — is decoded afresh at the next read; every save renames a new file
+  into place (STORE-2), which always changes the identity. A file that is gone
+  is dropped from the cache at the next listing and is never listed, and a save
+  or a delete through `Elia.Store` drops its chat's entry at once. What depends
+  on running state rather than on the file — whether a chat was interrupted
+  (STORE-31) and whether a running task still runs (STORE-17) — is worked out at
+  every listing and never cached. A listing answers exactly what it answered
+  before, field for field (STORE-6, STORE-42). `load/1` always reads the
+  messages from the file.
 
 ### Per-chat values
 
+- **STORE-44** `Elia.Store.load_meta/1` returns a chat's saved keys other than
+  `messages` — the rows of STORE-1's table but that one — as one map, from a
+  single decode of its file (or none, STORE-45), or `nil` for an invalid id
+  (STORE-4) or a chat that is missing, unreadable or corrupt. Each per-key loader
+  (`load_model/1`, `load_auto_approve/1`, `load_task/1`, `load_project/1`,
+  `load_compaction/1`, `load_jail/1`, `load_limits/1`, `load_effort/1`,
+  `load_title/1`, `load_done/1`, `load_turn/1`) answers what `load_meta/1` holds
+  for its key, with the same default and the same rule as before (STORE-9,
+  STORE-15, STORE-26, STORE-28, STORE-38 and the rest), so a session that starts
+  reads its chat's settings with one decode rather than one per key.
 - **STORE-9** Loading a chat's model selection returns `nil` when the chat is
   missing, unreadable, corrupt or has none.
 - **STORE-14** `save/3` takes `auto_approve:` (a list of tool-name strings) and
@@ -247,13 +275,25 @@ values a save can carry, deleting a chat, and the two tables themselves.
   that table marks dropped at its default — while a listed chat carries exactly
   the fields of STORE-6's table.
 
+## Out of scope
+
+- A cache on disk, such as an index file of the listed fields. It would be a
+  second copy of every chat with a consistency of its own to keep; the cache of
+  STORE-45 is in memory, rebuilt from the files after a restart, so the files
+  stay the only record.
+- A file rewritten in place, keeping its inode, its size and its modification
+  time to the second (the resolution the VM reads it at). STORE-45 does not see
+  such a write. Nothing in Elia writes that way — every save renames a new file
+  into place (STORE-2) — and an outside tool would have to match the size to the
+  byte within the same second.
+
 ## Stored data
 
-Unchanged and backward compatible, with nothing to migrate. STORE-2 changes
-only the name of the temporary file a write goes through, and STORE-43 writes
-the same keys STORE-1's table states, so an older file loads as it did before
-and a file written now is what an older version wrote. A `<id>.term.tmp` an
-older version left behind after a crash is ignored, as before.
+Unchanged and backward compatible, with nothing to migrate. The cache of
+STORE-45 lives in memory only, and `load_meta/1` (STORE-44) reads the keys
+STORE-1's table already states, so nothing written to `.elia/sessions/` changes:
+an older file loads and lists as it did before, and a file written now is what
+an older version wrote. STORE-2 and STORE-43 are unchanged.
 
 ## Implementation
 
@@ -265,6 +305,9 @@ older version left behind after a crash is ignored, as before.
   listing and the fields an entry carries, saving and loading each one, deleting
   a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
   STORE-29, STORE-36 to STORE-38, STORE-43).
+- `test/elia/store_cache_test.exs` (one decode for a session's settings, a
+  listing that decodes only what changed, and a write, a replacement or a removal
+  by another process seen at the next read — STORE-44, STORE-45).
 - `test/elia/store_shape_test.exs` (the two tables in this spec read out of it
   and compared with what `save/3` writes and what a listed chat carries,
   STORE-40 to STORE-42).

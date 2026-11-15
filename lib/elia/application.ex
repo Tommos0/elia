@@ -26,6 +26,9 @@ defmodule Elia.Application do
       {Phoenix.PubSub, name: Elia.PubSub},
       EliaWeb.Presence,
       Elia.Logs,
+      # STORE-45: before anything that reads saved chats — the sessions, the
+      # sub-task registry, the pages.
+      Elia.Store.Cache,
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
