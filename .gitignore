@@ -41,3 +41,7 @@ npm-debug.log
 
 # Elia harness data (saved conversations).
 /.elia/
+
+# Files the user attached to a chat (UPLOAD): a chat's own uploads, written into
+# the workspace it works in, are never part of its work.
+/uploads/

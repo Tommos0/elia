@@ -6,6 +6,12 @@ defmodule EliaWeb.ChatLive do
   alias Elia.LLM.{Compaction, Context, Message}
   alias EliaWeb.{ChatList, ChatStatus, FileLinks}
 
+  # UPLOAD-2: what one message may carry. The browser refuses a file over either
+  # bound and says which (UPLOAD-2); the server refuses one that breaks them too,
+  # so a client that lies about a size is still held to them.
+  @max_upload_files 10
+  @max_upload_bytes 25 * 1024 * 1024
+
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
   def mount(%{"project_id" => project_id}, _session, %{assigns: %{live_action: :new}} = socket) do
@@ -118,6 +124,18 @@ defmodule EliaWeb.ChatLive do
         work_summary: nil,
         work_ticking: false
       )
+      # UPLOAD-1 - UPLOAD-4: the composer's attach control and what the message
+      # being written is carrying. One entry per file picked, each with its own
+      # progress (UPLOAD-1); the count is per message (`:selected`), so the next
+      # message starts empty (UPLOAD-2, UPLOAD-5).
+      |> allow_upload(:uploads,
+        accept: :any,
+        max_entries: @max_upload_files,
+        max_entries_mode: :selected,
+        max_file_size: @max_upload_bytes
+      )
+      # UPLOAD-9: why a file could not be written, which the composer says.
+      |> assign(upload_error: nil)
       # UI-4, UI-72: this page's sidebar is on screen from the first render, so
       # the list is read here, before the transcript's task cards — which read
       # the statuses it holds (UI-44, UI-47, UI-58) — are built. This chat's own
@@ -406,41 +424,118 @@ defmodule EliaWeb.ChatLive do
                 <span class="font-medium">{if @done, do: "Reopen", else: "Mark done"}</span>
               </button>
             </div>
-            <.form
-              for={@form}
-              id="chat-form"
-              phx-submit="send"
-              class="mx-auto flex max-w-3xl items-end gap-2 px-4 pt-2 pb-4 sm:px-6"
-            >
-              <textarea
-                id="chat-input"
-                name={@form[:text].name}
-                rows="1"
-                phx-hook=".SubmitOnEnter"
-                data-draft-key={"elia:draft:#{@session_id}"}
-                placeholder={if @status == :idle, do: "Message Elia…", else: "Elia is working…"}
-                disabled={@status != :idle}
-                class="max-h-48 min-h-11 flex-1 resize-none rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-base-100 disabled:opacity-60"
-              >{@form[:text].value}</textarea>
-              <button
-                :if={@status == :idle}
-                type="submit"
-                id="send-button"
-                class="grid size-11 place-items-center rounded-xl bg-primary text-primary-content transition hover:brightness-110"
+            <%!-- UPLOAD-1: the attach control, a label around the picker so one
+            press opens it. The picker sits in its own form, a sibling of the
+            message box's — never inside it, since a form cannot hold another —
+            so that picking a file reports a change to this form alone: the text
+            being written stays in the browser until it is sent (UI-89). --%>
+            <div class="mx-auto max-w-3xl px-4 pt-2 pb-4 sm:px-6">
+              <%!-- UPLOAD-1, UPLOAD-2, UPLOAD-3: a chip for every file the
+              composer holds — the name the browser gave it and its size in
+              bytes, how far it is (UPLOAD-1) or, for a file over a bound, why
+              it was not taken (UPLOAD-2) — and the button that drops it. --%>
+              <div
+                :if={entries(@uploads.uploads) != []}
+                id="upload-list"
+                class="mb-2 flex flex-wrap items-center gap-2"
               >
-                <.icon name="hero-arrow-up" class="size-5" />
-              </button>
-              <button
-                :if={@status != :idle}
-                type="button"
-                id="stop-button"
-                phx-click="stop"
-                class="grid size-11 place-items-center rounded-xl bg-base-300 transition hover:bg-error hover:text-error-content"
-                title="Stop"
+                <div
+                  :for={entry <- entries(@uploads.uploads)}
+                  id={"upload-#{entry.ref}"}
+                  class="flex items-center gap-2 rounded-xl border border-base-300 bg-base-200/60 py-1 pr-1 pl-2.5 text-xs"
+                >
+                  <.icon name="hero-document" class="size-3.5 shrink-0 opacity-70" />
+                  <span class="max-w-40 truncate font-medium">{entry.client_name}</span>
+                  <span class="text-base-content/50">{entry.client_size} B</span>
+                  <span :if={!entry.valid?} class="text-error">
+                    {refused_text(@uploads.uploads, entry)}
+                  </span>
+                  <span
+                    :if={entry.valid? and !entry.done?}
+                    id={"upload-progress-#{entry.ref}"}
+                    class="text-base-content/50"
+                  >
+                    {entry.progress}%
+                  </span>
+                  <button
+                    :if={@status == :idle}
+                    type="button"
+                    id={"upload-remove-#{entry.ref}"}
+                    phx-click="remove_upload"
+                    phx-value-ref={entry.ref}
+                    title="Remove this file"
+                    aria-label={"Remove #{entry.client_name}"}
+                    class="grid size-5 place-items-center rounded-full text-base-content/50 transition hover:bg-base-content/10 hover:text-base-content"
+                  >
+                    <.icon name="hero-x-mark" class="size-3.5" />
+                  </button>
+                </div>
+              </div>
+              <%!-- UPLOAD-2, UPLOAD-9, UPLOAD-15: what a send has to say. --%>
+              <p
+                :if={upload_error(@uploads.uploads, @upload_error)}
+                id="upload-error"
+                class="mb-2 text-xs text-error"
               >
-                <.icon name="hero-stop-solid" class="size-5" />
-              </button>
-            </.form>
+                {upload_error(@uploads.uploads, @upload_error)}
+              </p>
+              <div class="flex items-end gap-2">
+                <%!-- UPLOAD-4: not there at all while a turn runs, when no file
+                can be picked. --%>
+                <form
+                  :if={@status == :idle}
+                  id="upload-form"
+                  phx-change="validate_uploads"
+                  class="shrink-0"
+                >
+                  <label
+                    id="upload-button"
+                    role="button"
+                    title="Attach files"
+                    class="grid size-11 cursor-pointer place-items-center rounded-xl border border-base-300 text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
+                  >
+                    <.icon name="hero-paper-clip" class="size-5" />
+                    <span class="sr-only">Attach files</span>
+                    <.live_file_input upload={@uploads.uploads} class="sr-only" />
+                  </label>
+                </form>
+                <.form
+                  for={@form}
+                  id="chat-form"
+                  phx-submit="send"
+                  class="flex min-w-0 flex-1 items-end gap-2"
+                >
+                  <textarea
+                    id="chat-input"
+                    name={@form[:text].name}
+                    rows="1"
+                    phx-hook=".SubmitOnEnter"
+                    data-draft-key={"elia:draft:#{@session_id}"}
+                    placeholder={if @status == :idle, do: "Message Elia…", else: "Elia is working…"}
+                    disabled={@status != :idle}
+                    class="max-h-48 min-h-11 flex-1 resize-none rounded-xl border border-base-300 bg-base-200/50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-base-100 disabled:opacity-60"
+                  >{@form[:text].value}</textarea>
+                  <button
+                    :if={@status == :idle}
+                    type="submit"
+                    id="send-button"
+                    class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-content transition hover:brightness-110"
+                  >
+                    <.icon name="hero-arrow-up" class="size-5" />
+                  </button>
+                  <button
+                    :if={@status != :idle}
+                    type="button"
+                    id="stop-button"
+                    phx-click="stop"
+                    class="grid size-11 shrink-0 place-items-center rounded-xl bg-base-300 transition hover:bg-error hover:text-error-content"
+                    title="Stop"
+                  >
+                    <.icon name="hero-stop-solid" class="size-5" />
+                  </button>
+                </.form>
+              </div>
+            </div>
           </div>
         </div>
         <%!-- IMG-1 - IMG-8: an image in the transcript opens here, over the chat
@@ -1058,6 +1153,33 @@ defmodule EliaWeb.ChatLive do
     if float == Float.round(float), do: trunc(float), else: float
   end
 
+  # UPLOAD-12, FLINK-5: a file a message carries, as a chip. It is a link to the
+  # file's Files page in the chat's own workspace when that page could show it —
+  # which it can, the file having been written into that workspace as the message
+  # was sent (UPLOAD-6) — and the path alone when it could not.
+  attr :path, :string, required: true
+  attr :links, :map, default: nil
+
+  defp attachment(assigns) do
+    ~H"""
+    <%= if href = FileLinks.url(@links, @path) do %>
+      <.link patch={href} class={attachment_class()}>
+        <.icon name="hero-document" class="size-3.5 shrink-0 opacity-70" />
+        <span class="max-w-48 truncate">{@path}</span>
+      </.link>
+    <% else %>
+      <span class={attachment_class()}>
+        <.icon name="hero-document" class="size-3.5 shrink-0 opacity-70" />
+        <span class="max-w-48 truncate">{@path}</span>
+      </span>
+    <% end %>
+    """
+  end
+
+  defp attachment_class do
+    "flex items-center gap-1.5 rounded-xl border border-base-300 bg-base-200/60 px-2.5 py-1 text-xs text-base-content/80 transition hover:border-base-content/20 hover:text-base-content"
+  end
+
   attr :item, :map, required: true
   attr :jail, :boolean, default: true
   # FLINK-1, FLINK-5: where this chat's mentions resolve.
@@ -1065,9 +1187,22 @@ defmodule EliaWeb.ChatLive do
 
   defp item(%{item: %{kind: :user}} = assigns) do
     ~H"""
-    <div class="flex justify-end">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-content">
+    <div class="flex flex-col items-end gap-1.5">
+      <div
+        :if={@item.text != ""}
+        class="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-content"
+      >
         {@item.text}
+      </div>
+      <%!-- UPLOAD-12: the files this message carries, one chip each — a link to
+      that file's Files page in the chat's own workspace (FLINK-5) — from a
+      message just sent and from the saved chat alike. --%>
+      <div
+        :if={Map.get(@item, :attachments, []) != []}
+        id={"attachments-#{@item.id}"}
+        class="flex flex-wrap justify-end gap-1.5"
+      >
+        <.attachment :for={path <- Map.get(@item, :attachments, [])} path={path} links={@links} />
       </div>
     </div>
     """
@@ -1554,14 +1689,33 @@ defmodule EliaWeb.ChatLive do
   ## Events
 
   @impl true
+  # UPLOAD-5, UPLOAD-10, UI-22: a message is what the user wrote and the files
+  # they attached, either of them all of it — and the files are written into the
+  # chat's own workspace as it is sent.
   def handle_event("send", %{"chat" => %{"text" => text}}, socket) do
     text = String.trim(text)
+    {done, in_progress} = uploaded_entries(socket, :uploads)
 
-    if text != "" and Agent.send_message(socket.assigns.session_id, text) == :ok do
-      {:noreply, push_event(socket, "chat:clear", %{})}
-    else
-      {:noreply, socket}
+    case write_uploads(socket, Enum.reverse(done), in_progress) do
+      {:ok, []} when text == "" -> {:noreply, socket}
+      {:ok, attachments} -> send_message(socket, text, attachments)
+      {:error, message} -> {:noreply, assign(socket, upload_error: message)}
     end
+  end
+
+  # UPLOAD-1, UPLOAD-2: the form that holds the picker reports the entries it
+  # picked; LiveView holds them to the upload config and renders what it kept in
+  # the composer, so the view itself has nothing to do here but drop a message
+  # about the files that were there before this change (UPLOAD-2, UPLOAD-9).
+  def handle_event("validate_uploads", _params, socket) do
+    {:noreply, assign(socket, upload_error: nil)}
+  end
+
+  # UPLOAD-3: dropping a file from the message being written. Nothing has been
+  # written to the workspace yet, so nothing is left behind by it — and a
+  # message about what was wrong with the files goes with it (UPLOAD-2).
+  def handle_event("remove_upload", %{"ref" => ref}, socket) do
+    {:noreply, socket |> cancel_upload(:uploads, ref) |> assign(upload_error: nil)}
   end
 
   def handle_event("toggle_context", _params, socket) do
@@ -1674,6 +1828,114 @@ defmodule EliaWeb.ChatLive do
         {:noreply, put_flash(socket, :error, "#{tool} never asks for approval.")}
     end
   end
+
+  ## Attachments
+
+  # UPLOAD-6 - UPLOAD-10: every attached file is written into the chat's own
+  # workspace — the one the Files page shows this chat (FLINK-5), so an upload
+  # is where the agent's own tools (FILE) and the user both look for it
+  # (PROJ-12) — in the order it was attached, and the message names the paths.
+  # A file that cannot be written is reported and stops the send (UPLOAD-9); a
+  # file still on its way is waited for rather than sent away with nothing to
+  # point at.
+  defp write_uploads(socket, done, in_progress) do
+    upload = socket.assigns.uploads.uploads
+    root = socket.assigns.links.root
+
+    cond do
+      # UPLOAD-2: a file the composer will not take is not one the message
+      # carries, so it is not sent with it either — the file's own chip says
+      # which bound it broke, and it can be dropped like any other.
+      over_bound?(upload) ->
+        {:error, "A file over a bound is still attached — drop it to send."}
+
+      # UPLOAD-15: a file still on its way is one the message would name and
+      # then have nothing at, so the send waits for it.
+      in_progress != [] ->
+        {:error,
+         "Still uploading: #{length(in_progress)} file(s) are on their way — send again when they are in."}
+
+      true ->
+        # UPLOAD-9: the directory is made before any file is taken out of the
+        # composer, so a workspace that cannot take them leaves what the user
+        # attached where it is.
+        case Elia.Uploads.directory(root) do
+          {:ok, _dir} ->
+            Enum.reduce_while(done, {:ok, []}, fn entry, {:ok, paths} ->
+              case write_upload(socket, entry, root) do
+                {:ok, path} ->
+                  {:cont, {:ok, paths ++ [path]}}
+
+                {:error, reason} ->
+                  {:halt, {:error, upload_error_text(entry.client_name, reason)}}
+              end
+            end)
+
+          {:error, reason} ->
+            {:error, "Could not save the files: #{:file.format_error(reason)}"}
+        end
+    end
+  end
+
+  defp write_upload(socket, entry, root) do
+    consume_uploaded_entry(socket, entry, fn %{path: tmp} ->
+      # `consume_uploaded_entry/3` unwraps the callback's `{:ok, value}`, so the
+      # result is wrapped twice: what comes back is the `{:ok, path}` or
+      # `{:error, reason}` the caller reads.
+      result =
+        with {:ok, content} <- File.read(tmp),
+             do: Elia.Uploads.write(root, entry.client_name, content)
+
+      {:ok, result}
+    end)
+  end
+
+  defp upload_error_text(name, reason),
+    do: "Could not save #{name}: #{:file.format_error(reason)}"
+
+  # UPLOAD-5, UPLOAD-10, UPLOAD-11, UI-23: sending what the composer holds — the
+  # text and the paths of the files just written — and clearing it.
+  defp send_message(socket, text, attachments) do
+    case Agent.send_message(socket.assigns.session_id, text, attachments) do
+      :ok -> {:noreply, socket |> assign(upload_error: nil) |> push_event("chat:clear", %{})}
+      {:error, _reason} -> {:noreply, socket}
+    end
+  end
+
+  # UPLOAD-2, UPLOAD-9: what the composer says about a file it will not take —
+  # the bound it broke (UPLOAD-2, on the file's own chip) or why it could not be
+  # written (UPLOAD-9) — and, in the line above the input, a message the upload
+  # itself carries plus anything a send has to say.
+  defp upload_error(upload, message) do
+    case Enum.map(upload_errors(upload), &bound_text/1) ++ List.wrap(message) do
+      [] -> nil
+      errors -> Enum.join(errors, "; ")
+    end
+  end
+
+  # UPLOAD-2: a file over a bound is not one the message carries — it is the
+  # file's own line saying which bound it broke, in place of how far it is.
+  defp refused_text(upload, entry) do
+    upload
+    |> upload_errors(entry)
+    |> Enum.map_join("; ", &bound_text/1)
+  end
+
+  defp bound_text(:too_many_files), do: "a message takes at most #{@max_upload_files} files"
+
+  defp bound_text(:too_large),
+    do: "a file may be at most #{div(@max_upload_bytes, 1024 * 1024)} MB"
+
+  defp bound_text(reason), do: to_string(reason)
+
+  # UPLOAD-2: one file over a bound is enough to hold the message back: it is
+  # not something the message carries, so it is not sent with it either.
+  defp over_bound?(upload) do
+    upload_errors(upload) != [] or Enum.any?(entries(upload), &(not &1.valid?))
+  end
+
+  defp entries(%{entries: entries}), do: entries
+  defp entries(_upload), do: []
 
   @impl true
   # PROJ-24: the context follows the chat's project, so a reload re-resolves
@@ -2198,13 +2460,17 @@ defmodule EliaWeb.ChatLive do
     )
   end
 
+  # UPLOAD-12: what the user wrote — UPLOAD-10's line of paths is the harness's
+  # own, not theirs — and the files the message carries, which the transcript
+  # shows as chips under it.
   defp insert_message(socket, %Message{role: :user} = message, index, status) do
     stream_item(
       socket,
       %{
         id: "m#{index}",
         kind: :user,
-        text: Message.text_content(message),
+        text: Message.user_text(message),
+        attachments: Message.attachments(message),
         index: index,
         at: Message.at(message)
       },
@@ -2361,14 +2627,17 @@ defmodule EliaWeb.ChatLive do
   defp visible?(_compact, %{kind: :tool, name: "ask_user"}), do: true
   defp visible?(compact, %{kind: kind}) when kind in [:tool, :reasoning], do: not compact
 
-  # UI-90: an item with no text of its own renders nothing once its tool calls
-  # and reasoning are hidden, so the compact view leaves it out rather than
-  # showing a row that is only its time.
+  # UPLOAD-13, UI-90: once its tool calls and reasoning are hidden an item with
+  # no text of its own renders nothing, so the compact view leaves it out rather
+  # than showing a row that is only its time — except a message that carries
+  # files, which is not empty: it shows its chips (UPLOAD-12).
   defp visible?(true, %{kind: kind} = item)
        when kind in [:user, :assistant, :notice, :error, :summary],
-       do: String.trim(Map.get(item, :text) || "") != ""
+       do: text?(item) or Map.get(item, :attachments, []) != []
 
   defp visible?(_compact, _item), do: true
+
+  defp text?(item), do: String.trim(Map.get(item, :text) || "") != ""
 
   # COMPACT-25: every item carries its request-view status, so the UI never
   # implies the model saw something it did not. UI-88: it carries its pin state

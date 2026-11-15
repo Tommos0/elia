@@ -330,7 +330,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
 
 - **UI-21** Enter sends the message; Shift+Enter inserts a newline. The input
   grows with its content.
-- **UI-22** Messages that are blank after trimming are not sent.
+- **UI-22** Messages that are blank after trimming are not sent, unless they
+  carry attachments (UPLOAD-5).
 - **UI-23** After a successful send the input clears.
 - **UI-24** While the agent isn't idle, the input is disabled and the send
   button is replaced by a Stop button that stops the turn (SESS-8).

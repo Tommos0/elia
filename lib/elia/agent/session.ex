@@ -240,36 +240,15 @@ defmodule Elia.Agent.Session do
     {:reply, snapshot, state}
   end
 
-  def handle_call({:send_message, _text}, _from, %{status: status} = state)
-      when status != :idle do
-    {:reply, {:error, :busy}, state}
-  end
+  def handle_call({:send_message, text}, _from, state),
+    do: reply_to_send(state, Message.user(text))
 
-  def handle_call({:send_message, text}, _from, state) do
-    message = Message.user(text)
-    explicit = Keyword.get(state.loop_opts, :llm, %{})
+  # UPLOAD-10, UPLOAD-11: a message that carries files says what the user wrote
+  # and names the paths of what it carries.
+  def handle_call({:send_message, text, attachments}, _from, state),
+    do: reply_to_send(state, Message.user(text, attachments))
 
-    # A chat without a selection pins the one it resolves to now (MODEL-16),
-    # unless an explicit provider replaces the selection anyway.
-    state =
-      if settings(state).model == nil and not is_map_key(explicit, :provider),
-        do: put_setting(state, :model, Elia.LLM.pinnable_selection()),
-        else: state
-
-    # SESS-36, DONE-9: a message continues a done chat, so starting the turn
-    # takes the flag with it — the save the user message triggers writes it away.
-    state =
-      if state.done do
-        broadcast(state, {:done, false})
-        %{state | done: false}
-      else
-        state
-      end
-
-    {:reply, :ok, start_turn(state, message: message)}
-  end
-
-  # SESS-41, SESS-42: the chat's per-chat settings — its model, auto-approved
+  # UPLOAD-6 - UPLOAD-11: the chat's own settings — its model, auto-approved
   # tools, jail, turn limits and effort — have one write path. A change is
   # validated as a whole, applied as a whole, saved once and broadcast as one
   # event; a change with anything wrong in it is no change at all.
@@ -643,6 +622,35 @@ defmodule Elia.Agent.Session do
   end
 
   ## Helpers
+
+  # SESS-14, SESS-36, DONE-9, MODEL-16, UPLOAD-11: starts the turn a message
+  # begins — with the text the user wrote and the files it carries (UPLOAD-10) —
+  # unless the chat is busy, which is the only reason a message is refused.
+  defp reply_to_send(%{status: status} = state, _message) when status != :idle,
+    do: {:reply, {:error, :busy}, state}
+
+  defp reply_to_send(state, message) do
+    explicit = Keyword.get(state.loop_opts, :llm, %{})
+
+    # A chat without a selection pins the one it resolves to now (MODEL-16),
+    # unless an explicit provider replaces the selection anyway.
+    state =
+      if settings(state).model == nil and not is_map_key(explicit, :provider),
+        do: put_setting(state, :model, Elia.LLM.pinnable_selection()),
+        else: state
+
+    # SESS-36, DONE-9: a message continues a done chat, so starting the turn
+    # takes the flag with it — the save the user message triggers writes it away.
+    state =
+      if state.done do
+        broadcast(state, {:done, false})
+        %{state | done: false}
+      else
+        state
+      end
+
+    {:reply, :ok, start_turn(state, message: message)}
+  end
 
   # Waits for the remaining decisions, or releases the loop once there are none
   # (APPR-5, APPR-10).

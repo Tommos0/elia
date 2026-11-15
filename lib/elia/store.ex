@@ -566,13 +566,28 @@ defmodule Elia.Store do
     end
   end
 
-  @doc "Display title for a conversation: its first user message, cut to `max` characters."
+  @doc """
+  Display title for a conversation: its first user message, cut to `max`
+  characters.
+
+  UPLOAD-14: a message whose files are all it carries (UPLOAD-5) says nothing to
+  name the chat after, so the title is the first message the user *wrote* — one
+  that has text of its own, without UPLOAD-10's line of paths (UPLOAD-12) — and
+  `"New chat"` while they have written none.
+  """
   def title(messages, max \\ 60) do
-    case Enum.find(messages, &(&1.role == :user and not Map.get(&1.meta, :harness, false))) do
+    case Enum.find(messages, &title_message?/1) do
       nil -> "New chat"
-      message -> message |> Message.text_content() |> String.slice(0, max)
+      message -> message |> Message.user_text() |> String.slice(0, max)
     end
   end
+
+  defp title_message?(%Message{role: :user} = message) do
+    not Map.get(message.meta, :harness, false) and
+      String.trim(Message.user_text(message)) != ""
+  end
+
+  defp title_message?(_message), do: false
 
   defp ensure_app_loaded do
     unless :persistent_term.get({__MODULE__, :app_loaded}, false) do

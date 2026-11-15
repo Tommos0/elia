@@ -78,6 +78,14 @@ defmodule Elia.Agent do
 
   def send_message(id, text), do: GenServer.call(Session.via(id), {:send_message, text})
 
+  @doc """
+  Sends `text` with the files it carries (UPLOAD-10, UPLOAD-11), each of them a
+  path relative to the chat's own workspace (UPLOAD-6), in the order they were
+  attached.
+  """
+  def send_message(id, text, attachments),
+    do: GenServer.call(Session.via(id), {:send_message, text, attachments})
+
   def approve(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :approve})
 
   def deny(id, call_id), do: GenServer.call(Session.via(id), {:decide, call_id, :deny})

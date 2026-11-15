@@ -40,6 +40,12 @@ defmodule Elia.Preview do
 
   @extensions ~w(.png .jpg .jpeg .webp)
 
+  # UPLOAD-6, UPLOAD-12: where a chat's uploaded files land — its own
+  # workspace's `uploads/`, which is what the chips name. The sample chat seeds
+  # no such file, so its picture shows the paths a message with attachments
+  # carries rather than working links to them.
+  @sample_uploads ["uploads/transcript.png", "uploads/report.pdf"]
+
   # PREVIEW-16: the chats seeded beyond the chat list's first page (UI-4), with
   # a fixed id each for the same reason as the sample chat's.
   @page_count 30
@@ -215,7 +221,8 @@ defmodule Elia.Preview do
   with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), the
   `set_title` call that named the chat (TITLE-5, UI-74), a `read_file` call for a
   file of the workspace (FLINK-4), a `shell` call with its
-  output and a failed one (UI-15, UI-16, UI-20).
+  output and a failed one (UI-15, UI-16, UI-20), and a last user message
+  carrying uploaded files (UPLOAD-12).
   """
   @spec sample_messages() :: [Message.t()]
   def sample_messages do
@@ -285,7 +292,12 @@ defmodule Elia.Preview do
         content: [
           Message.text("The suite passes. Nothing is pushed: there is no upstream branch yet.")
         ]
-      }
+      },
+      # UPLOAD-12: a message carrying uploaded files, so a picture shows the
+      # chips under it — the name of each file it carries, and its timestamp
+      # (MSGAT-9) like every other item's.
+      Message.user("Have a look at what I mean — both files are attached.", @sample_uploads)
+      |> Map.put(:meta, %{attachments: @sample_uploads, at: minutes_ago(8)})
     ]
   end
 
