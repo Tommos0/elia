@@ -112,7 +112,12 @@ defmodule Elia.Skills.Shell do
         timeout = :timer.seconds(seconds)
 
         result(
-          Elia.Shell.run(input["command"], cd: root(ctx), timeout: timeout, jail: ctx[:jail]),
+          Elia.Shell.run(input["command"],
+            cd: root(ctx),
+            timeout: timeout,
+            jail: ctx[:jail],
+            max_output: max_output()
+          ),
           timeout,
           asked: asked
         )
@@ -148,8 +153,16 @@ defmodule Elia.Skills.Shell do
     end
   end
 
-  defp format(output, status),
-    do: "#{Elia.Shell.truncate(output, config(:max_output))}\n[exit: #{status}]"
+  # SHELL-5, SHELL-13: the run was given `max_output/0`, so its output is
+  # already cut; cutting it here again would cut out its marker.
+  defp format(output, status), do: "#{output}\n[exit: #{status}]"
+
+  @doc """
+  The most characters of a command's output a tool result holds (SHELL-5): what
+  a run whose output goes to the model passes to `Elia.Shell.run/2` as
+  `:max_output` (SHELL-13).
+  """
+  def max_output, do: config(:max_output)
 
   defp config(key) do
     Keyword.merge(

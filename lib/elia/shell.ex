@@ -212,9 +212,12 @@ defmodule Elia.Shell do
   pairs), `:shell` (path or name, to override the shell), `:timeout` in
   milliseconds (default 60s), `:jail` (`false` runs the command unjailed,
   ISOL-16), `:profile` (`:deps_sync` for the harness's own steps in the live
-  tree, ISOL-22; otherwise it follows `:cd`, ISOL-13) and `:priority`
+  tree, ISOL-22; otherwise it follows `:cd`, ISOL-13), `:priority`
   (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to run it at the
-  server's own priority, PRIO-5).
+  server's own priority, PRIO-5) and `:max_output` (characters: the output is
+  held bounded while the command runs and comes back cut as `truncate/2` cuts
+  it, SHELL-13; without it the run keeps every byte, as the harness's own
+  commands need).
   """
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
@@ -339,11 +342,11 @@ defmodule Elia.Shell do
     watched(port, fn ->
       if "--info-fd" in args do
         case await_ready(port, "", deadline) do
-          {:ready, rest} -> collect(port, [rest], deadline) |> skipped(opts)
+          {:ready, rest} -> collect(port, add(buffer(opts), rest), deadline) |> skipped(opts)
           {:failed, reason} -> {:setup_failed, reason}
         end
       else
-        collect(port, [], deadline) |> skipped(opts)
+        collect(port, buffer(opts), deadline) |> skipped(opts)
       end
     end)
   end
@@ -356,7 +359,7 @@ defmodule Elia.Shell do
     port = open(exe, args, cd, opts)
     notice = @deps_read_only_notice <> "\n"
 
-    case watched(port, fn -> collect(port, [], deadline) |> skipped(opts) end) do
+    case watched(port, fn -> collect(port, buffer(opts), deadline) |> skipped(opts) end) do
       {:ok, output, status} -> {:ok, notice <> output, status}
       {:timeout, output} -> {:timeout, notice <> output}
     end
@@ -632,12 +635,12 @@ defmodule Elia.Shell do
 
   ## Collecting
 
-  defp collect(port, acc, deadline) do
+  defp collect(port, buf, deadline) do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
       {^port, {:data, data}} ->
-        acc = [acc | data]
+        buf = add(buf, data)
 
         # SHELL-11: the timeout is a deadline for the whole run, not a quiet
         # period. It is checked here as well as in the `after` below, because a
@@ -646,18 +649,63 @@ defmodule Elia.Shell do
         # runs out of memory.
         if System.monotonic_time(:millisecond) >= deadline do
           kill(port)
-          {:timeout, IO.iodata_to_binary(acc)}
+          {:timeout, output(buf)}
         else
-          collect(port, acc, deadline)
+          collect(port, buf, deadline)
         end
 
       {^port, {:exit_status, status}} ->
-        {:ok, IO.iodata_to_binary(acc), status}
+        {:ok, output(buf), status}
     after
       remaining ->
         kill(port)
-        {:timeout, IO.iodata_to_binary(acc)}
+        {:timeout, output(buf)}
     end
+  end
+
+  # SHELL-13: what a run holds of the output. Uncapped, every byte, as iodata.
+  # Capped at `max` characters, the start and the end that `truncate/2` can
+  # keep — `limit` bytes each, enough for `max / 2` characters of up to four
+  # bytes — and only a count of the bytes in between, which are dropped as
+  # they arrive.
+  defp buffer(opts) do
+    case Keyword.get(opts, :max_output) do
+      nil -> {:all, []}
+      max -> %{max: max, limit: 2 * max, head: "", tail: "", dropped: 0}
+    end
+  end
+
+  defp add({:all, acc}, data), do: {:all, [acc | data]}
+  defp add(buf, ""), do: buf
+
+  defp add(%{head: head, limit: limit} = buf, data) when byte_size(head) < limit do
+    {now, rest} = split_at(data, limit - byte_size(head))
+    add(%{buf | head: head <> now}, rest)
+  end
+
+  defp add(%{tail: tail, limit: limit, dropped: dropped} = buf, data) do
+    tail = tail <> data
+    over = byte_size(tail) - limit
+
+    if over > 0,
+      do: %{buf | tail: binary_part(tail, over, limit), dropped: dropped + over},
+      else: %{buf | tail: tail}
+  end
+
+  defp split_at(data, n) when byte_size(data) <= n, do: {data, ""}
+  defp split_at(data, n), do: {binary_part(data, 0, n), binary_part(data, n, byte_size(data) - n)}
+
+  defp output({:all, acc}), do: IO.iodata_to_binary(acc)
+
+  # Nothing dropped: the whole output, cut as `truncate/2` always cut it. Some
+  # dropped: the same cut, with the dropped bytes counted as characters, so the
+  # number in the marker may overstate but never understate what was removed.
+  defp output(%{head: head, tail: tail, dropped: 0, max: max}), do: truncate(head <> tail, max)
+
+  defp output(%{head: head, tail: tail, dropped: dropped, max: max}) do
+    half = div(max, 2)
+    length = String.length(head) + dropped + String.length(tail)
+    String.slice(head, 0, half) <> marker(length - max) <> String.slice(tail, -half, half)
   end
 
   @doc """
@@ -692,11 +740,11 @@ defmodule Elia.Shell do
     if length > max do
       half = div(max, 2)
 
-      String.slice(output, 0, half) <>
-        "\n... [#{length - max} characters truncated] ...\n" <>
-        String.slice(output, -half, half)
+      String.slice(output, 0, half) <> marker(length - max) <> String.slice(output, -half, half)
     else
       output
     end
   end
+
+  defp marker(removed), do: "\n... [#{removed} characters truncated] ...\n"
 end

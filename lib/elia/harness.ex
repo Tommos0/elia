@@ -71,7 +71,8 @@ defmodule Elia.Harness do
           cd: root,
           env: [{"MIX_ENV", "test"}],
           timeout: timeout,
-          jail: opts[:jail]
+          jail: opts[:jail],
+          max_output: Elia.Skills.Shell.max_output()
         )
 
       result = Elia.Skills.Shell.result(run, timeout, asked: asked)

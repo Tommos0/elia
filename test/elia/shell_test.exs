@@ -56,9 +56,9 @@ defmodule Elia.ShellTest do
   # stopped turn's tool call is: the shell and that child both go, long before
   # the command's deadline.
   for jail <- [false, true] do
-    test "a command whose waiting process exits is killed with its group (jail: #{jail})" do
-      jail = unquote(jail)
-
+    @tag jail: jail
+    test "a command whose waiting process exits is killed with its group (jail: #{jail})",
+         %{jail: jail} do
       if jail and not Shell.available?() do
         :ok
       else
@@ -97,6 +97,69 @@ defmodule Elia.ShellTest do
 
     refute eventually(fn -> running(marker) == 0 end, 500)
     assert running(marker) == 1
+  end
+
+  # SHELL-13: a capped run that is flooded holds only a bounded part of the
+  # output while it runs — sampled from the process running it, which owns the
+  # buffer — and its one marker counts what was removed. ASCII is one byte a
+  # character, so here the count is exact.
+  test "a capped run holds bounded output while a command floods it" do
+    test_pid = self()
+    total = 50_000_000
+    command = "head -c #{total} /dev/zero | tr '\\0' a"
+
+    runner = spawn(fn -> send(test_pid, {:ran, Shell.run(command, max_output: 30_000)}) end)
+    peak = peak_binary_bytes(runner, 0)
+
+    assert_receive {:ran, {:ok, output, 0}}, 60_000
+    assert peak < 2_000_000
+    assert [_head, _tail] = String.split(output, "characters truncated")
+    assert output =~ "... [#{total - 30_000} characters truncated] ..."
+    assert String.starts_with?(output, String.duplicate("a", 15_000) <> "\n...")
+    assert String.ends_with?(output, "...\n" <> String.duplicate("a", 15_000))
+  end
+
+  # SHELL-13: output that fits is whole, and output over the cap that never had
+  # to be dropped while running is cut exactly as SHELL-5 always cut it.
+  test "a capped run that drops nothing is cut as before" do
+    assert {:ok, "abc", 0} = Shell.run("printf abc", max_output: 10)
+
+    assert {:ok, output, 0} = Shell.run("printf '%01500d' 0", max_output: 1_000)
+    assert output == Shell.truncate(String.duplicate("0", 1_500), 1_000)
+  end
+
+  # SHELL-13: what was dropped while running is counted in bytes, so for
+  # multi-byte characters the count may overstate what was removed — never
+  # understate it.
+  test "with multi-byte output the count never understates what was removed" do
+    chars = 10_000
+    command = "for i in $(seq #{chars}); do printf 'é'; done"
+
+    assert {:ok, output, 0} = Shell.run(command, max_output: 1_000)
+
+    assert [_, head, removed, tail] =
+             Regex.run(~r/\A(.*)\n\.\.\. \[(\d+) characters truncated\] \.\.\.\n(.*)\z/su, output)
+
+    assert String.to_integer(removed) >= chars - 1_000
+    assert head == String.duplicate("é", 500)
+    assert tail == String.duplicate("é", 500)
+  end
+
+  # The most bytes of refc binaries `pid` references at any sample until it
+  # exits, sampled every 5 ms.
+  defp peak_binary_bytes(pid, peak) do
+    case Process.info(pid, :binary) do
+      nil ->
+        peak
+
+      {:binary, binaries} ->
+        now = binaries |> Enum.map(fn {_id, size, _refs} -> size end) |> Enum.sum()
+
+        receive do
+        after
+          5 -> peak_binary_bytes(pid, max(peak, now))
+        end
+    end
   end
 
   # How many processes run `sleep <marker>`, read from outside any jail.

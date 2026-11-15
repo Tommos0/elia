@@ -112,6 +112,17 @@ defmodule Elia.Skills.ShellTest do
     assert text =~ "the most is 1"
   end
 
+  # SHELL-5, SHELL-13: the tool runs its command with the cap, so a result that
+  # was cut carries the one marker the run made, not a second cut through it.
+  test "a long result is cut once, with one marker that counts what was removed" do
+    assert {:ok, output} =
+             Shell.run(%{"command" => "head -c 1000000 /dev/zero | tr '\\0' a"})
+
+    assert [_one, _other] = String.split(output, "characters truncated")
+    assert output =~ "... [970000 characters truncated] ..."
+    assert String.ends_with?(output, String.duplicate("a", 15_000) <> "\n[exit: 0]")
+  end
+
   # SHELL-10
   test "a timeout that isn't a whole number of seconds of at least 1 is refused" do
     assert {:error, output} = Shell.run(%{"command" => "echo hi", "timeout_seconds" => 0})

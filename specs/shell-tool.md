@@ -67,6 +67,17 @@ call takes.
   process it started that is still in the group, jailed or not (ISOL-10).
   The kill happens as soon as that exit is seen, with no wait for the command's
   deadline. A command that ends on its own is never killed after it ends.
+- **SHELL-13** A run whose output goes to the model — a `shell` call, a folder
+  skill's script tool, and `Elia.Harness.run_tests/3` (VERIFY-1) — holds a
+  bounded amount of that output while the command runs, however much the
+  command writes and for however long: only the start and the end that SHELL-5
+  can keep, and the bytes in between are counted and dropped as they arrive.
+  The result is the same SHELL-5 cut, with one marker in the middle. When
+  nothing was dropped while running, the marker gives the number of characters
+  removed, exactly as before. When output was dropped while running, the
+  dropped part is counted in bytes and added to that number, so for output with
+  multi-byte characters it may count more than were really removed, never
+  fewer. Output that fits within SHELL-5's cap is returned whole, as before.
 
 ## Configuration
 
@@ -79,10 +90,12 @@ config :elia, Elia.Skills.Shell,
 
 ## Out of scope
 
-- Bounding what the run keeps of a command's output while it runs: SHELL-5
-  truncates at the end, so a command that floods stdout is killed at the
-  deadline (SHELL-11) but can grow the buffer first. A running cap on the
-  collected output is a separate change.
+- A cap on the output of the harness's own commands — its git calls, which
+  parse what git prints, and the deploy's `mix deps.get`, asset build and
+  compile. Their output is not the model's, and a cut there would silently
+  change what is parsed, so `Elia.Shell.run/2` keeps all of it unless the caller
+  asks for the cap of SHELL-13. A chat's terminal (TERM) has its own screen and
+  no such buffer.
 - The timeout of a folder skill's script tool, which comes from its
   `tools.json` (`specs/folder-skills.md`), and of the terminal (TERM).
 - A process that leaves the command's process group (`setsid`, a daemon that
@@ -102,7 +115,8 @@ config :elia, Elia.Skills.Shell,
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
   ending at its deadline, a command whose waiting process exits being killed
-  with its group — SHELL-2 to SHELL-5, SHELL-11, SHELL-12).
+  with its group, the output a capped run holds while it runs — SHELL-2 to
+  SHELL-5, SHELL-11 to SHELL-13).
 - `test/elia/agent_test.exs` (a call needs approval before it runs, SHELL-1).
 - No test: SHELL-7 — that an approved command is not confined by the workspace
   policy is not asserted anywhere; the approval prompt is the safeguard.
