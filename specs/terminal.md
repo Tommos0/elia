@@ -138,7 +138,9 @@ guardrails: it is the same confinement as a command, held open.
   status (running, or exited with status N) and a Stop button.
 - **TERM-22** The page is legible and usable at a phone width: the terminal
   fits its box (TERM-15) instead of overflowing sideways, and the font size is
-  a setting on the page so a small screen can trade columns for legibility.
+  a setting on the page so a small screen can trade columns for legibility. The
+  setting offers 5, 6, 7, 8, 9, 10, 12, 13, 16 and 20, and 9 is the size the
+  page opens with and the one a size it does not offer falls back to.
 - **TERM-23** A session that has ended reads as what it is, with what ended it
   — the command's status, the stop, or the restart (TERM-4, TERM-6) — and a
   chat with no session reads as an offer to start one. Neither is a blank

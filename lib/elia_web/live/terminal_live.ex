@@ -13,7 +13,10 @@ defmodule EliaWeb.TerminalLive do
 
   alias Elia.{Agent, Deploy, Store, Terminal}
 
-  @font_sizes [10, 12, 13, 16, 20]
+  # TERM-22: the sizes the page offers, from a phone's smallest to a big screen,
+  # and the one it opens with.
+  @font_sizes [5, 6, 7, 8, 9, 10, 12, 13, 16, 20]
+  @default_font_size 9
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -43,7 +46,7 @@ defmodule EliaWeb.TerminalLive do
         tmux: Terminal.available?(),
         tmux_message: Terminal.unavailable_message(),
         font_sizes: @font_sizes,
-        font_size: 13,
+        font_size: @default_font_size,
         # TERM-20: what an empty command field runs (TERM-5), said on the page.
         default_command: Enum.join(Terminal.command_argv(), " "),
         command_field: "",
@@ -114,10 +117,12 @@ defmodule EliaWeb.TerminalLive do
     )
   end
 
+  # TERM-22: a size the page does not offer is the default rather than whatever
+  # a client sent.
   defp parse_size(size) do
     case Integer.parse(to_string(size)) do
-      {size, ""} -> if size in @font_sizes, do: size, else: 13
-      _ -> 13
+      {size, ""} -> if size in @font_sizes, do: size, else: @default_font_size
+      _ -> @default_font_size
     end
   end
 

@@ -35,7 +35,8 @@ function base64ToBytes(data) {
 
 export const TerminalHook = {
   mounted() {
-    this.fontSize = parseInt(this.el.dataset.fontSize, 10) || 13
+    // TERM-22: the size the page opens with, before its own event arrives.
+    this.fontSize = parseInt(this.el.dataset.fontSize, 10) || 9
     this.chatId = this.el.dataset.chatId
 
     this.term = new Terminal({

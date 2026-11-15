@@ -99,15 +99,29 @@ defmodule EliaWeb.TerminalLiveTest do
       refute has_element?(view, "#terminal-empty")
     end
 
-    # TERM-22: the font size is a setting on the page, and it reaches the hook
-    # that owns the terminal.
+    # TERM-22: the font size is a setting on the page — 9 to open with, and
+    # sizes below it a small screen can trade columns for — and it reaches the
+    # hook that owns the terminal.
     test "the font size is a setting on the page", %{conn: conn, id: id} do
       {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
 
       assert has_element?(view, "#terminal-font-size")
+      assert has_element?(view, "#terminal-font-size option[value='9'][selected]")
+
+      # The smaller sizes a phone wants are there, down to 5.
+      for size <- [5, 6, 7, 8] do
+        assert has_element?(view, "#terminal-font-size option[value='#{size}']")
+      end
 
       view |> element("#terminal-font-form") |> render_change(%{"font_size" => "20"})
       assert_push_event(view, "font_size", %{size: 20})
+
+      view |> element("#terminal-font-form") |> render_change(%{"font_size" => "5"})
+      assert_push_event(view, "font_size", %{size: 5})
+
+      # A size the page does not offer is the default, not whatever arrived.
+      view |> element("#terminal-font-form") |> render_change(%{"font_size" => "99"})
+      assert_push_event(view, "font_size", %{size: 9})
     end
   end
 
