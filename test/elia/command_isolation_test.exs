@@ -359,4 +359,69 @@ defmodule Elia.CommandIsolationTest do
       assert output =~ "hi"
     end
   end
+
+  describe "the repository's git directory in a chat worktree's jail (ISOL-29)" do
+    # A throwaway live tree, so the test never touches the server's own tree
+    # (DEPLOY-2), and a chat's worktree in it, which gets the `:worktree`
+    # profile (ISOL-13).
+    setup do
+      tree = Elia.LiveTree.create()
+      previous = Application.get_env(:elia, :runtime_root)
+      Application.put_env(:elia, :runtime_root, tree)
+
+      chat = Elia.Agent.new_id()
+      assert {:ok, worktree} = Elia.Deploy.ensure_worktree(chat)
+
+      on_exit(fn ->
+        Elia.Deploy.remove_worktree(chat, tree)
+        Elia.LiveTree.remove(tree)
+
+        if previous,
+          do: Application.put_env(:elia, :runtime_root, previous),
+          else: Application.delete_env(:elia, :runtime_root)
+      end)
+
+      %{git: Path.join(tree, ".git"), tree: tree, worktree: worktree}
+    end
+
+    # ISOL-29: none of what decides what a later git run in the live tree runs
+    # can be written from inside — not by writing into it, replacing it, removing
+    # it, or through git itself.
+    test "config, hooks and info can't be written from inside", %{git: git, worktree: worktree} do
+      config = File.read!(Path.join(git, "config"))
+      assert File.dir?(Path.join(git, "hooks")) and File.dir?(Path.join(git, "info"))
+
+      attempts = [
+        "printf '#!/bin/sh\\n' > '#{git}/hooks/post-merge'",
+        "printf '[core]\\n\\thooksPath = /tmp\\n' >> '#{git}/config'",
+        "printf 'x' > '#{git}/config.new' && mv '#{git}/config.new' '#{git}/config'",
+        "rm -f '#{git}/config'",
+        "printf '* filter=x\\n' > '#{git}/info/attributes'",
+        "git config core.fsmonitor /bin/true"
+      ]
+
+      for command <- attempts do
+        assert {:ok, output, status} = jailed(command, cd: worktree)
+        assert status != 0, "#{command} succeeded inside the jail: #{output}"
+      end
+
+      assert File.read!(Path.join(git, "config")) == config
+      refute File.exists?(Path.join(git, "hooks/post-merge"))
+      refute File.exists?(Path.join(git, "info/attributes"))
+    end
+
+    # ISOL-29, DEPLOY-13: the rest of the git directory is still the chat's to
+    # write, so a commit and the fast-forward of `master` still work from inside.
+    test "a chat still commits and fast-forwards master", %{tree: tree, worktree: worktree} do
+      command =
+        "printf 'x' > isol29.txt && git add isol29.txt && " <>
+          "git -c user.name=t -c user.email=t@e commit -q -m isol29 && " <>
+          "git push -q . HEAD:master"
+
+      assert {:ok, output, 0} = jailed(command, cd: worktree)
+      refute output =~ "Read-only"
+
+      assert Elia.LiveTree.sha(tree, "master") == Elia.LiveTree.head(worktree)
+    end
+  end
 end

@@ -64,6 +64,56 @@ defmodule Elia.DeploymentTest do
     {id, path}
   end
 
+  # ISOL-30: a `post-checkout` and a `post-merge` hook and a filesystem monitor
+  # in the live tree's git directory, each appending its name to `marker` when
+  # git runs it. The monitor lives outside the git directory, where
+  # `core.fsmonitor` names it.
+  defp plant_git_code(tree, marker) do
+    for hook <- ~w(post-checkout post-merge) do
+      path = Path.join([tree, ".git", "hooks", hook])
+      File.write!(path, "#!/bin/sh\necho #{hook} >> '#{marker}'\n")
+      File.chmod!(path, 0o755)
+    end
+
+    monitor = Path.join(Path.dirname(marker), "fsmonitor.sh")
+    File.write!(monitor, "#!/bin/sh\necho fsmonitor >> '#{marker}'\nexit 1\n")
+    File.chmod!(monitor, 0o755)
+    {_, 0} = git(tree, ["config", "core.fsmonitor", monitor])
+  end
+
+  defp ran(marker),
+    do: if(File.exists?(marker), do: marker |> File.read!() |> String.split(), else: [])
+
+  # ISOL-30: the harness's own git runs no hook and no monitor the repository
+  # names — `git worktree add` (a checkout), the deploy's merge, and a sub-task's
+  # git in a child's worktree — while plain git in the same tree runs all three.
+  # The suite runs unjailed, so nothing but the flags keeps them from running.
+  test "the harness's own git runs no hook and no fsmonitor (ISOL-30)", %{tree: tree} do
+    dir = Path.join(System.tmp_dir!(), "elia-isol30-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+    marker = Path.join(dir, "ran")
+    plant_git_code(tree, marker)
+
+    # The control: plain git runs what was planted.
+    {_, 0} = git(tree, ["status", "--porcelain"])
+    {_, 0} = git(tree, ["checkout", "-q", "live"])
+    assert "fsmonitor" in ran(marker) and "post-checkout" in ran(marker)
+    File.rm!(marker)
+
+    {_id, path} = new_worktree()
+    assert ran(marker) == []
+
+    # The chat's own work and fast-forward run plain git, which may run the
+    # monitor; what matters is what the harness runs afterwards.
+    work_on_trunk(path)
+    File.rm(marker)
+
+    assert {:ok, _message} = Deploy.deploy()
+    assert Elia.Tasks.git_out(["status", "--porcelain"], path) == ""
+    assert ran(marker) == []
+  end
+
   # Build output in the live tree, the way a real one has it (BUILD-1).
   defp seed_build(tree, path) do
     file = Path.join([tree, "_build", path])

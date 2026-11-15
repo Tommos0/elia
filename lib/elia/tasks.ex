@@ -922,7 +922,8 @@ defmodule Elia.Tasks do
   # `System.cmd/3` gave, with a timeout counting as a failure (SHELL-3), which
   # no caller of these calls has to tell apart from git exiting non-zero.
   defp git_cmd(args, root) do
-    command = Enum.map_join(["git" | args], " ", &quote_arg/1)
+    # ISOL-30: the harness's own git runs no hook and no monitor.
+    command = Enum.map_join(["git" | Elia.Shell.harness_git_flags() ++ args], " ", &quote_arg/1)
 
     # A run whose jail was skipped says so in its output (ISOL-12), and one whose
     # layer couldn't be mounted says the tree was read-only (ISOL-27), but these

@@ -575,9 +575,15 @@ defmodule Elia.Shell do
     if File.exists?(data), do: ["--tmpfs", data], else: []
   end
 
+  # ISOL-4, ISOL-29: the repository's git directory read-write, which the
+  # chat's commits, rebases and its fast-forward of `master` need (DEPLOY-13) —
+  # but not the parts that decide what git runs. Those are bound read-only on
+  # top, after the read-write bind, since bubblewrap mounts in argument order.
   defp git_args(live) do
     git = Path.join(live, ".git")
-    ["--bind-try", git, git]
+
+    ["--bind-try", git, git] ++
+      Enum.flat_map(~w(config hooks info), &bind_try(Path.join(git, &1), "--ro-bind-try"))
   end
 
   # ISOL-7: a chat's commands see the shared dependency tree as an overlay — the
@@ -732,6 +738,15 @@ defmodule Elia.Shell do
     System.cmd("kill", ["-KILL", "#{pid}"], stderr_to_stdout: true)
     :ok
   end
+
+  @doc """
+  The options every git command the harness runs itself goes first with
+  (ISOL-30): no hooks and no filesystem monitor, so a harness git call never
+  runs code the repository's files name. A chat's own git, through the `shell`
+  tool, doesn't get them.
+  """
+  @spec harness_git_flags() :: [String.t()]
+  def harness_git_flags, do: ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
 
   @doc "Shortens `output` to `max` characters by cutting out the middle."
   def truncate(output, max) do

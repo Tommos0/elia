@@ -1372,7 +1372,7 @@ defmodule Elia.Deploy do
   # output are as they were. A run whose jail was skipped says so above git's
   # own output (ISOL-12), which is what `strip_notice/1` takes off.
   defp git(root, args, opts \\ []) do
-    command = "git " <> Enum.map_join(args, " ", &quote_arg/1)
+    command = "git " <> Enum.map_join(Elia.Shell.harness_git_flags() ++ args, " ", &quote_arg/1)
     opts = Keyword.merge([cd: root, timeout: :timer.minutes(2)], opts)
 
     case Elia.Shell.run(command, opts) do

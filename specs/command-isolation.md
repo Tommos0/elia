@@ -50,7 +50,8 @@ genuinely needs the rest of the machine (ISOL-16).
   Playwright CLI (read-only, when it exists, ISOL-26). For a
   chat worktree it also holds the repository's git directory read-write, which
   commits need: the worktree's `.git` is a pointer file into
-  `<live>/.git/worktrees/<id>`, whose common dir is `<live>/.git` (ISOL-3).
+  `<live>/.git/worktrees/<id>`, whose common dir is `<live>/.git` (ISOL-3) —
+  except its `config`, `hooks` and `info`, which are read-only (ISOL-29).
 - **ISOL-5** Nothing else is bound, so nothing else exists inside. In
   particular the settings database (CONF-1) and everything under `$HOME` but
   what ISOL-4 lists — `~/.mix`, the browser cache and the Playwright CLI — are
@@ -159,7 +160,7 @@ genuinely needs the rest of the machine (ISOL-16).
 
   | Profile | For | Workspace | Shared `deps` | Repo git dir | `.elia` |
   | --- | --- | --- | --- | --- | --- |
-  | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | overlay: read-only lower, the worktree's own upper (ISOL-7) | rw | not bound |
+  | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | overlay: read-only lower, the worktree's own upper (ISOL-7) | rw, but `config`, `hooks` and `info` read-only (ISOL-29) | not bound |
   | `:deps_sync` | the harness's own steps in the live tree: the `git worktree` commands that create, remove or prune a worktree (ISOL-22). The name is historical — nothing syncs dependencies any more (ISOL-7) | rw | rw | rw | not bound |
   | `:live_tree` | a chat that works in the live tree (DEPLOY-14), the deploy's fetch (DEPLOY-18) and its suite run (ISOL-14) | rw | rw, inside the tree | inside the tree | masked empty |
 
@@ -204,6 +205,25 @@ is harmless.
   jail's own report of why it failed goes to the server's log, and the command
   runs, failing on its own write if it needed one, exactly as it does where the
   layer can't be made at all.
+
+- **ISOL-29** In a chat worktree's jail (`:worktree`, ISOL-13) the parts of the
+  repository's git directory that decide what git runs are read-only: its
+  `config`, its `hooks` directory and its `info` directory. Bound read-only over
+  the read-write git directory (ISOL-4), each one that exists can be read and
+  can't be written, replaced or removed from inside, so a command there cannot
+  install a hook or set `core.hooksPath`, `core.fsmonitor`, a filter or an alias
+  for a later git run in the live tree to pick up. The rest stays as ISOL-4
+  says, because the chat's own git work needs it: objects, refs and logs,
+  `packed-refs`, and the worktree's own `worktrees/<id>` (its `HEAD`, index and
+  in-progress rebase or merge state), so a chat still commits, rebases, checks
+  out and fast-forwards `master` (DEPLOY-13).
+
+- **ISOL-30** Every git command the harness runs itself — `Elia.Deploy`'s, in
+  the live tree and for a worktree's administration (ISOL-22), and
+  `Elia.Tasks`'s in a child's worktree — runs with hooks off and no filesystem
+  monitor (`-c core.hooksPath=/dev/null -c core.fsmonitor=false`), so none of
+  them runs code the repository's files name, whatever they hold. A chat's own
+  git commands, which it runs through the `shell` tool, are unaffected.
 
 ### The per-chat setting
 
@@ -286,6 +306,17 @@ bubblewrap is missing (ISOL-12).
   deployment change, so it comes first.
 - **Which tools need approval.** With the jail on, a test suite the model wrote
   runs where it can't reach a secret, so APPR-7 is left as it is.
+- **A worktree jail that can't move `master`.** A chat fast-forwards the trunk
+  itself from its own jailed shell (`git push . HEAD:master`, DEPLOY-13), so its
+  jail keeps `refs/heads` writable, `master` included, and `packed-refs` with
+  it. What the user reviews is the fast-forward that lands there and the deploy
+  that follows it (DEPLOY-5), not who may write the ref. Taking `master` out of
+  a jail's reach needs the merge to move into a harness tool the chat calls,
+  which changes DEPLOY-13, and is a change of its own.
+- **A chat that works in the live tree itself** (DEPLOY-14, before the tree is
+  set up for deployment). Its jail is the live tree, `.git` and all, with
+  nothing between its writes and the harness's; ISOL-30 still keeps the
+  harness's own git from running a hook or monitor it left behind.
 - **Hex's own store (future work).** A jailed command gets no Hex store to keep.
   `$HOME` inside the jail is a fresh empty directory holding only the binds
   (ISOL-4), so the store Hex makes — `~/.hex/cache.bin`, the registry, and
@@ -364,13 +395,17 @@ lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
   workspace writable, a command writing inside the shared `deps` and leaving it
   unchanged, a timeout still cleaning up, a command waiting for the mount lock
   before it runs, two commands started at once in one worktree both running, and
-  `Elia.Harness.run_tests/3` jailed — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to
-  ISOL-10, ISOL-15, ISOL-28).
+  `Elia.Harness.run_tests/3` jailed, a worktree jail that can't write the git
+  directory's `config`, `hooks` or `info` but still commits and fast-forwards
+  `master` — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to ISOL-10, ISOL-15, ISOL-28,
+  ISOL-29).
 - `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
   and its removal, ISOL-7, DEPLOY-10).
 - `test/elia/deployment_test.exs` (the worktree
   administration and the deploy's fetch, DEPLOY-18; the jail the deploy's own
-  commands run in, ISOL-13, ISOL-14, ISOL-20).
+  commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an fsmonitor the
+  repository names not run by the harness's own git, in the live tree or in a
+  child's worktree, ISOL-30).
 - `test/elia/tasks_git_test.exs` (the harness's git calls, jailed — ISOL-1,
   ISOL-3, ISOL-8, ISOL-13, ISOL-20).
 - `test/elia/self_modification_test.exs` (the file
