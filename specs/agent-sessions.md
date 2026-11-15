@@ -142,11 +142,15 @@ every view.
   and if it is the parent of running sub-tasks, each of their turns is stopped
   too, with the same result (they stop, their tasks go on).
 
-- **SESS-23** A turn runs in the chat's project: `send_message` puts the chat's
-  `project` and its folder as the `workspace` into the loop options, overriding
-  any the caller passed, so a sub-task session (which inherits its parent's loop
-  options, SUBTASK-5) still runs its tools in its own project's folder (PROJ-9,
-  PROJ-12).
+- **SESS-23** A turn runs in the chat's project and in the workspace its session
+  resolved when it started: the `workspace` its caller passed in the loop
+  options — what `spawn_task` gives a sub-task, so the child works where its
+  parent does (SUBTASK-23) — else the chat's own worktree when it is in Elia's
+  own project (DEPLOY-1), else its project's folder (PROJ-9, PROJ-12). The
+  session keeps that workspace, so every turn of it, and the tool context each
+  turn's loop carries (LOOP-18), run there; a session started later for the same
+  chat (a resume, a restart) resolves it the same way when its caller passes
+  none.
 
 - **SESS-24** A turn sends the loop the chat's full history and its compaction
   state (COMPACT-2, COMPACT-29), after compacting first if the estimated request

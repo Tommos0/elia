@@ -20,7 +20,8 @@ defmodule Elia.TasksTest do
         Store.delete(entry.id)
       end
 
-      for file <- ~w(.gitignore child.txt dirty.txt note.txt skills/note.txt lib/broken.ex) do
+      for file <-
+            ~w(.gitignore child.txt child_note.txt dirty.txt note.txt skills/note.txt lib/broken.ex) do
         File.rm(Path.join(root, file))
       end
 
@@ -72,6 +73,62 @@ defmodule Elia.TasksTest do
   defp commit_file(name) do
     File.write!(Path.join(Elia.Workspace.root(), name), "x\n")
     commit_all("child work")
+  end
+
+  # git in a folder that is not Elia's tree: the folder of another project.
+  defp git_in(dir, args) do
+    System.cmd("git", ["-c", "user.name=T", "-c", "user.email=t@example.com" | args],
+      cd: dir,
+      stderr_to_stdout: true
+    )
+  end
+
+  # A project folder outside Elia's tree: a git repository with one commit.
+  defp external_repo do
+    dir = Path.join(System.tmp_dir!(), "elia-project-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    {_, 0} = git_in(dir, ["init", "--quiet"])
+    File.write!(Path.join(dir, "marker.txt"), "the project\n")
+    {_, 0} = git_in(dir, ["add", "-A"])
+    {_, 0} = git_in(dir, ["commit", "-q", "-m", "the project"])
+    dir
+  end
+
+  defp head_of(dir) do
+    {head, 0} = git_in(dir, ["rev-parse", "HEAD"])
+    String.trim(head)
+  end
+
+  # A chat in a project outside Elia's own, which works in that project's folder
+  # (PROJ-12). Its children are stopped with it.
+  defp external_parent(dir, opts \\ []) do
+    id = Agent.new_id()
+    project = %{id: Agent.new_id(), name: "Other", folder: dir, harness?: false}
+
+    opts =
+      Keyword.merge(
+        [project: project, loop_opts: [llm: %{provider: FakeLLM}], auto_approve: []],
+        opts
+      )
+
+    {:ok, _pid} = Agent.ensure_started(id, opts)
+    Agent.subscribe(id)
+
+    on_exit(fn ->
+      for %{id: child} <- children_of(id), do: stop_session(child)
+      stop_session(id)
+    end)
+
+    {id, project}
+  end
+
+  # The workspace a chat's session runs its turns in (PROJ-12): the snapshot
+  # doesn't carry it, so read the state.
+  defp session_workspace(id) do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.get_state(pid).workspace
   end
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 20_000)
@@ -187,6 +244,23 @@ defmodule Elia.TasksTest do
     if after_tools?(request),
       do: reply([Message.text("Done.")]),
       else: reply([finish_call("done", "Did it")])
+  end
+
+  # A child that writes a file in its own workspace, reports `done`, and ends its
+  # turn.
+  defp writing_child(request) do
+    cond do
+      results(request, "write_file") == [] ->
+        reply([
+          FakeLLM.tool_call("w1", "write_file", %{"path" => "child_note.txt", "content" => "x\n"})
+        ])
+
+      results(request, "finish_task") == [] ->
+        reply([finish_call("done", "Wrote it")])
+
+      true ->
+        reply([Message.text("Done.")])
+    end
   end
 
   # A child that blocks in its first model call until the test kills or stops it.
@@ -533,11 +607,10 @@ defmodule Elia.TasksTest do
     stop_session(child)
   end
 
-  # PROJ-10
-  test "a sub-task chat carries its parent's project" do
-    dir = Path.join(System.tmp_dir!(), "elia-task-#{System.unique_integer([:positive])}")
-    File.mkdir_p!(dir)
-    on_exit(fn -> File.rm_rf!(dir) end)
+  # PROJ-10, SUBTASK-23
+  test "a sub-task chat carries its parent's project, and works in its folder" do
+    dir = external_repo()
+    external_head = head_of(dir)
     project = %{id: Agent.new_id(), name: "Other", folder: dir, harness?: false}
 
     parent = Agent.new_id()
@@ -563,7 +636,86 @@ defmodule Elia.TasksTest do
 
     assert Agent.snapshot(child).project == project
     assert Store.load_project(child) == project.id
+
+    # SUBTASK-23: it shares its parent's workspace — this project's folder, not
+    # Elia's tree — and its baseline is a commit of that repository.
+    assert session_workspace(child) == dir
+    assert %{start_commit: ^external_head} = Store.load_task(child)
+
     stop_session(child)
+  end
+
+  # SUBTASK-23, PROJ-12
+  test "a sub-task of another project writes there, not in Elia's tree" do
+    dir = external_repo()
+    external_head = head_of(dir)
+    {elia_head, 0} = git(["rev-parse", "HEAD"])
+    elia_head = String.trim(elia_head)
+    assert external_head != elia_head
+
+    # SUBTASK-6: the child copies its parent's set, so this one writes without
+    # asking; the spawn itself still asks (APPR-14).
+    {parent, _project} = external_parent(dir, auto_approve: ["write_file"])
+
+    push_turns(router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &writing_child/1))
+
+    run_parent(parent, ["s1"])
+
+    child = session_json(parent, "spawn_task", 0)["task_id"]
+
+    # The child's tool wrote into the project's folder, and Elia's tree is
+    # untouched: no file, no commit.
+    assert File.read!(Path.join(dir, "child_note.txt")) == "x\n"
+    refute File.exists?(Path.join(Elia.Workspace.root(), "child_note.txt"))
+    {head, 0} = git(["rev-parse", "HEAD"])
+    assert String.trim(head) == elia_head
+
+    # Its work is reported against that repository's own baseline (SUBTASK-9).
+    assert %{start_commit: ^external_head} = Store.load_task(child)
+
+    assert %{"status" => "done", "commit" => nil, "files" => ["child_note.txt"]} =
+             session_json(parent, "await_task", 0)
+
+    stop_session(child)
+  end
+
+  # SUBTASK-23, SUBTASK-11
+  test "a child of another project is not a second writer in this one" do
+    dir = external_repo()
+    {parent, _project} = external_parent(dir)
+
+    # A child of this project, blocked in its first model call, so its task holds
+    # the project's tree.
+    child = spawn_blocked_child(parent, self())
+
+    # The task's workspace is its parent's project folder (SUBTASK-23)...
+    assert :sys.get_state(Tasks).active[child].root == dir
+
+    # ...so a chat in another project is not writing in the same tree, and its
+    # spawn starts instead of being refused (SUBTASK-11).
+    {other, other_project} = external_parent(external_repo())
+
+    assert {:ok, json} =
+             Tasks.spawn_task(%{"title" => "T", "brief" => "B"}, %{
+               session_id: other,
+               call_id: "s2",
+               workspace: other_project.folder,
+               project: other_project,
+               loop_opts: [llm: %{provider: FakeLLM}]
+             })
+
+    assert %{"task_id" => other_child} = Jason.decode!(json)
+
+    # Its own turn ends when the test takes its chat away, the way the user's
+    # delete does (SESS-29), and its entry is released.
+    :ok = Agent.delete(other_child)
+    assert_receive {:agent, ^other, {:subtask, "s2", ^other_child, _status}}, 20_000
+
+    # A stop only ends a child's turn, so the test ends its task the way the user
+    # does: deleting the child's chat (SESS-29).
+    :ok = Agent.delete(child)
+    await_status(parent, :idle)
+    assert Tasks.active() == []
   end
 
   # SUBTASK-10

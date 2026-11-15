@@ -189,14 +189,13 @@ defmodule Elia.Tasks do
     end
   end
 
-  # The repository the sub-task machinery works in: the chat's own workspace,
-  # which for a chat in Elia's own project is its git worktree (DEPLOY-1), and
-  # Elia's own root for any other project, as before.
-  defp repo_root(ctx) do
-    if Elia.Projects.harness_ctx?(ctx),
-      do: ctx[:workspace] || Workspace.root(),
-      else: Workspace.root()
-  end
+  # The repository the sub-task machinery works in — the root of its git calls,
+  # of its writer lock and of the child's own workspace: the parent chat's own
+  # workspace, which is its git worktree for a chat in Elia's own project
+  # (DEPLOY-1) and its project's folder for a chat in another one (PROJ-12). A
+  # chat whose tools run in Elia's own root passes that root, and one that works
+  # in another project passes that project (SUBTASK-23, PROJ-9).
+  defp repo_root(ctx), do: ctx[:workspace] || Workspace.root()
 
   defp check_input(input) do
     minutes = input["max_minutes"]
