@@ -127,9 +127,12 @@ defmodule EliaWeb.ChatLive do
       # UPLOAD-1 - UPLOAD-4: the composer's attach control and what the message
       # being written is carrying. One entry per file picked, each with its own
       # progress (UPLOAD-1); the count is per message (`:selected`), so the next
-      # message starts empty (UPLOAD-2, UPLOAD-5).
+      # message starts empty (UPLOAD-2, UPLOAD-5). The pick itself starts the
+      # upload (`auto_upload`): the picker's own form carries `phx-change` and
+      # never a submit, so nothing else is there to start it (UPLOAD-1).
       |> allow_upload(:uploads,
         accept: :any,
+        auto_upload: true,
         max_entries: @max_upload_files,
         max_entries_mode: :selected,
         max_file_size: @max_upload_bytes

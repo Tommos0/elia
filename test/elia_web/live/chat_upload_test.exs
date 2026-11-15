@@ -78,6 +78,12 @@ defmodule EliaWeb.ChatUploadTest do
 
     assert has_element?(view, "#upload-button", "Attach files")
     assert has_element?(view, "#upload-button input[type='file'][name='uploads']")
+    # UPLOAD-1: the pick, not the send, is what starts the upload — the picker
+    # says so in its markup, which is the client's half of the requirement: a
+    # browser starts the entry when the input's change reaches it. What a real
+    # pick then does is `test/elia_web/browser/upload_test.exs`, which this
+    # suite's own upload helper cannot see (it drives an upload server-side).
+    assert has_element?(view, "#upload-form input[type='file'][data-phx-auto-upload]")
     # UPLOAD-1: the picker reports to its own form, and neither form is inside
     # the other — one form cannot hold another.
     assert has_element?(view, "#upload-form[phx-change='validate_uploads']")

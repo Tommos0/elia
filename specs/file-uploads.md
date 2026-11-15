@@ -20,7 +20,8 @@ its work.
 
 - **UPLOAD-1** The composer has an attach control — a button (`#upload-button`)
   around a file picker (`input[type=file]`) that takes one or more files of any
-  type — and a file picked starts uploading at once, the composer showing its
+  type — and a file picked starts uploading at once, the pick itself being what
+  starts it rather than the message being sent, with the composer showing its
   progress (`#upload-progress-<ref>`) until it is on the server.
 - **UPLOAD-2** One message carries at most 10 files, each at most 25 MB. A file
   over either bound is not one the message carries: the composer says which
@@ -108,7 +109,8 @@ the older code with the line of UPLOAD-10 in it as nothing but text.
 
 ## Implementation
 
-`EliaWeb.ChatLive` (the attach control, its chips and the transcript's),
+`EliaWeb.ChatLive` (the attach control — the pick starting the upload it
+configures for, `auto_upload` (UPLOAD-1) — its chips and the transcript's),
 `Elia.Agent` and `Elia.Agent.Session` (writing the files into the chat's own
 workspace and appending the message), `Elia.LLM.Message` (a user message's
 attachments, its `meta`, and the text the user wrote as against the line naming
@@ -127,3 +129,8 @@ the paths), `EliaWeb.FileLinks` (the link a chip gets, FLINK-5),
   a file is still on its way, a write that fails, the chips in the transcript
   and in the compact view — UPLOAD-1 to UPLOAD-5, UPLOAD-9, UPLOAD-12,
   UPLOAD-13, UPLOAD-15).
+- `test/elia_web/browser/upload_test.exs` (a file picked in the composer
+  uploading in a real browser, and the message it is sent with — UPLOAD-1,
+  UPLOAD-12): that the pick is what starts the upload is the client's half of
+  UPLOAD-1, which the LiveView suite cannot see — its helper drives an upload
+  server-side, so it passes whatever the browser does with a pick (BROWSER-1).
