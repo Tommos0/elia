@@ -124,6 +124,15 @@ results back, and repeat until the model answers without calling a tool.
   number of identical results, so with `pause_on_limit` the turn pauses for the
   user's decision and without it the turn ends with that limit; a resume starts
   the count over (LOOP-19).
+- **LOOP-26** A tool call that fails without returning gets an error result of
+  its own, and the turn continues — whether it raises (LOOP-12), exits (a
+  `GenServer.call` that times out or whose server is gone), throws, or the
+  process running it dies. The result is "Tool crashed: " followed by the
+  exception's message for a raise, as LOOP-12 says, and otherwise by the
+  failure's kind and reason as Elixir formats them (`** (exit) …`,
+  `** (throw) …`). The step's other calls keep their own results, in the order
+  the calls were made (LOOP-10), and a failed call's status still ends `:done`
+  (LOOP-11). Stopping the turn still ends every call it is running (SESS-43).
 
 ## Implementation
 
@@ -134,7 +143,8 @@ results back, and repeat until the model answers without calling a tool.
 - `test/elia/agent_test.exs` (the loop end to end: each step's prompt and tools,
   forwarded deltas and notices, the step limit, the error results, input
   validation, approval, the concurrent tools and their statuses, the options,
-  and a step's error ending the turn — LOOP-1 to LOOP-12, LOOP-16 to LOOP-25).
+  and a step's error ending the turn, a call that exits, throws or dies —
+  LOOP-1 to LOOP-12, LOOP-16 to LOOP-26).
 - `test/elia/step_timing_test.exs` (the outcome a record keeps, LOOP-4).
 - `test/elia_web/live/chat_settings_test.exs` (a chat's own step limit, LOOP-3).
 - `test/elia/llm/context_test.exs` (the token budget, LOOP-22).

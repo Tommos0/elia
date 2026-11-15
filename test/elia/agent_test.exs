@@ -142,6 +142,71 @@ defmodule Elia.AgentTest do
     assert Message.text_content(List.last(Agent.snapshot(id).messages)) == "Carried on."
   end
 
+  # LOOP-26, LOOP-10, LOOP-11: a call that exits, throws or whose process dies
+  # gets its own error result; the step's other calls keep theirs, in order, every
+  # status ends `:done`, and the turn goes on.
+  test "a call that exits, throws or dies gets its own error result" do
+    id = Agent.new_id()
+
+    tool = fn name, run ->
+      %Elia.Tool{
+        name: name,
+        description: name,
+        input_schema: %{"type" => "object", "properties" => %{}},
+        approval: :never,
+        run: fn _input, _ctx -> run.() end
+      }
+    end
+
+    tools = [
+      tool.("exits", fn -> GenServer.call(:elia_test_no_such_server, :hello) end),
+      tool.("throws", fn -> throw(:nope) end),
+      tool.("dies", fn ->
+        spawn_link(fn -> exit(:linked_crash) end)
+        receive do: (:never -> {:ok, "unreachable"})
+      end),
+      tool.("works", fn -> {:ok, "fine"} end)
+    ]
+
+    skills = [%Elia.Skill{name: "failing", description: "failing", tools: tools}]
+
+    {:ok, pid} =
+      Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM}, skills: skills])
+
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+    Agent.subscribe(id)
+
+    ids = ["e1", "t1", "d1", "w1"]
+
+    FakeLLM.push(
+      FakeLLM.assistant(
+        for {call_id, name} <- Enum.zip(ids, ~w(exits throws dies works)),
+            do: FakeLLM.tool_call(call_id, name, %{})
+      )
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carried on.")]))
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+
+    for call_id <- ids, do: assert_received({:agent, ^id, {:tool_status, ^call_id, :done}})
+
+    [_user, _call, %Message{role: :tool, content: results}] =
+      List.last(FakeLLM.requests()).messages
+
+    assert Enum.map(results, & &1.tool_call_id) == ids
+    assert [exited, thrown, died, worked] = results
+
+    assert exited.is_error
+    assert exited.content =~ ~r/\ATool crashed: \*\* \(exit\) exited in: GenServer\.call/
+    assert exited.content =~ "no process"
+    assert %{is_error: true, content: "Tool crashed: ** (throw) :nope"} = thrown
+    assert %{is_error: true, content: "Tool crashed: ** (exit) :linked_crash"} = died
+    assert %{is_error: false, content: "fine"} = worked
+
+    assert Message.text_content(List.last(Agent.snapshot(id).messages)) == "Carried on."
+  end
+
   # ASK-2, ASK-3, ASK-5, ASK-6, LOOP-21
   test "a question waits for the user's answer, which the turn goes on with", %{id: id} do
     FakeLLM.push(

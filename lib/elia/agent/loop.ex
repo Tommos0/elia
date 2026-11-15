@@ -532,14 +532,28 @@ defmodule Elia.Agent.Loop do
     # TIME-3: the tools themselves, apart from the waiting above.
     started_ms = now_ms()
 
+    # LOOP-26: unlinked, so a call whose process dies — killed through a link
+    # of the tool's own, say — is that call's error result and not the loop's
+    # crash. An unlinked worker outlives the loop, though, so each one is
+    # guarded: a stopped turn still ends the calls it is running (SESS-43).
+    loop = self()
+
     ran =
-      checked
-      |> Task.async_stream(
-        fn {call, checked_call} -> run_checked(ctx, call, checked_call, decisions, answers) end,
+      Task.Supervisor.async_stream_nolink(
+        Elia.Agent.TaskSupervisor,
+        checked,
+        fn {call, checked_call} ->
+          guard(loop)
+          run_checked(ctx, call, checked_call, decisions, answers)
+        end,
         timeout: :infinity,
         ordered: true
       )
-      |> Enum.map(fn {:ok, ran} -> ran end)
+      |> Enum.zip(checked)
+      |> Enum.map(fn
+        {{:ok, ran}, _checked} -> ran
+        {{:exit, reason}, {call, _checked_call}} -> died(ctx, call, reason, started_ms)
+      end)
 
     waits = %{
       tool_ms: now_ms() - started_ms,
@@ -574,6 +588,41 @@ defmodule Elia.Agent.Loop do
 
   defp run_checked(_ctx, call, {:error, reason}, _decisions, _answers) do
     %{result: Message.tool_result(call.id, reason, true), timing: nil}
+  end
+
+  # SESS-43, LOOP-26: kills the calling worker if `loop` dies before it — what
+  # a link did before the workers were unlinked, in that direction only. The
+  # worker's commands go with it (SHELL-12). The guard ends with whichever goes
+  # first.
+  defp guard(loop) do
+    worker = self()
+
+    spawn(fn ->
+      loop_ref = Process.monitor(loop)
+      worker_ref = Process.monitor(worker)
+
+      receive do
+        {:DOWN, ^loop_ref, :process, _, _} -> Process.exit(worker, :kill)
+        {:DOWN, ^worker_ref, :process, _, _} -> :ok
+      end
+    end)
+  end
+
+  # LOOP-26: the process running a call died, so it never sent its `:done`
+  # (LOOP-11) or its result. Only a call that ran can die there, so it is timed
+  # (TIME-4) — from the start of the step's tools, as its own start died with it.
+  defp died(ctx, call, reason, started_ms) do
+    send(ctx.session, {:loop_tool_status, call.id, :done})
+
+    %{
+      result:
+        Message.tool_result(
+          call.id,
+          "Tool crashed: " <> Exception.format_banner(:exit, reason),
+          true
+        ),
+      timing: %{name: call.name, ms: now_ms() - started_ms, failed: true}
+    }
   end
 
   # TIME-4: a call failed when its result is an error — what LOOP-12 answers a
@@ -639,6 +688,10 @@ defmodule Elia.Agent.Loop do
         end
       rescue
         e -> {"Tool crashed: " <> Exception.message(e), true}
+      catch
+        # LOOP-26: an exit (a `GenServer.call` that times out, or whose server
+        # is gone) or a throw is the call's own failure too, not the step's.
+        kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true}
       end
 
     send(ctx.session, {:loop_tool_status, call.id, :done})
