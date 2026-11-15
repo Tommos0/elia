@@ -56,6 +56,19 @@ defmodule Elia.Terminal.Session do
   # so the `#` is escaped here — this string goes to tmux as it is.
   @dead_status_format "\#{pane_dead_status}"
 
+  # TERM-36: the line the script prints its server's socket path on, before the
+  # client attaches and control mode begins.
+  @socket_path_marker "elia-socket-path "
+
+  # TERM-36: how long ending the server may take. It runs inside `terminate/2`,
+  # where the session is on its way out: the run is awaited there, so SHELL-12's
+  # watcher never sees its waiting process go first, and it has to finish well
+  # inside the supervisor's shutdown window (5 s for a worker), after which the
+  # session is killed outright and the run's group with it. `kill-server` on a
+  # local socket answers in milliseconds; 2 s leaves the rest of that window to
+  # spare.
+  @release_timeout 2_000
+
   defstruct [
     :chat_id,
     :argv,
@@ -64,6 +77,13 @@ defmodule Elia.Terminal.Session do
     :jail,
     :lock,
     :socket,
+    # TERM-36: where the server's socket file is, as tmux reported it at start;
+    # nil until then, and for a jailed session it is the jail's own `/tmp`.
+    :socket_path,
+    # TERM-36: whether the session really runs in a jail — the chat's setting,
+    # the host's and bubblewrap's presence together (ISOL-12, ISOL-16), decided
+    # once, as the argv was built — rather than only what the chat asked for.
+    :jailed,
     :port,
     :cols,
     :rows,
@@ -132,6 +152,11 @@ defmodule Elia.Terminal.Session do
     [
       "set -e",
       "#{tmux} -L #{sock} -f /dev/null new-session -d -s elia -x #{@initial_cols} -y #{@initial_rows} -- sleep 3600",
+      # TERM-36: where the server's socket is, said as soon as the server is
+      # up — before anything else can fail and before the client attaches — so
+      # the session knows the one file to remove however it ends. tmux leaves
+      # the file in place even when its server exits cleanly.
+      "#{tmux} -L #{sock} -f /dev/null display-message -p -t elia '#{@socket_path_marker}\#{socket_path}'",
       # TERM-4, TERM-23: the pane stays after its process ends, so tmux can say
       # the status and still show the screen it was showing.
       "#{tmux} -L #{sock} -f /dev/null set-option -g remain-on-exit on",
@@ -209,6 +234,7 @@ defmodule Elia.Terminal.Session do
       command: Enum.join(argv, " "),
       workspace: workspace,
       jail: jail,
+      jailed: Shell.jailed?(jail: jail),
       lock: lock,
       socket: socket,
       port: port,
@@ -346,8 +372,35 @@ defmodule Elia.Terminal.Session do
     # shutting down — takes its process tree with it.
     release_lock(state)
     if state.port, do: kill_port(state.port)
+    # TERM-36: a session that already ended released its tmux then.
+    if state.status != :ended, do: release_tmux(state)
     :ok
   end
+
+  # TERM-36: an unjailed session's tmux server is outside any jail, and the
+  # port may be closed already — the client gone before or after it attached —
+  # so neither of `kill_port/1`'s mechanisms reaches it. The server is ended by
+  # its own socket name, as a command of its own, awaited here with a short
+  # timeout (`@release_timeout`); a server already gone makes it fail, which is
+  # fine. Then the one socket file tmux reported for this session goes: tmux
+  # leaves it however its server exits. A jailed session has nothing to release:
+  # its server went with the jail's pid namespace and its socket with its `/tmp`.
+  # It runs in the temp dir rather than the workspace, which may be gone by now
+  # (a chat's worktree removed before its terminal's `terminate/2`).
+  defp release_tmux(%{jailed: false, socket: socket} = state) when is_binary(socket) do
+    _ =
+      Shell.run("#{q(Terminal.tmux())} -L #{q(socket)} -f /dev/null kill-server",
+        jail: false,
+        cd: System.tmp_dir!(),
+        timeout: @release_timeout,
+        max_output: 1_000
+      )
+
+    if state.socket_path, do: File.rm(state.socket_path)
+    :ok
+  end
+
+  defp release_tmux(_state), do: :ok
 
   # ISOL-28: the mount lock is held only until the jail is up. A session that
   # ends before it ever spoke gives it back here, so a terminal that failed to
@@ -444,6 +497,17 @@ defmodule Elia.Terminal.Session do
   # the server lives inside this session's jail and no other client can ever
   # reach it — so a client that goes away takes the app with it (TERM-3).
   defp handle_line(%{reply: nil} = state, "%session-changed " <> _rest), do: on_attach(state)
+
+  # TERM-36: the script's report of where its server's socket is. Only a path
+  # whose file is this session's own socket name is kept, so nothing the pane
+  # prints can point the clean-up at another file.
+  defp handle_line(%{reply: nil, socket_path: nil} = state, @socket_path_marker <> path) do
+    path = String.trim(path)
+
+    if Path.type(path) == :absolute and Path.basename(path) == state.socket,
+      do: %{state | socket_path: path},
+      else: state
+  end
 
   # Everything else tmux says unprompted — `%layout-change`, `%window-renamed`,
   # `%exit` — is bookkeeping this session has no use for.
@@ -700,6 +764,8 @@ defmodule Elia.Terminal.Session do
 
   defp end_session(state, ended, exit_status) do
     if state.port, do: kill_port(state.port)
+    # TERM-36: whether or not the port was still there to carry a kill-server.
+    release_tmux(state)
 
     state = %{state | status: :ended, ended: ended, exit_status: exit_status, port: nil}
     state = settle_pending(state)

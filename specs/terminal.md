@@ -224,6 +224,19 @@ guardrails: it is the same confinement as a command, held open.
   never crashes over it, and nothing is logged as a crash. The same holds for
   every path that ends a session this way: the user's Stop, `terminal_stop`, and
   a chat's deletion (TERM-3).
+- **TERM-36** A session that runs without the jail (ISOL-16) leaves nothing of
+  its tmux behind once it has ended, however it ended — stopped, its command
+  exiting, its client gone before or after it attached, its session process
+  shutting down. When it ends, the session ends its own tmux server by the
+  socket name it started it with (`tmux -L <name> kill-server`, run as a command
+  of its own through `Elia.Shell` rather than through the port, which may be
+  closed by then), and then removes that server's socket file, at the path tmux
+  reported for it while it ran: tmux leaves the file in place however its server
+  exits, cleanly or not. Nothing else is touched. No server is killed and no
+  socket removed by a name pattern, by its age, or because it looks stale — only
+  the one this session started, by its exact name. A jailed session needs
+  neither step: its server dies with the jail's pid namespace (TERM-3, ISOL-10),
+  and its socket lived in the jail's own `/tmp`.
 
 ### Availability
 
@@ -272,6 +285,19 @@ config :elia, Elia.Terminal,
 - **A window size on a detached session, mouse reporting, and sixel/kitty image
   protocols** — what xterm.js and tmux support between them is what a terminal
   here is.
+- **Sweeping the sockets and servers earlier sessions left behind.** TERM-36
+  stops new ones from being left, but does not clear the ones already there.
+  An automatic sweep at startup would have to tell a dead socket from a live
+  terminal's, and the only safe sign is the server no longer answering. Even
+  that races a server another VM is starting at that moment: every worktree's
+  test run starts its own VM and its own terminals, against the same
+  `/tmp/tmux-<uid>`. Clearing the backlog is a one-off for the user, checking
+  each socket for a live server first, not something the harness does on its
+  own.
+- **A session whose VM ends with no shutdown at all** (the VM killed outright,
+  the machine losing power). Nothing of the session runs to clean up after it.
+  Its client goes with the VM, so `destroy-unattached` still ends an attached
+  session's server, but that server's socket file stays.
 
 ## Implementation
 
@@ -303,7 +329,8 @@ TERM-15 — and that is a spec change, not a silent substitution.
 chat, the stop leaving nothing running, the missing tmux, the screen and resize
 commands, and the keys reaching a real app — a name expanded by tmux for the
 pane's own mode — TERM-1 to TERM-11; a stop whose command exits under it,
-TERM-35), `test/elia/terminal/keys_test.exs` (the notation, its aliases
+TERM-35; an unjailed session's server and socket gone however it ended, and
+nothing of another session's touched, TERM-36), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
 `test/elia_web/live/terminal_live_test.exs` (the page's states,
 TERM-19..TERM-23), `test/elia_web/terminal_channel_test.exs` (join,

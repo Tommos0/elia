@@ -187,6 +187,146 @@ defmodule Elia.TerminalTest do
     assert {:ok, %{ended: :stopped}} = Terminal.status(id)
   end
 
+  # TERM-36: an unjailed session's tmux, as tmux itself reports it — its socket
+  # name and the socket file — once the session has attached.
+  defp started_tmux(id, dir, command) do
+    assert {:ok, _} = Terminal.start(id, command: command, workspace: dir, jail: false)
+    :ok = Terminal.subscribe(id)
+    assert_receive {:terminal_screen, _screen}, 15_000
+    {:ok, session} = Terminal.fetch(id)
+    %{socket: socket} = :sys.get_state(session)
+
+    {path, 0} =
+      System.cmd(tmux(), [
+        "-L",
+        socket,
+        "-f",
+        "/dev/null",
+        "display-message",
+        "-p",
+        "-t",
+        "elia",
+        "\#{socket_path}"
+      ])
+
+    path = String.trim(path)
+    assert server_up?(socket) and File.exists?(path)
+    %{session: session, socket: socket, path: path}
+  end
+
+  # TERM-36: whether a tmux server answers on `socket`.
+  defp server_up?(socket) do
+    {_, status} =
+      System.cmd(tmux(), ["-L", socket, "-f", "/dev/null", "list-sessions"],
+        stderr_to_stdout: true
+      )
+
+    status == 0
+  end
+
+  defp tmux, do: System.find_executable("tmux")
+
+  # TERM-36: a stopped session leaves neither its server nor its socket file.
+  test "a stopped unjailed session leaves no tmux server and no socket", %{id: id, dir: dir} do
+    %{socket: socket, path: path} = started_tmux(id, dir, "sleep 60")
+
+    assert {:ok, %{ended: :stopped}} = Terminal.stop(id)
+    assert until(fn -> not server_up?(socket) end)
+    refute File.exists?(path)
+  end
+
+  # TERM-36: "without the jail" is whether the session really ran jailed, not
+  # what the chat asked for. A chat whose setting is on, on a host whose jail is
+  # off (the suite's own config, ISOL-20), runs unjailed and cleans up the same.
+  test "a session that asked for the jail but ran without it cleans up too", %{
+    id: id,
+    dir: dir
+  } do
+    if Elia.Shell.jailed?(jail: true) do
+      :ok
+    else
+      assert {:ok, _} = Terminal.start(id, command: "sleep 60", workspace: dir, jail: true)
+      :ok = Terminal.subscribe(id)
+      assert_receive {:terminal_screen, _screen}, 15_000
+      {:ok, session} = Terminal.fetch(id)
+      %{socket: socket} = :sys.get_state(session)
+
+      {path, 0} =
+        System.cmd(tmux(), [
+          "-L",
+          socket,
+          "-f",
+          "/dev/null",
+          "display-message",
+          "-p",
+          "-t",
+          "elia",
+          "\#{socket_path}"
+        ])
+
+      assert {:ok, %{ended: :stopped}} = Terminal.stop(id)
+      assert until(fn -> not server_up?(socket) end)
+      refute File.exists?(String.trim(path))
+    end
+  end
+
+  # TERM-36: nor does one whose command exited on its own.
+  test "an unjailed session whose command exits leaves no tmux server and no socket", %{
+    id: id,
+    dir: dir
+  } do
+    %{socket: socket, path: path} = started_tmux(id, dir, "sleep 0.5")
+
+    assert until(fn -> match?({:ok, %{ended: :exited}}, Terminal.status(id)) end)
+    assert until(fn -> not server_up?(socket) end)
+    refute File.exists?(path)
+  end
+
+  # TERM-36: nor one whose client is gone — the path where the port is closed
+  # first and neither of the port's own kill mechanisms can reach the server.
+  test "an unjailed session whose client dies leaves no tmux server and no socket", %{
+    id: id,
+    dir: dir
+  } do
+    %{session: session, socket: socket, path: path} = started_tmux(id, dir, "sleep 60")
+    %{port: port} = :sys.get_state(session)
+    {:os_pid, client} = Port.info(port, :os_pid)
+
+    System.cmd("kill", ["-KILL", "--", "-#{client}"], stderr_to_stdout: true)
+
+    assert until(fn -> match?({:ok, %{running: false}}, Terminal.status(id)) end)
+    assert until(fn -> not server_up?(socket) end)
+    refute File.exists?(path)
+  end
+
+  # TERM-36: the clean-up is by this session's own name and path, never by a
+  # pattern: another live terminal, and a socket file that only looks like one
+  # of Elia's, are both still there after the first session's clean-up.
+  test "ending one session touches no other session's tmux or socket", %{id: id, dir: dir} do
+    other = "terminal-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))
+    other_dir = Path.join(System.tmp_dir!(), other)
+    File.mkdir_p!(other_dir)
+
+    on_exit(fn ->
+      stop_session(other)
+      File.rm_rf(other_dir)
+    end)
+
+    %{path: path} = started_tmux(id, dir, "sleep 60")
+    %{socket: other_socket, path: other_path} = started_tmux(other, other_dir, "sleep 60")
+
+    probe = Path.join(Path.dirname(path), "elia-probe#{System.unique_integer([:positive])}")
+    File.write!(probe, "")
+    on_exit(fn -> File.rm(probe) end)
+
+    assert {:ok, %{ended: :stopped}} = Terminal.stop(id)
+    refute File.exists?(path)
+
+    assert server_up?(other_socket)
+    assert File.exists?(other_path)
+    assert File.exists?(probe)
+  end
+
   # TERM-12, TERM-13: what the app writes reaches a subscriber, and what is
   # typed goes into the app's stdin — into a shell that is reading, so the
   # program's answer comes back.
