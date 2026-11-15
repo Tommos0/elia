@@ -205,6 +205,21 @@ tools reach no further than a jailed command does (ISOL-25).
   unique, and that an `old_string` matching more than once is an error rather
   than a guess — context must be added or `replace_all` set. The description also
   says that an empty `new_string` is how text is removed.
+- **FILE-39** `write_file` and `edit_file` judge a path by where it lands (WS-7
+  to WS-9), not by how it is written: a path in the workspace whose real
+  location is protected or outside is refused, or offered for approval, as that
+  location's class (FILE-5), so a link — or a directory reached through one —
+  cannot turn a protected target into an ordinary approval-required write.
+- **FILE-40** `delete_file` judges a path by where it lands in the same way
+  (FILE-39), so deleting a child through a symlinked directory is judged by the
+  child's real location; a path that is itself a symlink is judged as the link's
+  own path and the link is deleted, never followed (FILE-20).
+- **FILE-41** The class and the operation use one resolution of the real
+  location (WS-5), so a link swapped while the call runs does not move the write
+  or the delete to a different file than the one the class was decided on.
+- **FILE-42** The per-file lock (FILE-11) is keyed by the path's real location,
+  so two calls that spell one file differently — one through a symlink, one
+  naming the file — are serialised with each other.
 
 ## Out of scope
 
@@ -239,8 +254,8 @@ link (FLINK).
 ## Implementation
 
 `Elia.Skills.Files` (the tools and the policies), with
-`Elia.Workspace.real_location/1` (WS-5) and `Elia.Shell.reachable?/2` (ISOL-25)
-for the confinement. `search_files` (FILE-24..FILE-30) walks and matches in
+`Elia.Workspace.real_location/1` (WS-5), the referent judgement of WS-7 to WS-9
+and `Elia.Shell.reachable?/2` (ISOL-25) for the confinement. `search_files` (FILE-24..FILE-30) walks and matches in
 Elixir: no new dependency, and no `grep` or `git grep` process. `Elia.Explorer`
 (EXPL-3) lists directories for the `/files` page with its own rules — protected
 paths filtered out, symlinks refused — so `list_files` doesn't share it.
@@ -248,9 +263,10 @@ paths filtered out, symlinks refused — so `list_files` doesn't share it.
 ## Tests
 
 - `test/elia/self_modification_test.exs` (the policies, jail on and off, the
-  symlink escape, each tool's result and refusals, `search_files`,
+  symlink escape, a write, an edit and a delete judged by where the path lands,
+  the lock's key, each tool's result and refusals, `search_files`,
   `edit_file`'s matching — FILE-1 to FILE-9, FILE-11, FILE-15 to FILE-22,
-  FILE-25 to FILE-36).
+  FILE-25 to FILE-36, FILE-39 to FILE-42).
 - `test/elia/agent_test.exs` (which calls need approval, FILE-1, FILE-4).
 - `test/elia/shell_test.exs` (the jail's reach, FILE-12).
 - `test/elia/skills/files_test.exs` (the instructions, the tool descriptions and

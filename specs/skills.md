@@ -84,6 +84,17 @@ system prompt from them. It can be reloaded while the app runs.
   only moves between steps (LOOP-10), so announcing long work beforehand is how
   a long silent stretch is avoided.
 
+- **SKILL-17** The project instructions are read only when the root
+  `AGENTS.md`'s real location (WS-5) is inside the chat's project folder and is
+  neither protected nor unresolvable (WS-7, WS-9): a `AGENTS.md` that is a link
+  resolving out of the folder, into a protected location such as `.git` or
+  `deps`, or that can't be resolved, adds no section and is logged as a warning
+  (SKILL-11). The rule does not follow the chat's jail switch (ISOL-20), because
+  this read is never offered for the user's approval as `read_file` is (FILE-4),
+  so nothing else stands behind it.
+- **SKILL-18** What a refused instruction file holds never reaches the prompt:
+  the warning names the path it refused and no part of the file's contents.
+
 ## Configuration
 
 ```elixir
@@ -110,9 +121,12 @@ config :elia, Elia.Skills,
 ## Tests
 
 - `test/elia/skills_test.exs` (a skill's shape, the built-ins and their order, a
-  rejected folder skill, the system prompt, `AGENTS.md` and its cap, the
-  resolver, the base prompt — SKILL-1 to SKILL-5, SKILL-7, SKILL-10 to SKILL-16).
+  rejected folder skill, the system prompt, `AGENTS.md` and its cap, a
+  `AGENTS.md` link out of the folder, into a protected location and one that
+  can't be resolved, the resolver, the base prompt — SKILL-1 to SKILL-5, SKILL-7,
+  SKILL-10 to SKILL-18).
 - `test/elia/self_modification_test.exs` (reloading the folder, SKILL-6, SKILL-9).
-- `test/elia/agent_test.exs` (the skills a turn is given, SKILL-7).
+- `test/elia/agent_test.exs` (the skills a turn is given, SKILL-7; the
+  instructions its request carries are the confined ones, SKILL-17).
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, SKILL-8).
