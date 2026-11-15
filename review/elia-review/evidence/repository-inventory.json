@@ -1,0 +1,2717 @@
+{
+  "commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "files": [
+    {
+      "path": ".formatter.exs",
+      "bytes": 146,
+      "lines": 5,
+      "sha256": "5bca5995458e26d5e54ae02427043a2749d57f0b64cedbb01d905003c796cf20",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/.formatter.exs"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 1122,
+      "lines": 43,
+      "sha256": "d683c5f78e1b5490a778e353b841a29c9d7e4b10d37bd4e205fc905c19dab0c4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/.gitignore"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 10817,
+      "lines": 36,
+      "sha256": "2eb8e5bfa4951046c2e12015dfbd154a53c899380ea14ad866606e620ceb7b19",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/AGENTS.md"
+    },
+    {
+      "path": "README.md",
+      "bytes": 10517,
+      "lines": 218,
+      "sha256": "9e5b0068c95c443a90f27104b282171b3ca0b204b0eb8471ef8a8bb52f5711ec",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/README.md"
+    },
+    {
+      "path": "assets/css/app.css",
+      "bytes": 14296,
+      "lines": 419,
+      "sha256": "f630391cff4c66ceafbc038aaab3737483c416c74a94803e256217ff58a17161",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/css/app.css"
+    },
+    {
+      "path": "assets/js/app.js",
+      "bytes": 3828,
+      "lines": 98,
+      "sha256": "f1f6aa8a0b9a2c78293302871a1a407fcdfbc0b2d4a1cb5df6cc187558dd2927",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/app.js"
+    },
+    {
+      "path": "assets/js/auto_reconnect.js",
+      "bytes": 2073,
+      "lines": 77,
+      "sha256": "ba651fe2a68598c047effe6cc933a060b14d07224f9327afb96c5fb77e6712ff",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/auto_reconnect.js"
+    },
+    {
+      "path": "assets/js/highlight.js",
+      "bytes": 2609,
+      "lines": 55,
+      "sha256": "4173c9c1da8d293c4dcfa53362422c267a0d88fb45e261b28b7bcd0ffc6b8a8f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/highlight.js"
+    },
+    {
+      "path": "assets/js/terminal.js",
+      "bytes": 4794,
+      "lines": 136,
+      "sha256": "0ee3379823f7ad7caac648307e1d8b0eb83591f21ed065d4da9823351951ff6b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/terminal.js"
+    },
+    {
+      "path": "assets/package-lock.json",
+      "bytes": 784,
+      "lines": 24,
+      "sha256": "bfa5f1954be571930ca8176ac1c0aae651d983b3fc40e6773135be409c22cc2a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/package-lock.json"
+    },
+    {
+      "path": "assets/package.json",
+      "bytes": 280,
+      "lines": 9,
+      "sha256": "adf5ac9b6a64734e830ad83234a1b99bc1ddc80d7b0dc1cca5916c371868cf83",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/package.json"
+    },
+    {
+      "path": "assets/pwa_icons.exs",
+      "bytes": 1538,
+      "lines": 58,
+      "sha256": "d2a7fa2f64f3e682068eab4876ccb81ee120ec2cf20bdd71389ff2beac3edefa",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/pwa_icons.exs"
+    },
+    {
+      "path": "assets/tsconfig.json",
+      "bytes": 980,
+      "lines": 32,
+      "sha256": "36cc1cdb1dd7661efa8ecfe0d06f5eb075951b1cdf5f43eca8fb68ea99d36fc3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/tsconfig.json"
+    },
+    {
+      "path": "assets/vendor/heroicons.js",
+      "bytes": 1394,
+      "lines": 43,
+      "sha256": "ef034388d72ae67b2529934fe73ae3209f4f3f7ca7e566a531d142ed52a45623",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/heroicons.js"
+    },
+    {
+      "path": "assets/vendor/highlight/LICENSE",
+      "bytes": 1514,
+      "lines": 29,
+      "sha256": "6c081431591d9df696c82dc598fe1423765b8a299b200ed00b281afd0f64c490",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/LICENSE"
+    },
+    {
+      "path": "assets/vendor/highlight/README.md",
+      "bytes": 95,
+      "lines": 1,
+      "sha256": "f95ce6a6d562573dca43e009bd5b852a849628bfab5dde71215ed998e3207686",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/README.md"
+    },
+    {
+      "path": "assets/vendor/highlight/core.js",
+      "bytes": 75941,
+      "lines": 2597,
+      "sha256": "e647525f110a3e00e31fc77f7e69104be85ce02534bb8263c1b2be2afe09ad1e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/core.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/bash.js",
+      "bytes": 6518,
+      "lines": 409,
+      "sha256": "134f86c16781d91ee183e4c5f479449e1c0d6b256f2f1db080fdd40252ac2b1c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/bash.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/c.js",
+      "bytes": 8287,
+      "lines": 333,
+      "sha256": "1b20c2ea0cdd3c94f26807d098df8b72485e1892657dae3d4ea8e5fcbcc389cc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/c.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/cpp.js",
+      "bytes": 12684,
+      "lines": 605,
+      "sha256": "1627fbc57ca24db044065473f784dad8924763f01ee517dceffd73710d6f4937",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/cpp.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/css.js",
+      "bytes": 18879,
+      "lines": 949,
+      "sha256": "2787cf1b1f53248434ea67921acc2ffdeb0192c0b95b84003f57b8c711c87040",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/css.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/diff.js",
+      "bytes": 1209,
+      "lines": 62,
+      "sha256": "bf381b1d5c9e9206b00873aabb3e5a235e70020859487dd77e50d5aa42d8b3a7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/diff.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/dockerfile.js",
+      "bytes": 904,
+      "lines": 44,
+      "sha256": "e596a2a957d03d7a767fda01c6cc97d0f78ac7657fb00c802f109c72b3f202a8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/dockerfile.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/elixir.js",
+      "bytes": 5786,
+      "lines": 279,
+      "sha256": "be5e2d4f385c3578b4bde2450bd0d82a053e4d571258e2e4bed340dc49ce9c72",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/elixir.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/erlang.js",
+      "bytes": 5212,
+      "lines": 235,
+      "sha256": "6dcf7c517ebd753c7cdc06fed64761558418f766331f120f5e165201475cb297",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/erlang.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/go.js",
+      "bytes": 3190,
+      "lines": 156,
+      "sha256": "98069181c26f9335fb1d05dd5fc880b0863dc4503ae17634c68d5c8e86189647",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/go.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/ini.js",
+      "bytes": 2347,
+      "lines": 121,
+      "sha256": "21eee54329761c77fcf8ef38b42497f602992ef468ea7b578c89fd212cbcdb46",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/ini.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/javascript.js",
+      "bytes": 17751,
+      "lines": 769,
+      "sha256": "26621006809440240317c074a5e6681838b5be5c20fdcdee560e2d25448d85a9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/javascript.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/json.js",
+      "bytes": 1338,
+      "lines": 54,
+      "sha256": "6923a3613029162eedb83f67fad8451183ce5df423a9aa37878b0efb8c54d6d1",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/json.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/makefile.js",
+      "bytes": 2198,
+      "lines": 89,
+      "sha256": "ea14abb43ba2b4c95c71ff043bc5c993ca2e0376829fa18ab46d8bf0a3e81ac5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/makefile.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/markdown.js",
+      "bytes": 5248,
+      "lines": 248,
+      "sha256": "76dfa64c3f05c1bc9c3036727fa69b9c6b6e6af003060ed9cc5bebf7ecec4fd9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/markdown.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/plaintext.js",
+      "bytes": 313,
+      "lines": 19,
+      "sha256": "74a42662f49d0093dee501a4e46db9f36c1f8752bff4f86bdcb26c88362854bd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/plaintext.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/python.js",
+      "bytes": 9185,
+      "lines": 436,
+      "sha256": "6fa85c05f6852e7f761b5c0cfdb3f75992704012bbde67197db2c22286fcd072",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/python.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/ruby.js",
+      "bytes": 9939,
+      "lines": 448,
+      "sha256": "674a01b27ef166027666640e41f897f239845ff1f4822964521534ac1f76b10a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/ruby.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/rust.js",
+      "bytes": 6125,
+      "lines": 326,
+      "sha256": "a2a910ee925554795148043b6a895690d254e30e9d6a9351fe4b99b09f47853d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/rust.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/shell.js",
+      "bytes": 786,
+      "lines": 33,
+      "sha256": "e53d881fbe6c40616e2b4f1631212e32563dcdc15c15bd46626213c3bc152c30",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/shell.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/sql.js",
+      "bytes": 11985,
+      "lines": 693,
+      "sha256": "a0cbca94463751a929701957153fd23552944f47c00da87605f2e0b1f27ff6fb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/sql.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/typescript.js",
+      "bytes": 21354,
+      "lines": 913,
+      "sha256": "ba351fb35bd479c4228d539ee4f4772286623f2be4134bc80f9e10285451790b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/typescript.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/xml.js",
+      "bytes": 7002,
+      "lines": 241,
+      "sha256": "dcb9cd430937eb3b1416b385d9fcda72fa9233dcfe93bf0146235f6c3a2b6487",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/xml.js"
+    },
+    {
+      "path": "assets/vendor/highlight/languages/yaml.js",
+      "bytes": 5017,
+      "lines": 213,
+      "sha256": "008894ba282fa3436798b08314862ef3d4c39f8fe92a182acc4167d10d17e4c0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/highlight/languages/yaml.js"
+    },
+    {
+      "path": "assets/vendor/topbar.js",
+      "bytes": 4391,
+      "lines": 138,
+      "sha256": "5683ab34a4fa482d9bc1227a539c445fd5dc934530a05b68f03d00cd97cae2a0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/vendor/topbar.js"
+    },
+    {
+      "path": "bin/install-service",
+      "bytes": 1483,
+      "lines": 45,
+      "sha256": "377b064315c51462ca826c463824dcb4c826c8542fcc14371391d5e13cdb0f17",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/install-service"
+    },
+    {
+      "path": "bin/preview",
+      "bytes": 2953,
+      "lines": 63,
+      "sha256": "8e0ecb16d6c3b1fcdf74a267e755de83bdbec4203410dd77afdcc9854e8fe8bf",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/preview"
+    },
+    {
+      "path": "bin/serve",
+      "bytes": 2052,
+      "lines": 82,
+      "sha256": "97ecbd3a67e93269f41ec5052189aa0a5ade179c64928a880232b806005d71b0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/serve"
+    },
+    {
+      "path": "bin/test",
+      "bytes": 5425,
+      "lines": 157,
+      "sha256": "fb31c59d12601ccd8d67c1a7cc245553af308cd0b2a9d916f5f62166ea979be9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/test"
+    },
+    {
+      "path": "config/config.exs",
+      "bytes": 7699,
+      "lines": 201,
+      "sha256": "f955f6e05a84f402cb62b8f2f10b1c96a7fce8336405567cb909c25efc4cf681",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/config.exs"
+    },
+    {
+      "path": "config/dev.exs",
+      "bytes": 2171,
+      "lines": 63,
+      "sha256": "b4042c437b054b1be8d7a4a60773320f14fa06a8877488db17f62fc72da8737b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/dev.exs"
+    },
+    {
+      "path": "config/prod.exs",
+      "bytes": 969,
+      "lines": 26,
+      "sha256": "ea022e915f311ed0ae0ca79e11122c11c6eb516ead1291bade58904d3f679e0f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/prod.exs"
+    },
+    {
+      "path": "config/runtime.exs",
+      "bytes": 4343,
+      "lines": 108,
+      "sha256": "bb3a79c573cde251be04168da1390f5eb8485d9922d072dc046fb5f230e1c2c1",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/runtime.exs"
+    },
+    {
+      "path": "config/test.exs",
+      "bytes": 3002,
+      "lines": 68,
+      "sha256": "4918675dffc6d5057862f27820512079bd988ab8911a9c028a5d6f106833bac2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/test.exs"
+    },
+    {
+      "path": "deploy/elia.service",
+      "bytes": 855,
+      "lines": 26,
+      "sha256": "559dcf744517c9c235d4f02e64147bb60569b0efa257bc8d0d7b87bef6b74faf",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/deploy/elia.service"
+    },
+    {
+      "path": "docs/agents/elixir.md",
+      "bytes": 2670,
+      "lines": 43,
+      "sha256": "d60e1aa4477f32554c649344e710b3c55604303392449c354c9a6efe290c2686",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/elixir.md"
+    },
+    {
+      "path": "docs/agents/frontend.md",
+      "bytes": 2664,
+      "lines": 38,
+      "sha256": "94ef80ea6dd71531329d67a41f1f5b525e14c12e6b2e53a4675cb389c1bd1ff2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/frontend.md"
+    },
+    {
+      "path": "docs/agents/harness.md",
+      "bytes": 6039,
+      "lines": 46,
+      "sha256": "73c430c468d4b5b1ebb98e9bcfab43b578cd440f6981f9703aa138a263748532",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/harness.md"
+    },
+    {
+      "path": "docs/agents/phoenix-liveview.md",
+      "bytes": 3455,
+      "lines": 64,
+      "sha256": "5f5ff4d30788e08f92b88c22b14a666bbd7d12e7aa0bbbf6b8f6f9fe28e64ab4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/phoenix-liveview.md"
+    },
+    {
+      "path": "docs/agents/testing.md",
+      "bytes": 8675,
+      "lines": 130,
+      "sha256": "f55346d0e80445fea61e744c985813dd0f2e342d4f816e5a22cec8cca0755bc8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/testing.md"
+    },
+    {
+      "path": "docs/performance-review.md",
+      "bytes": 16152,
+      "lines": 277,
+      "sha256": "255d70ee6a81de7afb58d23e9e8cdb7472bf1b11e85c042d5fd2412e23185b5d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/performance-review.md"
+    },
+    {
+      "path": "docs/screenshots/chat.png",
+      "bytes": 49757,
+      "lines": null,
+      "sha256": "2b7fc2da8c5fc98dc137de2132218a28bfa830cb69a7424992780c7dbdb7f176",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/screenshots/chat.png"
+    },
+    {
+      "path": "docs/screenshots/dashboard.png",
+      "bytes": 41725,
+      "lines": null,
+      "sha256": "38a05e56afc909880b00beb1fa580c4201e255a59ee2fa04cf3a8cd32e8e3ec6",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/screenshots/dashboard.png"
+    },
+    {
+      "path": "docs/screenshots/question.png",
+      "bytes": 37774,
+      "lines": null,
+      "sha256": "b67d8225a7348f0404c56087ae122667497cfcb1ecf9a54d2df31daf38cc6474",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/screenshots/question.png"
+    },
+    {
+      "path": "docs/screenshots/settings.png",
+      "bytes": 47176,
+      "lines": null,
+      "sha256": "57ce21c900bb7472a753b49241daa0bcb9e99530f53e047077b645d6e85521dd",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/screenshots/settings.png"
+    },
+    {
+      "path": "docs/spec-review.md",
+      "bytes": 11008,
+      "lines": 174,
+      "sha256": "82ca19e0e12800b12044a0697cce173fe2891aa08c3894459044b89c3dad5f4b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/spec-review.md"
+    },
+    {
+      "path": "lib/elia.ex",
+      "bytes": 245,
+      "lines": 9,
+      "sha256": "1547de431d691663e471cb4440653b07e971cda7acdf8e7227030a87b4be769c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia.ex"
+    },
+    {
+      "path": "lib/elia/agent.ex",
+      "bytes": 12511,
+      "lines": 309,
+      "sha256": "5c6dd860b7c01bc833052502df46b6e3f8fbc3ac286880262c047ddb532b7f05",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent.ex"
+    },
+    {
+      "path": "lib/elia/agent/loop.ex",
+      "bytes": 27126,
+      "lines": 700,
+      "sha256": "262e550a7e2e3d13202029b8d68751e46a0893a8ecb9701f783f9a3afb418f67",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex"
+    },
+    {
+      "path": "lib/elia/agent/resumer.ex",
+      "bytes": 2359,
+      "lines": 70,
+      "sha256": "d03e9a04353ac3444d897a23c9675d91d38097aaa51dc24cad7da3de9e95deb2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/resumer.ex"
+    },
+    {
+      "path": "lib/elia/agent/session.ex",
+      "bytes": 57798,
+      "lines": 1450,
+      "sha256": "f7304dc1df42037448d175961fab866b7ccb461a4956ae47ec2a651b03155ff2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex"
+    },
+    {
+      "path": "lib/elia/application.ex",
+      "bytes": 3273,
+      "lines": 78,
+      "sha256": "492f2949e3f8493034a5f381d5890e3b4a2a259fb7596b8c6ee69382f1b53c13",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/application.ex"
+    },
+    {
+      "path": "lib/elia/deploy.ex",
+      "bytes": 54559,
+      "lines": 1396,
+      "sha256": "64b6cb57d448f3135d1fd8691ffc34454309232d0338877dc91b2d803aa17d41",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex"
+    },
+    {
+      "path": "lib/elia/deploy/runner.ex",
+      "bytes": 11718,
+      "lines": 305,
+      "sha256": "eb72dc91c3e42fe2c87c44beb95a0f9de4363d9eabc343eb508a7379121863bd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy/runner.ex"
+    },
+    {
+      "path": "lib/elia/deps.ex",
+      "bytes": 2768,
+      "lines": 71,
+      "sha256": "0fb82381efbb13fc95d7ead3d514b3fe45b779565748c59c7ff8b1bcbc03834a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deps.ex"
+    },
+    {
+      "path": "lib/elia/explorer.ex",
+      "bytes": 7123,
+      "lines": 249,
+      "sha256": "0caabef3c0f657a017c744f691dc3e7a521071af8587383995a2db6a5fd167f8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/explorer.ex"
+    },
+    {
+      "path": "lib/elia/harness.ex",
+      "bytes": 5483,
+      "lines": 150,
+      "sha256": "11f99361aba2406a602e2ff3d4001deebec595c0aaa46b6cb6b4e3c05acc58af",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/harness.ex"
+    },
+    {
+      "path": "lib/elia/limits.ex",
+      "bytes": 5443,
+      "lines": 140,
+      "sha256": "448323ac08a8e0fa5da6eb8392ee594ce83d966a1614bcd2501d06b52b74f5e4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/limits.ex"
+    },
+    {
+      "path": "lib/elia/llm.ex",
+      "bytes": 10156,
+      "lines": 302,
+      "sha256": "ec99c25db147a9c8c103ddbe4a35cd17822bd70a6c10c8554c18b927486fa551",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm.ex"
+    },
+    {
+      "path": "lib/elia/llm/anthropic.ex",
+      "bytes": 17285,
+      "lines": 527,
+      "sha256": "ccf90a118b4ab27ea0b2272bd049e829e6d24ac71f7b975b353057d9dbe07dab",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/anthropic.ex"
+    },
+    {
+      "path": "lib/elia/llm/catalog.ex",
+      "bytes": 2297,
+      "lines": 85,
+      "sha256": "44d1126b62ab08d71daeb4418668a91eed2acdcfa232f50bb3ac2066b55db4d3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/catalog.ex"
+    },
+    {
+      "path": "lib/elia/llm/compaction.ex",
+      "bytes": 53290,
+      "lines": 1443,
+      "sha256": "9d9cdfe9e9f9f9385ed504645fce2054e886594e17e146c9eff78b43192158ff",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/compaction.ex"
+    },
+    {
+      "path": "lib/elia/llm/context.ex",
+      "bytes": 11385,
+      "lines": 298,
+      "sha256": "7d85416d45f21f33f91f18e5a27da0213ea9bf536a5cca8a4b9fe78789f9aa0c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/context.ex"
+    },
+    {
+      "path": "lib/elia/llm/error.ex",
+      "bytes": 1099,
+      "lines": 30,
+      "sha256": "8e1620e2f7fa136295fca5b758938070407a5109e68e353c4c7b16e2b167576c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/error.ex"
+    },
+    {
+      "path": "lib/elia/llm/llama_cpp.ex",
+      "bytes": 6909,
+      "lines": 226,
+      "sha256": "f521e89f572e97ece28995c67f63ccdedc123a8e983f1090120d973a1b490baa",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/llama_cpp.ex"
+    },
+    {
+      "path": "lib/elia/llm/llama_server.ex",
+      "bytes": 19208,
+      "lines": 643,
+      "sha256": "ab4f8006a53acdc9cc5e7b00ce2990aec65b7a01156e50599a7b3e116a5462a5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/llama_server.ex"
+    },
+    {
+      "path": "lib/elia/llm/message.ex",
+      "bytes": 3261,
+      "lines": 91,
+      "sha256": "61a3ed09a2a6c0596bc4bbe31f44308c0f68e6183f0e9123808fec52606fa9ed",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/message.ex"
+    },
+    {
+      "path": "lib/elia/llm/open_router.ex",
+      "bytes": 6943,
+      "lines": 203,
+      "sha256": "a6e78756ad98d0fadfb7284d992ef66ba14d0c26a819bd087fc04c5f902a2cc9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/open_router.ex"
+    },
+    {
+      "path": "lib/elia/llm/openai.ex",
+      "bytes": 16167,
+      "lines": 471,
+      "sha256": "756bde89b3a98b024349f62b5b3eeccc4ea32533ebe94198d6869b02dfea7016",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/openai.ex"
+    },
+    {
+      "path": "lib/elia/llm/provider.ex",
+      "bytes": 2937,
+      "lines": 85,
+      "sha256": "6281b24b79b2e5c7afa3b7287c2b06e6dff8879a2d32956238e48dacbf67426c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/provider.ex"
+    },
+    {
+      "path": "lib/elia/llm/retry.ex",
+      "bytes": 2230,
+      "lines": 52,
+      "sha256": "2c5dd56d86346bd7c91771964ba0cf48c88c65936b9b31bae102a4549f6c10cb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/retry.ex"
+    },
+    {
+      "path": "lib/elia/llm/sse.ex",
+      "bytes": 1007,
+      "lines": 32,
+      "sha256": "2257168cd8b01af5263fa40cf645c2d17f39305a7f675fbe6dcf5771a04fe9d6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/sse.ex"
+    },
+    {
+      "path": "lib/elia/llm/tokens.ex",
+      "bytes": 3457,
+      "lines": 93,
+      "sha256": "d7bae5ab1918c7ab6fd0818c4cbbb91f5edcd4e02dd367b2c0ac89de509c2900",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/tokens.ex"
+    },
+    {
+      "path": "lib/elia/logs.ex",
+      "bytes": 3600,
+      "lines": 131,
+      "sha256": "21ea8b1c9f4a294869d21116e67bc7f5630683088eb04fabb5c777ee722ff544",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/logs.ex"
+    },
+    {
+      "path": "lib/elia/logs/handler.ex",
+      "bytes": 1299,
+      "lines": 50,
+      "sha256": "b030281230dc0608aec4f8360ee0a734530f1eeff800ba395179188fe5d69299",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/logs/handler.ex"
+    },
+    {
+      "path": "lib/elia/preview.ex",
+      "bytes": 11749,
+      "lines": 319,
+      "sha256": "15b0637d04693dc9637e5cfabcd68c397bd06510ceffa63f5df727b5b16419b6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/preview.ex"
+    },
+    {
+      "path": "lib/elia/priority.ex",
+      "bytes": 4902,
+      "lines": 116,
+      "sha256": "88e18021c520dc8e4db03b8a1a87f4083d9d159fd45033f0fa3e86814d5e7e49",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/priority.ex"
+    },
+    {
+      "path": "lib/elia/projects.ex",
+      "bytes": 5131,
+      "lines": 167,
+      "sha256": "9b9b7c1e6e308d37e72d32a04e3013e76745c83579c02293dc2e062c18010f53",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/projects.ex"
+    },
+    {
+      "path": "lib/elia/push.ex",
+      "bytes": 7166,
+      "lines": 210,
+      "sha256": "74118ceffb638feb8d0e6bfcf7c42ba1024976124c62224b5f174c1328129138",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push.ex"
+    },
+    {
+      "path": "lib/elia/push/crypto.ex",
+      "bytes": 7042,
+      "lines": 180,
+      "sha256": "13f9fe5666dbc6f95b9a6090eb010e55a4d7d63265cf3bb84fde23ce8f31f400",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/crypto.ex"
+    },
+    {
+      "path": "lib/elia/push/notifier.ex",
+      "bytes": 2134,
+      "lines": 57,
+      "sha256": "35ae917d914c508a36ae7e26d607d0967ecef17c73c7b8f82b5e11d56ea46d26",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/notifier.ex"
+    },
+    {
+      "path": "lib/elia/push/subscriptions.ex",
+      "bytes": 3342,
+      "lines": 95,
+      "sha256": "d4449e507fddb8ead47d82bc073527896f41a63dad791694be8bcd7d3887ba54",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/subscriptions.ex"
+    },
+    {
+      "path": "lib/elia/push/viewers.ex",
+      "bytes": 1755,
+      "lines": 49,
+      "sha256": "e92bb235d2ff09f02112bc1287ae83039e2df3fc7ce1d3b9c5c4a27f28cce6a9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/viewers.ex"
+    },
+    {
+      "path": "lib/elia/settings.ex",
+      "bytes": 2018,
+      "lines": 78,
+      "sha256": "f25d638c7e0803acc806704229bd5c5f0141f8ff2a88824c12fb633d15b1432d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/settings.ex"
+    },
+    {
+      "path": "lib/elia/shell.ex",
+      "bytes": 29784,
+      "lines": 765,
+      "sha256": "a1f0cff660582f747fb2d8c809d4520307656e225bf88eda11967a5c8a4057b7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex"
+    },
+    {
+      "path": "lib/elia/shell/lock.ex",
+      "bytes": 5545,
+      "lines": 169,
+      "sha256": "7836ac59b88ebdfacf86cabd071d50f2ef3071bd585190b05830acd1209260ff",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell/lock.ex"
+    },
+    {
+      "path": "lib/elia/skill.ex",
+      "bytes": 1422,
+      "lines": 47,
+      "sha256": "5faef813bd5dcbe19bf4d3fc6c50b28f353e36653ef6660380aa41e88cc84b67",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skill.ex"
+    },
+    {
+      "path": "lib/elia/skills.ex",
+      "bytes": 8945,
+      "lines": 249,
+      "sha256": "343773a233363e23c7aa2858757ecd097d1193bf39788b4f214373bf0ce15fdd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills.ex"
+    },
+    {
+      "path": "lib/elia/skills/chats.ex",
+      "bytes": 16552,
+      "lines": 486,
+      "sha256": "9dc12d6a1a4c6d65f620766e08cdd3e23662cb99a68c11274bec742870e0cb45",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/chats.ex"
+    },
+    {
+      "path": "lib/elia/skills/done.ex",
+      "bytes": 2918,
+      "lines": 76,
+      "sha256": "670c70361b2471a51a99531b514ea5480921ec33cef56e3e631d90dca3c1396d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/done.ex"
+    },
+    {
+      "path": "lib/elia/skills/files.ex",
+      "bytes": 31767,
+      "lines": 870,
+      "sha256": "3e26cf6413f09198865c7950efc0b4c2b7e6587938e210990d5a93731d631f64",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/files.ex"
+    },
+    {
+      "path": "lib/elia/skills/folder.ex",
+      "bytes": 5680,
+      "lines": 178,
+      "sha256": "c6abcd2cd43a69ecca572027b3c64e2d48e7aa00a43fd20adf8b00b077a21bb3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/folder.ex"
+    },
+    {
+      "path": "lib/elia/skills/harness.ex",
+      "bytes": 4249,
+      "lines": 113,
+      "sha256": "8384134503d9de9ab7d92473faff4a3abcdab646a9880f717fbc91c676a7cfe5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/harness.ex"
+    },
+    {
+      "path": "lib/elia/skills/self_modification.ex",
+      "bytes": 3391,
+      "lines": 66,
+      "sha256": "cb700a3d791b55810b3b9b103017fc08d449136b9b17398caf82fb98960933cf",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/self_modification.ex"
+    },
+    {
+      "path": "lib/elia/skills/shell.ex",
+      "bytes": 7626,
+      "lines": 173,
+      "sha256": "da11eddd0b734494bf95bccba3eec9be97649e626c5dff24cb8096bef15b351f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/shell.ex"
+    },
+    {
+      "path": "lib/elia/skills/tasks.ex",
+      "bytes": 8729,
+      "lines": 200,
+      "sha256": "8ff3092f6afb635264b3506c6ea2455ca4c719777fbd946f7deb9e6776a218a2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/tasks.ex"
+    },
+    {
+      "path": "lib/elia/skills/terminal.ex",
+      "bytes": 12602,
+      "lines": 321,
+      "sha256": "68548841349cdfedb3cbe4c9f287f29431b7fe5e5073b71141c95e49cc459998",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/terminal.ex"
+    },
+    {
+      "path": "lib/elia/skills/titles.ex",
+      "bytes": 2445,
+      "lines": 66,
+      "sha256": "f3c4ad4f2fb2f4a2294433d6bc2b7119ba94b0119c8144517c58f8de6bbf5666",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/titles.ex"
+    },
+    {
+      "path": "lib/elia/skills/user_input.ex",
+      "bytes": 3196,
+      "lines": 83,
+      "sha256": "46695e527e7cf223a812e3361698308e657382b2157af8e75865769846116532",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/user_input.ex"
+    },
+    {
+      "path": "lib/elia/step_timing.ex",
+      "bytes": 4751,
+      "lines": 149,
+      "sha256": "dd3147930a9c307e6fb48d8c3490e2b3420610a620abb6392af11164ebec5ad4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/step_timing.ex"
+    },
+    {
+      "path": "lib/elia/store.ex",
+      "bytes": 20789,
+      "lines": 596,
+      "sha256": "96fe1ea158b1dd7c2b6b95169da05adc310525ea4e4f838a01534915af855878",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex"
+    },
+    {
+      "path": "lib/elia/store/cache.ex",
+      "bytes": 1963,
+      "lines": 67,
+      "sha256": "84555adc6a7f6ef367e025f9becb1b13401ebba12bf82077f8cd079001639e6e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store/cache.ex"
+    },
+    {
+      "path": "lib/elia/system_stats.ex",
+      "bytes": 6987,
+      "lines": 253,
+      "sha256": "eccfa211c0ecafc68afff3ad513e3019c7c868988948f80734352485dcd66618",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/system_stats.ex"
+    },
+    {
+      "path": "lib/elia/tasks.ex",
+      "bytes": 36437,
+      "lines": 1079,
+      "sha256": "bba30840994c326f7a6a0939482cac58cc2fe833534868be8807fd06658a5066",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex"
+    },
+    {
+      "path": "lib/elia/terminal.ex",
+      "bytes": 10800,
+      "lines": 306,
+      "sha256": "e4b1612050192f0bf8260f510ef3b514c5313681f43ea3e56772992b37818ce6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal.ex"
+    },
+    {
+      "path": "lib/elia/terminal/keys.ex",
+      "bytes": 7669,
+      "lines": 194,
+      "sha256": "03cde36d03929defefe072583785784c4f2ab4c85834e3fe47e58b5e64b4c692",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/keys.ex"
+    },
+    {
+      "path": "lib/elia/terminal/session.ex",
+      "bytes": 28466,
+      "lines": 767,
+      "sha256": "57bfaef167929500cb4c388ce73fd6d9038ecda68b2d65a5f529b886053f82ed",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/session.ex"
+    },
+    {
+      "path": "lib/elia/tool.ex",
+      "bytes": 3584,
+      "lines": 100,
+      "sha256": "7935326b51cb1964fe542cf30fbc0f4eab0f0ec196a064b209a7ea36c7fcd51a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tool.ex"
+    },
+    {
+      "path": "lib/elia/workspace.ex",
+      "bytes": 5526,
+      "lines": 142,
+      "sha256": "f4c17ea7bab5a7a232d5b1961ddf59aa938eca7a385b51c46696c46d433b6a51",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/workspace.ex"
+    },
+    {
+      "path": "lib/elia_web.ex",
+      "bytes": 2381,
+      "lines": 109,
+      "sha256": "070f76772293e446df488838f0277688d06e5aa9e29004a12df82584841f6665",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web.ex"
+    },
+    {
+      "path": "lib/elia_web/chat_list.ex",
+      "bytes": 18072,
+      "lines": 456,
+      "sha256": "faf0b74bbb0b4113ba3d3510d280e96abaf451b204cbca009418185e7c7947e0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/chat_list.ex"
+    },
+    {
+      "path": "lib/elia_web/chat_status.ex",
+      "bytes": 3954,
+      "lines": 87,
+      "sha256": "45d3f91d5b59b0576383c9a6f95ce17dcf8080e084bd422de7388986aace678a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/chat_status.ex"
+    },
+    {
+      "path": "lib/elia_web/client_tracker.ex",
+      "bytes": 2692,
+      "lines": 82,
+      "sha256": "10a0884abd23091dee7a7853abaa66034e1fb1163133dde825068f1a8e6a516e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/client_tracker.ex"
+    },
+    {
+      "path": "lib/elia_web/components/core_components.ex",
+      "bytes": 16738,
+      "lines": 549,
+      "sha256": "e7f322b45ad3945f48ca623347ea8fe665cf04675f9dba42744ce1c466cd3634",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/components/core_components.ex"
+    },
+    {
+      "path": "lib/elia_web/components/layouts.ex",
+      "bytes": 9828,
+      "lines": 256,
+      "sha256": "5cae6a9faa3e1dba3ba2b2da6368850c1964cd04641bfeeda710645e5453fbfc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/components/layouts.ex"
+    },
+    {
+      "path": "lib/elia_web/components/layouts/root.html.heex",
+      "bytes": 2332,
+      "lines": 52,
+      "sha256": "c73682fd5f85a75d425ed5b577e951ad9ae7e588d56eb3188fb3d5f2842f5e21",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/components/layouts/root.html.heex"
+    },
+    {
+      "path": "lib/elia_web/controllers/error_html.ex",
+      "bytes": 712,
+      "lines": 24,
+      "sha256": "a28649dc22019a29ae1ce28ea92c0b523abfe3f581bf2eb90660595491e749dc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/controllers/error_html.ex"
+    },
+    {
+      "path": "lib/elia_web/controllers/error_json.ex",
+      "bytes": 620,
+      "lines": 21,
+      "sha256": "dca4330a9b51f4fdc55cb0c739986c6973b8b59bb28d2d53b819168a13e09a1a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/controllers/error_json.ex"
+    },
+    {
+      "path": "lib/elia_web/controllers/preview_controller.ex",
+      "bytes": 1225,
+      "lines": 32,
+      "sha256": "fc6b8eb1f0501c2443fde8bf3f5620c814d8e9ab49be934137d9c014501f6b81",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/controllers/preview_controller.ex"
+    },
+    {
+      "path": "lib/elia_web/endpoint.ex",
+      "bytes": 2844,
+      "lines": 74,
+      "sha256": "87b6314aa49e5f829178e16e9895e3d3bdcc908cc11f0b48bbfa9cf2617b8e16",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/endpoint.ex"
+    },
+    {
+      "path": "lib/elia_web/file_links.ex",
+      "bytes": 3869,
+      "lines": 107,
+      "sha256": "2a7352e6ae0954dca8ed2a52fd8172b44e56fdb74320030468ddccbe697f4dcb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/file_links.ex"
+    },
+    {
+      "path": "lib/elia_web/live/chat_live.ex",
+      "bytes": 97110,
+      "lines": 2404,
+      "sha256": "01752e2f3ba2cc3cddce2fdcfa8e147214107cd6daf89b43702a5200fa0102bd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/chat_settings_live.ex",
+      "bytes": 50617,
+      "lines": 1261,
+      "sha256": "39443d8219e3f525135daeee8d9de2e906a9ac0c4bffea0b0b8f468fd3ad9bd5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_settings_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/dashboard_live.ex",
+      "bytes": 24839,
+      "lines": 647,
+      "sha256": "cce2945797783a9ff72a857a64e9e7c53ec8cecad81aba7086a745a62e188e3d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/dashboard_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/files_live.ex",
+      "bytes": 13672,
+      "lines": 377,
+      "sha256": "96e96aab3d4c5fc19935e5373b15c1243d3f3fc12bae80e1500f5f6b2c28ed39",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/files_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/logs_live.ex",
+      "bytes": 6635,
+      "lines": 202,
+      "sha256": "5caabe30ebceabfbbbae2aefac03638dc25d53df06437b1b0fe2f23d78724175",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/logs_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/projects_live.ex",
+      "bytes": 7195,
+      "lines": 194,
+      "sha256": "5959420951a49c4208e603bd10e52bc6ab590865389087fea786251a88f25457",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/projects_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/sessions_live.ex",
+      "bytes": 6227,
+      "lines": 160,
+      "sha256": "b632c6c21c555f3c1a6108e4d018f1c25104c0f7d950dfc9f7454d83b4b2b7d9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/sessions_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/settings_live.ex",
+      "bytes": 81927,
+      "lines": 1954,
+      "sha256": "c40791599c72a127a4c7ac846fc448989a18b83a35fc6a1673134cd029b0bd4c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/settings_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/system_live.ex",
+      "bytes": 17527,
+      "lines": 461,
+      "sha256": "728ff8694ce8c108e5f48d0336f5d5e1b1753babbfdeb24b04ce3b057d76851a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/system_live.ex"
+    },
+    {
+      "path": "lib/elia_web/live/terminal_live.ex",
+      "bytes": 11237,
+      "lines": 303,
+      "sha256": "c6b520a842b8f817c559509ee7076f30c93e6e92c83740cf8800ccdd82591a62",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/terminal_live.ex"
+    },
+    {
+      "path": "lib/elia_web/markdown.ex",
+      "bytes": 1126,
+      "lines": 36,
+      "sha256": "00c2b00d8025f91f0efe142b68d817addc33884f8f33c8c56561c276ec078c18",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/markdown.ex"
+    },
+    {
+      "path": "lib/elia_web/presence.ex",
+      "bytes": 195,
+      "lines": 5,
+      "sha256": "caa8c00a2b80a8f7d2b77d24b7d8608cdfc4a847d3f1b3b97a3d362dda61d78e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/presence.ex"
+    },
+    {
+      "path": "lib/elia_web/recovery.ex",
+      "bytes": 22479,
+      "lines": 665,
+      "sha256": "87ce4c46228c9234eadb8a4efbbdd04e0328ce4787e727b9d2b145050a4f8763",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/recovery.ex"
+    },
+    {
+      "path": "lib/elia_web/router.ex",
+      "bytes": 2069,
+      "lines": 58,
+      "sha256": "9feb325c7c57a46bd4b8ea972068aa3fdb7dadbf62215de55969dca31a7fd3d4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/router.ex"
+    },
+    {
+      "path": "lib/elia_web/telemetry.ex",
+      "bytes": 2111,
+      "lines": 70,
+      "sha256": "9d7279f152ddb6106e4caf752e11a4d40d8807fe9039048e83867d4607199fee",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/telemetry.ex"
+    },
+    {
+      "path": "lib/elia_web/terminal_channel.ex",
+      "bytes": 4139,
+      "lines": 108,
+      "sha256": "03257b63034ff1adacbc24a03d88e66066fd8de7265c07741e2f3b851dfdff64",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_channel.ex"
+    },
+    {
+      "path": "lib/elia_web/terminal_socket.ex",
+      "bytes": 706,
+      "lines": 22,
+      "sha256": "b43fbb21657dc89b323ed9d5ffce22a6c2f2c69c8b62bc7f96fc39a17ef4c939",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_socket.ex"
+    },
+    {
+      "path": "lib/elia_web/time_ago.ex",
+      "bytes": 771,
+      "lines": 20,
+      "sha256": "ba71e2ca6a91732714932122facd45ee403ada0162ab583bba8e10fab57826c9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/time_ago.ex"
+    },
+    {
+      "path": "lib/elia_web/user_agent.ex",
+      "bytes": 1492,
+      "lines": 55,
+      "sha256": "6afe3098815f0871003a2959f1076dac15c3e5f9655127b97b719f91ba50a44e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/user_agent.ex"
+    },
+    {
+      "path": "mix.exs",
+      "bytes": 3013,
+      "lines": 104,
+      "sha256": "fc7eb2dc28fb377817a3d6e65beb5065189d465617e33657ab21c1f02c6712d6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.exs"
+    },
+    {
+      "path": "mix.lock",
+      "bytes": 14572,
+      "lines": 42,
+      "sha256": "c3f430d72700dc48b5833be7dfc83117671c4969202272e0442938a13fbe795a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.lock"
+    },
+    {
+      "path": "priv/static/favicon.ico",
+      "bytes": 152,
+      "lines": null,
+      "sha256": "01723aeae3ce3b5195a8f42e3eb6e9018a8c08b7acda4ed382b31341811f0a8a",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/favicon.ico"
+    },
+    {
+      "path": "priv/static/images/apple-touch-icon.png",
+      "bytes": 699,
+      "lines": null,
+      "sha256": "2ac58107bdcd6c81c45743c05a9458096a9efa836eb966f9cd779bb15b3b0f7e",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/images/apple-touch-icon.png"
+    },
+    {
+      "path": "priv/static/images/icon-192.png",
+      "bytes": 772,
+      "lines": null,
+      "sha256": "07e6d2accdf116f6261a3b61fa8a33c5b458ef000ec47854f4022ed3da81eebc",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/images/icon-192.png"
+    },
+    {
+      "path": "priv/static/images/icon-512.png",
+      "bytes": 3571,
+      "lines": null,
+      "sha256": "4584b51a833b2feacb524a909ea6000407abc8b6ed97fef757595ed7051e07a2",
+      "kind": "binary",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/images/icon-512.png"
+    },
+    {
+      "path": "priv/static/images/logo.svg",
+      "bytes": 3072,
+      "lines": 6,
+      "sha256": "a730517dbca12868ac89a0711edfef20cb65e2801d1ac7063338d04a98457f0f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/images/logo.svg"
+    },
+    {
+      "path": "priv/static/manifest.webmanifest",
+      "bytes": 634,
+      "lines": 16,
+      "sha256": "d78f2de6ea73a174fa2017aa208cdea8bfd4058800b7d78466954a42a6245951",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/manifest.webmanifest"
+    },
+    {
+      "path": "priv/static/robots.txt",
+      "bytes": 203,
+      "lines": 5,
+      "sha256": "f994bfae2c1db1221ac049f1097776b444048e0b0a7705d33ea511b610bed115",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/robots.txt"
+    },
+    {
+      "path": "priv/static/sw.js",
+      "bytes": 1949,
+      "lines": 48,
+      "sha256": "50c58b0d60d36e1bbda849625068eb52cda5a8e51cc2c60c3710a9cc2449a248",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/sw.js"
+    },
+    {
+      "path": "specs/README.md",
+      "bytes": 13730,
+      "lines": 168,
+      "sha256": "fa3abb7f934b278b14d8f3a1cba96f010c28729d208421b25a968d18e04fd834",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/README.md"
+    },
+    {
+      "path": "specs/agent-loop.md",
+      "bytes": 9329,
+      "lines": 150,
+      "sha256": "dfe25e355ba9535e70a42c10b0bbcf44bcf0f34e90c58300f350dcf97965b64d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-loop.md"
+    },
+    {
+      "path": "specs/agent-sessions.md",
+      "bytes": 25986,
+      "lines": 410,
+      "sha256": "91ab4e4595292f3f5b0256766fb56a80cab07aefd3d66a195104cfa557615a32",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-sessions.md"
+    },
+    {
+      "path": "specs/auto-reconnect.md",
+      "bytes": 2434,
+      "lines": 52,
+      "sha256": "3ca077923728eea6dce5ae01517c58b13668f162cb3c928f0e847cb6946cce95",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-reconnect.md"
+    },
+    {
+      "path": "specs/auto-restart.md",
+      "bytes": 4819,
+      "lines": 86,
+      "sha256": "d320d4f5847444506c3559c3d4aa74df7b52d7b47a86c68242601a996f7baa8e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-restart.md"
+    },
+    {
+      "path": "specs/auto-resume.md",
+      "bytes": 10726,
+      "lines": 177,
+      "sha256": "4fab73e00d536e1c9d5e0eb7a3e4bd436731cafe7b20fb95b8f0d9aa8b76c836",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-resume.md"
+    },
+    {
+      "path": "specs/browser-tests.md",
+      "bytes": 8533,
+      "lines": 113,
+      "sha256": "695ade21962d0923a3f70915e98dacabdd27f94eb2d6fade887f6a7a808deea3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/browser-tests.md"
+    },
+    {
+      "path": "specs/chat-done.md",
+      "bytes": 7192,
+      "lines": 130,
+      "sha256": "9947d0a2fad05e201318eb147b34d358a63c544a61767e748f3d8756b5a510ec",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-done.md"
+    },
+    {
+      "path": "specs/chat-history.md",
+      "bytes": 8102,
+      "lines": 129,
+      "sha256": "d123a941501b47744350fb42caac777e901fd09dc564596dd62efc69b91304a9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-history.md"
+    },
+    {
+      "path": "specs/chat-settings.md",
+      "bytes": 6635,
+      "lines": 115,
+      "sha256": "579b11cd1bbfb663fd11545e82f6fa80c9353448b6ac853588cd931ca42e3729",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-settings.md"
+    },
+    {
+      "path": "specs/chat-titles.md",
+      "bytes": 4928,
+      "lines": 91,
+      "sha256": "d15fb73fc4158d17d117c637a3abe2505e5d834e429044771193f0ce8edc56b9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-titles.md"
+    },
+    {
+      "path": "specs/chat-ui.md",
+      "bytes": 45376,
+      "lines": 706,
+      "sha256": "963be611e24e32324dafd4ccc9f5e6d999625b63aaaf1858b45a8583c3b1282c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-ui.md"
+    },
+    {
+      "path": "specs/checkpoints.md",
+      "bytes": 4859,
+      "lines": 82,
+      "sha256": "ad39faafa8d34cde4f231365d634412a02037630dded5db43d3f804d84d5af46",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/checkpoints.md"
+    },
+    {
+      "path": "specs/client-sessions.md",
+      "bytes": 3530,
+      "lines": 81,
+      "sha256": "e32b89becacd75f2abd78e6dfa352d3603b1ad77a192d0bef15d507eee0c303b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/client-sessions.md"
+    },
+    {
+      "path": "specs/command-isolation.md",
+      "bytes": 27574,
+      "lines": 427,
+      "sha256": "6fa1abc3aece6a0b3f7e980058ec7af850a9fa0824d8bc3aae2f9bc14290c392",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/command-isolation.md"
+    },
+    {
+      "path": "specs/compaction.md",
+      "bytes": 23240,
+      "lines": 397,
+      "sha256": "41e88116f4eafa3d240ea0a38bd887356e1e197302d0f6fcfafc26eca5f96934",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/compaction.md"
+    },
+    {
+      "path": "specs/context-indicator.md",
+      "bytes": 7227,
+      "lines": 116,
+      "sha256": "2ca99dc8531c90aad350ceeef14d8d30957e065745da1e7c2b04cac0b935017d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/context-indicator.md"
+    },
+    {
+      "path": "specs/dashboard.md",
+      "bytes": 9521,
+      "lines": 166,
+      "sha256": "9fdbda08a6d05b0c7c2d6ed02bef7cd483f7c563c2e973ed80c0b1cc9e5ffcd2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/dashboard.md"
+    },
+    {
+      "path": "specs/deployment.md",
+      "bytes": 19454,
+      "lines": 305,
+      "sha256": "620070b1138f5a92f97a34c7cb86043e976a96c4bfa1f75ff78208d0cf6f537a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/deployment.md"
+    },
+    {
+      "path": "specs/file-explorer.md",
+      "bytes": 6931,
+      "lines": 126,
+      "sha256": "6c6423b614c4aaa76032cf5423a5cab892546e6e98400a77abe67411b632831c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-explorer.md"
+    },
+    {
+      "path": "specs/file-links.md",
+      "bytes": 5147,
+      "lines": 95,
+      "sha256": "ab120ee681755f23e0a3180d7d25c993723cc62888f787ee42472a12b55f76f8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-links.md"
+    },
+    {
+      "path": "specs/file-tools.md",
+      "bytes": 17428,
+      "lines": 258,
+      "sha256": "a1c06db5e69018a8714ba70666aa910c21761558d8aa7e9c5aeda65f9b0bed14",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-tools.md"
+    },
+    {
+      "path": "specs/folder-skills.md",
+      "bytes": 2750,
+      "lines": 57,
+      "sha256": "ed71d382b3e485905ee0cfdc29882d93a538635c4495a90235e0c5a4cebe111d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/folder-skills.md"
+    },
+    {
+      "path": "specs/guarded-files.md",
+      "bytes": 3431,
+      "lines": 63,
+      "sha256": "6a5ff41af82298f403529b4b5b95f5f371ca75fce48d5f549263208293a7491d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/guarded-files.md"
+    },
+    {
+      "path": "specs/hot-reload.md",
+      "bytes": 5696,
+      "lines": 95,
+      "sha256": "0f7946932ca8abc78cbac5cd80672fbd7a90633d8d469e52985b5431b5e06c5c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/hot-reload.md"
+    },
+    {
+      "path": "specs/image-viewer.md",
+      "bytes": 5018,
+      "lines": 85,
+      "sha256": "e4056bf171d11791c2c264c248954430abe175153194272b27392159a2dd283c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/image-viewer.md"
+    },
+    {
+      "path": "specs/interaction-feedback.md",
+      "bytes": 6262,
+      "lines": 106,
+      "sha256": "8194e90e063d3ebf8a7c821ae92d4bfb488b9a54400569494b357583beb5bcd1",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/interaction-feedback.md"
+    },
+    {
+      "path": "specs/interrupted-turns.md",
+      "bytes": 4155,
+      "lines": 78,
+      "sha256": "c4868c4550fdb5e9bbb3c6771596c89dc2f1e01df264861a2c6a1fea5effc4fa",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/interrupted-turns.md"
+    },
+    {
+      "path": "specs/llamacpp-provider.md",
+      "bytes": 9859,
+      "lines": 183,
+      "sha256": "08c992f3051f718775ed6acd71f78063aac6f64a8fa0c94ec1af6b8c97b0b6e8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/llamacpp-provider.md"
+    },
+    {
+      "path": "specs/llm-providers.md",
+      "bytes": 17230,
+      "lines": 303,
+      "sha256": "9073d42c6ad42991980d12da775bd302c81e36af697115796a6c3bdcb2604581",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/llm-providers.md"
+    },
+    {
+      "path": "specs/log-viewer.md",
+      "bytes": 3386,
+      "lines": 73,
+      "sha256": "a84bb9d8e1c9f1c3573b314041fdcfc2fe8e4512df22e9a007734e899cad29d3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/log-viewer.md"
+    },
+    {
+      "path": "specs/message-timestamps.md",
+      "bytes": 4376,
+      "lines": 89,
+      "sha256": "215dc2c86750b8e266a53cc48f646424a44da36cd9c571d2bc2013383f46b709",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/message-timestamps.md"
+    },
+    {
+      "path": "specs/model-selection.md",
+      "bytes": 5144,
+      "lines": 99,
+      "sha256": "26cb6a4b2d6cfbc20a059183e8a13fc48c2f2415ee907723a2977980e341a42c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/model-selection.md"
+    },
+    {
+      "path": "specs/persistence.md",
+      "bytes": 21752,
+      "lines": 333,
+      "sha256": "28ca9cb6c47f273cd700ebfa2d958c9a7fa6965dc0a1554633fe4d926acbfd59",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/persistence.md"
+    },
+    {
+      "path": "specs/plans/subagents.md",
+      "bytes": 16214,
+      "lines": 316,
+      "sha256": "9fcf4628164952601866fa688a583b021578d2020621716872c877341a5fb07a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/plans/subagents.md"
+    },
+    {
+      "path": "specs/process-priority.md",
+      "bytes": 7498,
+      "lines": 130,
+      "sha256": "955540cab172bdf30d487ac26818b969e432d982d2d652b401b880775f302dd9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/process-priority.md"
+    },
+    {
+      "path": "specs/projects.md",
+      "bytes": 8445,
+      "lines": 161,
+      "sha256": "1cc3268c945af7ae0ac1b4ad3d5819842b8c1486c4770c9e2f26b19f627cefe3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md"
+    },
+    {
+      "path": "specs/push-notifications.md",
+      "bytes": 13662,
+      "lines": 215,
+      "sha256": "2af388cb1a8a67eecdc983040017af1f4403c7b09bd994d2d8f7a1a6c3af61a0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/push-notifications.md"
+    },
+    {
+      "path": "specs/pwa.md",
+      "bytes": 3620,
+      "lines": 69,
+      "sha256": "50682e2a4a2e46191b844be1849ea1f1c5fdfc0c8aa27a8322881b7d6a6ee547",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/pwa.md"
+    },
+    {
+      "path": "specs/recovery.md",
+      "bytes": 8931,
+      "lines": 150,
+      "sha256": "6a80ebc70debc9290303090df6d70821d2fac2d8813da05f9e99e87413c94f35",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/recovery.md"
+    },
+    {
+      "path": "specs/settings.md",
+      "bytes": 11637,
+      "lines": 208,
+      "sha256": "1381838fc9fa31b57ba31a813e54e0297e034bb2412a4be2ee6ff13d2e28cef6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/settings.md"
+    },
+    {
+      "path": "specs/shell-tool.md",
+      "bytes": 7064,
+      "lines": 122,
+      "sha256": "8e07211ac6dcbc0a0fd76a2c3660695aa8e45dc9189adb3e125660e547c81878",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/shell-tool.md"
+    },
+    {
+      "path": "specs/skills.md",
+      "bytes": 6138,
+      "lines": 118,
+      "sha256": "edb3f169715b71806c64d254d531e04e7d66c0df59845995b4eda0cd457706e8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/skills.md"
+    },
+    {
+      "path": "specs/spec-hygiene.md",
+      "bytes": 9034,
+      "lines": 169,
+      "sha256": "018dce51293ebc550004505eca17bc35b063bdcf5755ee9285d598017c9deb2c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/spec-hygiene.md"
+    },
+    {
+      "path": "specs/step-timing.md",
+      "bytes": 5868,
+      "lines": 109,
+      "sha256": "791885eeaf569ee5e64abbbb023b19aa1b79f4b4b248415957e5b5ccc67288f3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/step-timing.md"
+    },
+    {
+      "path": "specs/stopped-turns.md",
+      "bytes": 5135,
+      "lines": 93,
+      "sha256": "453090ee63b3e7758487ab30ca9db8316e652c6a37d51883af603c9b87abb7e6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/stopped-turns.md"
+    },
+    {
+      "path": "specs/subtasks.md",
+      "bytes": 21782,
+      "lines": 342,
+      "sha256": "4845d7d1bb0c3fe30b039d820506d80557599a0ee4d1ae3d38c953ab04bfa62c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/subtasks.md"
+    },
+    {
+      "path": "specs/system-dashboard.md",
+      "bytes": 3447,
+      "lines": 72,
+      "sha256": "794e60e0eafe5e12320ed383476f75216a7a9ee57a555b6e39e22dea6a1473ae",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/system-dashboard.md"
+    },
+    {
+      "path": "specs/terminal.md",
+      "bytes": 19332,
+      "lines": 316,
+      "sha256": "526dc81562408e578c422e077692dafbc119714d795c7a621bf96a4b54d5d5d9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/terminal.md"
+    },
+    {
+      "path": "specs/test-suite.md",
+      "bytes": 6385,
+      "lines": 114,
+      "sha256": "44b1ca6f8d25dbfd7ba0f7c02ee273bd966bfd7e8e82e75f64ff16375cbff47d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/test-suite.md"
+    },
+    {
+      "path": "specs/test-traceability.md",
+      "bytes": 5889,
+      "lines": 100,
+      "sha256": "2972ae554e23eab0b097818f5289d4b97983325073e48d8fd927098d88e6b745",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/test-traceability.md"
+    },
+    {
+      "path": "specs/tool-approval.md",
+      "bytes": 8763,
+      "lines": 156,
+      "sha256": "886357351ebd06a9e0a91d80e989978a28d72a70f3b6d71a8c0ac6b3dba9cf8f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/tool-approval.md"
+    },
+    {
+      "path": "specs/turn-limits.md",
+      "bytes": 11222,
+      "lines": 173,
+      "sha256": "110621c4786d7d5146ffce8765ed5bca2c55f6204f90f306e720e72cd270c1dd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/turn-limits.md"
+    },
+    {
+      "path": "specs/turn-retries.md",
+      "bytes": 5757,
+      "lines": 107,
+      "sha256": "8589c7628e93c9386eaf4efec35c27096aa6b419154e02a6bc1313b25d67b226",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/turn-retries.md"
+    },
+    {
+      "path": "specs/ui-preview.md",
+      "bytes": 14007,
+      "lines": 226,
+      "sha256": "73de7dcbc1d5e56ed77f694ecf34dc97101030a3a94a15535db9dfb60348ef0b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/ui-preview.md"
+    },
+    {
+      "path": "specs/user-input.md",
+      "bytes": 5595,
+      "lines": 93,
+      "sha256": "e1c0d09c92db213b2c4dce516c2b9864d154923a32b91af1670c0ee99427c975",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/user-input.md"
+    },
+    {
+      "path": "specs/verification.md",
+      "bytes": 8302,
+      "lines": 144,
+      "sha256": "34c1512def44409efbad2ac6cce6080dd3df7b1735c1be7948872c408c8796ba",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/verification.md"
+    },
+    {
+      "path": "specs/workspace-policy.md",
+      "bytes": 2804,
+      "lines": 57,
+      "sha256": "f37d2fe4d072d39222eba654f4e0f8649be029e817d5391c472e69277b40613f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/workspace-policy.md"
+    },
+    {
+      "path": "specs/worktree-build-cache.md",
+      "bytes": 4545,
+      "lines": 81,
+      "sha256": "f5d6ed6356ded2a7ef35c693f380d3389a347b7f1e3ba895e5d04a8bfbe2c948",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/worktree-build-cache.md"
+    },
+    {
+      "path": "test/elia/agent_test.exs",
+      "bytes": 109566,
+      "lines": 2910,
+      "sha256": "a1f6c2243a57a314c645d99eefcd993e5f96065a1404ab295dd24ffc498754b0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/agent_test.exs"
+    },
+    {
+      "path": "test/elia/auto_approve_test.exs",
+      "bytes": 12709,
+      "lines": 351,
+      "sha256": "be4ec778efe17b165aa5b87e693e64d2445dcdfa2cd31726f78bd33efa7ab42f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/auto_approve_test.exs"
+    },
+    {
+      "path": "test/elia/auto_resume_test.exs",
+      "bytes": 15264,
+      "lines": 441,
+      "sha256": "f3ca85851b96378640b18f349ebe1e8e58e92c6aab3f318f7c6512ce9ed6875d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/auto_resume_test.exs"
+    },
+    {
+      "path": "test/elia/chat_done_test.exs",
+      "bytes": 9554,
+      "lines": 275,
+      "sha256": "d3a073a880cd7c593e41cd26b545f0a96e3b1cb834442089e37c0847d214fb97",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/chat_done_test.exs"
+    },
+    {
+      "path": "test/elia/chat_titles_test.exs",
+      "bytes": 8876,
+      "lines": 250,
+      "sha256": "33d4fbcb791f5bf819570fd39b5ba34141dcc2eabb1c86b2ba1b9e289fe84032",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/chat_titles_test.exs"
+    },
+    {
+      "path": "test/elia/command_isolation_test.exs",
+      "bytes": 16899,
+      "lines": 427,
+      "sha256": "7361860d96cc22cb55961af8071e90d01825a6dc80d97a732ebd30132372c142",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/command_isolation_test.exs"
+    },
+    {
+      "path": "test/elia/deployment_test.exs",
+      "bytes": 73501,
+      "lines": 2043,
+      "sha256": "d7e68534f917bf32719476732aa424284be54d2b8df8d1fb3aa6d145f4508f04",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/deployment_test.exs"
+    },
+    {
+      "path": "test/elia/deps_test.exs",
+      "bytes": 2105,
+      "lines": 51,
+      "sha256": "1d4492f679630fa3d9ddfbba49d21ad04118fa85eeb785bebe6a8a3047205218",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/deps_test.exs"
+    },
+    {
+      "path": "test/elia/explorer_test.exs",
+      "bytes": 5249,
+      "lines": 144,
+      "sha256": "30133505881680061aa911fede94eff03b25d0648104e57dbd3b0f3a68e4bf4e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/explorer_test.exs"
+    },
+    {
+      "path": "test/elia/fake_llm_test.exs",
+      "bytes": 2384,
+      "lines": 76,
+      "sha256": "67d880028533308ecae6ee869f208f91f627ff99f0c3b88ebeba7241f0f1ee77",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/fake_llm_test.exs"
+    },
+    {
+      "path": "test/elia/install_service_test.exs",
+      "bytes": 2931,
+      "lines": 81,
+      "sha256": "1327b9a964c8e3277f7f0ed561bbae0ab5527d73ef02891a37d18fe44ae1fcad",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/install_service_test.exs"
+    },
+    {
+      "path": "test/elia/llm/anthropic_test.exs",
+      "bytes": 18488,
+      "lines": 536,
+      "sha256": "bdeb982dd5503e928c45d2ccb197c65613e762463b9b29151b110ca46cc5dd4f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/anthropic_test.exs"
+    },
+    {
+      "path": "test/elia/llm/catalog_test.exs",
+      "bytes": 9574,
+      "lines": 256,
+      "sha256": "fdd2b938a986295872952e36a2e7f680a06485316b7719b2396e4645d8f53cf7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/catalog_test.exs"
+    },
+    {
+      "path": "test/elia/llm/compaction_test.exs",
+      "bytes": 47146,
+      "lines": 1339,
+      "sha256": "4e0f150f2095715baff674abad2ae5014b19823b7f751031b9bcb38ffd38b383",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/compaction_test.exs"
+    },
+    {
+      "path": "test/elia/llm/context_test.exs",
+      "bytes": 14533,
+      "lines": 387,
+      "sha256": "868b64a5924f95f50ef6118b5f1c11c3dcf50e2e0ef7bc058de9f2cce12db654",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/context_test.exs"
+    },
+    {
+      "path": "test/elia/llm/llama_cpp_test.exs",
+      "bytes": 10082,
+      "lines": 290,
+      "sha256": "4e05eb1be1b7dd12be295ce21fbeb290bf45e2a6f20b66eef9a1c38e61590632",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/llama_cpp_test.exs"
+    },
+    {
+      "path": "test/elia/llm/llama_server_test.exs",
+      "bytes": 11827,
+      "lines": 308,
+      "sha256": "2636bb7fc8706578584fc809c54a10925733e3db07df0b08b3f44016952f46d5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/llama_server_test.exs"
+    },
+    {
+      "path": "test/elia/llm/message_test.exs",
+      "bytes": 538,
+      "lines": 17,
+      "sha256": "eb201df96381f745a0ac1e4aaeace9a19ec9060d5e05b4933cd847a6569aabcb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/message_test.exs"
+    },
+    {
+      "path": "test/elia/llm/open_ai_test.exs",
+      "bytes": 3133,
+      "lines": 86,
+      "sha256": "f7fb7b5f6ce5521a8dcd0a7453480cade0327cd1084da36cf8956bc144a77877",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_ai_test.exs"
+    },
+    {
+      "path": "test/elia/llm/open_router_test.exs",
+      "bytes": 21341,
+      "lines": 614,
+      "sha256": "c64892012292754f21b389472fa21f9600b29d429aa05ecda222fb1e1f892854",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_router_test.exs"
+    },
+    {
+      "path": "test/elia/llm/retry_test.exs",
+      "bytes": 1773,
+      "lines": 50,
+      "sha256": "70ca888d9909861b36416f2fdc13e4a0924f9e43add343a55e6ed6caf4aebc58",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/retry_test.exs"
+    },
+    {
+      "path": "test/elia/llm/stream_timeout_test.exs",
+      "bytes": 6381,
+      "lines": 192,
+      "sha256": "c32c64a9b89afcbcba6c003a611f9afb0c3786ec0529e5a54cc280c5e568eccb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/stream_timeout_test.exs"
+    },
+    {
+      "path": "test/elia/llm/tokens_test.exs",
+      "bytes": 3188,
+      "lines": 85,
+      "sha256": "d6f06e348518414aa686af7079fb3405dd39a6930a2f2ee30ecfd71e8276174e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/tokens_test.exs"
+    },
+    {
+      "path": "test/elia/logs_test.exs",
+      "bytes": 2728,
+      "lines": 93,
+      "sha256": "50d787350f46f0165a74a84674a4f3afa2c50acd76b014d36c3e6c4e67248e04",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/logs_test.exs"
+    },
+    {
+      "path": "test/elia/message_timestamps_test.exs",
+      "bytes": 4783,
+      "lines": 132,
+      "sha256": "6a96705af70eebeefbd8e1353cbc9077f945c2b542be24e2e7d8cca505162cbb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/message_timestamps_test.exs"
+    },
+    {
+      "path": "test/elia/preview_test.exs",
+      "bytes": 9451,
+      "lines": 258,
+      "sha256": "9e8a69c4bb4cb7490485785010dba0b88e40351e64f452b54d6855ffab6a5da9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/preview_test.exs"
+    },
+    {
+      "path": "test/elia/priority_test.exs",
+      "bytes": 3447,
+      "lines": 78,
+      "sha256": "05c61dc9dcd9d2ffb1de286680c7cbf69301fb5ff4166e16f914d84bb3d62165",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/priority_test.exs"
+    },
+    {
+      "path": "test/elia/projects_test.exs",
+      "bytes": 4606,
+      "lines": 132,
+      "sha256": "4df8d5ec23850605ba6b1e14e3f0c7ae735703fe6990d3e6aee50c951107840e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/projects_test.exs"
+    },
+    {
+      "path": "test/elia/push_crypto_test.exs",
+      "bytes": 5322,
+      "lines": 140,
+      "sha256": "bce73f3bc1254063ef3d2649a2dcdea81c6b8454b25502b2a63be97d402ad8db",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_crypto_test.exs"
+    },
+    {
+      "path": "test/elia/push_notifier_test.exs",
+      "bytes": 3959,
+      "lines": 130,
+      "sha256": "072ac50ecefa44e6eac3b9a9cba83123ac7fd62a80be927b3b6d1211ff841a3a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_notifier_test.exs"
+    },
+    {
+      "path": "test/elia/push_subscriptions_test.exs",
+      "bytes": 3238,
+      "lines": 99,
+      "sha256": "3409762ecee4951103ecd4b46fc593877e60c52a434fc4423a0461d6042050ec",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_subscriptions_test.exs"
+    },
+    {
+      "path": "test/elia/push_test.exs",
+      "bytes": 6253,
+      "lines": 185,
+      "sha256": "5a17ebbec80542834271586290c9292231f38530d6654d179d5c0be91d4cb861",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_test.exs"
+    },
+    {
+      "path": "test/elia/self_modification_test.exs",
+      "bytes": 45423,
+      "lines": 1115,
+      "sha256": "4bf5959a28ea06939a509367abd48b7a612287b80bb9411749746be684d8db25",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/self_modification_test.exs"
+    },
+    {
+      "path": "test/elia/serve_script_test.exs",
+      "bytes": 3878,
+      "lines": 120,
+      "sha256": "12dcecd3afc97c230c5ca85cde5ac546e1d94428b29b652289f92421a4a280d7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/serve_script_test.exs"
+    },
+    {
+      "path": "test/elia/settings_test.exs",
+      "bytes": 4535,
+      "lines": 136,
+      "sha256": "133e73992a1e6d5ff9707536761d3430e60ec45043f0dcd9d78a5455884d309f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/settings_test.exs"
+    },
+    {
+      "path": "test/elia/shell_lock_test.exs",
+      "bytes": 3170,
+      "lines": 113,
+      "sha256": "49ad07b26453df2a475d58797807a12dbbcbe80b5a0de9cafe08eb522bfb5a64",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/shell_lock_test.exs"
+    },
+    {
+      "path": "test/elia/shell_test.exs",
+      "bytes": 22831,
+      "lines": 564,
+      "sha256": "33835b6796bb43e42a0e319327686b556785370f1832fe014815a7903c4eaacc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/shell_test.exs"
+    },
+    {
+      "path": "test/elia/skills/chats_test.exs",
+      "bytes": 13495,
+      "lines": 352,
+      "sha256": "5aaed9a6f00a48f6c5d9c72b8fa3a8b26df9d7f79035a471f007ab3b9760c605",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/chats_test.exs"
+    },
+    {
+      "path": "test/elia/skills/files_test.exs",
+      "bytes": 3827,
+      "lines": 89,
+      "sha256": "8bf69273d43ccd7082dcc99a85d0b6be0e3b2b86f69257d10de8d5613b1299e8",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/files_test.exs"
+    },
+    {
+      "path": "test/elia/skills/harness_test.exs",
+      "bytes": 2402,
+      "lines": 60,
+      "sha256": "8e6fa487662cafff50f0d005978e64a401a85bb2ade50c1f1db0c2a0ab185daf",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/harness_test.exs"
+    },
+    {
+      "path": "test/elia/skills/shell_test.exs",
+      "bytes": 4888,
+      "lines": 135,
+      "sha256": "43d890a78e204ced2f44e4505d049286305092ad7237920859bf281bcfebcfd9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/shell_test.exs"
+    },
+    {
+      "path": "test/elia/skills/terminal_test.exs",
+      "bytes": 8800,
+      "lines": 229,
+      "sha256": "2592ac34e270bd1f29a672ccd6feff90629216ab51927676f0d96c05039e4adc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/terminal_test.exs"
+    },
+    {
+      "path": "test/elia/skills_test.exs",
+      "bytes": 8086,
+      "lines": 244,
+      "sha256": "9482ab8d978e2ba3d4c47828808670d0e95fd6bda2622aaa8894f52898c2ee75",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills_test.exs"
+    },
+    {
+      "path": "test/elia/spec_hygiene_test.exs",
+      "bytes": 6669,
+      "lines": 246,
+      "sha256": "9ad46aab8deaabd6948c813f5ba1125411196bde977e394ff0830df197f92bf4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/spec_hygiene_test.exs"
+    },
+    {
+      "path": "test/elia/spec_tests_test.exs",
+      "bytes": 4582,
+      "lines": 157,
+      "sha256": "f4176ea13b523b69f2c1853d618face91236095d9cb73cc59ee6dd341ce7cc06",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/spec_tests_test.exs"
+    },
+    {
+      "path": "test/elia/step_timing_test.exs",
+      "bytes": 9317,
+      "lines": 288,
+      "sha256": "b3120b5bad2c7d0dbe73ff267cad5110e7807c269d998efdfdfc91a52af1d2b6",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/step_timing_test.exs"
+    },
+    {
+      "path": "test/elia/store_cache_test.exs",
+      "bytes": 5753,
+      "lines": 176,
+      "sha256": "52bc560efdac0b72e506ec0a6e05222fc60fa5fcbdd2f234685feaadd745de3b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_cache_test.exs"
+    },
+    {
+      "path": "test/elia/store_shape_test.exs",
+      "bytes": 10151,
+      "lines": 290,
+      "sha256": "6ea7317c6e7fd79e637f6921b0dec8698abc7d119caa8ce50f80bed2ec5412ab",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_shape_test.exs"
+    },
+    {
+      "path": "test/elia/store_test.exs",
+      "bytes": 25663,
+      "lines": 697,
+      "sha256": "c1789eb2d31b1f52575ec5748b9625c38208b1b0aaaa80cfb02b51b1ecdc99ae",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_test.exs"
+    },
+    {
+      "path": "test/elia/system_stats_test.exs",
+      "bytes": 4161,
+      "lines": 127,
+      "sha256": "75913b08315c249fa5c53a4330fef16d8991553ef23f83f370d1e5ab94022a92",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/system_stats_test.exs"
+    },
+    {
+      "path": "test/elia/tasks_concurrency_test.exs",
+      "bytes": 10655,
+      "lines": 320,
+      "sha256": "027f316af38a23b7aad537edba50eb73e6403a90b97c351f11506e4700af0a4c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_concurrency_test.exs"
+    },
+    {
+      "path": "test/elia/tasks_git_test.exs",
+      "bytes": 4703,
+      "lines": 117,
+      "sha256": "25b03df0bc0f1654e226080962074c431e56a0576ad7006ef69848049b067527",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_git_test.exs"
+    },
+    {
+      "path": "test/elia/tasks_test.exs",
+      "bytes": 42344,
+      "lines": 1214,
+      "sha256": "bf2425fa9f04db9a50629ecf33dd9277ac3ed6b4081d63f4be59da625d550b25",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_test.exs"
+    },
+    {
+      "path": "test/elia/terminal/keys_test.exs",
+      "bytes": 4707,
+      "lines": 100,
+      "sha256": "519ebe6cefbbe65abbf0e45042cf32ff615a0c22758e7af4edc2c93435669993",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/terminal/keys_test.exs"
+    },
+    {
+      "path": "test/elia/terminal_test.exs",
+      "bytes": 17574,
+      "lines": 476,
+      "sha256": "e8f70d30da079f4cf1714566e4bee6c12e5ddea3c95800b6dfa913ab9141088a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/terminal_test.exs"
+    },
+    {
+      "path": "test/elia/test_script_test.exs",
+      "bytes": 7286,
+      "lines": 214,
+      "sha256": "73fb922d5a47fd7a40d92647d0e66bb233abbbf7afe5010b6d4e943176e61886",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/test_script_test.exs"
+    },
+    {
+      "path": "test/elia/tool_approval_test.exs",
+      "bytes": 8267,
+      "lines": 244,
+      "sha256": "149a2d4781e660ce17c3d5c47aa733ffd5baca8608fcd86ca32d7e8b9724842b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tool_approval_test.exs"
+    },
+    {
+      "path": "test/elia/user_input_test.exs",
+      "bytes": 2436,
+      "lines": 67,
+      "sha256": "ff18eb92f857830c0035c0c146705a45050a975e3a48111e427888a608bad87e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/user_input_test.exs"
+    },
+    {
+      "path": "test/elia_web/auto_reconnect_test.exs",
+      "bytes": 1000,
+      "lines": 31,
+      "sha256": "c5b468320884b51682c0b04c81fd7897f47bc18f5d0a42e069b5b36102601b23",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/auto_reconnect_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/chat_browser_test.exs",
+      "bytes": 19734,
+      "lines": 541,
+      "sha256": "45fdedeaa05fc411c6c489cb4ad7ffe13971e95e8c5d1e86aae7928a7320f7a4",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/chat_browser_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/chat_layout_test.exs",
+      "bytes": 7798,
+      "lines": 190,
+      "sha256": "78e6f8e1cf733bc2483f157a8eec8fcacbe23cd69aa4a5f3683a6d6c382e63bd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/chat_layout_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/chat_list_test.exs",
+      "bytes": 4840,
+      "lines": 130,
+      "sha256": "a73ed27201bd0f64c085e3ecaf1e886ea3097a92c4b4453dbbf2abe67aa685e0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/chat_list_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/interaction_feedback_test.exs",
+      "bytes": 19098,
+      "lines": 495,
+      "sha256": "3d4c8571fa9656a2fd3b1e62d802eb089af3f472e8f1a1b7c030a4ff372f4165",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/interaction_feedback_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/preview_test.exs",
+      "bytes": 6336,
+      "lines": 201,
+      "sha256": "dca3299eaf92e73b5cc1fefb166bd3049dafdceb9a2ccc96f22f70aba5666c62",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/preview_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/push_test.exs",
+      "bytes": 11392,
+      "lines": 304,
+      "sha256": "7e9d4f946d6fe8302f9692312312425f1b5c551a7ad947186c74036b4a58940b",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/push_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/settings_sections_test.exs",
+      "bytes": 5397,
+      "lines": 142,
+      "sha256": "b026af14af0a97c1c057fff6a7d5d943364244b02f57639b699005bf3da02541",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/settings_sections_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/small_screen_layout_test.exs",
+      "bytes": 10843,
+      "lines": 268,
+      "sha256": "6c5505924fed19ac8d12fdd6deed178725454caa0e898f1417738ad3e242fdcd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/small_screen_layout_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser/terminal_test.exs",
+      "bytes": 5370,
+      "lines": 155,
+      "sha256": "790bf9c8f9908edc6bf10d7b27429319bb9d420fe63b0731750fb7847333d6e3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/terminal_test.exs"
+    },
+    {
+      "path": "test/elia_web/browser_assets_test.exs",
+      "bytes": 2786,
+      "lines": 72,
+      "sha256": "dd71405ba2a1468c6fe151b59f2c3929286ed480c5d0649f8133cb7586f823fd",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser_assets_test.exs"
+    },
+    {
+      "path": "test/elia_web/controllers/error_html_test.exs",
+      "bytes": 431,
+      "lines": 14,
+      "sha256": "c258e7139dbfe708137309d86309aee15e36a973e9c4b8acde11c9e282727777",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/controllers/error_html_test.exs"
+    },
+    {
+      "path": "test/elia_web/controllers/error_json_test.exs",
+      "bytes": 342,
+      "lines": 12,
+      "sha256": "48ab527605b0fc274fc97ea30d4072711612a664fd4053337cb3fb4027d4e5cb",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/controllers/error_json_test.exs"
+    },
+    {
+      "path": "test/elia_web/controllers/preview_controller_test.exs",
+      "bytes": 2214,
+      "lines": 71,
+      "sha256": "7a50c33eb5c01ef87d2ed9b92e462cb5ff06d7e8c1e221da077de1fb44f5a501",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/controllers/preview_controller_test.exs"
+    },
+    {
+      "path": "test/elia_web/file_links_test.exs",
+      "bytes": 6069,
+      "lines": 159,
+      "sha256": "e361b0a2717f16cbb4325e56a8557a3d23075114c7b9e1919bb10f2b1fd74158",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/file_links_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/auto_approve_test.exs",
+      "bytes": 7843,
+      "lines": 217,
+      "sha256": "37d960b2892bebc40f8d54c238da53337aba6334cfd2b988003d47c51db12f1e",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/auto_approve_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_done_test.exs",
+      "bytes": 4156,
+      "lines": 113,
+      "sha256": "b585b9235f0d803dad5a2d39e3da92de914845e65a5c06cebcaf5944aa170995",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_done_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_drawer_test.exs",
+      "bytes": 10079,
+      "lines": 260,
+      "sha256": "fc6d2facd1c75addf2a303111f5b674330d02d01990b5ab8564930d8091ce696",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_drawer_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_list_test.exs",
+      "bytes": 6585,
+      "lines": 178,
+      "sha256": "01454a1bb9ed8a9ae87a35e4ffb8b6d0c6a59bbdb17cbe45b693a35cf6227f16",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_list_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_live_test.exs",
+      "bytes": 47424,
+      "lines": 1177,
+      "sha256": "a40ebb12745e0327de68102f7f3d1e303456e93ac8ed99be3f6eb0b8043253d7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_message_time_test.exs",
+      "bytes": 4748,
+      "lines": 132,
+      "sha256": "23b0e4605fa3c79998e22193aa7977a23e28ba91b02907e46a9a62fc70bf90d5",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_message_time_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_settings_test.exs",
+      "bytes": 21994,
+      "lines": 528,
+      "sha256": "d8c34bda69693c15b7245bd3c3b44dc7b5b15418e3c0f0b781da30f908f1c378",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_settings_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/chat_title_test.exs",
+      "bytes": 2957,
+      "lines": 75,
+      "sha256": "8caa0f68481353deaf1d6716b8661e086e06fbc20694f884251fec06072bcf3c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/chat_title_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/compact_view_test.exs",
+      "bytes": 6958,
+      "lines": 191,
+      "sha256": "e4e7896fa9862c802c4c5846914a51f8b008f1ce2d4f19c632cf6bcc20189f1c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/compact_view_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/compaction_test.exs",
+      "bytes": 14462,
+      "lines": 365,
+      "sha256": "2274fd2c7f5e8c2658af6b0b794c507c69760ccb55fd93b02deb53aa3af566b9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/compaction_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/dashboard_test.exs",
+      "bytes": 25165,
+      "lines": 638,
+      "sha256": "209b5035f654b6742f8a536fefe749b4bab0991c1f43af4e5bcf56629ab60b46",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/dashboard_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/files_live_test.exs",
+      "bytes": 11035,
+      "lines": 258,
+      "sha256": "797a55cd1e52ddd7992a31bf7c453c4076761e37fd881c7553b82a5c7f968234",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/files_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/jail_test.exs",
+      "bytes": 8081,
+      "lines": 203,
+      "sha256": "40793e9d01e8589a5ae5e74ee466c1cf9027501b569665a7c65e8405cff1eba3",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/jail_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/logs_live_test.exs",
+      "bytes": 3250,
+      "lines": 100,
+      "sha256": "2f46e31c6cb4353a5fd8db9a366fc87c31a9874fc148e16e15e16322b22f84e7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/logs_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/model_picker_test.exs",
+      "bytes": 5646,
+      "lines": 148,
+      "sha256": "9445dc3d28430c959e2a23618322cae8b2414a2d50b8ed7270ab29987a48d79c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/model_picker_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/page_title_test.exs",
+      "bytes": 744,
+      "lines": 27,
+      "sha256": "41c1a7d552ce3353b1021e744b0a3b7788c988b4a62f15cde40e32a9cd299e81",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/page_title_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/projects_live_test.exs",
+      "bytes": 3529,
+      "lines": 105,
+      "sha256": "97d97d60b5348513dc39247dd62d92796edebbf6e53fe0b256c3835415514b7c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/projects_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/push_visibility_test.exs",
+      "bytes": 2074,
+      "lines": 78,
+      "sha256": "73861e0c19f4aa481f716b8ba5b9ab696a590b5289def51766eb565e74c992ba",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/push_visibility_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/sessions_live_test.exs",
+      "bytes": 2682,
+      "lines": 74,
+      "sha256": "7dce31edff017bd06afb72fd6367ff904b0edbf9c706213ea55d3ba93a146ad2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/sessions_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/settings_live_test.exs",
+      "bytes": 44477,
+      "lines": 1151,
+      "sha256": "1084e2085898aa27bf5599c65c93a3fd66f5f19b519a93b342ed6a002bc6a8e9",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/settings_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/system_live_test.exs",
+      "bytes": 1192,
+      "lines": 38,
+      "sha256": "767131d61249ccc44d9fd71b3768743eeda5d643a1116298fb8eadd1ab2347fc",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/system_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/task_ui_test.exs",
+      "bytes": 19099,
+      "lines": 529,
+      "sha256": "ca7aeb8df9f4a3714a1dde6ac608720289e9105963f28ca556aaecf5a764d555",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/task_ui_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/terminal_live_test.exs",
+      "bytes": 5440,
+      "lines": 132,
+      "sha256": "1c2adc2e69457ab5fdd859a2da417be12e6a0485f326041cad68cbc89542b988",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/terminal_live_test.exs"
+    },
+    {
+      "path": "test/elia_web/live/user_input_test.exs",
+      "bytes": 8436,
+      "lines": 227,
+      "sha256": "7fa524f3daa16151cdc7ffb9ecf2955f4c2b98450b6d477effaebd9463bba241",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/user_input_test.exs"
+    },
+    {
+      "path": "test/elia_web/markdown_test.exs",
+      "bytes": 5059,
+      "lines": 157,
+      "sha256": "dabf21af559b6240f19eb1df7eae5e0b9af4e84075975a5cb5404759990bb43a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/markdown_test.exs"
+    },
+    {
+      "path": "test/elia_web/pwa_test.exs",
+      "bytes": 2841,
+      "lines": 81,
+      "sha256": "85e07a023a73ee70eae46f6436c03824838e52a65b7bd015fcbf7cccd10a57de",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/pwa_test.exs"
+    },
+    {
+      "path": "test/elia_web/recovery_test.exs",
+      "bytes": 23607,
+      "lines": 632,
+      "sha256": "4da5caec4c5c8683d9b967fe8e10435a0b3b76fbd20a3a89bfc2723cc47ec3f0",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/recovery_test.exs"
+    },
+    {
+      "path": "test/elia_web/terminal_channel_test.exs",
+      "bytes": 9451,
+      "lines": 237,
+      "sha256": "bdb3df4493d93fd7b51a961bbf28eb6d24fc9f45b8aec8ab84f60132a349735a",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/terminal_channel_test.exs"
+    },
+    {
+      "path": "test/elia_web/time_ago_test.exs",
+      "bytes": 833,
+      "lines": 31,
+      "sha256": "63e543d4d340660e80cdfeb205f85206bf42e4093534ee137baff04e4498d3ba",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/time_ago_test.exs"
+    },
+    {
+      "path": "test/elia_web/user_agent_test.exs",
+      "bytes": 1601,
+      "lines": 35,
+      "sha256": "80e6a47c4042f0ff2e64f4e1f6172d7e7ef36627238e0ac17fc27848839b8a7c",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/user_agent_test.exs"
+    },
+    {
+      "path": "test/support/browser_assets.ex",
+      "bytes": 2707,
+      "lines": 66,
+      "sha256": "91895d49699f873d6f7cec8b1d0a8cc1c2988acc786616e6759e04d7f59b1b66",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/browser_assets.ex"
+    },
+    {
+      "path": "test/support/browser_case.ex",
+      "bytes": 2146,
+      "lines": 85,
+      "sha256": "5032828aa5ae1e64ebe394063fa20ae0aff8a4ab7ae78df92b5fc6c80517b19f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/browser_case.ex"
+    },
+    {
+      "path": "test/support/browser_js_logger.ex",
+      "bytes": 1651,
+      "lines": 51,
+      "sha256": "7410fa9f7d36d92bae0720d457265436721e539c24129bd83f45eaaec8bfa68d",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/browser_js_logger.ex"
+    },
+    {
+      "path": "test/support/conn_case.ex",
+      "bytes": 1050,
+      "lines": 37,
+      "sha256": "5f3dde93c14f58e463d4e6ec17a34bec4f5c517da399cbb91fdd6ea09b17ea22",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/conn_case.ex"
+    },
+    {
+      "path": "test/support/fake_llm.ex",
+      "bytes": 4840,
+      "lines": 139,
+      "sha256": "bf28c3b4921c3f8596f3baced4e82701fe797aa6b028f97d9a1d26d013f47a2f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/fake_llm.ex"
+    },
+    {
+      "path": "test/support/live_tree.ex",
+      "bytes": 4213,
+      "lines": 133,
+      "sha256": "2f566bcbf4308ea55368353f62fb2ecf4744cfe6ca5cbcac364ea6591d6ac86f",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/live_tree.ex"
+    },
+    {
+      "path": "test/support/llama_server_stub.ex",
+      "bytes": 6543,
+      "lines": 216,
+      "sha256": "25a38884c171814103d600c9fe63156e9b8eeab2bbc4fe2068048c18f0fccb49",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/llama_server_stub.ex"
+    },
+    {
+      "path": "test/support/llm_case.ex",
+      "bytes": 2086,
+      "lines": 67,
+      "sha256": "25ba720a03a4e8dee8c040c5af2db14675ee26bc796599c74c0ceb6363713d06",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/llm_case.ex"
+    },
+    {
+      "path": "test/support/push_case.ex",
+      "bytes": 4452,
+      "lines": 115,
+      "sha256": "f1a69782a693c90ed6bf18576a84addf5f40b4c146ebc86b62a4be215213e8f2",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/push_case.ex"
+    },
+    {
+      "path": "test/support/spec_lint.ex",
+      "bytes": 15027,
+      "lines": 488,
+      "sha256": "58eb8392da7bc138564dfe4c15bb8c1dd822c4384e7ea3cb2b856d94155e60a7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/spec_lint.ex"
+    },
+    {
+      "path": "test/test_helper.exs",
+      "bytes": 1690,
+      "lines": 41,
+      "sha256": "a54a9246ae11c7c114f5c57853c159d53d6450b8839c9a9e4c6ee8f61a49cba7",
+      "kind": "text",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/test_helper.exs"
+    }
+  ]
+}

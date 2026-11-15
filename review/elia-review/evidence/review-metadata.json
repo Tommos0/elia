@@ -1,0 +1,43 @@
+{
+  "repository": "https://github.com/Tommos0/elia",
+  "clone_url": "https://github.com/Tommos0/elia.git",
+  "reviewed_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "branch_at_review": "master",
+  "commit_timestamp_utc": "2026-11-15T08:57:12Z",
+  "review_date_local": "2026-11-15",
+  "review_timezone": "Etc/UTC",
+  "clone_path": "/workspace/scratch/50ab67582c2b/elia",
+  "remote_changed": false,
+  "source_modified": false,
+  "verification_limit": "Elixir, Erlang and Mix unavailable; no application tests, build, real browser, live provider, or real jail exploit run.",
+  "github_context": {
+    "get_repo": {
+      "default_branch": "master",
+      "visibility": "public",
+      "archived": false
+    },
+    "branch": {
+      "sha": "5be0bd873bd2716529de25541efb1825495cd12e",
+      "protected": false
+    },
+    "action_runs": {
+      "total_count": 0,
+      "requested_page_size": 10
+    },
+    "issue_search": {
+      "query": "repo:Tommos0/elia is:issue",
+      "returned_issues": 0
+    },
+    "pr_search": {
+      "query": "repo:Tommos0/elia",
+      "state": "all",
+      "returned_results": 0
+    }
+  },
+  "interpretation": "Searches are retrieval observations, not proof that no off-GitHub work, hidden CI, or inaccessible issues exist.",
+  "retrieval_routes": [
+    "local git clone + immutable git objects",
+    "selected GitHub plugin read operations"
+  ],
+  "web_search_attempt": "Public web open failed DisabledError; no unsupported web search claims used."
+}

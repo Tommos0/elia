@@ -1,0 +1,58 @@
+{
+  "reviewer": "core_review",
+  "repository": "https://github.com/Tommos0/elia",
+  "commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "mode": "read-only static review",
+  "runtime_tests_executed": false,
+  "findings": [
+    {"id":"CORE-01","priority":"P1","title":"External-project subtasks use Elia's own workspace","confidence":"high","validation":"static end-to-end call tracing; runtime reproduction pending","requirements":["PROJ-12","SESS-23","SUBTASK-23"],"primary_sources":[{"path":"lib/elia/tasks.ex","lines":[181,199]},{"path":"lib/elia/tasks.ex","lines":[234,345]},{"path":"lib/elia/agent/session.ex","lines":[108,119]},{"path":"lib/elia/workspace.ex","lines":[28,37]}],"test_gap":{"path":"test/elia/tasks_test.exs","lines":[537,566],"description":"Asserts project identity but never child cwd, file placement or Git baseline."}},
+    {"id":"CORE-02","priority":"P1","title":"Session termination leaves its unlinked loop alive","confidence":"high","validation":"static lifecycle tracing and upstream Task.Supervised semantics; runtime reproduction pending","requirements":["SESS-1","SESS-43","RESUME-2"],"primary_sources":[{"path":"lib/elia/agent/session.ex","lines":[1245,1250]},{"path":"lib/elia/agent/session.ex","lines":[1114,1116]},{"path":"lib/elia/agent/loop.ex","lines":[593,607]}],"test_gap":{"path":"test/elia/agent_test.exs","lines":[1005,1019],"description":"Shutdown persistence test explicitly kills the loop itself after terminating the session."}},
+    {"id":"CORE-03","priority":"P2","title":"Malformed chat term shapes escape corruption handling","confidence":"high","validation":"static invalid-shape tracing; fixture execution pending","requirements":["STORE-3","STORE-44","RESUME-1"],"primary_sources":[{"path":"lib/elia/store.ex","lines":[148,157]},{"path":"lib/elia/store.ex","lines":[491,504]},{"path":"lib/elia/store.ex","lines":[569,595]}],"test_gap":{"path":"test/elia/store_cache_test.exs","lines":[89,99],"description":"Covers invalid term bytes, not decodable maps with malformed values."}},
+    {"id":"CORE-04","priority":"P2","title":"Failed save clears dirty state and suppresses shutdown retry","confidence":"high","validation":"static fault-sequence tracing; I/O fault injection pending","requirements":["SESS-13","SESS-44","STORE-30","RESUME-2"],"primary_sources":[{"path":"lib/elia/agent/session.ex","lines":[1121,1155]},{"path":"lib/elia/agent/session.ex","lines":[1114,1116]},{"path":"lib/elia/agent/session.ex","lines":[1184,1189]}],"test_gap":{"path":"test/elia/agent_test.exs","lines":[932,1044],"description":"Save-interval and graceful-shutdown tests cover successful writes, not storage failure followed by recovery without a later mutation."}}
+  ],
+  "sources": [
+    {"path":"AGENTS.md","coverage":"full via inherited parent inspection","purpose":"Repository workflow and constraints"},
+    {"path":"README.md","coverage":"targeted via inherited parent inspection","purpose":"Project context and architecture"},
+    {"path":"docs/agents/harness.md","coverage":"full","purpose":"Worktree, task and deployment invariants"},
+    {"path":"docs/agents/testing.md","coverage":"full via inherited parent inspection","purpose":"Test coordination and fixtures"},
+    {"path":"lib/elia/agent.ex","coverage":"full","purpose":"Public API, lifecycle and timeout defaults"},
+    {"path":"lib/elia/agent/session.ex","coverage":"near-complete targeted ranges","ranges":[[1,631],[628,850],[849,1067],[1068,1357],[1360,1450]],"purpose":"State ownership, settings, persistence, loop lifetime and resumption"},
+    {"path":"lib/elia/agent/loop.ex","coverage":"full","purpose":"Model and tool execution, guards, approval, limits, retry and compaction boundary"},
+    {"path":"lib/elia/agent/resumer.ex","coverage":"full","purpose":"Boot scan and ordering"},
+    {"path":"lib/elia/tasks.ex","coverage":"full","purpose":"Spawning, workspaces, watchers, registry, stopping, results and cleanup"},
+    {"path":"lib/elia/store.ex","coverage":"full","purpose":"Storage boundary, write errors, decoding, listing and metadata"},
+    {"path":"lib/elia/store/cache.ex","coverage":"full","purpose":"Identity cache and safe absence behavior"},
+    {"path":"lib/elia/limits.ex","coverage":"targeted","purpose":"Defaults and limits validation; first inspection output truncated"},
+    {"path":"lib/elia/skills/tasks.ex","coverage":"full","purpose":"Parent/child tool sets and delegation contract"},
+    {"path":"lib/elia/skills/user_input.ex","coverage":"full","purpose":"Input gating and answer propagation"},
+    {"path":"lib/elia/skills/done.ex","coverage":"full","purpose":"Done flag distinct from subtask completion"},
+    {"path":"lib/elia/workspace.ex","coverage":"targeted","ranges":[[1,105]],"purpose":"Root and runtime-root semantics"},
+    {"path":"lib/elia/projects.ex","coverage":"targeted","ranges":[[116,132]],"purpose":"Harness project discriminator"},
+    {"path":"lib/elia/application.ex","coverage":"full","purpose":"Supervisor topology and startup order"},
+    {"path":"lib/elia/llm/message.ex","coverage":"full","purpose":"Stored message shape and scrub behavior"},
+    {"path":"specs/README.md","coverage":"targeted via inherited parent inspection","purpose":"Spec index and draft-plan placement"},
+    {"path":"specs/agent-sessions.md","coverage":"targeted","ranges":[[27,75],[135,150],[195,223],[244,264],[393,404]],"purpose":"Lifecycle and save guarantees; additional keyword searches"},
+    {"path":"specs/agent-loop.md","coverage":"targeted","ranges":[[1,130]],"purpose":"Concurrency, limits, approval and error contracts"},
+    {"path":"specs/subtasks.md","coverage":"targeted","ranges":[[130,150],[209,222]],"purpose":"Stop semantics and workspace rules; additional keyword searches"},
+    {"path":"specs/projects.md","coverage":"targeted keyword matches","purpose":"PROJ-10/12 and per-project workspace contract"},
+    {"path":"specs/persistence.md","coverage":"targeted","ranges":[[1,130]],"purpose":"Stored shape, atomicity and corruption semantics; optional fields and cache rules also inspected in initial output"},
+    {"path":"specs/auto-resume.md","coverage":"full","purpose":"Restart semantics, automatic resume limits and children"},
+    {"path":"specs/plans/subagents.md","coverage":"targeted","ranges":[[1,90]],"purpose":"Detect stale guidance affecting AI reading routes"},
+    {"path":"test/elia/agent_test.exs","coverage":"targeted","ranges":[[917,1083]],"purpose":"Loop cleanup, save batching, shutdown and restart tests; additional lifecycle/failure searches across file"},
+    {"path":"test/elia/tasks_test.exs","coverage":"targeted","ranges":[[1,100],[520,570],[820,970],[1060,1160]],"purpose":"External project assertion gap, stopped tasks, registry cleanup and result validation"},
+    {"path":"test/elia/tasks_concurrency_test.exs","coverage":"targeted","ranges":[[1,130],[260,330]],"purpose":"Concurrent worktree children and parent-stop behavior"},
+    {"path":"test/elia/auto_resume_test.exs","coverage":"targeted","ranges":[[1,90],[215,260]],"purpose":"Fixture isolation and interrupted-turn restoration; additional searches"},
+    {"path":"test/elia/store_test.exs","coverage":"targeted","ranges":[[1,80],[208,296],[644,681]],"purpose":"Atomic write shape, metadata updates and corruption coverage; additional searches"},
+    {"path":"test/elia/store_cache_test.exs","coverage":"targeted","ranges":[[1,165]],"purpose":"Cache invalidation and corruption coverage"}
+  ],
+  "external_sources": [
+    {"url":"https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/task/supervised.ex","coverage":"targeted reply/4; raw source retrieved via GitHub integration","purpose":"Verify async_nolink owner monitoring ends before function execution","note":"This is a primary source for a version satisfying the project's declared minimum series; no installed runtime was present to execute it."}
+  ],
+  "not_findings": [
+    "External-project children intentionally share one workspace and are serialized; worktree children can run concurrently.",
+    "A stopped child turn deliberately leaves its task running and its workspace entry held.",
+    "SESS-13 explicitly permits logging a save error while continuing; CORE-04 addresses lost dirty state after the error, not the continuation policy alone.",
+    "The last persistence interval may be lost on abrupt VM termination by explicit SESS-44 design.",
+    "Limits checked only between steps match LOOP-20/22; no hard in-flight deadline is currently promised."
+  ]
+}

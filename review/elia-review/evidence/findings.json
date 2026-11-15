@@ -1,0 +1,863 @@
+{
+  "schema_version": 1,
+  "reviewed_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "counts": {
+    "total": 17,
+    "P1": 6,
+    "P2": 11
+  },
+  "interpretation": "Review IDs are distinct from repository requirement IDs. Source-confirmed does not mean runtime reproduced. P1/P2 are development priorities, not CVSS.",
+  "findings": [
+    {
+      "id": "SEC-01",
+      "priority": "P1",
+      "title": "Host-side AGENTS.md reads can disclose files outside the jail",
+      "route": "A",
+      "report": "review/SECURITY.md",
+      "specs": [
+        "SKILL-10",
+        "SKILL-11",
+        "PROJ-15",
+        "ISOL-5"
+      ],
+      "tests": [
+        "test/elia/skills_test.exs",
+        "test/elia/self_modification_test.exs"
+      ],
+      "preconditions": "A workspace instruction symlink targets a readable host text file; a following prompt is constructed.",
+      "impact": "External bytes can enter a local or remote model request without a read_file approval or jail access.",
+      "acceptance": [
+        "A dummy external sentinel never appears in a captured fake-provider system prompt.",
+        "Regular instruction refresh and explicitly permitted internal links still work.",
+        "Cover replacement during read, broken/looped links and adjacent skill metadata ingress."
+      ],
+      "repair": "Confinement-aware host metadata reads with a defined symlink/secure-open policy.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/skills.ex",
+          "start": 119,
+          "end": 157,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills.ex#L119-L157"
+        },
+        {
+          "path": "lib/elia/agent/loop.ex",
+          "start": 218,
+          "end": 237,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex#L218-L237"
+        }
+      ],
+      "related_checks": [
+        "V08"
+      ]
+    },
+    {
+      "id": "SEC-02",
+      "priority": "P1",
+      "title": "Approved file aliases can mutate protected/shared targets",
+      "route": "A",
+      "report": "review/SECURITY.md",
+      "specs": [
+        "WS-1",
+        "WS-5",
+        "FILE-5",
+        "FILE-11",
+        "FILE-21",
+        "FILE-22"
+      ],
+      "tests": [
+        "test/elia/self_modification_test.exs",
+        "test/elia/skills/files_test.exs"
+      ],
+      "preconditions": "A reachable alias points into protected Git metadata or the live dependency tree; the ordinary approval policy permits the file action, including per-chat auto-approval.",
+      "impact": "Host file writes bypass protected-target refusal and jail mount permissions. The ordinary approval policy still applies; auto-approved tools need no fresh human prompt.",
+      "acceptance": [
+        "Alias write/edit and directory-alias child deletion leave protected sentinels unchanged.",
+        "Readable shared dependencies remain readable but are not writable by host file tools.",
+        "Final-symlink deletion and concurrent target replacement follow the specified policy."
+      ],
+      "repair": "Separate read reachability from canonical writable-target policy and synchronize the decisive mutation check.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/workspace.ex",
+          "start": 50,
+          "end": 65,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/workspace.ex#L50-L65"
+        },
+        {
+          "path": "lib/elia/skills/files.ex",
+          "start": 230,
+          "end": 355,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/files.ex#L230-L355"
+        },
+        {
+          "path": "lib/elia/shell.ex",
+          "start": 162,
+          "end": 192,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex#L162-L192"
+        }
+      ],
+      "related_checks": [
+        "V08"
+      ]
+    },
+    {
+      "id": "SEC-03",
+      "priority": "P2",
+      "title": "Overlay mount lock remains held throughout the command",
+      "route": "B",
+      "report": "review/SECURITY.md",
+      "specs": [
+        "ISOL-28",
+        "LOOP-10"
+      ],
+      "tests": [
+        "test/elia/command_isolation_test.exs",
+        "test/elia/shell_test.exs",
+        "test/elia/shell_lock_test.exs"
+      ],
+      "preconditions": "Two commands need the same worktree dependency overlay while the first command remains running.",
+      "impact": "Ready commands unnecessarily serialize and consume other commands' deadline budget.",
+      "acceptance": [
+        "A ready-but-held command A does not prevent command B from completing.",
+        "Mount setup remains serialized and retries reacquire correctly.",
+        "Queue timeout, holder death and terminal starts release ownership correctly."
+      ],
+      "repair": "Release at readiness, retain failure cleanup, and bound acquisition by the remaining command deadline.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/shell.ex",
+          "start": 294,
+          "end": 350,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex#L294-L350"
+        },
+        {
+          "path": "lib/elia/shell/lock.ex",
+          "start": 22,
+          "end": 43,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell/lock.ex#L22-L43"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "SEC-04",
+      "priority": "P2",
+      "title": "Folder-tool jail mounts the skill directory instead of the workspace",
+      "route": "B",
+      "report": "review/SECURITY.md",
+      "specs": [
+        "FOLDER-6",
+        "FOLDER-7",
+        "PROJ-12"
+      ],
+      "tests": [
+        "test/elia/command_isolation_test.exs",
+        "test/elia/skills_test.exs"
+      ],
+      "preconditions": "A real jailed folder script needs project files outside its own skill folder.",
+      "impact": "ELIA_WORKSPACE names a project whose source and Git metadata may be absent from the jail.",
+      "acceptance": [
+        "A jailed script retains skill cwd and reads a project sentinel through ELIA_WORKSPACE.",
+        "An outside sibling sentinel remains inaccessible.",
+        "Cover external project, Elia worktree and global skill cases."
+      ],
+      "repair": "Separate confinement root from cwd and supply narrow extra skill-directory mounts.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/skills/folder.ex",
+          "start": 151,
+          "end": 177,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/folder.ex#L151-L177"
+        },
+        {
+          "path": "lib/elia/shell.ex",
+          "start": 454,
+          "end": 471,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex#L454-L471"
+        },
+        {
+          "path": "lib/elia/shell.ex",
+          "start": 539,
+          "end": 564,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex#L539-L564"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "CORE-01",
+      "priority": "P1",
+      "title": "External-project children receive Elia's global workspace",
+      "route": "C",
+      "report": "review/CORE.md",
+      "specs": [
+        "PROJ-12",
+        "SESS-23",
+        "SUBTASK-23"
+      ],
+      "tests": [
+        "test/elia/tasks_test.exs",
+        "test/elia/tasks_git_test.exs",
+        "test/elia/tasks_concurrency_test.exs"
+      ],
+      "preconditions": "spawn_task runs from a non-harness project whose folder differs from Elia's root.",
+      "impact": "File/shell effects, Git baseline, lock and result reporting can target the wrong repository despite correct project labels.",
+      "acceptance": [
+        "Child pwd/read/write and Git result all refer to the external parent workspace.",
+        "Elia fixture tree is unchanged.",
+        "Distinct external projects do not share a false writer lock; resume uses the correct baseline."
+      ],
+      "repair": "Resolve one authoritative actual parent workspace for every project and retain only the Elia worktree special case.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/tasks.ex",
+          "start": 181,
+          "end": 199,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex#L181-L199"
+        },
+        {
+          "path": "lib/elia/tasks.ex",
+          "start": 234,
+          "end": 253,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex#L234-L253"
+        },
+        {
+          "path": "lib/elia/tasks.ex",
+          "start": 280,
+          "end": 345,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex#L280-L345"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 108,
+          "end": 119,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L108-L119"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "CORE-02",
+      "priority": "P1",
+      "title": "A dead session can leave its unlinked loop and tools running",
+      "route": "D",
+      "report": "review/CORE.md",
+      "specs": [
+        "SESS-8",
+        "SUBTASK-8"
+      ],
+      "tests": [
+        "test/elia/agent_test.exs",
+        "test/elia/auto_resume_test.exs"
+      ],
+      "preconditions": "A session terminates/crashes while the application and its independent task supervisor remain up.",
+      "impact": "Orphan work can continue and overlap a reopened/resumed session for the same chat.",
+      "acceptance": [
+        "Terminating only the session kills its held loop/worker without test-side cleanup.",
+        "Abrupt kill is covered by ownership monitoring, not terminate/2 alone.",
+        "Reopen has only one active turn; ordinary Stop and approval cleanup still work."
+      ],
+      "repair": "Bind loop lifetime to session ownership while preserving one-way tool-crash isolation.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 1109,
+          "end": 1116,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L1109-L1116"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 1245,
+          "end": 1250,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L1245-L1250"
+        },
+        {
+          "path": "lib/elia/agent/loop.ex",
+          "start": 593,
+          "end": 607,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex#L593-L607"
+        },
+        {
+          "path": "test/elia/agent_test.exs",
+          "start": 1005,
+          "end": 1019,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/agent_test.exs#L1005-L1019"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "CORE-03",
+      "priority": "P2",
+      "title": "Decodable malformed chat shapes crash shared load/list paths",
+      "route": "D",
+      "report": "review/CORE.md",
+      "specs": [
+        "STORE-3"
+      ],
+      "tests": [
+        "test/elia/store_test.exs",
+        "test/elia/store_cache_test.exs",
+        "test/elia/store_shape_test.exs",
+        "test/elia/auto_resume_test.exs"
+      ],
+      "preconditions": "A valid encoded term contains invalid chat fields, such as messages:nil.",
+      "impact": "One invalid record can disrupt listing and the boot resume scan, beyond opening that one chat.",
+      "acceptance": [
+        "Malformed roots, messages, blocks, times and task metadata are isolated.",
+        "Other valid chats still list and resume.",
+        "Supported legacy shapes and raw provider data remain intact."
+      ],
+      "repair": "Validate/normalize at the stored-record boundary and preserve diagnostic/quarantine information.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/store.ex",
+          "start": 148,
+          "end": 157,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex#L148-L157"
+        },
+        {
+          "path": "lib/elia/store.ex",
+          "start": 491,
+          "end": 504,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex#L491-L504"
+        },
+        {
+          "path": "lib/elia/store.ex",
+          "start": 569,
+          "end": 595,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex#L569-L595"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "CORE-04",
+      "priority": "P2",
+      "title": "A failed save clears the only dirty/shutdown-retry signal",
+      "route": "D",
+      "report": "review/CORE.md",
+      "specs": [
+        "SESS-13",
+        "SESS-44"
+      ],
+      "tests": [
+        "test/elia/agent_test.exs",
+        "test/elia/auto_resume_test.exs"
+      ],
+      "preconditions": "A final save fails, storage recovers, and a session closes without a later mutation.",
+      "impact": "Completion remains unsaved; an older active-turn marker can cause later replay of already-completed work.",
+      "acceptance": [
+        "Injected final-write failure retains dirty state until successful recovery.",
+        "Graceful shutdown retries recovered storage without a later message.",
+        "Permanent failures remain bounded and do not corrupt previous saved bytes."
+      ],
+      "repair": "Track dirty generation independently of timer presence and clear it only after durable success.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 1114,
+          "end": 1155,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L1114-L1155"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 1184,
+          "end": 1189,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L1184-L1189"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "W01",
+      "priority": "P1",
+      "title": "Terminal transport does not enforce browser origin/session proof",
+      "route": "E",
+      "report": "review/WEB.md",
+      "specs": [
+        "TERM-12",
+        "TERM-13"
+      ],
+      "tests": [
+        "test/elia_web/terminal_channel_test.exs",
+        "test/elia_web/browser/terminal_test.exs"
+      ],
+      "preconditions": "An unrelated origin knows an existing terminal chat ID and browser/proxy policy permits reaching the endpoint.",
+      "impact": "That origin can read terminal output and send input subject to the terminal's actual jail.",
+      "acceptance": [
+        "Transport handshake rejects foreign origin and missing/invalid session proof.",
+        "Same-origin and configured reverse-proxy clients still connect.",
+        "Byte encoding, overflow/rejoin and confinement behavior remain correct."
+      ],
+      "repair": "Add explicit origin allowlisting and validated session/CSRF or purpose-scoped token checks.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": true,
+      "evidence": [
+        {
+          "path": "config/dev.exs",
+          "start": 9,
+          "end": 19,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/dev.exs#L9-L19"
+        },
+        {
+          "path": "lib/elia_web/terminal_socket.ex",
+          "start": 12,
+          "end": 21,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_socket.ex#L12-L21"
+        },
+        {
+          "path": "lib/elia_web/terminal_channel.ex",
+          "start": 22,
+          "end": 43,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_channel.ex#L22-L43"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "W02",
+      "priority": "P2",
+      "title": "Terminal Start and its warning use stale or prospective jail state",
+      "route": "E",
+      "report": "review/WEB.md",
+      "specs": [
+        "TERM-7",
+        "TERM-9",
+        "TERM-20",
+        "CSET-4",
+        "ISOL-16"
+      ],
+      "tests": [
+        "test/elia_web/live/terminal_live_test.exs"
+      ],
+      "preconditions": "Jail changes in another tab after a terminal page mounts, or an existing terminal outlives a preference change.",
+      "impact": "A newly started terminal can run unjailed after the preference is enabled; labels can hide an already unjailed process.",
+      "acceptance": [
+        "Two-view setting change is reflected at Start.",
+        "Existing-terminal warning follows actual status.jail.",
+        "Define prospective preference separately from existing process lifetime."
+      ],
+      "repair": "Fetch authoritative settings at Start and show actual process confinement while it exists.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia_web/live/terminal_live.ex",
+          "start": 27,
+          "end": 71,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/terminal_live.ex#L27-L71"
+        },
+        {
+          "path": "lib/elia_web/live/terminal_live.ex",
+          "start": 160,
+          "end": 180,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/terminal_live.ex#L160-L180"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "W03",
+      "priority": "P2",
+      "title": "Push initialization and subscription changes lose concurrent updates",
+      "route": "F",
+      "report": "review/WEB.md",
+      "specs": [
+        "PUSH-1",
+        "PUSH-3",
+        "PUSH-4",
+        "PUSH-7",
+        "PUSH-16"
+      ],
+      "tests": [
+        "test/elia/push_test.exs",
+        "test/elia/push_subscriptions_test.exs",
+        "test/elia/settings_test.exs"
+      ],
+      "preconditions": "Concurrent first key requests, subscriptions, or registration racing with endpoint cleanup.",
+      "impact": "Different VAPID keys can be returned or device updates lost, preventing later notifications.",
+      "acceptance": [
+        "Simultaneous initialization returns the same persisted pair.",
+        "Concurrent independent subscriptions both survive.",
+        "Removal/clear ordering cannot be undone by stale writers."
+      ],
+      "repair": "Serialize complete get-or-create and read/modify/write transactions, not individual calls.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/push.ex",
+          "start": 44,
+          "end": 51,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push.ex#L44-L51"
+        },
+        {
+          "path": "lib/elia/push.ex",
+          "start": 155,
+          "end": 159,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push.ex#L155-L159"
+        },
+        {
+          "path": "lib/elia/push/subscriptions.ex",
+          "start": 41,
+          "end": 59,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/subscriptions.ex#L41-L59"
+        },
+        {
+          "path": "lib/elia/settings.ex",
+          "start": 33,
+          "end": 45,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/settings.ex#L33-L45"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "W04",
+      "priority": "P2",
+      "title": "Unavailable project root crashes the Files page fallback",
+      "route": "F",
+      "report": "review/WEB.md",
+      "specs": [
+        "EXPL-9",
+        "EXPL-15"
+      ],
+      "tests": [
+        "test/elia_web/live/files_live_test.exs",
+        "test/elia/explorer_test.exs"
+      ],
+      "preconditions": "A registered external folder is moved, removed, unreadable or unmounted.",
+      "impact": "A failed fallback assigns an error atom as entries; rendering raises instead of presenting a usable error state.",
+      "acceptance": [
+        "Visiting a vanished project root displays an error and keeps the picker usable.",
+        "entries always remains a list.",
+        "No silent switch into another project's files."
+      ],
+      "repair": "Pattern-match the fallback result and render a safe empty listing with the real root error.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia_web/live/files_live.ex",
+          "start": 39,
+          "end": 45,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/files_live.ex#L39-L45"
+        },
+        {
+          "path": "lib/elia_web/live/files_live.ex",
+          "start": 260,
+          "end": 265,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/files_live.ex#L260-L265"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "DEV-01",
+      "priority": "P2",
+      "title": "Documented clean setup omits required Node package installation",
+      "route": "G",
+      "report": "review/DEPLOYMENT-AND-SETUP.md",
+      "specs": [
+        "TERM-12",
+        "PREVIEW-14",
+        "DEPLOY-19"
+      ],
+      "tests": [
+        "test/elia_web/browser_assets_test.exs"
+      ],
+      "preconditions": "Fresh checkout without assets/node_modules follows the README mix setup sequence.",
+      "impact": "Asset builds lack xterm dependencies; Node's documented optional status is misleading.",
+      "acceptance": [
+        "Literal README setup succeeds from a clean checkout.",
+        "Required CSS/JS bundles and terminal hook work.",
+        "A repeat setup is safe and dependency install is reproducible."
+      ],
+      "repair": "Install locked Node dependencies in the setup path and correct prerequisites.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "mix.exs",
+          "start": 84,
+          "end": 104,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.exs#L84-L104"
+        },
+        {
+          "path": "assets/css/app.css",
+          "start": 1,
+          "end": 12,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/css/app.css#L1-L12"
+        },
+        {
+          "path": "assets/js/terminal.js",
+          "start": 11,
+          "end": 13,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/terminal.js#L11-L13"
+        },
+        {
+          "path": "README.md",
+          "start": 12,
+          "end": 38,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/README.md#L12-L38"
+        }
+      ],
+      "related_checks": [
+        "V07"
+      ]
+    },
+    {
+      "id": "DEP-01",
+      "priority": "P1",
+      "title": "Rejected deploy can leave served generated bundles damaged",
+      "route": "G",
+      "report": "review/DEPLOYMENT-AND-SETUP.md",
+      "specs": [
+        "DEPLOY-5",
+        "DEPLOY-19",
+        "DEPLOY-24",
+        "DEPLOY-26"
+      ],
+      "tests": [
+        "test/elia/deployment_test.exs",
+        "test/elia_web/recovery_test.exs"
+      ],
+      "preconditions": "Candidate asset generation changes/removes output then fails; generated assets are ignored as in the real checkout.",
+      "impact": "Git resets while old server code can serve new, partial or missing asset bytes. Watchers provide no transactional guarantee.",
+      "acceptance": [
+        "Failed build restores revision-A HTTP asset bytes as well as Git state.",
+        "Use ignored generated assets in the fixture, unlike the current committed-bundle fixture.",
+        "Cover partial write, deletion, truncation, failed rollback and no-merge deployment."
+      ],
+      "repair": "Stage and atomically promote/restore verified asset bundles with coordinated watchers.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 1116,
+          "end": 1134,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L1116-L1134"
+        },
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 1260,
+          "end": 1269,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L1260-L1269"
+        },
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 998,
+          "end": 1005,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L998-L1005"
+        },
+        {
+          "path": "test/elia/deployment_test.exs",
+          "start": 303,
+          "end": 310,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/deployment_test.exs#L303-L310"
+        }
+      ],
+      "related_checks": [
+        "V09"
+      ]
+    },
+    {
+      "id": "DEP-02",
+      "priority": "P2",
+      "title": "Restart availability does not check for an external supervisor",
+      "route": "G",
+      "report": "review/DEPLOYMENT-AND-SETUP.md",
+      "specs": [
+        "DEPLOY-7",
+        "RESTART-11"
+      ],
+      "tests": [
+        "test/elia/deployment_test.exs",
+        "test/elia/serve_script_test.exs",
+        "test/elia_web/live/settings_live_test.exs"
+      ],
+      "preconditions": "Deployment-ready tree is launched directly with mix phx.server and no restarting supervisor.",
+      "impact": "Restart is accepted, then the server stops without a replacement.",
+      "acceptance": [
+        "Bare launch disables/rejects Restart with a useful prerequisite message.",
+        "Supervised launch replaces the process.",
+        "Hot reload capability remains independent."
+      ],
+      "repair": "Separate restart-supervisor readiness from Mix/code-reloader availability.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 1033,
+          "end": 1054,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L1033-L1054"
+        },
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 879,
+          "end": 909,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L879-L909"
+        },
+        {
+          "path": "lib/elia/deploy.ex",
+          "start": 1318,
+          "end": 1323,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex#L1318-L1323"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "LLM-01",
+      "priority": "P2",
+      "title": "Slow manual/turn-start summaries block the session and callers",
+      "route": "D",
+      "report": "review/LLM-AND-COMPACTION.md",
+      "specs": [
+        "COMPACT-5",
+        "COMPACT-6",
+        "COMPACT-10",
+        "COMPACT-17",
+        "COMPACT-20"
+      ],
+      "tests": [
+        "test/elia/llm/compaction_test.exs",
+        "test/elia/agent_test.exs",
+        "test/elia_web/live/compaction_test.exs"
+      ],
+      "preconditions": "Eligible nonempty aged-out history requires a summary taking longer than the default five-second call timeout.",
+      "impact": "LiveView can time out while the session remains blocked; Stop/snapshot queue and a turn can start later.",
+      "acceptance": [
+        "Held summarizer does not kill the initiating LiveView or block control calls.",
+        "Stop cancels pending preparation; late results cannot start a turn.",
+        "Cover manual and turn-start paths; retain summary-failure fallback."
+      ],
+      "repair": "Run monitored compaction work outside the session callback with explicit generation/operation ownership.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/agent.ex",
+          "start": 77,
+          "end": 79,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent.ex#L77-L79"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 291,
+          "end": 299,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L291-L299"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "start": 953,
+          "end": 978,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex#L953-L978"
+        },
+        {
+          "path": "lib/elia/llm/compaction.ex",
+          "start": 859,
+          "end": 903,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/compaction.ex#L859-L903"
+        }
+      ],
+      "related_checks": []
+    },
+    {
+      "id": "LLM-02",
+      "priority": "P2",
+      "title": "Nonnumeric SSE error codes raise during error handling",
+      "route": "H",
+      "report": "review/LLM-AND-COMPACTION.md",
+      "specs": [
+        "LLM-22",
+        "LLM-23",
+        "LLM-36",
+        "LOCAL-10"
+      ],
+      "tests": [
+        "test/elia/llm/open_ai_test.exs",
+        "test/elia/llm/open_router_test.exs",
+        "test/elia/llm/llama_cpp_test.exs"
+      ],
+      "preconditions": "An HTTP-200 error chunk has a symbolic/invalid string code; current providers emitting it was not established.",
+      "impact": "The parser loses a useful provider message to an exception instead of returning the error contract.",
+      "acceptance": [
+        "Numeric integers/strings classify correctly.",
+        "Unknown, absent, null and unexpected code types return useful errors without raising.",
+        "Unknown codes do not automatically become transient."
+      ],
+      "repair": "Pattern-match Integer.parse and explicitly handle nonnumeric/partial values.",
+      "confidence": "high (source reasoning)",
+      "evidence_status": "source-confirmed",
+      "runtime_reproduced": false,
+      "conditional_security_exploitability": false,
+      "evidence": [
+        {
+          "path": "lib/elia/llm/openai.ex",
+          "start": 283,
+          "end": 300,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/openai.ex#L283-L300"
+        },
+        {
+          "path": "lib/elia/llm/openai.ex",
+          "start": 389,
+          "end": 408,
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/openai.ex#L389-L408"
+        }
+      ],
+      "related_checks": []
+    }
+  ]
+}

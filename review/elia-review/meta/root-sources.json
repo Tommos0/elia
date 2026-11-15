@@ -1,0 +1,613 @@
+{
+  "reviewer": "parent/integrator",
+  "commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "coverage_note": "Conservative targeted windows; search-only means discovery excerpts, not whole-file reading. Machine inventory is separate.",
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "coverage": "full",
+      "purpose": "Repository instruction, specification, implementation and verification workflow"
+    },
+    {
+      "path": "docs/agents/harness.md",
+      "coverage": "full",
+      "purpose": "Repository instruction, specification, implementation and verification workflow"
+    },
+    {
+      "path": "docs/agents/elixir.md",
+      "coverage": "full",
+      "purpose": "Repository instruction, specification, implementation and verification workflow"
+    },
+    {
+      "path": "docs/agents/testing.md",
+      "coverage": "full",
+      "purpose": "Repository instruction, specification, implementation and verification workflow"
+    },
+    {
+      "path": "README.md",
+      "coverage": "targeted",
+      "purpose": "Setup, architecture, corpus rules and current-vs-historical behavior"
+    },
+    {
+      "path": "specs/README.md",
+      "coverage": "targeted",
+      "purpose": "Setup, architecture, corpus rules and current-vs-historical behavior"
+    },
+    {
+      "path": "mix.exs",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": ".gitignore",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": "assets/package.json",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": "assets/tsconfig.json",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": "bin/test",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": "bin/preview",
+      "coverage": "full",
+      "purpose": "Build, setup, ignored artifacts and static-check planning"
+    },
+    {
+      "path": "config/dev.exs",
+      "coverage": "full",
+      "purpose": "Runtime operating mode, endpoint and test environment"
+    },
+    {
+      "path": "config/runtime.exs",
+      "coverage": "full",
+      "purpose": "Runtime operating mode, endpoint and test environment"
+    },
+    {
+      "path": "config/test.exs",
+      "coverage": "full",
+      "purpose": "Runtime operating mode, endpoint and test environment"
+    },
+    {
+      "path": "config/config.exs",
+      "coverage": "targeted",
+      "purpose": "Asset output paths, code reload and dependency configuration",
+      "ranges": [
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "bin/serve",
+      "coverage": "targeted",
+      "purpose": "Supervisor/restart loop and shell syntax",
+      "ranges": [
+        [
+          1,
+          38
+        ]
+      ]
+    },
+    {
+      "path": "bin/install-service",
+      "coverage": "targeted",
+      "purpose": "Launch environment and shell syntax",
+      "ranges": [
+        [
+          1,
+          30
+        ]
+      ]
+    },
+    {
+      "path": "docs/spec-review.md",
+      "coverage": "targeted",
+      "purpose": "Existing corpus review and deliberate stopped-child semantics",
+      "ranges": [
+        [
+          1,
+          120
+        ]
+      ]
+    },
+    {
+      "path": "docs/performance-review.md",
+      "coverage": "targeted",
+      "purpose": "Historical measurement provenance and unresolved timing measurement",
+      "ranges": [
+        [
+          1,
+          110
+        ]
+      ]
+    },
+    {
+      "path": "specs/plans/subagents.md",
+      "coverage": "targeted",
+      "purpose": "Historical workflow and conflicting auto-approval claim",
+      "ranges": [
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "specs/subtasks.md",
+      "coverage": "targeted",
+      "purpose": "Current inheritance, workspace and concurrency requirements",
+      "ranges": [
+        [
+          40,
+          115
+        ],
+        [
+          202,
+          248
+        ]
+      ]
+    },
+    {
+      "path": "specs/deployment.md",
+      "coverage": "targeted",
+      "purpose": "Deploy failure, rollback, tests and loaded revision contract",
+      "ranges": [
+        [
+          190,
+          245
+        ],
+        [
+          280,
+          355
+        ]
+      ]
+    },
+    {
+      "path": "specs/hot-reload.md",
+      "coverage": "targeted",
+      "purpose": "Deployment and workspace-cache ownership orientation"
+    },
+    {
+      "path": "specs/worktree-build-cache.md",
+      "coverage": "targeted",
+      "purpose": "Deployment and workspace-cache ownership orientation"
+    },
+    {
+      "path": "specs/auto-restart.md",
+      "coverage": "targeted",
+      "purpose": "External supervisor requirement",
+      "ranges": [
+        [
+          50,
+          70
+        ]
+      ]
+    },
+    {
+      "path": "specs/llm-providers.md",
+      "coverage": "targeted",
+      "purpose": "Provider error and streaming contract",
+      "ranges": [
+        [
+          130,
+          190
+        ],
+        [
+          255,
+          300
+        ]
+      ]
+    },
+    {
+      "path": "specs/push-notifications.md",
+      "coverage": "search-only",
+      "purpose": "Locate stale web_push implementation description"
+    },
+    {
+      "path": "lib/elia/application.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/deploy/runner.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/sse.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/openai.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/anthropic.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/retry.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/context.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/tokens.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/catalog.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/llm/llama_cpp.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/settings.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia_web/terminal_socket.ex",
+      "coverage": "full",
+      "purpose": "Parent review of application, deployment, provider or state ownership"
+    },
+    {
+      "path": "lib/elia/deploy.ex",
+      "coverage": "targeted",
+      "purpose": "Candidate ordering, assets, rollback, restart and workspace semantics",
+      "ranges": [
+        [
+          1,
+          330
+        ],
+        [
+          578,
+          1396
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/deps.ex",
+      "coverage": "search-only",
+      "purpose": "Locate dependency cache/build layer ownership"
+    },
+    {
+      "path": "lib/elia/harness.ex",
+      "coverage": "search-only",
+      "purpose": "Locate test/deploy API and timeout seams"
+    },
+    {
+      "path": "lib/elia/llm/compaction.ex",
+      "coverage": "targeted",
+      "purpose": "Request view, synchronous fold and provider summary path",
+      "ranges": [
+        [
+          1,
+          290
+        ],
+        [
+          455,
+          526
+        ],
+        [
+          850,
+          931
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/llm/open_router.ex",
+      "coverage": "targeted",
+      "purpose": "Request conversion and shared stream adapter",
+      "ranges": [
+        [
+          1,
+          185
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/llm/llama_server.ex",
+      "coverage": "targeted",
+      "purpose": "Local server/provider lifecycle orientation",
+      "ranges": [
+        [
+          1,
+          220
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/agent.ex",
+      "coverage": "targeted",
+      "purpose": "Public synchronous calls and timeout behavior",
+      "ranges": [
+        [
+          1,
+          195
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/agent/session.ex",
+      "coverage": "targeted",
+      "purpose": "Prompt/setting state, auto-approval, synchronous compaction and loop spawn",
+      "ranges": [
+        [
+          243,
+          268
+        ],
+        [
+          291,
+          299
+        ],
+        [
+          710,
+          730
+        ],
+        [
+          953,
+          980
+        ],
+        [
+          1196,
+          1259
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/agent/loop.ex",
+      "coverage": "targeted",
+      "purpose": "Host prompt metadata path before tool dispatch",
+      "ranges": [
+        [
+          218,
+          237
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/skills.ex",
+      "coverage": "targeted",
+      "purpose": "Host instruction-file read and prompt construction",
+      "ranges": [
+        [
+          104,
+          161
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/tasks.ex",
+      "coverage": "targeted",
+      "purpose": "External root, child workspace options and auto-approval inheritance",
+      "ranges": [
+        [
+          181,
+          199
+        ],
+        [
+          234,
+          253
+        ],
+        [
+          277,
+          344
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/projects.ex",
+      "coverage": "targeted",
+      "purpose": "Project identity and default registry semantics",
+      "ranges": [
+        [
+          1,
+          58
+        ],
+        [
+          130,
+          167
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/files_live.ex",
+      "coverage": "targeted",
+      "purpose": "Root fallback and template entries",
+      "ranges": [
+        [
+          15,
+          52
+        ],
+        [
+          250,
+          272
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/chat_live.ex",
+      "coverage": "targeted",
+      "purpose": "Synchronous send/compact UI callers",
+      "ranges": [
+        [
+          1557,
+          1610
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/chat_settings_live.ex",
+      "coverage": "targeted",
+      "purpose": "Compaction UI API callers",
+      "ranges": [
+        [
+          65,
+          120
+        ],
+        [
+          1023,
+          1040
+        ]
+      ]
+    },
+    {
+      "path": "assets/js/app.js",
+      "coverage": "targeted",
+      "purpose": "Main terminal import and startup",
+      "ranges": [
+        [
+          1,
+          75
+        ]
+      ]
+    },
+    {
+      "path": "assets/js/terminal.js",
+      "coverage": "targeted",
+      "purpose": "xterm imports and transport options",
+      "ranges": [
+        [
+          1,
+          110
+        ]
+      ]
+    },
+    {
+      "path": "assets/css/app.css",
+      "coverage": "targeted",
+      "purpose": "Direct local node_modules stylesheet import",
+      "ranges": [
+        [
+          1,
+          12
+        ]
+      ]
+    },
+    {
+      "path": "test/elia/deployment_test.exs",
+      "coverage": "targeted",
+      "purpose": "Build seams, committed-asset fixture, failure and rollback assertions",
+      "ranges": [
+        [
+          195,
+          357
+        ],
+        [
+          1087,
+          1155
+        ],
+        [
+          1629,
+          1685
+        ],
+        [
+          1873,
+          1935
+        ]
+      ]
+    },
+    {
+      "path": "test/elia/llm/open_ai_test.exs",
+      "coverage": "full",
+      "purpose": "Closest shared parser test coverage"
+    },
+    {
+      "path": "test/elia/llm/open_router_test.exs",
+      "coverage": "search-only",
+      "purpose": "Targeted error/summary test discovery with surrounding lines"
+    },
+    {
+      "path": "test/elia/llm/llama_cpp_test.exs",
+      "coverage": "search-only",
+      "purpose": "Targeted error/summary test discovery with surrounding lines"
+    },
+    {
+      "path": "test/elia/llm/compaction_test.exs",
+      "coverage": "search-only",
+      "purpose": "Targeted error/summary test discovery with surrounding lines"
+    },
+    {
+      "path": "test/elia_web/live/compaction_test.exs",
+      "coverage": "search-only",
+      "purpose": "Targeted error/summary test discovery with surrounding lines"
+    },
+    {
+      "path": "test/test_helper.exs",
+      "coverage": "full",
+      "purpose": "Verify real_browser/preview exclusions and isolated test startup"
+    }
+  ],
+  "external_sources": [
+    {
+      "url": "https://github.com/phoenixframework/phoenix/blob/v1.8.16/lib/phoenix/socket/transport.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          345,
+          356
+        ],
+        [
+          503,
+          526
+        ]
+      ],
+      "purpose": "Origin bypass and nil session extraction; pinned dependency source",
+      "version_basis": "Pinned Phoenix lockfile version"
+    },
+    {
+      "url": "https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/task/supervised.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          21,
+          43
+        ]
+      ],
+      "purpose": "Owner monitor removed before function invocation",
+      "version_basis": "Representative version satisfying declared Elixir requirement, not an installed runtime"
+    },
+    {
+      "url": "https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/gen_server.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1103,
+          1117
+        ]
+      ],
+      "purpose": "Default GenServer.call timeout",
+      "version_basis": "Representative version satisfying declared Elixir requirement, not an installed runtime"
+    }
+  ]
+}

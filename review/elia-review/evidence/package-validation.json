@@ -1,0 +1,20 @@
+{
+  "reviewed_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "markdown_files": 19,
+  "json_files_checked": 11,
+  "markdown_links_checked": 498,
+  "pinned_repository_source_links_checked": 238,
+  "finding_count": 17,
+  "priorities": {
+    "P1": 6,
+    "P2": 11
+  },
+  "routes": 8,
+  "unique_inspected_repository_paths": 147,
+  "orchestrator_brief_words": 646,
+  "html_files": [],
+  "python_syntax": "valid",
+  "source_checkout_clean": true,
+  "errors": [],
+  "scope": "Package links, source path/line bounds, IDs, routing, JSON/Python syntax and unchanged source; not Elia application tests."
+}

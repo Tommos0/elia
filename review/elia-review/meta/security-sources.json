@@ -1,0 +1,592 @@
+{
+  "reviewer": "security_review",
+  "commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "method": "Read-only source inspection through git show and targeted rg searches. No application or real-jail tests run in this review track.",
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "coverage": "full",
+      "purpose": "Review constraints and spec-first development workflow"
+    },
+    {
+      "path": "docs/agents/harness.md",
+      "coverage": "full",
+      "purpose": "Approval, worktree, deployment and folder-skill conventions"
+    },
+    {
+      "path": "specs/workspace-policy.md",
+      "coverage": "full",
+      "purpose": "Lexical classes versus resolved locations; protected paths"
+    },
+    {
+      "path": "specs/command-isolation.md",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          94
+        ],
+        [
+          127,
+          155
+        ],
+        [
+          157,
+          281
+        ],
+        [
+          283,
+          427
+        ]
+      ],
+      "purpose": "Threat model, profiles, mount lock, Git protection, supported fallbacks and explicit exclusions"
+    },
+    {
+      "path": "specs/file-tools.md",
+      "coverage": "full",
+      "purpose": "Read/write/delete policies, symlink reachability and file locks"
+    },
+    {
+      "path": "specs/folder-skills.md",
+      "coverage": "full",
+      "purpose": "Tool cwd, input environment, approval and workspace expectations"
+    },
+    {
+      "path": "specs/projects.md",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          52,
+          88
+        ]
+      ],
+      "purpose": "Project workspace, instructions and global/project skills"
+    },
+    {
+      "path": "lib/elia/workspace.ex",
+      "coverage": "full",
+      "purpose": "Lexical classification, real_location, bounded symlink traversal"
+    },
+    {
+      "path": "lib/elia/shell.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          250
+        ],
+        [
+          294,
+          767
+        ]
+      ],
+      "purpose": "Jail profiles/reachability, lock lifecycle, command collection, mount permissions, process cleanup"
+    },
+    {
+      "path": "lib/elia/shell/lock.ex",
+      "coverage": "full",
+      "purpose": "Lock ownership, timeout, cancellation and dead-holder release"
+    },
+    {
+      "path": "lib/elia/priority.ex",
+      "coverage": "full",
+      "purpose": "Priority wrapper and execution semantics"
+    },
+    {
+      "path": "lib/elia/skills/files.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          355
+        ],
+        [
+          373,
+          459
+        ],
+        [
+          494,
+          515
+        ],
+        [
+          591,
+          681
+        ]
+      ],
+      "purpose": "Schemas, policy, file operations, directory walking, delete semantics and lock keys"
+    },
+    {
+      "path": "lib/elia/skills/folder.ex",
+      "coverage": "full",
+      "purpose": "Metadata parsing and folder-script launch boundary"
+    },
+    {
+      "path": "lib/elia/skills.ex",
+      "coverage": "full",
+      "purpose": "Host-side project-instruction ingress, prompt composition and skill loading"
+    },
+    {
+      "path": "lib/elia/skills/shell.ex",
+      "coverage": "full",
+      "purpose": "Command schema, approval, timeout and launcher options"
+    },
+    {
+      "path": "lib/elia/skills/terminal.ex",
+      "coverage": "full",
+      "purpose": "Terminal tool approval, key sending, reading and stopping"
+    },
+    {
+      "path": "lib/elia/terminal.ex",
+      "coverage": "full",
+      "purpose": "Session ownership and terminal APIs"
+    },
+    {
+      "path": "lib/elia/terminal/session.ex",
+      "coverage": "full",
+      "purpose": "Jail launch, lock release, tmux parser, input encoding and stop reply paths"
+    },
+    {
+      "path": "lib/elia/terminal/keys.ex",
+      "coverage": "full",
+      "purpose": "Key normalization and command-parser-safe validation"
+    },
+    {
+      "path": "lib/elia/agent/loop.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          218,
+          237
+        ],
+        [
+          460,
+          545
+        ]
+      ],
+      "purpose": "Prove instruction text reaches the provider request; inspect approval flow"
+    },
+    {
+      "path": "lib/elia/tool.ex",
+      "coverage": "full",
+      "purpose": "Verify actual tool callback does not introduce another file policy"
+    },
+    {
+      "path": "lib/elia/agent/session.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          692,
+          703
+        ],
+        [
+          1025,
+          1033
+        ]
+      ],
+      "purpose": "Other host-side instruction/skill reads and approval-name context"
+    },
+    {
+      "path": "test/elia/self_modification_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          24,
+          301
+        ]
+      ],
+      "purpose": "Existing symlink, protected-path and shared-tree policy coverage; refutation search"
+    },
+    {
+      "path": "test/elia/command_isolation_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          126,
+          164
+        ],
+        [
+          196,
+          268
+        ],
+        [
+          270,
+          345
+        ],
+        [
+          387,
+          411
+        ]
+      ],
+      "purpose": "Overlay write isolation, missing-bwrap folder test, mount-lock assertions and Git readonly coverage"
+    },
+    {
+      "path": "test/elia/shell_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          270,
+          277
+        ],
+        [
+          478,
+          556
+        ]
+      ],
+      "purpose": "Deadlines and mount-readiness argv tests"
+    },
+    {
+      "path": "test/elia/skills_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          98
+        ],
+        [
+          130,
+          137
+        ]
+      ],
+      "purpose": "Regular instruction loading, refresh, cap and no symlink boundary test in that group"
+    },
+    {
+      "path": "test/elia/agent_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1680,
+          1688
+        ]
+      ],
+      "purpose": "Project prompt/skill test discovery"
+    },
+    {
+      "path": "mix.exs",
+      "coverage": "full",
+      "purpose": "Independent challenge of fresh-clone setup finding"
+    },
+    {
+      "path": ".gitignore",
+      "coverage": "full",
+      "purpose": "Independent check that generated bundles and node_modules are untracked"
+    },
+    {
+      "path": "README.md",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          13,
+          37
+        ],
+        [
+          138,
+          148
+        ]
+      ],
+      "purpose": "Documented prerequisites and setup/browser build routes"
+    },
+    {
+      "path": "assets/package.json",
+      "coverage": "full",
+      "purpose": "xterm package requirements"
+    },
+    {
+      "path": "assets/js/app.js",
+      "coverage": "full",
+      "purpose": "Unconditional terminal module import"
+    },
+    {
+      "path": "assets/js/terminal.js",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          35
+        ]
+      ],
+      "purpose": "Unconditional npm package imports"
+    },
+    {
+      "path": "assets/css/app.css",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          13
+        ],
+        [
+          342,
+          347
+        ]
+      ],
+      "purpose": "Direct relative node_modules xterm stylesheet import"
+    },
+    {
+      "path": "bin/preview",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          48
+        ]
+      ],
+      "purpose": "Existing separate npm installation and build path"
+    },
+    {
+      "path": "lib/elia/deploy.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          49,
+          64
+        ],
+        [
+          980,
+          1062
+        ],
+        [
+          1080,
+          1155
+        ],
+        [
+          1168,
+          1346
+        ]
+      ],
+      "purpose": "Independent challenge of ignored-assets rollback finding and npm installation path"
+    },
+    {
+      "path": "lib/elia_web/endpoint.ex",
+      "coverage": "full",
+      "purpose": "Static asset serving unaffected by deploy failure state"
+    },
+    {
+      "path": "lib/elia_web.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          16,
+          24
+        ]
+      ],
+      "purpose": "assets is served by Plug.Static"
+    },
+    {
+      "path": "lib/elia_web/components/layouts/root.html.heex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          13,
+          19
+        ]
+      ],
+      "purpose": "Stable unversioned bundle paths requested by page"
+    },
+    {
+      "path": "config/config.exs",
+      "coverage": "full",
+      "purpose": "Asset output paths and Node resolution paths"
+    },
+    {
+      "path": "config/dev.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1,
+          30
+        ]
+      ],
+      "purpose": "Watchers exist in dev, not a transactional rollback"
+    },
+    {
+      "path": "config/prod.exs",
+      "coverage": "full",
+      "purpose": "Production config has no asset watchers"
+    },
+    {
+      "path": "test/elia/deployment_test.exs",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1610,
+          1700
+        ]
+      ],
+      "purpose": "Failure tests check git ref but not restoration of generated bundle bytes"
+    },
+    {
+      "path": "specs/plans/subagents.md",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          1,
+          63
+        ],
+        [
+          154,
+          165
+        ]
+      ]
+    },
+    {
+      "path": "specs/subtasks.md",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          5,
+          8
+        ],
+        [
+          67,
+          75
+        ],
+        [
+          82,
+          86
+        ],
+        [
+          121,
+          125
+        ],
+        [
+          136,
+          158
+        ],
+        [
+          244,
+          264
+        ],
+        [
+          290,
+          298
+        ],
+        [
+          333,
+          338
+        ]
+      ]
+    },
+    {
+      "path": "specs/README.md",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          88,
+          95
+        ],
+        [
+          159,
+          168
+        ]
+      ]
+    },
+    {
+      "path": "specs/push-notifications.md",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          149,
+          155
+        ]
+      ]
+    },
+    {
+      "path": "test/elia/spec_hygiene_test.exs",
+      "coverage": "full",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes"
+    },
+    {
+      "path": "test/elia/spec_tests_test.exs",
+      "coverage": "full",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes"
+    },
+    {
+      "path": "test/support/fake_llm.ex",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          1,
+          115
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/push.ex",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          112,
+          159
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/push/subscriptions.ex",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          65,
+          95
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia/push/crypto.ex",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          100,
+          134
+        ]
+      ]
+    },
+    {
+      "path": "lib/elia_web/recovery.ex",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          420,
+          445
+        ]
+      ]
+    },
+    {
+      "path": "specs/command-isolation.md",
+      "coverage": "targeted",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes",
+      "ranges": [
+        [
+          119,
+          145
+        ]
+      ]
+    },
+    {
+      "path": "test/test_helper.exs",
+      "coverage": "full",
+      "purpose": "Crosscutting testing/documentation and open-question notes",
+      "review_phase": "final-package crosscutting notes"
+    }
+  ]
+}

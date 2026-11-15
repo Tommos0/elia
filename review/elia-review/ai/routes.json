@@ -1,0 +1,946 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/Tommos0/elia",
+  "reviewed_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "archive_paths_relative_to": "elia-review/",
+  "repository_paths_relative_to": "cloned Elia repository root",
+  "parent_reading": [
+    "ai/ORCHESTRATOR.md",
+    "ai/ROUTING-INDEX.md"
+  ],
+  "all_children_read": [
+    "current repository AGENTS.md",
+    "owning current specification",
+    "ai/RETURN-CONTRACT.md"
+  ],
+  "constraints": [
+    "No implementation or deployment authority is granted by this review.",
+    "Follow current repository spec approval before behavior changes.",
+    "One shared test queue; do not overlap test invocations across worktrees.",
+    "Use generated fixtures and fake providers, never real user data.",
+    "Review IDs differ from stable repository requirement IDs.",
+    "Revalidate the claim on the actual implementation SHA."
+  ],
+  "routes": [
+    {
+      "id": "A",
+      "title": "Host file and prompt boundaries",
+      "owner": "file/workspace policy",
+      "finding_ids": [
+        "SEC-01",
+        "SEC-02"
+      ],
+      "review_reading": [
+        "review/SECURITY.md"
+      ],
+      "review_sections": [
+        "SEC-01",
+        "SEC-02"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/skills.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/skills.md"
+        },
+        {
+          "path": "specs/workspace-policy.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/workspace-policy.md"
+        },
+        {
+          "path": "specs/file-tools.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-tools.md"
+        },
+        {
+          "path": "specs/command-isolation.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/command-isolation.md"
+        },
+        {
+          "path": "specs/projects.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "FILE-11",
+        "FILE-21",
+        "FILE-22",
+        "FILE-5",
+        "ISOL-5",
+        "PROJ-15",
+        "SKILL-10",
+        "SKILL-11",
+        "WS-1",
+        "WS-5"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/skills.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills.ex"
+        },
+        {
+          "path": "lib/elia/skills/files.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/files.ex"
+        },
+        {
+          "path": "lib/elia/workspace.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/workspace.ex"
+        },
+        {
+          "path": "lib/elia/shell.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex"
+        },
+        {
+          "path": "lib/elia/agent/loop.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/self_modification_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/self_modification_test.exs"
+        },
+        {
+          "path": "test/elia/skills/files_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills/files_test.exs"
+        },
+        {
+          "path": "test/elia/skills_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/workspace.ex",
+        "lib/elia/shell.ex"
+      ],
+      "integration_notes": [
+        "Agree canonical/read/write target policy with B before simultaneous shell/workspace edits."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "B",
+      "title": "Command mount lifetime and folder-tool workspace",
+      "owner": "shell/mount lifecycle",
+      "finding_ids": [
+        "SEC-03",
+        "SEC-04"
+      ],
+      "review_reading": [
+        "review/SECURITY.md"
+      ],
+      "review_sections": [
+        "SEC-03",
+        "SEC-04"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/command-isolation.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/command-isolation.md"
+        },
+        {
+          "path": "specs/folder-skills.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/folder-skills.md"
+        },
+        {
+          "path": "specs/shell-tool.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/shell-tool.md"
+        },
+        {
+          "path": "specs/agent-loop.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-loop.md"
+        },
+        {
+          "path": "specs/projects.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "FOLDER-6",
+        "FOLDER-7",
+        "ISOL-28",
+        "LOOP-10",
+        "PROJ-12"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/shell.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex"
+        },
+        {
+          "path": "lib/elia/shell/lock.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell/lock.ex"
+        },
+        {
+          "path": "lib/elia/skills/folder.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/folder.ex"
+        },
+        {
+          "path": "lib/elia/terminal/session.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/session.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/command_isolation_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/command_isolation_test.exs"
+        },
+        {
+          "path": "test/elia/shell_lock_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/shell_lock_test.exs"
+        },
+        {
+          "path": "test/elia/shell_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/shell_test.exs"
+        },
+        {
+          "path": "test/elia/skills_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/shell.ex"
+      ],
+      "integration_notes": [
+        "Coordinate policy API with A.",
+        "Integrate lock/readiness and folder-root changes sequentially in shell.ex."
+      ],
+      "dependencies_or_coordination": [
+        "A: shared policy contract"
+      ],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "C",
+      "title": "External-project child identity",
+      "owner": "tasks/workspace resolution",
+      "finding_ids": [
+        "CORE-01"
+      ],
+      "review_reading": [
+        "review/CORE.md"
+      ],
+      "review_sections": [
+        "CORE-01"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/projects.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md"
+        },
+        {
+          "path": "specs/subtasks.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/subtasks.md"
+        },
+        {
+          "path": "specs/agent-sessions.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-sessions.md"
+        },
+        {
+          "path": "specs/deployment.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/deployment.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "PROJ-12",
+        "SESS-23",
+        "SUBTASK-23"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/tasks.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex"
+        },
+        {
+          "path": "lib/elia/projects.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/projects.ex"
+        },
+        {
+          "path": "lib/elia/deploy.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex"
+        },
+        {
+          "path": "lib/elia/skills/tasks.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/tasks.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/tasks_concurrency_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_concurrency_test.exs"
+        },
+        {
+          "path": "test/elia/tasks_git_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_git_test.exs"
+        },
+        {
+          "path": "test/elia/tasks_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/agent/session.ex",
+        "lib/elia/deploy.ex"
+      ],
+      "integration_notes": [
+        "Coordinate saved task baseline/resume semantics with D.",
+        "Do not expand scope into external-project worktree support."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "D",
+      "title": "Session ownership, persistence and compaction",
+      "owner": "single session integration owner",
+      "finding_ids": [
+        "CORE-02",
+        "CORE-03",
+        "CORE-04",
+        "LLM-01"
+      ],
+      "review_reading": [
+        "review/CORE.md",
+        "review/LLM-AND-COMPACTION.md"
+      ],
+      "review_sections": [
+        "CORE-02",
+        "CORE-03",
+        "CORE-04",
+        "LLM-01"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/agent-sessions.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-sessions.md"
+        },
+        {
+          "path": "specs/agent-loop.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-loop.md"
+        },
+        {
+          "path": "specs/persistence.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/persistence.md"
+        },
+        {
+          "path": "specs/auto-resume.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-resume.md"
+        },
+        {
+          "path": "specs/interrupted-turns.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/interrupted-turns.md"
+        },
+        {
+          "path": "specs/compaction.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/compaction.md"
+        },
+        {
+          "path": "specs/stopped-turns.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/stopped-turns.md"
+        },
+        {
+          "path": "specs/subtasks.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/subtasks.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "COMPACT-10",
+        "COMPACT-17",
+        "COMPACT-20",
+        "COMPACT-5",
+        "COMPACT-6",
+        "SESS-13",
+        "SESS-44",
+        "SESS-8",
+        "STORE-3",
+        "SUBTASK-8"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/agent.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent.ex"
+        },
+        {
+          "path": "lib/elia/agent/session.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex"
+        },
+        {
+          "path": "lib/elia/agent/loop.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex"
+        },
+        {
+          "path": "lib/elia/agent/resumer.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/resumer.ex"
+        },
+        {
+          "path": "lib/elia/store.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex"
+        },
+        {
+          "path": "lib/elia/store/cache.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store/cache.ex"
+        },
+        {
+          "path": "lib/elia/llm/compaction.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/compaction.ex"
+        },
+        {
+          "path": "lib/elia/llm/context.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/context.ex"
+        },
+        {
+          "path": "lib/elia_web/live/chat_live.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_live.ex"
+        },
+        {
+          "path": "lib/elia_web/live/chat_settings_live.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_settings_live.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/agent_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/agent_test.exs"
+        },
+        {
+          "path": "test/elia/auto_resume_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/auto_resume_test.exs"
+        },
+        {
+          "path": "test/elia/llm/compaction_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/compaction_test.exs"
+        },
+        {
+          "path": "test/elia/store_cache_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_cache_test.exs"
+        },
+        {
+          "path": "test/elia/store_shape_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_shape_test.exs"
+        },
+        {
+          "path": "test/elia/store_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_test.exs"
+        },
+        {
+          "path": "test/elia_web/live/compaction_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/compaction_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/agent/session.ex"
+      ],
+      "integration_notes": [
+        "Integrate CORE-02 before LLM-01 asynchronous preparation.",
+        "One owner integrates CORE-02/04 and LLM-01 in session.ex.",
+        "CORE-03 storage validation can be researched independently."
+      ],
+      "dependencies_or_coordination": [
+        "C: saved task baseline compatibility when relevant"
+      ],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "E",
+      "title": "Terminal transport and actual confinement state",
+      "owner": "terminal web boundary",
+      "finding_ids": [
+        "W01",
+        "W02"
+      ],
+      "review_reading": [
+        "review/WEB.md"
+      ],
+      "review_sections": [
+        "W01",
+        "W02"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/terminal.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/terminal.md"
+        },
+        {
+          "path": "specs/chat-settings.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-settings.md"
+        },
+        {
+          "path": "specs/command-isolation.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/command-isolation.md"
+        },
+        {
+          "path": "specs/client-sessions.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/client-sessions.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "CSET-4",
+        "ISOL-16",
+        "TERM-12",
+        "TERM-13",
+        "TERM-20",
+        "TERM-7",
+        "TERM-9"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/terminal.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal.ex"
+        },
+        {
+          "path": "lib/elia/terminal/session.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/session.ex"
+        },
+        {
+          "path": "lib/elia/agent.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent.ex"
+        },
+        {
+          "path": "lib/elia_web/terminal_socket.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_socket.ex"
+        },
+        {
+          "path": "lib/elia_web/terminal_channel.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_channel.ex"
+        },
+        {
+          "path": "lib/elia_web/endpoint.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/endpoint.ex"
+        },
+        {
+          "path": "lib/elia_web/live/terminal_live.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/terminal_live.ex"
+        },
+        {
+          "path": "config/dev.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/dev.exs"
+        },
+        {
+          "path": "config/runtime.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/runtime.exs"
+        },
+        {
+          "path": "assets/js/terminal.js",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/terminal.js"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia_web/browser/terminal_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser/terminal_test.exs"
+        },
+        {
+          "path": "test/elia_web/live/terminal_live_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/terminal_live_test.exs"
+        },
+        {
+          "path": "test/elia_web/terminal_channel_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/terminal_channel_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/terminal.ex",
+        "lib/elia/terminal/session.ex"
+      ],
+      "integration_notes": [
+        "Real transport handshake required for W01; direct channel helper is insufficient.",
+        "Coordinate supported proxy origin/session contract before implementation."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "F",
+      "title": "Push transactions and explorer error handling",
+      "owner": "separate push and explorer owners permitted",
+      "finding_ids": [
+        "W03",
+        "W04"
+      ],
+      "review_reading": [
+        "review/WEB.md"
+      ],
+      "review_sections": [
+        "W03",
+        "W04"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/push-notifications.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/push-notifications.md"
+        },
+        {
+          "path": "specs/settings.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/settings.md"
+        },
+        {
+          "path": "specs/file-explorer.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-explorer.md"
+        },
+        {
+          "path": "specs/projects.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "EXPL-15",
+        "EXPL-9",
+        "PUSH-1",
+        "PUSH-16",
+        "PUSH-3",
+        "PUSH-4",
+        "PUSH-7"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/push.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push.ex"
+        },
+        {
+          "path": "lib/elia/push/subscriptions.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/subscriptions.ex"
+        },
+        {
+          "path": "lib/elia/push/crypto.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/crypto.ex"
+        },
+        {
+          "path": "lib/elia/settings.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/settings.ex"
+        },
+        {
+          "path": "lib/elia/explorer.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/explorer.ex"
+        },
+        {
+          "path": "lib/elia/projects.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/projects.ex"
+        },
+        {
+          "path": "lib/elia_web/live/files_live.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/files_live.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/explorer_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/explorer_test.exs"
+        },
+        {
+          "path": "test/elia/push_subscriptions_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_subscriptions_test.exs"
+        },
+        {
+          "path": "test/elia/push_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_test.exs"
+        },
+        {
+          "path": "test/elia/settings_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/settings_test.exs"
+        },
+        {
+          "path": "test/elia_web/live/files_live_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/files_live_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/settings.ex"
+      ],
+      "integration_notes": [
+        "W03 and W04 can be assigned separately.",
+        "Review all Settings callers when adding transaction semantics."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "G",
+      "title": "Clean setup and deployment recovery",
+      "owner": "single deployment integration owner",
+      "finding_ids": [
+        "DEV-01",
+        "DEP-01",
+        "DEP-02"
+      ],
+      "review_reading": [
+        "review/DEPLOYMENT-AND-SETUP.md"
+      ],
+      "review_sections": [
+        "DEV-01",
+        "DEP-01",
+        "DEP-02"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/deployment.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/deployment.md"
+        },
+        {
+          "path": "specs/auto-restart.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-restart.md"
+        },
+        {
+          "path": "specs/recovery.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/recovery.md"
+        },
+        {
+          "path": "specs/hot-reload.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/hot-reload.md"
+        },
+        {
+          "path": "specs/ui-preview.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/ui-preview.md"
+        },
+        {
+          "path": "specs/worktree-build-cache.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/worktree-build-cache.md"
+        },
+        {
+          "path": "specs/terminal.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/terminal.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "DEPLOY-19",
+        "DEPLOY-24",
+        "DEPLOY-26",
+        "DEPLOY-5",
+        "DEPLOY-7",
+        "PREVIEW-14",
+        "RESTART-11",
+        "TERM-12"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/deploy.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex"
+        },
+        {
+          "path": "lib/elia/deploy/runner.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy/runner.ex"
+        },
+        {
+          "path": "lib/elia/harness.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/harness.ex"
+        },
+        {
+          "path": "lib/elia/deps.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deps.ex"
+        },
+        {
+          "path": "lib/elia_web/endpoint.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/endpoint.ex"
+        },
+        {
+          "path": "lib/elia_web/recovery.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/recovery.ex"
+        },
+        {
+          "path": "lib/elia_web/live/settings_live.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/settings_live.ex"
+        },
+        {
+          "path": "lib/elia_web/components/layouts/root.html.heex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/components/layouts/root.html.heex"
+        },
+        {
+          "path": "README.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/README.md"
+        },
+        {
+          "path": "mix.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.exs"
+        },
+        {
+          "path": ".gitignore",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/.gitignore"
+        },
+        {
+          "path": "assets/package.json",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/package.json"
+        },
+        {
+          "path": "assets/package-lock.json",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/package-lock.json"
+        },
+        {
+          "path": "assets/js/app.js",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/app.js"
+        },
+        {
+          "path": "assets/js/terminal.js",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/terminal.js"
+        },
+        {
+          "path": "assets/css/app.css",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/css/app.css"
+        },
+        {
+          "path": "config/config.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/config.exs"
+        },
+        {
+          "path": "config/dev.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/dev.exs"
+        },
+        {
+          "path": "bin/serve",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/serve"
+        },
+        {
+          "path": "bin/install-service",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/install-service"
+        },
+        {
+          "path": "bin/preview",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/preview"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/deployment_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/deployment_test.exs"
+        },
+        {
+          "path": "test/elia/install_service_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/install_service_test.exs"
+        },
+        {
+          "path": "test/elia/serve_script_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/serve_script_test.exs"
+        },
+        {
+          "path": "test/elia_web/browser_assets_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/browser_assets_test.exs"
+        },
+        {
+          "path": "test/elia_web/live/settings_live_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/settings_live_test.exs"
+        },
+        {
+          "path": "test/elia_web/recovery_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/recovery_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [
+        "lib/elia/deploy.ex",
+        "mix.exs"
+      ],
+      "integration_notes": [
+        "Single deploy.ex owner integrates rollback and restart-readiness patches.",
+        "Clean setup verification enables all runtime lanes.",
+        "Keep recovery independent of the main bundle and coordinate asset watchers."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    },
+    {
+      "id": "H",
+      "title": "Streamed provider error parsing",
+      "owner": "provider adapters",
+      "finding_ids": [
+        "LLM-02"
+      ],
+      "review_reading": [
+        "review/LLM-AND-COMPACTION.md"
+      ],
+      "review_sections": [
+        "LLM-02"
+      ],
+      "specification_entry_points": [
+        {
+          "path": "specs/llm-providers.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/llm-providers.md"
+        },
+        {
+          "path": "specs/llamacpp-provider.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/llamacpp-provider.md"
+        },
+        {
+          "path": "specs/turn-retries.md",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/turn-retries.md"
+        }
+      ],
+      "requirement_entry_points": [
+        "LLM-22",
+        "LLM-23",
+        "LLM-36",
+        "LOCAL-10"
+      ],
+      "implementation_entry_points": [
+        {
+          "path": "lib/elia/llm/openai.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/openai.ex"
+        },
+        {
+          "path": "lib/elia/llm/sse.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/sse.ex"
+        },
+        {
+          "path": "lib/elia/llm/retry.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/retry.ex"
+        },
+        {
+          "path": "lib/elia/llm/open_router.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/open_router.ex"
+        },
+        {
+          "path": "lib/elia/llm/llama_cpp.ex",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/llama_cpp.ex"
+        }
+      ],
+      "test_entry_points": [
+        {
+          "path": "test/elia/llm/llama_cpp_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/llama_cpp_test.exs"
+        },
+        {
+          "path": "test/elia/llm/open_ai_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_ai_test.exs"
+        },
+        {
+          "path": "test/elia/llm/open_router_test.exs",
+          "url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_router_test.exs"
+        }
+      ],
+      "acceptance_source": "evidence/findings.json",
+      "shared_files": [],
+      "integration_notes": [
+        "Preserve unknown versus transient classification.",
+        "Use controlled SSE fixtures, not live paid provider calls."
+      ],
+      "dependencies_or_coordination": [],
+      "work_brief": "ai/WORK-PACKAGES.md",
+      "return_contract": "ai/RETURN-CONTRACT.md",
+      "runtime_validation": "pending; not executed during review"
+    }
+  ]
+}

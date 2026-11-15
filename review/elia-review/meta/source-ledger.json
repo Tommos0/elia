@@ -1,0 +1,2886 @@
+{
+  "schema_version": 1,
+  "reviewed_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "interpretation": "Conservative inspection ledger; full/targeted/inherited records are retained separately. Inventory is not manual review. Ranges are read windows and may extend past EOF; evidence links use precise bounds.",
+  "unique_repository_paths": 147,
+  "inspection_records": 213,
+  "sources": [
+    {
+      "path": ".gitignore",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/.gitignore",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": ".gitignore",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        },
+        {
+          "reviewer": "security",
+          "path": ".gitignore",
+          "coverage": "full",
+          "purpose": "Independent check that generated bundles and node_modules are untracked"
+        }
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/AGENTS.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "AGENTS.md",
+          "coverage": "full",
+          "purpose": "Repository instruction, specification, implementation and verification workflow"
+        },
+        {
+          "reviewer": "core",
+          "path": "AGENTS.md",
+          "coverage": "full via inherited parent inspection",
+          "purpose": "Repository workflow and constraints"
+        },
+        {
+          "reviewer": "security",
+          "path": "AGENTS.md",
+          "coverage": "full",
+          "purpose": "Review constraints and spec-first development workflow"
+        },
+        {
+          "reviewer": "web",
+          "path": "AGENTS.md",
+          "coverage": "targeted",
+          "focus": "Inherited repository workflow, spec-first approval, serialized tests"
+        }
+      ]
+    },
+    {
+      "path": "README.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/README.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "README.md",
+          "coverage": "targeted",
+          "purpose": "Setup, architecture, corpus rules and current-vs-historical behavior"
+        },
+        {
+          "reviewer": "core",
+          "path": "README.md",
+          "coverage": "targeted via inherited parent inspection",
+          "purpose": "Project context and architecture"
+        },
+        {
+          "reviewer": "security",
+          "path": "README.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              13,
+              37
+            ],
+            [
+              138,
+              148
+            ]
+          ],
+          "purpose": "Documented prerequisites and setup/browser build routes"
+        },
+        {
+          "reviewer": "web",
+          "path": "README.md",
+          "coverage": "targeted",
+          "focus": "Inherited setup and operating mode"
+        }
+      ]
+    },
+    {
+      "path": "assets/css/app.css",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/css/app.css",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "assets/css/app.css",
+          "coverage": "targeted",
+          "purpose": "Direct local node_modules stylesheet import",
+          "ranges": [
+            [
+              1,
+              12
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "assets/css/app.css",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              13
+            ],
+            [
+              342,
+              347
+            ]
+          ],
+          "purpose": "Direct relative node_modules xterm stylesheet import"
+        }
+      ]
+    },
+    {
+      "path": "assets/js/app.js",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/app.js",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "assets/js/app.js",
+          "coverage": "targeted",
+          "purpose": "Main terminal import and startup",
+          "ranges": [
+            [
+              1,
+              75
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "assets/js/app.js",
+          "coverage": "full",
+          "purpose": "Unconditional terminal module import"
+        },
+        {
+          "reviewer": "web",
+          "path": "assets/js/app.js",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "assets/js/auto_reconnect.js",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/auto_reconnect.js",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "assets/js/auto_reconnect.js",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "assets/js/terminal.js",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/js/terminal.js",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "assets/js/terminal.js",
+          "coverage": "targeted",
+          "purpose": "xterm imports and transport options",
+          "ranges": [
+            [
+              1,
+              110
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "assets/js/terminal.js",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              35
+            ]
+          ],
+          "purpose": "Unconditional npm package imports"
+        },
+        {
+          "reviewer": "web",
+          "path": "assets/js/terminal.js",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "assets/package.json",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/package.json",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "assets/package.json",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        },
+        {
+          "reviewer": "security",
+          "path": "assets/package.json",
+          "coverage": "full",
+          "purpose": "xterm package requirements"
+        }
+      ]
+    },
+    {
+      "path": "assets/tsconfig.json",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/assets/tsconfig.json",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "assets/tsconfig.json",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        }
+      ]
+    },
+    {
+      "path": "bin/install-service",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/install-service",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "bin/install-service",
+          "coverage": "targeted",
+          "purpose": "Launch environment and shell syntax",
+          "ranges": [
+            [
+              1,
+              30
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "bin/preview",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/preview",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "bin/preview",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        },
+        {
+          "reviewer": "security",
+          "path": "bin/preview",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              48
+            ]
+          ],
+          "purpose": "Existing separate npm installation and build path"
+        }
+      ]
+    },
+    {
+      "path": "bin/serve",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/serve",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "bin/serve",
+          "coverage": "targeted",
+          "purpose": "Supervisor/restart loop and shell syntax",
+          "ranges": [
+            [
+              1,
+              38
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "bin/test",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/bin/test",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "bin/test",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        }
+      ]
+    },
+    {
+      "path": "config/config.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/config.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "config/config.exs",
+          "coverage": "targeted",
+          "purpose": "Asset output paths, code reload and dependency configuration",
+          "ranges": [
+            [
+              1,
+              100
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "config/config.exs",
+          "coverage": "full",
+          "purpose": "Asset output paths and Node resolution paths"
+        }
+      ]
+    },
+    {
+      "path": "config/dev.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/dev.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "config/dev.exs",
+          "coverage": "full",
+          "purpose": "Runtime operating mode, endpoint and test environment"
+        },
+        {
+          "reviewer": "security",
+          "path": "config/dev.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              30
+            ]
+          ],
+          "purpose": "Watchers exist in dev, not a transactional rollback"
+        },
+        {
+          "reviewer": "web",
+          "path": "config/dev.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "config/prod.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/prod.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "config/prod.exs",
+          "coverage": "full",
+          "purpose": "Production config has no asset watchers"
+        }
+      ]
+    },
+    {
+      "path": "config/runtime.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/runtime.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "config/runtime.exs",
+          "coverage": "full",
+          "purpose": "Runtime operating mode, endpoint and test environment"
+        },
+        {
+          "reviewer": "web",
+          "path": "config/runtime.exs",
+          "coverage": "targeted",
+          "focus": "Inherited endpoint binding, provider settings, operating modes"
+        }
+      ]
+    },
+    {
+      "path": "config/test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/config/test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "config/test.exs",
+          "coverage": "full",
+          "purpose": "Runtime operating mode, endpoint and test environment"
+        },
+        {
+          "reviewer": "web",
+          "path": "config/test.exs",
+          "coverage": "targeted",
+          "focus": "Inherited browser server and jail test defaults"
+        }
+      ]
+    },
+    {
+      "path": "docs/agents/elixir.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/elixir.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "docs/agents/elixir.md",
+          "coverage": "full",
+          "purpose": "Repository instruction, specification, implementation and verification workflow"
+        }
+      ]
+    },
+    {
+      "path": "docs/agents/frontend.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/frontend.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "docs/agents/frontend.md",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "docs/agents/harness.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/harness.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "docs/agents/harness.md",
+          "coverage": "full",
+          "purpose": "Repository instruction, specification, implementation and verification workflow"
+        },
+        {
+          "reviewer": "core",
+          "path": "docs/agents/harness.md",
+          "coverage": "full",
+          "purpose": "Worktree, task and deployment invariants"
+        },
+        {
+          "reviewer": "security",
+          "path": "docs/agents/harness.md",
+          "coverage": "full",
+          "purpose": "Approval, worktree, deployment and folder-skill conventions"
+        }
+      ]
+    },
+    {
+      "path": "docs/agents/phoenix-liveview.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/phoenix-liveview.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "docs/agents/phoenix-liveview.md",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "docs/agents/testing.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/agents/testing.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "docs/agents/testing.md",
+          "coverage": "full",
+          "purpose": "Repository instruction, specification, implementation and verification workflow"
+        },
+        {
+          "reviewer": "core",
+          "path": "docs/agents/testing.md",
+          "coverage": "full via inherited parent inspection",
+          "purpose": "Test coordination and fixtures"
+        },
+        {
+          "reviewer": "web",
+          "path": "docs/agents/testing.md",
+          "coverage": "targeted",
+          "focus": "Inherited no concurrent test runs and browser layers"
+        }
+      ]
+    },
+    {
+      "path": "docs/performance-review.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/performance-review.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "docs/performance-review.md",
+          "coverage": "targeted",
+          "purpose": "Historical measurement provenance and unresolved timing measurement",
+          "ranges": [
+            [
+              1,
+              110
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/spec-review.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/docs/spec-review.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "docs/spec-review.md",
+          "coverage": "targeted",
+          "purpose": "Existing corpus review and deliberate stopped-child semantics",
+          "ranges": [
+            [
+              1,
+              120
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/agent.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/agent.ex",
+          "coverage": "targeted",
+          "purpose": "Public synchronous calls and timeout behavior",
+          "ranges": [
+            [
+              1,
+              195
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/agent.ex",
+          "coverage": "full",
+          "purpose": "Public API, lifecycle and timeout defaults"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/agent.ex",
+          "coverage": "targeted",
+          "focus": "Random chat IDs, ensure_started, deletion references"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/agent/loop.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/loop.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/agent/loop.ex",
+          "coverage": "targeted",
+          "purpose": "Host prompt metadata path before tool dispatch",
+          "ranges": [
+            [
+              218,
+              237
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/agent/loop.ex",
+          "coverage": "full",
+          "purpose": "Model and tool execution, guards, approval, limits, retry and compaction boundary"
+        },
+        {
+          "reviewer": "security",
+          "path": "lib/elia/agent/loop.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              218,
+              237
+            ],
+            [
+              460,
+              545
+            ]
+          ],
+          "purpose": "Prove instruction text reaches the provider request; inspect approval flow"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/agent/resumer.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/resumer.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/agent/resumer.ex",
+          "coverage": "full",
+          "purpose": "Boot scan and ordering"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/agent/session.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/agent/session.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/agent/session.ex",
+          "coverage": "targeted",
+          "purpose": "Prompt/setting state, auto-approval, synchronous compaction and loop spawn",
+          "ranges": [
+            [
+              243,
+              268
+            ],
+            [
+              291,
+              299
+            ],
+            [
+              710,
+              730
+            ],
+            [
+              953,
+              980
+            ],
+            [
+              1196,
+              1259
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/agent/session.ex",
+          "coverage": "near-complete targeted ranges",
+          "ranges": [
+            [
+              1,
+              631
+            ],
+            [
+              628,
+              850
+            ],
+            [
+              849,
+              1067
+            ],
+            [
+              1068,
+              1357
+            ],
+            [
+              1360,
+              1450
+            ]
+          ],
+          "purpose": "State ownership, settings, persistence, loop lifetime and resumption"
+        },
+        {
+          "reviewer": "security",
+          "path": "lib/elia/agent/session.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              692,
+              703
+            ],
+            [
+              1025,
+              1033
+            ]
+          ],
+          "purpose": "Other host-side instruction/skill reads and approval-name context"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/application.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/application.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/application.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/application.ex",
+          "coverage": "full",
+          "purpose": "Supervisor topology and startup order"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/deploy.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/deploy.ex",
+          "coverage": "targeted",
+          "purpose": "Candidate ordering, assets, rollback, restart and workspace semantics",
+          "ranges": [
+            [
+              1,
+              330
+            ],
+            [
+              578,
+              1396
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "lib/elia/deploy.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              49,
+              64
+            ],
+            [
+              980,
+              1062
+            ],
+            [
+              1080,
+              1155
+            ],
+            [
+              1168,
+              1346
+            ]
+          ],
+          "purpose": "Independent challenge of ignored-assets rollback finding and npm installation path"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/deploy.ex",
+          "coverage": "targeted",
+          "focus": "Existing workspace selection only"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/deploy/runner.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deploy/runner.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/deploy/runner.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/deps.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/deps.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/deps.ex",
+          "coverage": "search-only",
+          "purpose": "Locate dependency cache/build layer ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/explorer.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/explorer.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia/explorer.ex",
+          "coverage": "targeted",
+          "focus": "Listing/reading/path validation and missing-root errors"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/harness.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/harness.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/harness.ex",
+          "coverage": "search-only",
+          "purpose": "Locate test/deploy API and timeout seams"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/limits.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/limits.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/limits.ex",
+          "coverage": "targeted",
+          "purpose": "Defaults and limits validation; first inspection output truncated"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/anthropic.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/anthropic.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/anthropic.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/catalog.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/catalog.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/catalog.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/compaction.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/compaction.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/compaction.ex",
+          "coverage": "targeted",
+          "purpose": "Request view, synchronous fold and provider summary path",
+          "ranges": [
+            [
+              1,
+              290
+            ],
+            [
+              455,
+              526
+            ],
+            [
+              850,
+              931
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/context.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/context.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/context.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/llama_cpp.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/llama_cpp.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/llama_cpp.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/llama_server.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/llama_server.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/llama_server.ex",
+          "coverage": "targeted",
+          "purpose": "Local server/provider lifecycle orientation",
+          "ranges": [
+            [
+              1,
+              220
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/message.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/message.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/llm/message.ex",
+          "coverage": "full",
+          "purpose": "Stored message shape and scrub behavior"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/open_router.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/open_router.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/open_router.ex",
+          "coverage": "targeted",
+          "purpose": "Request conversion and shared stream adapter",
+          "ranges": [
+            [
+              1,
+              185
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/openai.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/openai.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/openai.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/retry.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/retry.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/retry.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/sse.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/sse.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/sse.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/llm/tokens.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/llm/tokens.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/llm/tokens.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/priority.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/priority.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/priority.ex",
+          "coverage": "full",
+          "purpose": "Priority wrapper and execution semantics"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/projects.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/projects.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/projects.ex",
+          "coverage": "targeted",
+          "purpose": "Project identity and default registry semantics",
+          "ranges": [
+            [
+              1,
+              58
+            ],
+            [
+              130,
+              167
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/projects.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              116,
+              132
+            ]
+          ],
+          "purpose": "Harness project discriminator"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/projects.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/push.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/push.ex",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              112,
+              159
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/push.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/push/crypto.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/crypto.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/push/crypto.ex",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              100,
+              134
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/push/crypto.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/push/notifier.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/notifier.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia/push/notifier.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/push/subscriptions.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/subscriptions.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/push/subscriptions.ex",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              65,
+              95
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/push/subscriptions.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/push/viewers.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/push/viewers.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia/push/viewers.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/settings.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/settings.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/settings.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/settings.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/shell.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/shell.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              250
+            ],
+            [
+              294,
+              767
+            ]
+          ],
+          "purpose": "Jail profiles/reachability, lock lifecycle, command collection, mount permissions, process cleanup"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/shell/lock.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/shell/lock.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/shell/lock.ex",
+          "coverage": "full",
+          "purpose": "Lock ownership, timeout, cancellation and dead-holder release"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/skills.ex",
+          "coverage": "targeted",
+          "purpose": "Host instruction-file read and prompt construction",
+          "ranges": [
+            [
+              104,
+              161
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "lib/elia/skills.ex",
+          "coverage": "full",
+          "purpose": "Host-side project-instruction ingress, prompt composition and skill loading"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/done.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/done.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/skills/done.ex",
+          "coverage": "full",
+          "purpose": "Done flag distinct from subtask completion"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/files.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/files.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/skills/files.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              355
+            ],
+            [
+              373,
+              459
+            ],
+            [
+              494,
+              515
+            ],
+            [
+              591,
+              681
+            ]
+          ],
+          "purpose": "Schemas, policy, file operations, directory walking, delete semantics and lock keys"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/folder.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/folder.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/skills/folder.ex",
+          "coverage": "full",
+          "purpose": "Metadata parsing and folder-script launch boundary"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/shell.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/shell.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/skills/shell.ex",
+          "coverage": "full",
+          "purpose": "Command schema, approval, timeout and launcher options"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/tasks.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/tasks.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/skills/tasks.ex",
+          "coverage": "full",
+          "purpose": "Parent/child tool sets and delegation contract"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/terminal.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/terminal.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/skills/terminal.ex",
+          "coverage": "full",
+          "purpose": "Terminal tool approval, key sending, reading and stopping"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/skills/user_input.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/skills/user_input.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/skills/user_input.ex",
+          "coverage": "full",
+          "purpose": "Input gating and answer propagation"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/store.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/store.ex",
+          "coverage": "full",
+          "purpose": "Storage boundary, write errors, decoding, listing and metadata"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/store.ex",
+          "coverage": "targeted",
+          "focus": "ID validation, exists?, metadata and project lookup references"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/store/cache.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/store/cache.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/store/cache.ex",
+          "coverage": "full",
+          "purpose": "Identity cache and safe absence behavior"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/tasks.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tasks.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia/tasks.ex",
+          "coverage": "targeted",
+          "purpose": "External root, child workspace options and auto-approval inheritance",
+          "ranges": [
+            [
+              181,
+              199
+            ],
+            [
+              234,
+              253
+            ],
+            [
+              277,
+              344
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "lib/elia/tasks.ex",
+          "coverage": "full",
+          "purpose": "Spawning, workspaces, watchers, registry, stopping, results and cleanup"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/terminal.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/terminal.ex",
+          "coverage": "full",
+          "purpose": "Session ownership and terminal APIs"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/terminal.ex",
+          "coverage": "targeted",
+          "focus": "Lines 1–185, start option propagation"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/terminal/keys.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/keys.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/terminal/keys.ex",
+          "coverage": "full",
+          "purpose": "Key normalization and command-parser-safe validation"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/terminal/session.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/terminal/session.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/terminal/session.ex",
+          "coverage": "full",
+          "purpose": "Jail launch, lock release, tmux parser, input encoding and stop reply paths"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia/terminal/session.ex",
+          "coverage": "targeted",
+          "focus": "Jail option use during init and actual jail value in status"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/tool.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/tool.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia/tool.ex",
+          "coverage": "full",
+          "purpose": "Verify actual tool callback does not introduce another file policy"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia/workspace.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia/workspace.ex",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "lib/elia/workspace.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              105
+            ]
+          ],
+          "purpose": "Root and runtime-root semantics"
+        },
+        {
+          "reviewer": "security",
+          "path": "lib/elia/workspace.ex",
+          "coverage": "full",
+          "purpose": "Lexical classification, real_location, bounded symlink traversal"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia_web.ex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              16,
+              24
+            ]
+          ],
+          "purpose": "assets is served by Plug.Static"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/client_tracker.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/client_tracker.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/client_tracker.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/components/layouts/root.html.heex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/components/layouts/root.html.heex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia_web/components/layouts/root.html.heex",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              13,
+              19
+            ]
+          ],
+          "purpose": "Stable unversioned bundle paths requested by page"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/components/layouts/root.html.heex",
+          "coverage": "targeted",
+          "focus": "CSRF meta and manifest attributes"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/controllers/preview_controller.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/controllers/preview_controller.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/controllers/preview_controller.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/endpoint.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/endpoint.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia_web/endpoint.ex",
+          "coverage": "full",
+          "purpose": "Static asset serving unaffected by deploy failure state"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/endpoint.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/file_links.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/file_links.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/file_links.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/chat_live.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_live.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia_web/live/chat_live.ex",
+          "coverage": "targeted",
+          "purpose": "Synchronous send/compact UI callers",
+          "ranges": [
+            [
+              1557,
+              1610
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/live/chat_live.ex",
+          "coverage": "targeted",
+          "focus": "Mount/render overview, visibility/scroll/image hooks and keyboard/history behavior"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/chat_settings_live.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/chat_settings_live.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia_web/live/chat_settings_live.ex",
+          "coverage": "targeted",
+          "purpose": "Compaction UI API callers",
+          "ranges": [
+            [
+              65,
+              120
+            ],
+            [
+              1023,
+              1040
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/live/chat_settings_live.ex",
+          "coverage": "targeted",
+          "focus": "Mount, jail control, settings update event flow"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/files_live.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/files_live.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia_web/live/files_live.ex",
+          "coverage": "targeted",
+          "purpose": "Root fallback and template entries",
+          "ranges": [
+            [
+              15,
+              52
+            ],
+            [
+              250,
+              272
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/live/files_live.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/settings_live.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/settings_live.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/live/settings_live.ex",
+          "coverage": "targeted",
+          "focus": "Mount/key initialization, push event handlers and async result handling, sections of rendering and hook code"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/live/terminal_live.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/live/terminal_live.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/live/terminal_live.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/markdown.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/markdown.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/markdown.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/recovery.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/recovery.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "lib/elia_web/recovery.ex",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              420,
+              445
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/recovery.ex",
+          "coverage": "targeted",
+          "focus": "Dispatch, request validation, origin checks, response headers, rendering boundaries"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/router.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/router.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/router.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/terminal_channel.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_channel.ex",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/terminal_channel.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "lib/elia_web/terminal_socket.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/lib/elia_web/terminal_socket.ex",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "lib/elia_web/terminal_socket.ex",
+          "coverage": "full",
+          "purpose": "Parent review of application, deployment, provider or state ownership"
+        },
+        {
+          "reviewer": "web",
+          "path": "lib/elia_web/terminal_socket.ex",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "mix.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "mix.exs",
+          "coverage": "full",
+          "purpose": "Build, setup, ignored artifacts and static-check planning"
+        },
+        {
+          "reviewer": "security",
+          "path": "mix.exs",
+          "coverage": "full",
+          "purpose": "Independent challenge of fresh-clone setup finding"
+        },
+        {
+          "reviewer": "web",
+          "path": "mix.exs",
+          "coverage": "targeted",
+          "focus": "Inherited dependencies and setup aliases"
+        }
+      ]
+    },
+    {
+      "path": "mix.lock",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/mix.lock",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "mix.lock",
+          "coverage": "targeted",
+          "focus": "Phoenix 1.8.16, LiveView, Plug, MDEx dependency versions"
+        }
+      ]
+    },
+    {
+      "path": "priv/static/sw.js",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/priv/static/sw.js",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "priv/static/sw.js",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "specs/README.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/README.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/README.md",
+          "coverage": "targeted",
+          "purpose": "Setup, architecture, corpus rules and current-vs-historical behavior"
+        },
+        {
+          "reviewer": "core",
+          "path": "specs/README.md",
+          "coverage": "targeted via inherited parent inspection",
+          "purpose": "Spec index and draft-plan placement"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/README.md",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              88,
+              95
+            ],
+            [
+              159,
+              168
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/agent-loop.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-loop.md",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "specs/agent-loop.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              130
+            ]
+          ],
+          "purpose": "Concurrency, limits, approval and error contracts"
+        }
+      ]
+    },
+    {
+      "path": "specs/agent-sessions.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/agent-sessions.md",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "specs/agent-sessions.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              27,
+              75
+            ],
+            [
+              135,
+              150
+            ],
+            [
+              195,
+              223
+            ],
+            [
+              244,
+              264
+            ],
+            [
+              393,
+              404
+            ]
+          ],
+          "purpose": "Lifecycle and save guarantees; additional keyword searches"
+        }
+      ]
+    },
+    {
+      "path": "specs/auto-restart.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-restart.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/auto-restart.md",
+          "coverage": "targeted",
+          "purpose": "External supervisor requirement",
+          "ranges": [
+            [
+              50,
+              70
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/auto-resume.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/auto-resume.md",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "specs/auto-resume.md",
+          "coverage": "full",
+          "purpose": "Restart semantics, automatic resume limits and children"
+        }
+      ]
+    },
+    {
+      "path": "specs/chat-settings.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/chat-settings.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/chat-settings.md",
+          "coverage": "targeted",
+          "focus": "CSET-3/CSET-4 settings semantics"
+        }
+      ]
+    },
+    {
+      "path": "specs/command-isolation.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/command-isolation.md",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "specs/command-isolation.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              94
+            ],
+            [
+              127,
+              155
+            ],
+            [
+              157,
+              281
+            ],
+            [
+              283,
+              427
+            ]
+          ],
+          "purpose": "Threat model, profiles, mount lock, Git protection, supported fallbacks and explicit exclusions"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/command-isolation.md",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              119,
+              145
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/deployment.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/deployment.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/deployment.md",
+          "coverage": "targeted",
+          "purpose": "Deploy failure, rollback, tests and loaded revision contract",
+          "ranges": [
+            [
+              190,
+              245
+            ],
+            [
+              280,
+              355
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/file-explorer.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-explorer.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/file-explorer.md",
+          "coverage": "targeted",
+          "focus": "EXPL-9 and project/workspace routing"
+        }
+      ]
+    },
+    {
+      "path": "specs/file-tools.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/file-tools.md",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "specs/file-tools.md",
+          "coverage": "full",
+          "purpose": "Read/write/delete policies, symlink reachability and file locks"
+        }
+      ]
+    },
+    {
+      "path": "specs/folder-skills.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/folder-skills.md",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "specs/folder-skills.md",
+          "coverage": "full",
+          "purpose": "Tool cwd, input environment, approval and workspace expectations"
+        }
+      ]
+    },
+    {
+      "path": "specs/hot-reload.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/hot-reload.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/hot-reload.md",
+          "coverage": "targeted",
+          "purpose": "Deployment and workspace-cache ownership orientation"
+        }
+      ]
+    },
+    {
+      "path": "specs/image-viewer.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/image-viewer.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/image-viewer.md",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "specs/llm-providers.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/llm-providers.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/llm-providers.md",
+          "coverage": "targeted",
+          "purpose": "Provider error and streaming contract",
+          "ranges": [
+            [
+              130,
+              190
+            ],
+            [
+              255,
+              300
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/persistence.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/persistence.md",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "specs/persistence.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              130
+            ]
+          ],
+          "purpose": "Stored shape, atomicity and corruption semantics; optional fields and cache rules also inspected in initial output"
+        }
+      ]
+    },
+    {
+      "path": "specs/plans/subagents.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/plans/subagents.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/plans/subagents.md",
+          "coverage": "targeted",
+          "purpose": "Historical workflow and conflicting auto-approval claim",
+          "ranges": [
+            [
+              1,
+              100
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "specs/plans/subagents.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              90
+            ]
+          ],
+          "purpose": "Detect stale guidance affecting AI reading routes"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/plans/subagents.md",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              1,
+              63
+            ],
+            [
+              154,
+              165
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/projects.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/projects.md",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "specs/projects.md",
+          "coverage": "targeted keyword matches",
+          "purpose": "PROJ-10/12 and per-project workspace contract"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/projects.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              52,
+              88
+            ]
+          ],
+          "purpose": "Project workspace, instructions and global/project skills"
+        }
+      ]
+    },
+    {
+      "path": "specs/push-notifications.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/push-notifications.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/push-notifications.md",
+          "coverage": "search-only",
+          "purpose": "Locate stale web_push implementation description"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/push-notifications.md",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              149,
+              155
+            ]
+          ]
+        },
+        {
+          "reviewer": "web",
+          "path": "specs/push-notifications.md",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "specs/pwa.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/pwa.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/pwa.md",
+          "coverage": "targeted",
+          "focus": "Secure origin and auth-proxy constraints"
+        }
+      ]
+    },
+    {
+      "path": "specs/recovery.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/recovery.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/recovery.md",
+          "coverage": "targeted",
+          "focus": "Requirements 10–15, origin rule, retired local-only policy"
+        }
+      ]
+    },
+    {
+      "path": "specs/subtasks.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/subtasks.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/subtasks.md",
+          "coverage": "targeted",
+          "purpose": "Current inheritance, workspace and concurrency requirements",
+          "ranges": [
+            [
+              40,
+              115
+            ],
+            [
+              202,
+              248
+            ]
+          ]
+        },
+        {
+          "reviewer": "core",
+          "path": "specs/subtasks.md",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              130,
+              150
+            ],
+            [
+              209,
+              222
+            ]
+          ],
+          "purpose": "Stop semantics and workspace rules; additional keyword searches"
+        },
+        {
+          "reviewer": "security",
+          "path": "specs/subtasks.md",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              5,
+              8
+            ],
+            [
+              67,
+              75
+            ],
+            [
+              82,
+              86
+            ],
+            [
+              121,
+              125
+            ],
+            [
+              136,
+              158
+            ],
+            [
+              244,
+              264
+            ],
+            [
+              290,
+              298
+            ],
+            [
+              333,
+              338
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "specs/terminal.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/terminal.md",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "specs/terminal.md",
+          "coverage": "targeted",
+          "focus": "Guardrails, transport, page behavior, explicit access-control non-goal"
+        }
+      ]
+    },
+    {
+      "path": "specs/workspace-policy.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/workspace-policy.md",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "specs/workspace-policy.md",
+          "coverage": "full",
+          "purpose": "Lexical classes versus resolved locations; protected paths"
+        }
+      ]
+    },
+    {
+      "path": "specs/worktree-build-cache.md",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/specs/worktree-build-cache.md",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "specs/worktree-build-cache.md",
+          "coverage": "targeted",
+          "purpose": "Deployment and workspace-cache ownership orientation"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/agent_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/agent_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/agent_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              917,
+              1083
+            ]
+          ],
+          "purpose": "Loop cleanup, save batching, shutdown and restart tests; additional lifecycle/failure searches across file"
+        },
+        {
+          "reviewer": "security",
+          "path": "test/elia/agent_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1680,
+              1688
+            ]
+          ],
+          "purpose": "Project prompt/skill test discovery"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/auto_resume_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/auto_resume_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/auto_resume_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              90
+            ],
+            [
+              215,
+              260
+            ]
+          ],
+          "purpose": "Fixture isolation and interrupted-turn restoration; additional searches"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/command_isolation_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/command_isolation_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/command_isolation_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              126,
+              164
+            ],
+            [
+              196,
+              268
+            ],
+            [
+              270,
+              345
+            ],
+            [
+              387,
+              411
+            ]
+          ],
+          "purpose": "Overlay write isolation, missing-bwrap folder test, mount-lock assertions and Git readonly coverage"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/deployment_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/deployment_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia/deployment_test.exs",
+          "coverage": "targeted",
+          "purpose": "Build seams, committed-asset fixture, failure and rollback assertions",
+          "ranges": [
+            [
+              195,
+              357
+            ],
+            [
+              1087,
+              1155
+            ],
+            [
+              1629,
+              1685
+            ],
+            [
+              1873,
+              1935
+            ]
+          ]
+        },
+        {
+          "reviewer": "security",
+          "path": "test/elia/deployment_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1610,
+              1700
+            ]
+          ],
+          "purpose": "Failure tests check git ref but not restoration of generated bundle bytes"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/llm/compaction_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/compaction_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia/llm/compaction_test.exs",
+          "coverage": "search-only",
+          "purpose": "Targeted error/summary test discovery with surrounding lines"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/llm/llama_cpp_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/llama_cpp_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia/llm/llama_cpp_test.exs",
+          "coverage": "search-only",
+          "purpose": "Targeted error/summary test discovery with surrounding lines"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/llm/open_ai_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_ai_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia/llm/open_ai_test.exs",
+          "coverage": "full",
+          "purpose": "Closest shared parser test coverage"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/llm/open_router_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/llm/open_router_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia/llm/open_router_test.exs",
+          "coverage": "search-only",
+          "purpose": "Targeted error/summary test discovery with surrounding lines"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/push_crypto_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_crypto_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia/push_crypto_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/push_notifier_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_notifier_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia/push_notifier_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/push_subscriptions_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_subscriptions_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia/push_subscriptions_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/push_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/push_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia/push_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/self_modification_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/self_modification_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/self_modification_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              24,
+              301
+            ]
+          ],
+          "purpose": "Existing symlink, protected-path and shared-tree policy coverage; refutation search"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/shell_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/shell_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/shell_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              270,
+              277
+            ],
+            [
+              478,
+              556
+            ]
+          ],
+          "purpose": "Deadlines and mount-readiness argv tests"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/skills_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/skills_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/skills_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              98
+            ],
+            [
+              130,
+              137
+            ]
+          ],
+          "purpose": "Regular instruction loading, refresh, cap and no symlink boundary test in that group"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/spec_hygiene_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/spec_hygiene_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/spec_hygiene_test.exs",
+          "coverage": "full",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/spec_tests_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/spec_tests_test.exs",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/elia/spec_tests_test.exs",
+          "coverage": "full",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/store_cache_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_cache_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/store_cache_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              165
+            ]
+          ],
+          "purpose": "Cache invalidation and corruption coverage"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/store_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/store_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/store_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              80
+            ],
+            [
+              208,
+              296
+            ],
+            [
+              644,
+              681
+            ]
+          ],
+          "purpose": "Atomic write shape, metadata updates and corruption coverage; additional searches"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/tasks_concurrency_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_concurrency_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/tasks_concurrency_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              130
+            ],
+            [
+              260,
+              330
+            ]
+          ],
+          "purpose": "Concurrent worktree children and parent-stop behavior"
+        }
+      ]
+    },
+    {
+      "path": "test/elia/tasks_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia/tasks_test.exs",
+      "inspections": [
+        {
+          "reviewer": "core",
+          "path": "test/elia/tasks_test.exs",
+          "coverage": "targeted",
+          "ranges": [
+            [
+              1,
+              100
+            ],
+            [
+              520,
+              570
+            ],
+            [
+              820,
+              970
+            ],
+            [
+              1060,
+              1160
+            ]
+          ],
+          "purpose": "External project assertion gap, stopped tasks, registry cleanup and result validation"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/live/compaction_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/compaction_test.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/elia_web/live/compaction_test.exs",
+          "coverage": "search-only",
+          "purpose": "Targeted error/summary test discovery with surrounding lines"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/live/files_live_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/files_live_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia_web/live/files_live_test.exs",
+          "coverage": "targeted",
+          "focus": "Missing path, external project and workspace tests"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/live/terminal_live_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/live/terminal_live_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia_web/live/terminal_live_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/markdown_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/markdown_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia_web/markdown_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/recovery_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/recovery_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia_web/recovery_test.exs",
+          "coverage": "targeted",
+          "focus": "Origin rejection, independent page, rollback and header coverage"
+        }
+      ]
+    },
+    {
+      "path": "test/elia_web/terminal_channel_test.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/elia_web/terminal_channel_test.exs",
+      "inspections": [
+        {
+          "reviewer": "web",
+          "path": "test/elia_web/terminal_channel_test.exs",
+          "coverage": "full"
+        }
+      ]
+    },
+    {
+      "path": "test/support/fake_llm.ex",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/support/fake_llm.ex",
+      "inspections": [
+        {
+          "reviewer": "security",
+          "path": "test/support/fake_llm.ex",
+          "coverage": "targeted",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes",
+          "ranges": [
+            [
+              1,
+              115
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "test/test_helper.exs",
+      "source_url": "https://github.com/Tommos0/elia/blob/5be0bd873bd2716529de25541efb1825495cd12e/test/test_helper.exs",
+      "inspections": [
+        {
+          "reviewer": "root",
+          "path": "test/test_helper.exs",
+          "coverage": "full",
+          "purpose": "Verify real_browser/preview exclusions and isolated test startup"
+        },
+        {
+          "reviewer": "security",
+          "path": "test/test_helper.exs",
+          "coverage": "full",
+          "purpose": "Crosscutting testing/documentation and open-question notes",
+          "review_phase": "final-package crosscutting notes"
+        }
+      ]
+    }
+  ],
+  "external_sources": [
+    {
+      "reviewer": "root",
+      "url": "https://github.com/phoenixframework/phoenix/blob/v1.8.16/lib/phoenix/socket/transport.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          345,
+          356
+        ],
+        [
+          503,
+          526
+        ]
+      ],
+      "purpose": "Origin bypass and nil session extraction; pinned dependency source",
+      "version_basis": "Pinned Phoenix lockfile version"
+    },
+    {
+      "reviewer": "root",
+      "url": "https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/task/supervised.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          21,
+          43
+        ]
+      ],
+      "purpose": "Owner monitor removed before function invocation",
+      "version_basis": "Representative version satisfying declared Elixir requirement, not an installed runtime"
+    },
+    {
+      "reviewer": "root",
+      "url": "https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/gen_server.ex",
+      "coverage": "targeted",
+      "ranges": [
+        [
+          1103,
+          1117
+        ]
+      ],
+      "purpose": "Default GenServer.call timeout",
+      "version_basis": "Representative version satisfying declared Elixir requirement, not an installed runtime"
+    },
+    {
+      "reviewer": "core",
+      "url": "https://github.com/elixir-lang/elixir/blob/v1.17.3/lib/elixir/lib/task/supervised.ex",
+      "coverage": "targeted reply/4; raw source retrieved via GitHub integration",
+      "purpose": "Verify async_nolink owner monitoring ends before function execution",
+      "note": "This is a primary source for a version satisfying the project's declared minimum series; no installed runtime was present to execute it."
+    },
+    {
+      "reviewer": "web",
+      "url": "https://raw.githubusercontent.com/phoenixframework/phoenix/v1.8.16/lib/phoenix/socket/transport.ex",
+      "kind": "primary dependency source",
+      "version": "v1.8.16",
+      "coverage": "targeted",
+      "sections": "check_origin lines 345–356; connect_info/connect_session lines 503–526",
+      "reason": "Confirm that failed CSRF session extraction gives nil, not socket rejection, and check_origin=false is a no-op",
+      "retrieval": "GitHub plugin fetch"
+    }
+  ],
+  "metadata_observations": "evidence/review-metadata.json"
+}

@@ -1,0 +1,270 @@
+{
+  "review_commit": "5be0bd873bd2716529de25541efb1825495cd12e",
+  "recorded_at_utc": "2026-11-15T09:31:07.453350+00:00",
+  "scope": "Static checks and isolated primitives, not the application test suite",
+  "metrics": {
+    "tracked_files": 339,
+    "first_party_elixir_modules": 93,
+    "first_party_lib_lines": 29326,
+    "test_files": 103,
+    "test_source_lines": 32686,
+    "spec_markdown_files": 59,
+    "test_declarations_approximate": 1193,
+    "github_workflow_files": [],
+    "root_license_files": []
+  },
+  "checks": [
+    {
+      "id": "V01",
+      "name": "runtime availability",
+      "result": [
+        {
+          "command": [
+            "elixir",
+            "--version"
+          ],
+          "exit_code": null,
+          "status": "unavailable",
+          "stderr": "[Errno 2] No such file or directory: 'elixir'"
+        },
+        {
+          "command": [
+            "mix",
+            "--version"
+          ],
+          "exit_code": null,
+          "status": "unavailable",
+          "stderr": "[Errno 2] No such file or directory: 'mix'"
+        },
+        {
+          "command": [
+            "node",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "v24.22.1\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "npm",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "11.9.0\n",
+          "stderr": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm.\n"
+        },
+        {
+          "command": [
+            "git",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "git version 2.52.0\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "python3",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "Python 3.12.14\n",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "id": "V02",
+      "name": "mix precommit availability only",
+      "result": {
+        "command": [
+          "mix",
+          "precommit"
+        ],
+        "exit_code": null,
+        "status": "unavailable",
+        "stderr": "[Errno 2] No such file or directory: 'mix'"
+      },
+      "note": "Unavailable runtime is an environment block, not a failing Elia test. Run the application gate separately, in the serialized test queue."
+    },
+    {
+      "id": "V03",
+      "name": "shell syntax",
+      "result": [
+        {
+          "command": [
+            "sh",
+            "-n",
+            "bin/install-service"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "sh",
+            "-n",
+            "bin/preview"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "sh",
+            "-n",
+            "bin/serve"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "sh",
+            "-n",
+            "bin/test"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ]
+    },
+    {
+      "id": "V04",
+      "name": "first-party JavaScript syntax only",
+      "result": [
+        {
+          "file": "assets/js/app.js",
+          "command": [
+            "node",
+            "--input-type=module",
+            "--check"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "file": "assets/js/auto_reconnect.js",
+          "command": [
+            "node",
+            "--input-type=module",
+            "--check"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "file": "assets/js/highlight.js",
+          "command": [
+            "node",
+            "--input-type=module",
+            "--check"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "file": "assets/js/terminal.js",
+          "command": [
+            "node",
+            "--input-type=module",
+            "--check"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "file": "priv/static/sw.js",
+          "command": [
+            "node",
+            "--input-type=module",
+            "--check"
+          ],
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "note": "Does not resolve imports, build assets, or test browser behavior."
+    },
+    {
+      "id": "V05",
+      "name": "JSON syntax",
+      "result": [
+        {
+          "file": "assets/package.json",
+          "result": "valid JSON"
+        },
+        {
+          "file": "assets/package-lock.json",
+          "result": "valid JSON"
+        },
+        {
+          "file": "priv/static/manifest.webmanifest",
+          "result": "valid JSON"
+        }
+      ],
+      "note": "assets/tsconfig.json contains valid comment syntax for JSONC; deliberately excluded from this strict JSON check."
+    },
+    {
+      "id": "V06",
+      "name": "test partition plan (no tests executed)",
+      "exit_code": 0,
+      "tracked_test_files": 103,
+      "assigned_count": 103,
+      "missing": [],
+      "extra": [],
+      "duplicates": []
+    },
+    {
+      "id": "V07",
+      "name": "fresh checkout asset package resolution",
+      "result": {
+        "command": [
+          "node",
+          "-e",
+          "for (const p of process.argv.slice(1)) {try {console.log(p + ': ' + require.resolve(p, {paths: [process.cwd() + '/assets']}))} catch(e) {console.log(p + ': ' + e.code)}}",
+          "@xterm/addon-fit",
+          "@xterm/xterm"
+        ],
+        "exit_code": 0,
+        "stdout": "@xterm/addon-fit: MODULE_NOT_FOUND\n@xterm/xterm: MODULE_NOT_FOUND\n",
+        "stderr": ""
+      },
+      "note": "Expected missing packages in a clone; the review finding is that mix setup never installs them."
+    },
+    {
+      "id": "V08",
+      "name": "isolated symlink primitives",
+      "host_read_follows_external_symlink": true,
+      "host_write_follows_directory_alias": true,
+      "status": "primitive reproduced",
+      "note": "Only generated dummy files. Does not execute Elia or demonstrate an end-to-end jail escape."
+    },
+    {
+      "id": "V09",
+      "name": "isolated Git rollback primitive",
+      "tracked_source_restored": true,
+      "ignored_candidate_asset_remains": true,
+      "git_reports_clean": true,
+      "status": "primitive reproduced",
+      "note": "New disposable repository only; does not execute Elia.Deploy."
+    },
+    {
+      "id": "V10",
+      "name": "checkout unchanged",
+      "before": "",
+      "after": "",
+      "unchanged": true
+    }
+  ]
+}
