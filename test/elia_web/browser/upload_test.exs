@@ -46,6 +46,9 @@ defmodule EliaWeb.Browser.UploadTest do
     conn =
       conn
       |> visit("/c/#{id}")
+      # The pick only reaches the server once the page is live: before the
+      # socket joins, the file input has no hook and a change goes nowhere.
+      |> connected()
       |> assert_has("#upload-button", text: "Attach files")
       |> upload("Attach files", picked)
       # UPLOAD-3: the chip the composer holds what was picked in.
@@ -78,6 +81,18 @@ defmodule EliaWeb.Browser.UploadTest do
     # over — which is what the path the message names points at.
     assert_has(conn, "#transcript a[href*='/files?']", text: name)
     assert File.read!(Path.join([root, "uploads", name])) == "hello from a real browser"
+  end
+
+  # The page is live: the socket has joined, so LiveView has marked the root
+  # `.phx-connected` — from then on the file input has its hook and a change
+  # reaches the view.
+  defp connected(conn) do
+    wait_until(
+      conn,
+      "document.querySelector('.phx-connected')",
+      "the LiveView never connected",
+      8_000
+    )
   end
 
   # A promise the page resolves: the expression is evaluated until it is truthy
