@@ -22,7 +22,15 @@ defmodule EliaWeb.TerminalChannelTest do
     on_exit(fn ->
       case Terminal.fetch(id) do
         {:ok, pid} ->
-          Terminal.stop(id)
+          # A test that ended the session itself races its registry entry: the
+          # fetch can still name a session that is just gone, whose stop then
+          # exits `noproc`. Gone is what this cleanup wants either way.
+          try do
+            Terminal.stop(id)
+          catch
+            :exit, _gone -> :ok
+          end
+
           DynamicSupervisor.terminate_child(Terminal.supervisor(), pid)
 
         :error ->
