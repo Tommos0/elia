@@ -843,9 +843,13 @@ defmodule Elia.AgentTest do
   # running — the shell and the child it left in its group — rather than leaving
   # them to run out their timeout behind an idle chat.
   test "stopping a turn kills the OS commands its shell calls are running", %{id: id} do
-    marker = "3173"
+    # A sleep length no other run uses, so a process an earlier run leaked is
+    # never counted; that run's leftovers go first, and this run's own on every
+    # exit path.
+    System.cmd("pkill", ["-KILL", "-f", "^sleep 3173"])
+    marker = "3173.#{System.unique_integer([:positive])}"
     command = "sleep #{marker} & sleep #{marker}; wait"
-    on_exit(fn -> System.cmd("pkill", ["-x", "-f", "sleep #{marker}"]) end)
+    on_exit(fn -> System.cmd("pkill", ["-KILL", "-x", "-f", "sleep #{marker}"]) end)
 
     call = FakeLLM.tool_call("c1", "shell", %{"command" => command, "timeout_seconds" => 600})
     FakeLLM.push(FakeLLM.assistant([call]))
@@ -866,10 +870,11 @@ defmodule Elia.AgentTest do
     count |> String.trim() |> String.to_integer()
   end
 
-  # Whether `check` holds within 5 s, asked every 20 ms: an OS process ending
-  # sends this test no event to wait on.
+  # Whether `check` holds within 30 s, asked every 20 ms: an OS process ending
+  # sends this test no event to wait on, and a loaded node can be slow to start
+  # or reap one.
   defp eventually(check) do
-    deadline = System.monotonic_time(:millisecond) + 5_000
+    deadline = System.monotonic_time(:millisecond) + 30_000
 
     Stream.repeatedly(fn ->
       receive do

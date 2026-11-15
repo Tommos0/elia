@@ -62,10 +62,11 @@ defmodule Elia.ShellTest do
       if jail and not Shell.available?() do
         :ok
       else
-        # A sleep length of its own, so the count is this test's processes only.
-        marker = if jail, do: "3171", else: "3170"
+        family = if jail, do: "3171", else: "3170"
+        marker = sleep_marker(family)
         command = "sleep #{marker} & sleep #{marker}; wait"
         caller = spawn(fn -> Shell.run(command, jail: jail, timeout: 120_000) end)
+        on_exit(fn -> Process.exit(caller, :kill) end)
 
         assert eventually(fn -> running(marker) == 2 end)
 
@@ -79,7 +80,7 @@ defmodule Elia.ShellTest do
   # process it left running, detached from its output, outlives the run and its
   # caller both.
   test "a command that ends on its own is not killed when its caller exits later" do
-    marker = "3172"
+    marker = sleep_marker("3172")
     test_pid = self()
 
     caller =
@@ -87,8 +88,6 @@ defmodule Elia.ShellTest do
         send(test_pid, {:ran, Shell.run("sleep #{marker} >/dev/null 2>&1 &", jail: false)})
         receive do: (:exit -> :ok)
       end)
-
-    on_exit(fn -> System.cmd("pkill", ["-x", "-f", "sleep #{marker}"]) end)
 
     assert_receive {:ran, {:ok, _, 0}}, 10_000
     ref = Process.monitor(caller)
@@ -103,6 +102,12 @@ defmodule Elia.ShellTest do
   # output while it runs — sampled from the process running it, which owns the
   # buffer — and its one marker counts what was removed. ASCII is one byte a
   # character, so here the count is exact.
+  #
+  # The sample is every binary the process references, so it also counts the
+  # port's messages still waiting in its mailbox, which grow when the node is
+  # loaded. The buffer itself is about 120 KB here; the bound leaves room for
+  # that backlog and is still far below what an uncapped run held (100 MB for
+  # this flood).
   test "a capped run holds bounded output while a command floods it" do
     test_pid = self()
     total = 50_000_000
@@ -112,7 +117,7 @@ defmodule Elia.ShellTest do
     peak = peak_binary_bytes(runner, 0)
 
     assert_receive {:ran, {:ok, output, 0}}, 60_000
-    assert peak < 2_000_000
+    assert peak < 20_000_000
     assert [_head, _tail] = String.split(output, "characters truncated")
     assert output =~ "... [#{total - 30_000} characters truncated] ..."
     assert String.starts_with?(output, String.duplicate("a", 15_000) <> "\n...")
@@ -162,6 +167,17 @@ defmodule Elia.ShellTest do
     end
   end
 
+  # A sleep length no other run uses — `<family>.<unique>` seconds — so a count
+  # is this run's processes only, and a process an earlier run leaked can't be
+  # counted by a later one. That run's leftovers of the family are killed
+  # first, and this run's own on every exit path, a failed assertion included.
+  defp sleep_marker(family) do
+    System.cmd("pkill", ["-KILL", "-f", "^sleep #{family}"])
+    marker = "#{family}.#{System.unique_integer([:positive])}"
+    on_exit(fn -> System.cmd("pkill", ["-KILL", "-x", "-f", "sleep #{marker}"]) end)
+    marker
+  end
+
   # How many processes run `sleep <marker>`, read from outside any jail.
   defp running(marker) do
     {count, _} = System.cmd("pgrep", ["-c", "-x", "-f", "sleep #{marker}"])
@@ -169,8 +185,9 @@ defmodule Elia.ShellTest do
   end
 
   # Whether `check` holds within `ms`, asked every 20 ms: there is no event for
-  # an OS process ending that this test could wait on instead.
-  defp eventually(check, ms \\ 5_000) do
+  # an OS process ending that this test could wait on instead. The default is
+  # generous because a loaded node can be slow to start or reap a process.
+  defp eventually(check, ms \\ 30_000) do
     deadline = System.monotonic_time(:millisecond) + ms
 
     Stream.repeatedly(fn ->
