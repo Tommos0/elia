@@ -51,6 +51,74 @@ defmodule Elia.ShellTest do
              Shell.run("ps -eo args | grep -c '^sleep 61$'", shell: "sh", jail: false)
   end
 
+  # SHELL-12: a command never outlives the process waiting on it. The command
+  # leaves a child of its own in the group, and the caller is killed the way a
+  # stopped turn's tool call is: the shell and that child both go, long before
+  # the command's deadline.
+  for jail <- [false, true] do
+    test "a command whose waiting process exits is killed with its group (jail: #{jail})" do
+      jail = unquote(jail)
+
+      if jail and not Shell.available?() do
+        :ok
+      else
+        # A sleep length of its own, so the count is this test's processes only.
+        marker = if jail, do: "3171", else: "3170"
+        command = "sleep #{marker} & sleep #{marker}; wait"
+        caller = spawn(fn -> Shell.run(command, jail: jail, timeout: 120_000) end)
+
+        assert eventually(fn -> running(marker) == 2 end)
+
+        Process.exit(caller, :kill)
+        assert eventually(fn -> running(marker) == 0 end)
+      end
+    end
+  end
+
+  # SHELL-12: a command that ends on its own is never killed after it ends — a
+  # process it left running, detached from its output, outlives the run and its
+  # caller both.
+  test "a command that ends on its own is not killed when its caller exits later" do
+    marker = "3172"
+    test_pid = self()
+
+    caller =
+      spawn(fn ->
+        send(test_pid, {:ran, Shell.run("sleep #{marker} >/dev/null 2>&1 &", jail: false)})
+        receive do: (:exit -> :ok)
+      end)
+
+    on_exit(fn -> System.cmd("pkill", ["-x", "-f", "sleep #{marker}"]) end)
+
+    assert_receive {:ran, {:ok, _, 0}}, 10_000
+    ref = Process.monitor(caller)
+    send(caller, :exit)
+    assert_receive {:DOWN, ^ref, :process, ^caller, :normal}
+
+    refute eventually(fn -> running(marker) == 0 end, 500)
+    assert running(marker) == 1
+  end
+
+  # How many processes run `sleep <marker>`, read from outside any jail.
+  defp running(marker) do
+    {count, _} = System.cmd("pgrep", ["-c", "-x", "-f", "sleep #{marker}"])
+    count |> String.trim() |> String.to_integer()
+  end
+
+  # Whether `check` holds within `ms`, asked every 20 ms: there is no event for
+  # an OS process ending that this test could wait on instead.
+  defp eventually(check, ms \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + ms
+
+    Stream.repeatedly(fn ->
+      receive do
+      after
+        20 -> check.()
+      end
+    end)
+    |> Enum.find(fn ok -> ok or System.monotonic_time(:millisecond) > deadline end)
+  end
+
   # SHELL-9: the POSIX fallback has no bash-only syntax, so it fails loudly
   # instead of quietly reporting a different status.
   test "bash-only syntax fails under POSIX sh" do

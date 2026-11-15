@@ -839,6 +839,47 @@ defmodule Elia.AgentTest do
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
   end
 
+  # SESS-43, SHELL-12: stopping a turn ends the commands its tool calls are
+  # running — the shell and the child it left in its group — rather than leaving
+  # them to run out their timeout behind an idle chat.
+  test "stopping a turn kills the OS commands its shell calls are running", %{id: id} do
+    marker = "3173"
+    command = "sleep #{marker} & sleep #{marker}; wait"
+    on_exit(fn -> System.cmd("pkill", ["-x", "-f", "sleep #{marker}"]) end)
+
+    call = FakeLLM.tool_call("c1", "shell", %{"command" => command, "timeout_seconds" => 600})
+    FakeLLM.push(FakeLLM.assistant([call]))
+
+    :ok = Agent.send_message(id, "run it")
+    await_status(id, :awaiting_approval)
+    :ok = Agent.approve(id, "c1")
+    assert eventually(fn -> sleeping(marker) == 2 end)
+
+    :ok = Agent.stop(id)
+    assert %{status: :idle} = Agent.snapshot(id)
+    assert eventually(fn -> sleeping(marker) == 0 end)
+  end
+
+  # How many processes run `sleep <marker>`.
+  defp sleeping(marker) do
+    {count, _} = System.cmd("pgrep", ["-c", "-x", "-f", "sleep #{marker}"])
+    count |> String.trim() |> String.to_integer()
+  end
+
+  # Whether `check` holds within 5 s, asked every 20 ms: an OS process ending
+  # sends this test no event to wait on.
+  defp eventually(check) do
+    deadline = System.monotonic_time(:millisecond) + 5_000
+
+    Stream.repeatedly(fn ->
+      receive do
+      after
+        20 -> check.()
+      end
+    end)
+    |> Enum.find(fn ok -> ok or System.monotonic_time(:millisecond) > deadline end)
+  end
+
   # SESS-2: a session loads its saved history on start, so a restart shows the
   # same conversation.
   test "history survives a session restart", %{id: id} do

@@ -113,6 +113,12 @@ a browser during `mix test`.
   partition feels lopsided.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8).
+- **Never run two test runs at once** — no `mix test`, `bin/test` or
+  `mix precommit` while another is running, in this worktree or any other. Every
+  worktree's partitions use the same `/tmp/elia-test-pN` scratch directories, so
+  concurrent runs corrupt each other's `settings.dets` and fail with phantom
+  `bad_object` errors. Wait for one run to end before starting the next, and
+  don't put two test commands in one step.
 - A suite run through the `shell` tool needs a longer timeout than the shell's
   default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four

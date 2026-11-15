@@ -336,14 +336,16 @@ defmodule Elia.Shell do
     {exe, args} = argv(script, cd, opts)
     port = open(exe, args, cd, opts)
 
-    if "--info-fd" in args do
-      case await_ready(port, "", deadline) do
-        {:ready, rest} -> collect(port, [rest], deadline) |> skipped(opts)
-        {:failed, reason} -> {:setup_failed, reason}
+    watched(port, fn ->
+      if "--info-fd" in args do
+        case await_ready(port, "", deadline) do
+          {:ready, rest} -> collect(port, [rest], deadline) |> skipped(opts)
+          {:failed, reason} -> {:setup_failed, reason}
+        end
+      else
+        collect(port, [], deadline) |> skipped(opts)
       end
-    else
-      collect(port, [], deadline) |> skipped(opts)
-    end
+    end)
   end
 
   defp read_only(script, cd, opts, deadline, reason) do
@@ -354,9 +356,42 @@ defmodule Elia.Shell do
     port = open(exe, args, cd, opts)
     notice = @deps_read_only_notice <> "\n"
 
-    case collect(port, [], deadline) |> skipped(opts) do
+    case watched(port, fn -> collect(port, [], deadline) |> skipped(opts) end) do
       {:ok, output, status} -> {:ok, notice <> output, status}
       {:timeout, output} -> {:timeout, notice <> output}
+    end
+  end
+
+  # SHELL-12: a command never outlives the process waiting on it. A watcher of
+  # its own monitors that process while `fun` waits on the port; if the process
+  # exits first — a stopped turn (SESS-43), a deleted chat, a crash — the port
+  # closes with it but the command doesn't, so the watcher kills its group. The
+  # watcher holds the OS pid, since the port is gone by then. A run that ends on
+  # its own tells the watcher, which then goes without killing anything.
+  defp watched(port, fun) do
+    caller = self()
+
+    watcher =
+      case Port.info(port, :os_pid) do
+        {:os_pid, os_pid} -> spawn(fn -> watch(caller, os_pid) end)
+        nil -> nil
+      end
+
+    try do
+      fun.()
+    after
+      if watcher, do: send(watcher, :done)
+    end
+  end
+
+  # A caller already gone when the monitor is set is reported `:noproc` at
+  # once, so that command is killed too.
+  defp watch(caller, os_pid) do
+    ref = Process.monitor(caller)
+
+    receive do
+      :done -> :ok
+      {:DOWN, ^ref, :process, ^caller, _reason} -> kill_group(os_pid)
     end
   end
 
@@ -640,11 +675,13 @@ defmodule Elia.Shell do
   """
   @spec kill(port()) :: :ok
   def kill(port) do
-    with {:os_pid, pid} <- Port.info(port, :os_pid) do
-      System.cmd("kill", ["-KILL", "--", "-#{pid}"], stderr_to_stdout: true)
-      System.cmd("kill", ["-KILL", "#{pid}"], stderr_to_stdout: true)
-    end
+    with {:os_pid, pid} <- Port.info(port, :os_pid), do: kill_group(pid)
+    :ok
+  end
 
+  defp kill_group(pid) do
+    System.cmd("kill", ["-KILL", "--", "-#{pid}"], stderr_to_stdout: true)
+    System.cmd("kill", ["-KILL", "#{pid}"], stderr_to_stdout: true)
     :ok
   end
 

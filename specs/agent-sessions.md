@@ -190,6 +190,13 @@ every view.
   removed. It returns `:ok`, and `{:error, :invalid_id}` for an invalid id
   (STORE-4).
 
+- **SESS-43** Stopping a turn (SESS-8) ends every OS command its tool calls are
+  still running — a `shell` call's, a folder skill's script tool's, and
+  everything each one started that is still in its process group (SHELL-12) —
+  so none keeps running, writing to the workspace or holding a lock after the
+  stop. The same goes for the sub-task turns the stop ends (SESS-22) and for
+  deleting a chat whose turn is running (SESS-29).
+
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets this chat's step
@@ -354,7 +361,7 @@ did before, and a file written now is what an older version wrote.
   options, task metadata, `compact/1`, the
   session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
   held, a pause recorded and the stop a turn ends in — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-42).
+  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-43).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

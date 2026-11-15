@@ -60,6 +60,13 @@ call takes.
   tool call usually takes — cannot outlive it. A run that reaches the deadline
   is killed (SHELL-3) and reported as a timeout (SHELL-4), never as a command
   that finished.
+- **SHELL-12** A command never outlives the process that is waiting on it in
+  `Elia.Shell.run/2`. If that process exits before the command ends — its turn
+  was stopped (SESS-43), its chat was deleted, or it crashed — the command's
+  whole process group is killed, as on a timeout (SHELL-3): the shell and every
+  process it started that is still in the group, jailed or not (ISOL-10).
+  The kill happens as soon as that exit is seen, with no wait for the command's
+  deadline. A command that ends on its own is never killed after it ends.
 
 ## Configuration
 
@@ -78,6 +85,10 @@ config :elia, Elia.Skills.Shell,
   collected output is a separate change.
 - The timeout of a folder skill's script tool, which comes from its
   `tools.json` (`specs/folder-skills.md`), and of the terminal (TERM).
+- A process that leaves the command's process group (`setsid`, a daemon that
+  detaches itself): SHELL-12 kills the group, and what has left it is out of
+  reach. A chat's terminal keeps its own lifetime (TERM) and is not ended by a
+  stopped turn.
 
 ## Implementation
 
@@ -90,7 +101,8 @@ config :elia, Elia.Skills.Shell,
   SHELL-10; the instructions and the tool description — SHELL-8, SHELL-9).
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
-  ending at its deadline — SHELL-2 to SHELL-5, SHELL-11).
+  ending at its deadline, a command whose waiting process exits being killed
+  with its group — SHELL-2 to SHELL-5, SHELL-11, SHELL-12).
 - `test/elia/agent_test.exs` (a call needs approval before it runs, SHELL-1).
 - No test: SHELL-7 — that an approved command is not confined by the workspace
   policy is not asserted anywhere; the approval prompt is the safeguard.
