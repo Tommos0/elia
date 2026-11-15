@@ -498,7 +498,9 @@ an item compaction hid so it stays in the model's context.
 ### Sub-tasks
 
 A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
-so it opens at `/c/<child id>` like any chat.
+so it opens at `/c/<child id>` like any chat. What a task finished with is in
+the chat's own transcript, as its `finish_task` call at the end of it, so the
+header does not repeat it.
 
 - ~~**UI-55** A `{:subtask, …}` agent event is accepted and ignored by the chat
   page.~~ Removed: replaced by UI-43 and UI-44. Renumbered from UI-31, which
@@ -536,10 +538,9 @@ so it opens at `/c/<child id>` like any chat.
 - **UI-48** A task chat shows a header (`#task-header`) above the transcript
   with "Task of" and a link to the parent chat (`#task-parent-link`, labelled
   with the parent's title), the task's status (UI-44's `data-status`, on
-  `#task-header-status`), and a collapsible "Brief" (`#task-header-brief`).
-  Once the task has finished, it also shows the result (`#task-result`): the
-  summary, the commit (first 8 characters), the changed files and the open
-  questions. The header follows `{:task, metadata}` events (SESS-20).
+  `#task-header-status`), and a collapsible "Brief" (`#task-header-brief`), but
+  not the result the task finished with. The header follows `{:task, metadata}`
+  events (SESS-20).
 - **UI-49** The sidebar refreshes when a `{:subtask, …}` or `{:task, …}` event
   arrives, so a new task chat and its final status show without waiting for the
   turn to end (UI-6).

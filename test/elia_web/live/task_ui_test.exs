@@ -353,7 +353,7 @@ defmodule EliaWeb.TaskUITest do
   end
 
   # UI-48
-  test "a task chat shows who it belongs to, its brief and its result", %{
+  test "a task chat shows who it belongs to and its brief, and not its result", %{
     conn: conn,
     parent: parent,
     child: child
@@ -367,15 +367,14 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#task-parent-link[href='/c/#{parent}']", "delegate this")
     assert has_element?(view, "#task-header-status[data-status='done']")
     assert has_element?(view, "#task-header-brief", "Create child.txt.")
-    assert has_element?(view, "#task-result", "Made child.txt")
-    assert has_element?(view, "#task-result", "01234567")
-    refute has_element?(view, "#task-result", "0123456789")
-    assert has_element?(view, "#task-result", "child.txt")
-    assert has_element?(view, "#task-result", "Rename it?")
+    # UI-48: what the task finished with is its own `finish_task` call, in its
+    # transcript, not the header's.
+    refute has_element?(view, "#task-result")
+    refute has_element?(view, "#task-header", "Made child.txt")
   end
 
   # UI-48
-  test "a task chat without a result yet shows no result, and a lost one is interrupted", %{
+  test "a task chat whose turn was cut short is shown as interrupted", %{
     conn: conn,
     parent: parent,
     child: child
@@ -415,7 +414,10 @@ defmodule EliaWeb.TaskUITest do
     topic_send(child, {:task, %{task | status: "blocked", result: result}})
 
     assert has_element?(view, "#task-header-status[data-status='blocked']")
-    assert has_element?(view, "#task-result", "Need input")
+    assert has_element?(view, "#task-header-brief", "Create child.txt.")
+    # UI-48: the result reaching the chat changes the status the header shows
+    # and nothing else — it stays the chat's own `finish_task` call.
+    refute has_element?(view, "#task-result")
   end
 
   # UI-48

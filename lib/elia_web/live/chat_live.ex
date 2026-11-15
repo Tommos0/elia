@@ -910,8 +910,6 @@ defmodule EliaWeb.ChatLive do
 
   # UI-48
   defp task_header(assigns) do
-    assigns = assign(assigns, result: Map.get(assigns.task, :result))
-
     ~H"""
     <div id="task-header" class="border-b border-base-300 bg-base-200/40">
       <div class="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-xs sm:px-6">
@@ -936,25 +934,6 @@ defmodule EliaWeb.ChatLive do
             {@task.brief}
           </div>
         </details>
-        <div :if={@result} id="task-result" class="space-y-1 rounded-lg bg-base-100/70 px-3 py-2">
-          <p class="font-medium">Result</p>
-          <p class="whitespace-pre-wrap">{@result["summary"]}</p>
-          <p :if={@result["commit"]}>
-            Commit <code class="font-mono">{String.slice(@result["commit"], 0, 8)}</code>
-          </p>
-          <div :if={@result["files"] not in [nil, []]}>
-            <p class="text-base-content/60">Changed files</p>
-            <ul class="font-mono">
-              <li :for={file <- @result["files"]} class="truncate">{file}</li>
-            </ul>
-          </div>
-          <div :if={@result["questions"] not in [nil, []]}>
-            <p class="text-base-content/60">Open questions</p>
-            <ul class="list-disc pl-4">
-              <li :for={question <- @result["questions"]}>{question}</li>
-            </ul>
-          </div>
-        </div>
       </div>
     </div>
     """
