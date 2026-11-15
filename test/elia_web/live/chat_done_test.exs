@@ -91,15 +91,16 @@ defmodule EliaWeb.ChatDoneTest do
     assert has_element?(view, "#transcript", "one more thing")
   end
 
-  # DONE-3, UI-79: a task chat's status is its task's (UI-46), so it has no
-  # control to mark it done.
-  test "a task chat has no done control", %{conn: conn, id: id} do
+  # DONE-3, DONE-4, UI-46, UI-79: a task chat has the same control as any other
+  # chat, and using it is the chat's own bookkeeping — its task header keeps
+  # saying what the task did.
+  test "a task chat has the done control too", %{conn: conn, id: id} do
     task = %{
       parent_id: Agent.new_id(),
       title: "Add the file",
       brief: "Create child.txt.",
       started_at: DateTime.utc_now(),
-      status: "done"
+      status: "failed"
     }
 
     :ok = saved(id, task: task)
@@ -107,7 +108,25 @@ defmodule EliaWeb.ChatDoneTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
     assert has_element?(view, "#task-header")
-    assert has_element?(view, "#chat-status-#{id}[data-status='done']")
-    refute has_element?(view, "#done-toggle")
+    assert has_element?(view, "#task-header-status[data-status='failed']")
+    assert has_element?(view, "#chat-status-#{id}[data-status='failed']")
+    assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
+
+    view |> element("#done-toggle") |> render_click()
+
+    assert has_element?(view, "#done-toggle[aria-pressed=true]", "Reopen")
+    assert has_element?(view, "#chat-status-#{id}[data-status='done'][title='Done']")
+    assert Store.load_done(id) == true
+    # UI-48: the header still shows the task's own status.
+    assert has_element?(view, "#task-header-status[data-status='failed']")
+
+    # DONE-4: clicking it again reopens the chat, and the task status is back.
+    view |> element("#done-toggle") |> render_click()
+
+    assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
+    assert has_element?(view, "#chat-status-#{id}[data-status='failed']")
+    assert Store.load_done(id) == false
+    # DONE-3: nothing about the task changed.
+    assert Store.load_task(id).status == "failed"
   end
 end

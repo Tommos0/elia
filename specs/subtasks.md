@@ -16,7 +16,9 @@ started and does not wait for it (SUBTASK-2); the parent goes on working and
 asks for results when it wants them with `list_tasks` and `await_task`
 (SUBTASK-26, SUBTASK-27). Several children can therefore run at once, each in
 its own workspace; children that would share one workspace are serialized
-(SUBTASK-11).
+(SUBTASK-11). A sub-task chat also carries the chat's own done flag (DONE-1):
+marking one done is the user's bookkeeping beside the task's status and changes
+nothing about the task itself (DONE-3).
 
 ## Requirements
 

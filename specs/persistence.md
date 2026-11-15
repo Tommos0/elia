@@ -133,9 +133,8 @@ values a save can carry, deleting a chat, and the two tables themselves.
   history, else "New chat".
 - **STORE-35** Each listed chat carries `done`, a boolean like `interrupted`
   (STORE-31): `true` when the chat is marked done (DONE-1) and `false`
-  otherwise, so a chat nobody marked is listed as open. A task chat still
-  carries it, but its own listed status is its task's (STORE-17) and that is
-  what is shown (DONE-3).
+  otherwise, so a chat nobody marked is listed as open. A task chat carries it
+  too, and it is shown where the task is over (DONE-2, DONE-3).
 - **STORE-36** `Elia.Store.entry/1` returns one chat's listed entry — the same
   fields `list/1` gives that chat (STORE-12, STORE-17, STORE-20, STORE-31,
   STORE-33, STORE-35), derived the same way — without reading the other chats'

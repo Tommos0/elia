@@ -25,9 +25,9 @@ defmodule Elia.Skills.Done do
     the user to deploy — rather than leaving it looking like a chat that was \
     abandoned. Call `mark_done` and don't ask the user about it. Done is \
     bookkeeping, not a stop: the chat can still be continued, and the user's \
-    next message reopens it by itself, so never hold anything back for it. A \
-    sub-task is finished by its own `finish_task` result, so `mark_done` \
-    refuses in one.
+    next message reopens it by itself, so never hold anything back for it. In a \
+    sub-task this is bookkeeping only: the task still ends with your \
+    `finish_task` result, so report there as usual.
     """
   end
 
@@ -41,7 +41,8 @@ defmodule Elia.Skills.Done do
             "chat's work is finished and has landed — after merging your branch into " <>
             "the trunk `master` — so the chat list shows it as done instead of as one " <>
             "that was abandoned. The chat can still be continued: the user's next " <>
-            "message reopens it.",
+            "message reopens it. In a sub-task this is bookkeeping only: the task " <>
+            "still ends with `finish_task`.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -61,16 +62,15 @@ defmodule Elia.Skills.Done do
     ]
   end
 
-  # DONE-7: the session refuses a sub-task chat (DONE-3) and the tool answers
-  # with the flag as it now is, so the model can tell that nothing stopped. A
-  # missing or non-boolean `done` is read as `true`.
+  # DONE-7: the tool answers with the flag as it now is, so the model can tell
+  # that nothing stopped. Nothing refuses it, a task chat included (DONE-3), and
+  # a missing or non-boolean `done` is read as `true`.
   defp mark_done(input, ctx) do
     done = if is_boolean(input["done"]), do: input["done"], else: true
 
     case Elia.Agent.set_done(ctx[:session_id], done) do
       {:ok, true} -> {:ok, "This chat is marked done. It can still be continued."}
       {:ok, false} -> {:ok, "This chat is open again."}
-      {:error, message} -> {:error, message}
     end
   end
 end

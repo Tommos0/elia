@@ -177,11 +177,12 @@ defmodule Elia.Agent do
   @doc """
   Marks the chat done (`true`) or reopens it (`false`) (SESS-35, DONE-1). A done
   chat is shown as done wherever its status is (DONE-2) and can still be
-  continued: a message reopens it (DONE-9). A sub-task chat has no flag of its
-  own, so it returns `{:error, message}` (DONE-3), which the `mark_done` tool
-  reports to the model (DONE-7).
+  continued: a message reopens it (DONE-9). A task chat takes the flag too, as
+  bookkeeping beside its task's status: marking one done changes nothing about
+  the task, so `list_tasks` and `await_task` report what they always did
+  (DONE-3).
   """
-  @spec set_done(binary(), boolean()) :: {:ok, boolean()} | {:error, binary()}
+  @spec set_done(binary(), boolean()) :: {:ok, boolean()}
   def set_done(id, on?) when is_boolean(on?),
     do: GenServer.call(Session.via(id), {:set_done, on?})
 

@@ -7,9 +7,15 @@ defmodule EliaWeb.ChatStatus do
   `status/2` answers for a listed chat (`Elia.Store.list/1`) together with what
   the registry says about it (`Elia.Agent.awaiting_approval/0`, `paused/0`,
   `running/0`, SESS-19) and the record a restart left behind (STORE-31). A chat
-  marked done (DONE-2, STORE-35) reads `done` in place of `idle`.
+  marked done (DONE-2, STORE-35) reads `done` in place of `idle`, and a task
+  chat's own status (UI-46) reads `done` or `working` in place of a task
+  status that means the task is over.
   """
   use EliaWeb, :html
+
+  # DONE-2, UI-46: the task statuses that mean the task is over, so the chat's
+  # own flag or a turn of it running right now can stand in for one.
+  @task_over ~w(done blocked failed unfinished cancelled)
 
   @doc """
   UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: the status a listed chat shows.
@@ -26,7 +32,7 @@ defmodule EliaWeb.ChatStatus do
       Map.get(state, :input, false) -> "awaiting_input"
       Map.get(state, :paused, false) -> "paused"
       # UI-46: a task chat shows its task status (STORE-17).
-      is_binary(Map.get(chat, :task_status)) -> chat.task_status
+      is_binary(Map.get(chat, :task_status)) -> task_chat_status(chat, state)
       # UI-72: a turn a restart cut short (STORE-31).
       Map.get(state, :interrupted, false) -> "interrupted"
       # UI-59: an ordinary chat's loop activity.
@@ -34,6 +40,19 @@ defmodule EliaWeb.ChatStatus do
       # DONE-2, UI-80: a chat marked done shows it in place of idle.
       Map.get(chat, :done, false) -> "done"
       true -> "idle"
+    end
+  end
+
+  # DONE-2, UI-46: a task chat's own status is its task's, and the chat's own
+  # flag or a turn of it running right now stands in only for a status that
+  # means the task is over — a task still running, interrupted, paused or
+  # waiting for the user keeps its own.
+  defp task_chat_status(chat, state) do
+    cond do
+      chat.task_status not in @task_over -> chat.task_status
+      Map.get(state, :running, false) -> "working"
+      Map.get(chat, :done, false) -> "done"
+      true -> chat.task_status
     end
   end
 

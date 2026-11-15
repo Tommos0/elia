@@ -392,13 +392,9 @@ defmodule Elia.Agent.Session do
   end
 
   # SESS-35, DONE-1, DONE-6: the chat's done flag, set by the model's
-  # `mark_done` tool (DONE-6) or the page's control (DONE-4). A sub-task is
-  # finished by its task status, so it has no flag of its own (DONE-3).
-  def handle_call({:set_done, _on?}, _from, %{task_meta: task_meta} = state)
-      when task_meta != nil do
-    {:reply, {:error, "This chat is a sub-task: its status is its task's."}, state}
-  end
-
+  # `mark_done` tool (DONE-6) or the page's control (DONE-4). A task chat takes
+  # it too, as bookkeeping beside its task's status: marking one done never
+  # touches the task itself (DONE-3).
   def handle_call({:set_done, on?}, _from, state) do
     state = %{state | done: on?}
     # As with the model selection, an empty chat is saved with its first message.

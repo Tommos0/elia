@@ -167,7 +167,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   indicator is right on first render, from
   `Elia.Agent.running/0` and the registry (SESS-19, SESS-28), and follows
   `{:chat_status, id, status}` (SESS-19) live. A task chat shows its task
-  status under the same element (UI-46).
+  status under the same element (UI-46), with `done` in its place where the
+  task is over once the chat is marked done and `working` while a turn of it
+  runs (DONE-2).
 - **UI-76** A chat whose session is waiting for an answer (SESS-4, ASK-3) shows
   it in its status indicator (`#chat-status-<id>`, with
   `data-status="awaiting_input"`, a speech-bubble icon and the `title` "Needs
@@ -219,7 +221,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (SESS-35) as soon as it arrives, without a reload (UI-6), while other rows
   pick the flag up at the next refresh (UI-6) or page load, exactly as a title
   does (UI-74). Anything that needs the user or is running now still wins
-  (UI-59), and a task chat still shows its task status (UI-46, DONE-3).
+  (UI-59), and a task chat shows its task status (UI-46) with `done` in its
+  place once the task is over (DONE-2, DONE-3).
 
 ### Transcript
 
@@ -385,16 +388,17 @@ stream in, approves or denies tool calls, and switches between saved chats.
   transcript already shows it as running (FEED).
 
 - **UI-79** The composer toolbar (UI-60's "Focus" toggle, the settings link) has
-  a done control (`#done-toggle`) for an ordinary chat: a button whose
+  a done control (`#done-toggle`) for every chat: a button whose
   `aria-pressed` is `true` while the chat is done (DONE-1) and whose label says
   what clicking it does — "Mark done" while the chat isn't done, "Reopen" while
   it is — with a matching `title`. Clicking it marks the chat done or reopens it
   (`Elia.Agent.set_done/2`, SESS-35) right away, with no confirmation, and the
   control's state follows `{:done, on?}` (SESS-35), so every view of the chat
   agrees; the sidebar's icon for the chat (UI-80) changes with it. It is there
-  while a turn runs too (DONE-5). A task chat has no such control: its status is
-  its task's (UI-46, DONE-3), so the button is not rendered, with nothing in its
-  place.
+  while a turn runs too (DONE-5). A task chat's page has the same control
+  (DONE-4): its task header (UI-48) keeps saying the task's own status, and the
+  control is the chat's own bookkeeping (DONE-3), so it reads the same and
+  behaves the same there.
 
 ### Fitting the screen
 
@@ -527,9 +531,15 @@ header does not repeat it.
   the task's title (STORE-17).
 - **UI-46** Each task chat in the sidebar shows its status as an icon
   (`#chat-status-<id>`, with `data-status` as in UI-44, and a `title` naming
-  the status): a spinner while running, and a distinct icon for each other
-  status. While it waits for approval or is paused the same icon shows that
-  instead (UI-47, UI-58).
+  the status): a spinner while its task is running, and a distinct icon for
+  each other status. While it waits for approval or is paused the same icon
+  shows that instead (UI-47, UI-58). Once the chat is marked done, `done` shows
+  in place of a task status that means the task is over, while a task still
+  running, needing the user or interrupted keeps its own (DONE-2). A turn of
+  the chat running right now shows `working` — the spinner, with the `title`
+  "Working" — in place of a task status that means the task is over, so a
+  finished sub-task the user continues by hand reads as working again (UI-59,
+  SUBTASK-31).
 - **UI-47** Any chat in the sidebar that has a tool call awaiting approval
   (SESS-4) shows it in its status indicator (`#chat-status-<id>`, with
   `data-status="awaiting_approval"`, a hand icon and the `title` "Needs

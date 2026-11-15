@@ -300,11 +300,11 @@ every view.
 - **SESS-35** `Elia.Agent.set_done/2` (chat id, boolean) marks the chat done or
   reopens it (DONE-1, DONE-6): the session saves the flag with the chat once the
   chat has messages (as SESS-14, STORE-34), broadcasts `{:done, on?}` (SESS-6)
-  and returns `{:ok, on?}`, so every view of the chat agrees. It returns
-  `{:error, message}` and changes nothing for a chat whose session has task
-  metadata (DONE-3, STORE-16), and it is allowed mid-turn, like the chat's other
-  settings (SESS-16, SESS-30): marking a chat done changes nothing about the turn
-  it is running. The session loads the saved flag on start (STORE-34), upgrading
+  and returns `{:ok, on?}`, so every view of the chat agrees. It works on every
+  chat, a task chat included, where the flag is bookkeeping beside the task's
+  own status (DONE-3, STORE-16), and it is allowed mid-turn, like the chat's
+  other settings (SESS-16, SESS-30): marking a chat done changes nothing about
+  the turn it is running. The session loads the saved flag on start (STORE-34), upgrading
   a state that predates the field as in SESS-15.
 - **SESS-36** A done chat is continued like any other: `send_message` (SESS-3)
   works on it unchanged, and starting the turn clears the chat's done flag

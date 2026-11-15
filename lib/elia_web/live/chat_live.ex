@@ -403,10 +403,10 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
               </button>
-              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. A task chat's
-              status is its task's (DONE-3), so it has no control here. --%>
+              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. A task chat has
+              the same control: there the flag is the chat's own bookkeeping
+              beside the task's status (DONE-3). --%>
               <button
-                :if={@task == nil}
                 type="button"
                 id="done-toggle"
                 phx-click="toggle_done"
@@ -1705,13 +1705,12 @@ defmodule EliaWeb.ChatLive do
   end
 
   # DONE-4, DONE-5, UI-79: mark this chat done, or reopen it. Neither needs a
-  # confirmation: a done chat is continued by the next message anyway (DONE-9).
-  # The flag itself arrives back through `{:done, on?}` (SESS-35).
+  # confirmation: a done chat is continued by the next message anyway (DONE-9),
+  # and nothing refuses it, a task chat included (DONE-3). The flag itself
+  # arrives back through `{:done, on?}` (SESS-35).
   def handle_event("toggle_done", _params, socket) do
-    case Agent.set_done(socket.assigns.session_id, !socket.assigns.done) do
-      {:ok, done} -> {:noreply, socket |> assign(done: done) |> refresh_listed()}
-      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
-    end
+    {:ok, done} = Agent.set_done(socket.assigns.session_id, !socket.assigns.done)
+    {:noreply, socket |> assign(done: done) |> refresh_listed()}
   end
 
   # UI-60: switch the transcript between the full and the compact view, and ask
