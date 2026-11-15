@@ -281,7 +281,11 @@ defmodule EliaWeb.ChatList do
     another chat — which mounts a page again — re-lists the same pages rather
     than starting from the first one (UI-4). The server decides the number
     (UI-84): the hook hands back what it stored and writes down what it is told.
-    Without it, or with nothing stored, the list is the first page, as before. --%>
+    Without it, or with nothing stored, the list is the first page, as before.
+    It hangs off this list (`#chat-list`), and its name is resolved against the
+    module the markup is compiled in — `EliaWeb.ChatList` — so the two belong in
+    this file together: a `phx-hook` in another module's template would name a
+    hook that is not there. --%>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatPageSize">
       const KEY = "elia:chat-page"
 
@@ -309,7 +313,11 @@ defmodule EliaWeb.ChatList do
     >
       <.icon name="hero-plus" class="size-4" /> New chat
     </.link>
-    <nav id={"#{@scope}chat-list"} class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+    <nav
+      id={"#{@scope}chat-list"}
+      phx-hook=".ChatPageSize"
+      class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4"
+    >
       <%!-- UI-4, PROJ-24: chats grouped by project, newest first --%>
       <%= for group <- project_groups(@state.projects, @state.chats) do %>
         <div

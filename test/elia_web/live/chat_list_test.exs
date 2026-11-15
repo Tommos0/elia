@@ -111,6 +111,15 @@ defmodule EliaWeb.ChatListTest do
       newest = List.last(ids)
 
       {:ok, view, _html} = live(conn, ~p"/c/#{newest}")
+
+      # UI-85: the hook hangs off the list itself, and a `phx-hook` naming a
+      # module that has no such script mounts nothing — the browser's half then
+      # never runs and the list quietly starts at the first page again. That is
+      # what this asserts, since it is all the fast suite can see of the client:
+      # the markup resolves `.ChatPageSize` to the module it was compiled in, so
+      # the name and the script have to stay in `EliaWeb.ChatList` together.
+      assert has_element?(view, "#chat-list[phx-hook='EliaWeb.ChatList.ChatPageSize']")
+
       view |> element("#load-more-chats") |> render_click()
       assert_push_event(view, "chat_page", %{limit: 60})
 
