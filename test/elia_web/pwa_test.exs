@@ -118,6 +118,19 @@ defmodule EliaWeb.PwaTest do
              "/assets/js/app.js?v=0"
   end
 
+  # PWA-9: a document loaded again is revalidated with the server rather than
+  # answered from the browser's cache, so an installed app's window does not
+  # keep showing the HTML it holds. The start URL (`/`, PWA-1) and a page below
+  # it both say so.
+  test "the documents are served to be revalidated", %{conn: conn} do
+    for path <- [~p"/", ~p"/settings"] do
+      response = get(conn, path)
+
+      assert html_response(response, 200) =~ "<html"
+      assert get_resp_header(response, "cache-control") == ["no-cache"], "at #{path}"
+    end
+  end
+
   # PWA-6
   test "icon generator exists", _ do
     assert File.exists?("assets/pwa_icons.exs")

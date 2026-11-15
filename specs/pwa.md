@@ -9,7 +9,8 @@ worker, and a secure origin (HTTPS, or `localhost`). Elia is a live,
 server-driven app, so the service worker does no caching and there is no
 offline mode. What a browser's own cache can still hold on to is the page's
 assets, so the shell's links to them carry a version that changes with the
-build (PWA-8).
+build (PWA-8), and the documents themselves are served to be revalidated rather
+than reused (PWA-9).
 
 ## Requirements
 
@@ -49,15 +50,22 @@ build (PWA-8).
   is read from the app's own `priv/static` as the layout renders, and a bundle
   that is not there yet gives a stable placeholder rather than an error, so a
   page renders before the assets are built.
+- **PWA-9** The app's HTML documents are served telling the browser to
+  revalidate them (`cache-control: no-cache`), so an installed app that loads
+  its document again asks the server for it rather than being shown a copy the
+  browser's cache still holds. Every page the browser pipeline serves gets it.
+  It is not `no-store`: a page restored from the back/forward cache is how a tab
+  left in the background recovers (CONN-1), and `no-store` is what keeps a
+  browser from storing one at all.
 
 ## Out of scope
 
 - Offline use, caching, push notifications.
-- The document itself: the HTML an installed app opens carries no version, and a
-  page that keeps the bundle it already loaded, without loading the document
-  again, is not reached (HOT-8). What an installed app does with a document its
-  own window holds on to is the browser's site data, not something the server
-  sends.
+- The document itself: the HTML an installed app opens carries no version — it
+  revalidates with the server instead (PWA-9). So a page that keeps the bundle it
+  already loaded, without loading the document again, is still not reached
+  (HOT-8), and what an installed app does with a document its own window holds
+  on to is the browser's site data, not something the server sends.
 - The browser only offers installation on a secure origin. Over plain HTTP on a
   LAN address, Chrome only offers a shortcut, not an installed app. Use HTTPS
   (e.g. a tunnel or reverse proxy) or `chrome://flags` "Insecure origins treated
@@ -77,11 +85,12 @@ build (PWA-8).
   the viewport meta of PWA-7, the versioned asset links of PWA-8),
   `assets/js/app.js` (registration)
 - `EliaWeb.AssetVersion` (the version of PWA-8)
+- `EliaWeb.Router` (the browser pipeline's `no-cache` on documents, PWA-9)
 
 ## Tests
 
 - `test/elia_web/pwa_test.exs` (the manifest and its icons, the layout's links,
   the service worker's scope and the viewport meta, the version on the asset
-  links — PWA-1 to PWA-4, PWA-6 to PWA-8).
+  links, the document's cache header — PWA-1 to PWA-4, PWA-6 to PWA-9).
 - No test: PWA-5 — the registration is JavaScript in `assets/js/app.js`, the
   project has no JS test runner, and it is checked by hand.

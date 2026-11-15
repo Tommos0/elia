@@ -8,10 +8,20 @@ defmodule EliaWeb.Router do
     plug :put_root_layout, html: {EliaWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    # PWA-9: a document loaded again is revalidated with the server rather than
+    # answered from the browser's cache, which is what an installed app's window
+    # otherwise holds on to. Not `no-store`: a page restored from the
+    # back/forward cache is how a backgrounded tab recovers (CONN-1).
+    plug :no_cache_document
   end
 
   pipeline :api do
     plug :accepts, ["json"]
+  end
+
+  # PWA-9: every HTML document the browser pipeline serves says so.
+  defp no_cache_document(conn, _opts) do
+    put_resp_header(conn, "cache-control", "no-cache")
   end
 
   # A UI preview's images (PREVIEW-7): directory-independent, so they are
