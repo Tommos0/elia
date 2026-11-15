@@ -80,6 +80,9 @@ defmodule Elia.ChatDoneTest do
 
     id = Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
+    # The test writes the file itself, so the directory a save would make may
+    # not exist yet: it depends on which test of the partition ran first.
+    File.mkdir_p!(Store.dir())
     File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
     assert Store.load_done(id) == false
   end

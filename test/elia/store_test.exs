@@ -102,6 +102,8 @@ defmodule Elia.StoreTest do
     assert Store.load_effort("../bad") == nil
     assert Store.load_effort("") == nil
 
+    # Written by hand, so the directory a save would make may not exist yet.
+    File.mkdir_p!(Store.dir())
     File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
     assert Store.load_effort(id) == nil
 
@@ -119,7 +121,9 @@ defmodule Elia.StoreTest do
     assert Store.load_jail("../bad") == true
     assert Store.load_jail("") == true
 
-    # Corrupt on disk.
+    # Corrupt on disk, written by hand, so the directory a save would make may
+    # not exist yet.
+    File.mkdir_p!(Store.dir())
     File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
     assert Store.load_jail(id) == true
 
