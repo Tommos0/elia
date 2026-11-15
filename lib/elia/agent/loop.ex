@@ -7,8 +7,8 @@ defmodule Elia.Agent.Loop do
   (LOOP-3, LOOP-20, LOOP-22). When it stops, the turn is done: nothing is
   verified and nothing is rolled back (`specs/verification.md`).
 
-  Runs inside a task owned by `Elia.Agent.Session` and reports to it with
-  plain messages:
+  Runs inside a task owned by `Elia.Agent.Session` — and ends when that session
+  does (SESS-45) — and reports to it with plain messages:
 
     * `{:loop_event, event}` - streaming `t:Elia.LLM.Provider.event/0`s
     * `{:loop_append, message}` - a message to append to the history
@@ -70,6 +70,11 @@ defmodule Elia.Agent.Loop do
 
   @spec run(pid(), [Message.t()], keyword()) :: result()
   def run(session, history, opts \\ []) do
+    # SESS-45: the loop belongs to its session, so the session's death ends it —
+    # the other direction from the stop (SESS-8), which kills the loop from the
+    # session's side.
+    own(session)
+
     workspace = Keyword.get(opts, :workspace, Elia.Workspace.root())
     project = Keyword.get(opts, :project)
 
@@ -604,6 +609,27 @@ defmodule Elia.Agent.Loop do
       receive do
         {:DOWN, ^loop_ref, :process, _, _} -> Process.exit(worker, :kill)
         {:DOWN, ^worker_ref, :process, _, _} -> :ok
+      end
+    end)
+  end
+
+  # SESS-45: the session's death ends this loop. The loop is a task under
+  # `Elia.Agent.TaskSupervisor`, not a child of the session, so nothing else
+  # would end it: the session's `terminate/2` saves and returns (SESS-44), and a
+  # kill runs nothing at all. The worker guards above then end the calls the turn
+  # was running, and their commands with them (SESS-43, SHELL-12), so a turn does
+  # not go on calling the model or writing to the workspace for a chat that has
+  # no session. Ends with whichever goes first — the same shape as `guard/1`.
+  defp own(session) do
+    loop = self()
+
+    spawn(fn ->
+      session_ref = Process.monitor(session)
+      loop_ref = Process.monitor(loop)
+
+      receive do
+        {:DOWN, ^session_ref, :process, _, _} -> Process.exit(loop, :kill)
+        {:DOWN, ^loop_ref, :process, _, _} -> :ok
       end
     end)
   end

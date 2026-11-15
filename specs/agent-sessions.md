@@ -219,6 +219,16 @@ every view.
   an open page sees it at once; a listing read from the saved file (STORE-6)
   can lag by up to the interval.
 
+- **SESS-45** A turn's loop and the tools it runs belong to the session that
+  started them: when that session dies — its supervisor terminating it, a crash
+  in one of its callbacks, or a kill that runs nothing — the loop ends, and so
+  does every tool call, worker task and OS command the turn had running
+  (SESS-43, SHELL-12), so no turn goes on calling the model or writing to the
+  workspace for a chat that has no session. It is SESS-8 in the other
+  direction: the stop kills the loop, and a loop that dies on its own is still
+  SESS-12's crash. The chat's saved turn is left as it is (STORE-30, INTR-1),
+  so the chat is still one whose turn a new session carries on (RESUME-2).
+
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
   `Elia.Agent.set_limits/2` (chat id, a map of changes) sets this chat's step
@@ -384,7 +394,10 @@ Unchanged, backward compatible, nothing to migrate. SESS-44 changes when a
 session saves, not what it saves: every save still writes the whole chat in the
 shape of STORE-1's table, through `Elia.Store.save/3` and its atomic write
 (STORE-2, STORE-43 untouched), so an older file loads as it did before and a file
-written now is what an older version wrote.
+written now is what an older version wrote. SESS-45 changes no stored shape
+either: a session that dies still leaves the turn it was running in the file
+(STORE-30), which is what makes the chat one a new session carries on
+(RESUME-2, INTR-1), so there is nothing to migrate and no read-time fallback.
 
 ## Implementation
 
@@ -398,8 +411,9 @@ written now is what an older version wrote.
   it loads, the one write path and what it refuses, `ensure_started/2`'s
   options, task metadata, `compact/1`, the
   session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
-  held, a pause recorded and the stop a turn ends in — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-44).
+  held, a pause recorded and the stop a turn ends in, and the loop and command a
+  dying session ends — SESS-2 to SESS-8,
+  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-45).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

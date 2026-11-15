@@ -1008,15 +1008,76 @@ defmodule Elia.AgentTest do
     push_held_step(self())
 
     :ok = Agent.send_message(id, "go")
-    assert_receive {:model_waiting, loop}, 10_000
+    assert_receive {:model_waiting, _loop}, 10_000
     assert saved_count(id) == 1
 
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    # SESS-45: the loop ends with its session, so this test needs no cleanup of
+    # its own for the held one.
     :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
-    Process.exit(loop, :kill)
 
     assert saved_count(id) == 3
     assert %{id: _} = Elia.Store.load_turn(id)
+  end
+
+  # SESS-45: a session its supervisor terminates — no stop of any kind, and
+  # nothing of the test's own — ends the loop of the turn it was running with it
+  # (SESS-8 is the same in the other direction: the stop kills the loop).
+  test "terminating a session ends its loop" do
+    id = start_fake_skill_session([])
+    push_held_step(self())
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:model_waiting, loop}, 10_000
+
+    ref = Process.monitor(loop)
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+
+    assert_receive {:DOWN, ^ref, :process, ^loop, _reason}, 5_000
+  end
+
+  # SESS-45: a loop waiting on a decision is ended too, rather than held for a
+  # chat that no longer has a session — and a killed session runs nothing of its
+  # own, so only the loop's own monitoring of it can end it.
+  test "a session killed while its loop awaits approval ends the loop", %{id: id} do
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo elia"})])
+    )
+
+    :ok = Agent.send_message(id, "run it")
+    await_status(id, :awaiting_approval)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    loop = :sys.get_state(pid).task.pid
+    ref = Process.monitor(loop)
+    Process.exit(pid, :kill)
+
+    assert_receive {:DOWN, ^ref, :process, ^loop, _reason}, 5_000
+  end
+
+  # SESS-45, SHELL-12: a session killed outright still ends the turn, so the
+  # command its shell call is running goes with it instead of working on for a
+  # chat no session runs (SESS-43 is the same for the stop).
+  test "a session killed while a command runs ends the command with it", %{id: id} do
+    # A sleep length no other run uses, as the stop's test does.
+    System.cmd("pkill", ["-KILL", "-f", "^sleep 3175"])
+    marker = "3175.#{System.unique_integer([:positive])}"
+    command = "sleep #{marker} & sleep #{marker}; wait"
+    on_exit(fn -> System.cmd("pkill", ["-KILL", "-x", "-f", "sleep #{marker}"]) end)
+
+    call = FakeLLM.tool_call("c1", "shell", %{"command" => command, "timeout_seconds" => 600})
+    FakeLLM.push(FakeLLM.assistant([call]))
+
+    :ok = Agent.send_message(id, "run it")
+    await_status(id, :awaiting_approval)
+    :ok = Agent.approve(id, "c1")
+    assert eventually(fn -> sleeping(marker) == 2 end)
+
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    Process.exit(pid, :kill)
+
+    assert eventually(fn -> sleeping(marker) == 0 end)
   end
 
   # SESS-44, `## Stored data`: the saved shape is unchanged, so a chat written
