@@ -34,7 +34,6 @@ refused.
   | `spawn_task` | always (SUBTASK-2) | parent |
   | `list_tasks` | never (SUBTASK-26) | parent |
   | `await_task` | never (SUBTASK-27) | parent |
-  | `finish_task` | never (SUBTASK-3) | child |
   | `terminal_start` | always (TERM-10, TERM-25) | both |
   | `terminal_send` | always (TERM-32) | both |
   | `terminal_read` | never (TERM-26) | both |

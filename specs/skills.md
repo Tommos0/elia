@@ -37,8 +37,8 @@ system prompt from them. It can be reloaded while the app runs.
   HIST-1) and `self-modification`
   (instructions only). The last one is a chat's only when its project is Elia's
   own (PROJ-17);
-  a sub-task session, and only it, also gets the built-in `task` skill, which
-  carries `finish_task` (SUBTASK-1).
+  a sub-task session gets neither the `tasks` skill nor one of its own, so it
+  has exactly the tools an ordinary chat has (SUBTASK-1).
 - **SKILL-8** The `harness` skill's instructions apply in every project: they
   tell the model to prefer a folder skill over changing code, to reload skills
   with `reload_skills`, and to run the tests before finishing. Folder skills

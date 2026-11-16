@@ -16,12 +16,12 @@ marks it done as its last step, right after merging its branch into `master`
 bookkeeping, not a lock: a message in a done chat continues it as always and
 reopens it (DONE-9), so nothing has to be undone before going on.
 
-A sub-task has the same flag: its chat is marked done and reopened like any
-other, by hand or by its own `mark_done`. Marking one done is bookkeeping
-beside the task: it never ends the task, records a result or releases its
-entry, so a sub-task still ends the way `specs/subtasks.md` describes
-(SUBTASK-3, SUBTASK-16). Its row shows its task's status, with `done` standing
-in only once the task is over (DONE-2).
+A sub-task has the same flag, and there it means more: marking a sub-task's
+chat done *is* what ends the task (SUBTASK-33), whether the child's own
+`mark_done` did it or the user did (DONE-4). So a child is finished when its
+chat says it is, and its row shows the status any chat's does (DONE-2, UI-46).
+What "done" means is a little different in a child, since its work is committed
+on its own branch rather than landed on the trunk (SUBTASK-23, DONE-6).
 
 ## Requirements
 
@@ -38,23 +38,22 @@ in only once the task is over (DONE-2).
   `done` — a check icon and the `title` "Done" — in place of `idle`. Anything
   that needs the user or is running now still comes first (UI-59): awaiting
   approval, awaiting an answer, paused, a turn running right now and a turn a
-  restart cut short (UI-72) are all shown as they are, done or not. Of a task
-  chat's statuses, `done` stands in for the ones that mean its task is over —
-  `done`, `blocked`, `failed`, `unfinished` and `cancelled` (UI-44, STORE-17) —
-  while a task that is running, waiting for the user, paused or interrupted by
-  a restart (SUBTASK-20) is shown as it is; a turn of the chat running right
-  now reads `working` in place of a status that means the task is over, as an
-  ordinary chat's does (UI-46, UI-59). The task header in the chat page
-  (UI-48) keeps showing the task's own status, so marking a chat done hides
-  nothing of what its task did.
-- **DONE-3** A task chat's flag is bookkeeping and nothing more: marking one
-  done or reopening it changes nothing about its task — not its status, its
-  turn, its result, its entry or the wait its parent holds, so `list_tasks` and
-  `await_task` report exactly what they did before (SUBTASK-26, SUBTASK-27) —
-  and a message to a done task chat reopens it while still continuing the task
-  (SUBTASK-16, SUBTASK-31). Neither the page's control (DONE-4) nor the tool
-  (DONE-6) refuses it. *Changed:* a task chat used to take no flag at all, and
-  marking one done was refused rather than shown.
+  restart cut short (UI-72) are all shown as they are, done or not. A task chat
+  is no different: it has no status of its own to stand in for (UI-46), so its
+  row and its header (UI-48) read `done` where its chat is marked done and
+  whatever the chat is doing otherwise. *Changed:* a task chat used to show its
+  task's status, with `done` standing in for the ones that meant the task was
+  over.
+- **DONE-3** A task chat's flag is the end of its task (SUBTASK-33): marking
+  one done ends it — the result is built and saved (SUBTASK-9, SUBTASK-13), its
+  entry released (SUBTASK-11) and a parent's `await_task` returns it
+  (SUBTASK-27) — and the child is finished. Reopening it (DONE-9) doesn't
+  un-end the task: the end happened and the result stays (SUBTASK-13). Both the
+  page's control (DONE-4) and the tool (DONE-6) work on a task chat, which is
+  what makes a child's own `mark_done` the ordinary way for it to finish.
+  *Changed:* a task chat's flag used to be bookkeeping beside the task, which
+  ended with the child's `finish_task` (the retired SUBTASK-3) or its turn
+  (SUBTASK-8).
 
 ### Marking it by hand
 
@@ -64,8 +63,8 @@ in only once the task is over (DONE-2).
   is done. Its label says which one it does ("Mark done" while the chat isn't
   done, "Reopen" while it is), so the state is readable without hovering, and
   it never needs a confirmation (DONE-9: nothing is lost by either). A task
-  chat has it too, under its task header (UI-48), where it is the chat's own
-  bookkeeping beside the task's status (DONE-3).
+  chat has it too, under its task header (UI-48), where it is how the task is
+  ended (DONE-3, SUBTASK-33).
 - **DONE-5** The control acts on the click and the page follows
   `{:done, on?}` (SESS-35) as every other setting of the chat does: the button's
   state and the sidebar's icon for this chat (DONE-2) change without a reload,
@@ -83,8 +82,9 @@ in only once the task is over (DONE-2).
   bookkeeping — the work is finished and has landed on the trunk — that it
   should mark the chat done once it has merged its branch into `master`
   (DEPLOY-13), that a done chat is still resumable, and that in a sub-task the
-  tool is bookkeeping only, the task still ending with the child's
-  `finish_task` result (SUBTASK-3, DONE-3).
+  tool is what ends the task, where "done" means the work is committed on the
+  child's own branch rather than landed on the trunk (SUBTASK-23, SUBTASK-33,
+  DONE-3).
 - **DONE-7** The tool answers with the chat's flag as it now is ("This chat is
   marked done." / "This chat is open again."), so the model can tell that
   nothing stopped and that the chat can still be continued (DONE-8). A missing
@@ -120,20 +120,19 @@ in only once the task is over (DONE-2).
 - Marking a chat done from anywhere but its own page (a sidebar or dashboard
   control, a bulk action) and a "done at" time or history.
 - Done as a lock: no chat becomes read-only, undeletable or inaccessible.
-- A done flag on a task chat standing for anything but bookkeeping: it never
-  ends the task, stops its turn, supplies a result, releases its entry or
-  reaches the parent's `list_tasks` and `await_task` (DONE-3).
+- Marking a task chat done ending anything but the task: it doesn't stop a
+  turn, delete a chat or merge a child's branch, so a finished child's work
+  still lands when its parent merges it (SUBTASK-23).
 
 ## Stored data
 
 The stored shape doesn't change: `done` is the `true` it always was, written
 only while the chat is done and read back the same way (STORE-34, STORE-35), so
-this is backward compatible and needs no migration. What changes is which chat
-may carry it — a task chat's file may now have the entry, where before a
-session refused to write one (DONE-1, DONE-3). An older file is read exactly as
-it was: a chat with no entry is open, and a task chat's entry is read only by
-the flag's own views (DONE-2) and never by the task machinery, which reads its
-metadata as before (SUBTASK-26, SUBTASK-27).
+this is backward compatible and needs no migration. What changes is what the
+flag does on a task chat: it now ends the task (DONE-3, SUBTASK-33), so a task
+chat's file is read by the task machinery for it too — a child whose file
+carries the entry is a child that has finished, and one whose file hasn't is
+still running (SUBTASK-34).
 
 ## Implementation
 

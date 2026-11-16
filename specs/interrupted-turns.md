@@ -51,10 +51,10 @@ session for that chat is running (INTR-2).
   (RESUME-3).
 
 - **INTR-4** A sub-task chat (SUBTASK-1) whose turn was cut short gets the same
-  notice in its own transcript, and its listed task status stays `interrupted`
-  (STORE-17, SUBTASK-20), which is what its parent's card shows — unless it is
-  resumed, when it and its task are `running` again and its watcher is put back
-  (RESUME-7).
+  notice in its own transcript, and it is listed as `interrupted` like any chat
+  (STORE-31, SUBTASK-20) — which is what its parent's card shows (UI-44, UI-72)
+  — unless it is resumed, when it is `working` again and its entry in the
+  registry of running children is taken again (RESUME-7).
 
 ## Out of scope
 
@@ -62,8 +62,9 @@ session for that chat is running (INTR-2).
   [auto resume](auto-resume.md), and the notice this feature writes is what a
   chat says when nothing resumes it (RESUME-5 to RESUME-8).
 - A task that a restart interrupted is not restarted by this feature either: it
-  is resumed with its watcher put back, so its result still reaches its parent
-  ([auto resume](auto-resume.md), RESUME-7).
+  is resumed like any chat, with its entry in the registry of running children
+  taken again, so its result still reaches its parent once its chat is marked
+  done ([auto resume](auto-resume.md), RESUME-7, SUBTASK-33).
 
 ## Implementation
 

@@ -120,7 +120,7 @@ it.
 | [File uploads](file-uploads.md) | `UPLOAD` | The composer's attach control: a file the user picks is written into the chat's own workspace, and the message names it |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
-| [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included, with their watcher put back — once per turn and never when it was waiting on the user |
+| [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included, with their entry in the running-children registry taken again — once per turn and never when it was waiting on the user |
 | [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, the user's stop — writes why into the transcript |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Turn retries](turn-retries.md) | `RETRY` | A model call that failed transiently — a timeout, a dropped connection, an overloaded provider — is asked again after a wait, so the turn carries on by itself |
@@ -151,7 +151,7 @@ it.
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
-| [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat; `list_tasks`/`await_task` report its status and result; `finish_task` returns a structured result |
+| [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `list_tasks`/`await_task` report it and bring back a short result |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
 | [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
 | [Worktree build cache](worktree-build-cache.md) | `BUILD` | A chat's worktree is seeded with a private copy of the live tree's build output, so its first compile reuses the dependencies' artifacts instead of building them from source |

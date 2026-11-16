@@ -502,10 +502,11 @@ an item compaction hid so it stays in the model's context.
 ### Sub-tasks
 
 A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
-so it opens at `/c/<child id>` like any chat. What a task finished with is in
-the chat's own transcript, as its `finish_task` call at the end of it — the
-commit and the changed files are in the parent's `await_task` result — so the
-header does not repeat it.
+so it opens at `/c/<child id>` like any chat and carries the status any chat
+does (UI-59, UI-72). What a task finished with is in the chat's own transcript,
+as the `mark_done` call at the end of it and the message before it that says
+what it did — the commit and the changed files are in the parent's `await_task`
+result (SUBTASK-9) — so the header does not repeat it.
 
 - ~~**UI-55** A `{:subtask, …}` agent event is accepted and ignored by the chat
   page.~~ Removed: replaced by UI-43 and UI-44. Renumbered from UI-31, which
@@ -516,30 +517,33 @@ header does not repeat it.
   section (`#task-brief-<call_id>`) shows the `brief`, expanded while the call
   awaits approval. The usual badge (UI-16) and approval buttons (UI-18) stay.
 - **UI-44** Once the child exists, the card shows its status
-  (`#task-status-<call_id>`, with `data-status` set to `running`, `done`,
-  `blocked`, `failed`, `unfinished`, `cancelled` or `interrupted`) and a link to the child
-  chat (`#task-link-<call_id>`). The status follows `{:subtask, call_id,
-  child_id, status}` events (SUBTASK-7), and the link and status also appear
-  when the chat is opened later, from the children's saved metadata
-  (`parent_call_id`, STORE-18). While the child waits for the user to approve a
-  tool call in its own chat (SESS-19), the card says so
-  (`#task-awaiting-<call_id>`), and so does a child waiting for an answer to a
-  question (ASK-9, `#task-input-<call_id>`).
+  (`#task-status-<call_id>`) and a link to the child chat
+  (`#task-link-<call_id>`). The status is the child chat's own — the same
+  `data-status` its sidebar row carries (UI-46, UI-59, UI-72): `working` while
+  a turn of it runs, `awaiting_approval` or `awaiting_input` while it needs the
+  user, `paused` at a limit, `interrupted` after a restart, `done` once its
+  chat is marked done and `idle` otherwise — so the card and the child chat
+  never disagree. It follows the child's own events (SESS-19, SESS-35), and the
+  link and status also appear when the chat is opened later, from the
+  children's saved metadata (`parent_call_id`, STORE-18). While the child waits
+  for the user to approve a tool call in its own chat (SESS-19), the card says
+  so (`#task-awaiting-<call_id>`), and so does a child waiting for an answer to
+  a question (ASK-9, `#task-input-<call_id>`). *Changed:* the status used to be
+  the task's own, from a `{:subtask, …}` event (the retired SUBTASK-7), and the
+  card no longer shows a status the child's own chat doesn't have (SUBTASK-33).
 - **UI-45** The sidebar nests a task chat under its parent chat, indented and
   ordered by start time (oldest first). A task chat whose parent isn't in the
   list is shown on its own at the top level. The row (`#chat-link-<id>`) uses
   the task's title (STORE-17).
-- **UI-46** Each task chat in the sidebar shows its status as an icon
-  (`#chat-status-<id>`, with `data-status` as in UI-44, and a `title` naming
-  the status): a spinner while its task is running, and a distinct icon for
-  each other status. While it waits for approval or is paused the same icon
-  shows that instead (UI-47, UI-58). Once the chat is marked done, `done` shows
-  in place of a task status that means the task is over, while a task still
-  running, needing the user or interrupted keeps its own (DONE-2). A turn of
-  the chat running right now shows `working` — the spinner, with the `title`
-  "Working" — in place of a task status that means the task is over, so a
-  finished sub-task the user continues by hand reads as working again (UI-59,
-  SUBTASK-31).
+- **UI-46** A task chat in the sidebar shows its status the way any chat's row
+  does (UI-59, UI-72): the same indicator (`#chat-status-<id>`), the same
+  `data-status` values and the same `title`, derived by the same code, so a
+  child chat is never shown a status its own page doesn't have. *Changed:* a
+  task chat used to show its task's status (`running`, `done`, `blocked`,
+  `failed`, `unfinished`, `cancelled`), with the chat's own flag and turn
+  standing in for some of them (DONE-2); that vocabulary went with the task
+  status itself (SUBTASK-33), so a child whose chat isn't marked done and has
+  no turn running reads `idle`, and one whose chat is marked done reads `done`.
 - **UI-47** Any chat in the sidebar that has a tool call awaiting approval
   (SESS-4) shows it in its status indicator (`#chat-status-<id>`, with
   `data-status="awaiting_approval"`, a hand icon and the `title` "Needs
@@ -548,17 +552,22 @@ header does not repeat it.
   is right on first render.
 - **UI-48** A task chat shows a header (`#task-header`) above the transcript
   with "Task of" and a link to the parent chat (`#task-parent-link`, labelled
-  with the parent's title), the task's status (UI-44's `data-status`, on
-  `#task-header-status`), and a collapsible "Brief" (`#task-header-brief`), but
-  not the result the task finished with. The header follows `{:task, metadata}`
-  events (SESS-20).
-- **UI-49** The sidebar refreshes when a `{:subtask, …}` or `{:task, …}` event
-  arrives, so a new task chat and its final status show without waiting for the
-  turn to end (UI-6).
+  with the parent's title), the chat's own status (UI-59, UI-72, on
+  `#task-header-status`, with UI-46's `data-status` values), and a collapsible
+  "Brief" (`#task-header-brief`), but not the result the task finished with,
+  which is in the transcript itself (SUBTASK-9). The header follows the chat's
+  own status events (SESS-19) and `{:task, metadata}` for its brief (SESS-20).
+- **UI-49** The sidebar refreshes when a chat's status changes (SESS-19) or its
+  done flag does (SESS-35), so a new task chat and its status show without
+  waiting for the turn to end (UI-6). *Changed:* it used to follow a
+  `{:subtask, …}` event (the retired SUBTASK-7), which is now the same status
+  every chat broadcasts.
 
-- **UI-50** The status `cancelled` — one a task saved before SUBTASK-16 changed
-  may still have — has its own icon, wherever a task status is shown (UI-44,
-  UI-46, UI-48), with `data-status="cancelled"`.
+- ~~**UI-50** The status `cancelled` — one a task saved before SUBTASK-16
+  changed may still have — has its own icon, wherever a task status is shown
+  (UI-44, UI-46, UI-48), with `data-status="cancelled"`.~~ Retired: a chat has
+  no task status to draw (UI-46), so there is no `cancelled` to show; a saved
+  `cancelled` is ignored when its chat is read (SUBTASK-34).
 
 - **UI-57** A chat whose turn is paused at a limit (SESS-27) shows a banner
   (`#pause-banner`) above the transcript with the pause message
@@ -664,8 +673,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding
   the transcript, a write's "Changes" section, a message blank after trimming
   being dropped, the input clearing after a send, the Stop button replacing the
-  send button, and the sidebar refreshing on a `{:subtask, …}` or `{:task, …}`
-  event.
+  send button, and the sidebar refreshing on a `{:task, …}` event and on a
+  chat's done flag changing.
 - No test: UI-12 — that a session's notice and its error render inline as an info
   and an error row is asserted nowhere; the rows of the other kinds are (UI-9,
   UI-73, UI-81, UI-82).
@@ -682,8 +691,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   `test/elia_web/live/compact_view_test.exs` (the Focus view, UI-60 to UI-62,
   UI-90).
 - `test/elia_web/live/task_ui_test.exs` (the task card and its statuses, the
-  nested rows, the header, the pause banner — UI-43 to UI-48, UI-50, UI-57 to
-  UI-59, UI-64).
+  nested rows, the header, the pause banner — UI-43 to UI-49, UI-57 to UI-59,
+  UI-64).
 - `test/elia_web/live/user_input_test.exs` (the question card and the
   indicators, the collapsible output, the card in the Focus view — UI-15, UI-16,
   UI-44, UI-61, UI-62, UI-75, UI-76, UI-83).

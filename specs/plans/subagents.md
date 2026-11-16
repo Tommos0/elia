@@ -4,6 +4,14 @@ Status: Draft. This is a plan, not a spec: it has no requirement IDs. Phase 1
 writes `specs/subtasks.md` (prefix `SUBTASK`) before any code, and later phases
 extend that spec.
 
+**The status and result model below was replaced** (drafted in
+`specs/subtasks.md`): a child no longer reports a result with `finish_task` and
+no longer has a task status of its own. A sub-task is an ordinary chat that
+ends when its chat is marked done, so the per-child watcher, the task status
+vocabulary (`running`, `done`, `blocked`, `failed`, `unfinished`, `cancelled`)
+and the `{:subtask, …}` event are gone (SUBTASK-33, SUBTASK-34). The phases
+below describe how the feature was built, not what it does now.
+
 ## Goal
 
 A chat (the **parent**) can hand a focused piece of work to a **child** chat

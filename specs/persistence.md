@@ -89,7 +89,6 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `interrupted` | whether a restart cut the chat's turn short (STORE-31) | any | STORE-31 |
   | `done` | whether the chat is marked done (STORE-35) | any | STORE-35 |
   | `parent_id` | the id of the chat that spawned it (STORE-17) | task only | STORE-17 |
-  | `task_status` | the task's status, `"interrupted"` when its session was lost (STORE-17) | task only | STORE-17 |
   | `parent_call_id` | the id of the parent's `spawn_task` call (STORE-18) | task only | STORE-18 |
 
 - **STORE-7** A chat's title is its first user message that isn't a harness
@@ -100,10 +99,13 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-12** Each listed chat carries `created_at`, and listing orders
   chats by it, newest first (`updated_at` is still returned; the order was a
   chat's file modification time before this change).
-- **STORE-17** A listed chat that has task metadata also carries `parent_id`
-  and `task_status`, and its `title` is the task's title (STORE-7 doesn't
-  apply). A task saved as `"running"` whose child isn't the active one
-  (SUBTASK-11) is listed as `"interrupted"`, as its session was lost.
+- **STORE-17** A listed chat that has task metadata also carries `parent_id`,
+  and its `title` is the task's title (STORE-7 doesn't apply). It carries no
+  `task_status`: a task chat is listed with the status any chat is (STORE-31,
+  UI-59), so a child whose session a restart lost is `interrupted` like any
+  other chat whose turn was cut short. *Changed:* the field, and the derivation
+  a listing needed to work out whether a running task still ran, went with the
+  task status itself (SUBTASK-33).
 - **STORE-18** Task metadata also holds `parent_call_id`, the id of the parent's
   `spawn_task` call (SUBTASK-15), and a listed task chat carries it too.
   `Elia.Store.children/1` (parent chat id) returns the listed entries
@@ -161,7 +163,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   is dropped from the cache at the next listing and is never listed, and a save
   or a delete through `Elia.Store` drops its chat's entry at once. What depends
   on running state rather than on the file — whether a chat was interrupted
-  (STORE-31) and whether a running task still runs (STORE-17) — is worked out at
+  (STORE-31) — is worked out at
   every listing and never cached. A listing answers exactly what it answered
   before, field for field (STORE-6, STORE-42). `load/1` always reads the
   messages from the file.
@@ -192,10 +194,11 @@ values a save can carry, deleting a chat, and the two tables themselves.
   unreadable, corrupt or has none (PROJ-9).
 - **STORE-16** `save/3` takes `task:` (a map) and stores it as `task` with the
   chat. It holds the metadata of a chat started by `spawn_task`: `parent_id`,
-  `title`, `brief`, `started_at`, `status` (`"running"`, `"done"`, `"blocked"`,
-  `"failed"`, `"unfinished"` or `"cancelled"` — the last one only a task saved
-  before SUBTASK-16 changed has), `start_commit` and, once
-  finished, `result`.
+  `title`, `brief`, `started_at`, `start_commit` and, once the chat is marked
+  done, `result` (SUBTASK-9, SUBTASK-13). It holds no status: a chat's status is
+  derived from the chat itself and never saved (UI-59, STORE-31), and a
+  `status` key an earlier version wrote is ignored when the metadata is read
+  (SUBTASK-34).
   `load_task/1` returns it, or `nil` when the chat is missing, unreadable,
   corrupt or has none.
 - **STORE-21** `save/3` takes `compaction:` (the chat's compaction state, a map,

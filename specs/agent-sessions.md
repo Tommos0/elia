@@ -37,9 +37,12 @@ every view.
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:retry, info}` (a failed model call is being retried, SESS-39, RETRY-3),
-  `{:subtask, call_id, child_id, status}` (a `spawn_task` call's child started
-  or ended, SUBTASK-7; sent by `Elia.Tasks`, not by the session itself),
-  `{:task, metadata}` (the chat's task metadata changed, SESS-20).
+  `{:task, metadata}` (the chat's task metadata changed, SESS-20; it carries
+  the result once the chat is marked done, SUBTASK-13).
+  *Changed:* a `{:subtask, call_id, child_id, status}` event, sent by
+  `Elia.Tasks` when a child started or ended, went with the per-task status
+  (the retired SUBTASK-7): a child's status is its chat's own and reaches every
+  view through SESS-19 and SESS-35.
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's per-chat settings as one map (`settings`, SESS-41) whose
   `model` is its selection (`nil` if none yet, MODEL-1), whose `auto_approve` is
@@ -122,7 +125,11 @@ every view.
   `{:error, :not_a_task}` for a chat that has none.
 - **SESS-19** Every status change (SESS-4) is also broadcast on
   `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
-  follow every chat without subscribing to each. A session also keeps its
+  follow every chat without subscribing to each. What is broadcast is the
+  chat's *listed* status (UI-59, UI-72): a session's own status change sends
+  one, and so does a change to the chat's done flag (SESS-35), so a page that
+  shows other chats follows a child's chat being marked done as it happens
+  (UI-44, UI-46, UI-49). A session also keeps its
   status as its value in `Elia.Agent.Registry`,
   `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
   is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
@@ -137,10 +144,12 @@ every view.
   restarted while this tool was running.") and the history is saved, as in
   SESS-12, so the chat can go on (SUBTASK-20).
 - **SESS-22** Stopping a running turn (SESS-8) first tells `Elia.Tasks`
-  (SUBTASK-16, SUBTASK-17): if this chat is a running sub-task, the stop is
-  recorded as the stop of that turn, so its task goes on running (SUBTASK-16),
-  and if it is the parent of running sub-tasks, each of their turns is stopped
-  too, with the same result (they stop, their tasks go on).
+  (SUBTASK-17): if this chat is the parent of running sub-tasks, each of their
+  turns is stopped too (SUBTASK-16), and each of those children goes on as a
+  sub-task afterwards. *Changed:* a child's own stop used to be recorded as the
+  stop of that turn, so its watcher wouldn't read the turn's end as the task's
+  end; no turn's end is the task's end now (SUBTASK-33), so there is nothing to
+  record.
 
 - **SESS-23** A turn runs in the chat's project and in the workspace its session
   resolved when it started: the `workspace` its caller passed in the loop
@@ -297,8 +306,8 @@ every view.
   the kind, one of `:limit`, `:error`, `:refused`, `:crash`, `:stopped` —
   before the session returns to idle, so a stop is written whether or not a page
   is open and stays after the turn is over. The text is the same one the event
-  carries: `{:error, text}` is still broadcast for the watchers that read a
-  chat's events (STOP-4, SUBTASK-13), and the page renders the message rather
+  carries: `{:error, text}` is still broadcast for the subscribers that read a
+  chat's events (STOP-4), and the page renders the message rather
   than that event, so a stop is not shown twice (UI-82).
 
 - **SESS-33** `Elia.Agent.set_title/2` (chat id, text) sets the chat's own title
@@ -315,10 +324,11 @@ every view.
   reopens it (DONE-1, DONE-6): the session saves the flag with the chat once the
   chat has messages (as SESS-14, STORE-34), broadcasts `{:done, on?}` (SESS-6)
   and returns `{:ok, on?}`, so every view of the chat agrees. It works on every
-  chat, a task chat included, where the flag is bookkeeping beside the task's
-  own status (DONE-3, STORE-16), and it is allowed mid-turn, like the chat's
-  other settings (SESS-16, SESS-30): marking a chat done changes nothing about
-  the turn it is running. The session loads the saved flag on start (STORE-34), upgrading
+  chat, a task chat included, where marking the chat done is what ends its task
+  (DONE-3, SUBTASK-33): the harness builds and saves the result and releases
+  the child's entry with it (SUBTASK-13). It is allowed mid-turn, like the
+  chat's other settings (SESS-16, SESS-30): marking a chat done changes nothing
+  about the turn it is running. The session loads the saved flag on start (STORE-34), upgrading
   a state that predates the field as in SESS-15.
 - **SESS-36** A done chat is continued like any other: `send_message` (SESS-3)
   works on it unchanged, and starting the turn clears the chat's done flag

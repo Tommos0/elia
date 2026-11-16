@@ -55,11 +55,12 @@ and saved, so the chat says why it stopped whenever it is opened again.
   it, a provider failed — instead of being handed a history that stops with an
   unanswered tool call.
 
-- **STOP-4** A stop is still reported to the watchers that read a chat's events,
-  with the same text as the message, and no page shows it twice: `{:error, text}`
-  goes to the chat's topic as before (SESS-11, SESS-12), because a sub-task's
-  parent reads a child's failure from it (SUBTASK-13), while the message is what
-  the page renders (UI-82). A stop the user asked for is not reported as an
+- **STOP-4** A stop is still reported to the subscribers that read a chat's
+  events, with the same text as the message, and no page shows it twice:
+  `{:error, text}` goes to the chat's topic as before (SESS-11, SESS-12), so
+  anything following a chat's events reads the end of a turn from it, while the
+  message is what the page renders (UI-82). A stop the user asked for is not
+  reported as an
   error: SESS-8's "Stopped." notice is gone and its message is the record, and a
   parent waiting on a child whose turn the user stopped goes on waiting
   (SUBTASK-16, SUBTASK-31, SESS-22).
