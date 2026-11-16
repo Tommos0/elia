@@ -125,11 +125,14 @@ every view.
   `{:error, :not_a_task}` for a chat that has none.
 - **SESS-19** Every status change (SESS-4) is also broadcast on
   `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
-  follow every chat without subscribing to each. What is broadcast is the
-  chat's *listed* status (UI-59, UI-72): a session's own status change sends
-  one, and so does a change to the chat's done flag (SESS-35), so a page that
-  shows other chats follows a child's chat being marked done as it happens
-  (UI-44, UI-46, UI-49). A session also keeps its
+  follow every chat without subscribing to each: `status` is the session status
+  SESS-4 names. A change to the chat's done flag (SESS-35) is announced the same
+  way — `:done` when the flag is set and the chat's own status when it is
+  cleared — so a page that shows other chats follows a child's chat being
+  marked done as it happens (UI-44, UI-46, UI-49). A page that draws a status
+  re-derives the listed one from what it holds (UI-59, UI-72) rather than
+  reading the event's value, and a subscriber that reads it as a session status
+  ignores `:done`, which is not one (PUSH-12). A session also keeps its
   status as its value in `Elia.Agent.Registry`,
   `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
   is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
