@@ -46,8 +46,7 @@ defmodule Elia.ChatDoneTest do
       parent_id: Agent.new_id(),
       title: "Add the file",
       brief: "b",
-      started_at: DateTime.utc_now(),
-      status: "done"
+      started_at: DateTime.utc_now()
     }
   end
 
@@ -100,36 +99,32 @@ defmodule Elia.ChatDoneTest do
     assert [%{done: true}] = listed(id)
   end
 
-  # DONE-2, DONE-3, UI-46: a task chat's status is its task's, with the chat's
-  # own flag standing in only for a status that means the task is over.
-  test "a task chat's status follows its task, its flag and its turn" do
+  # DONE-2, DONE-3, STORE-17, UI-46: a task chat's status is the chat's own —
+  # `done` when its chat is marked done, `working` while its turn runs — and its
+  # task adds none of its own.
+  test "a task chat's status is the chat's own" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
 
     :ok = Store.save(child, [Message.user("preamble")], task: task_meta(), done: true)
 
     assert [entry] = listed(child)
-    assert entry.task_status == "done"
+    refute Map.has_key?(entry, :task_status)
     assert entry.title == "Add the file"
     assert EliaWeb.ChatStatus.status(entry, %{}) == "done"
 
-    # DONE-2: a chat that isn't marked done shows its task's status, and one
-    # that is shows done in its place.
+    # DONE-2: a chat that isn't marked done reads idle.
     open = %{entry | done: false}
-    failed = %{open | task_status: "failed"}
-    assert EliaWeb.ChatStatus.status(failed, %{}) == "failed"
-    assert EliaWeb.ChatStatus.status(%{failed | done: true}, %{}) == "done"
+    assert EliaWeb.ChatStatus.status(open, %{}) == "idle"
 
-    # UI-46, UI-59: a turn of the chat running right now reads working, as an
-    # ordinary chat's does, while a task that is still running keeps its own.
-    assert EliaWeb.ChatStatus.status(failed, %{running: true}) == "working"
+    # UI-46, UI-59: a turn of the chat running right now reads working, as any
+    # ordinary chat's does.
+    assert EliaWeb.ChatStatus.status(open, %{running: true}) == "working"
+    assert EliaWeb.ChatStatus.status(%{open | done: true}, %{running: true}) == "working"
 
-    assert EliaWeb.ChatStatus.status(%{entry | task_status: "running"}, %{running: true}) ==
-             "running"
-
-    # A task a restart interrupted keeps saying so (STORE-17).
-    assert EliaWeb.ChatStatus.status(%{entry | task_status: "interrupted", done: true}, %{}) ==
-             "interrupted"
+    # UI-72: a turn a restart cut short says so, done or not (STORE-31).
+    assert EliaWeb.ChatStatus.status(open, %{interrupted: true}) == "interrupted"
+    assert EliaWeb.ChatStatus.status(%{open | done: true}, %{interrupted: true}) == "interrupted"
 
     # UI-59: waiting for the user comes first, done or not.
     assert EliaWeb.ChatStatus.status(entry, %{awaiting: true}) == "awaiting_approval"
@@ -207,8 +202,10 @@ defmodule Elia.ChatDoneTest do
     assert_receive {:agent, ^child, {:done, true}}
     assert Agent.snapshot(child).done == true
     assert Store.load_done(child) == true
-    # DONE-3: the task's own metadata is untouched.
-    assert Store.load_task(child).status == "done"
+    # DONE-3, STORE-16: the task's own metadata is untouched — and it carries no
+    # status for the flag to touch (UI-59).
+    assert Store.load_task(child).title == "Add the file"
+    refute Map.has_key?(Store.load_task(child), :status)
 
     assert {:ok, false} = Agent.set_done(child, false)
     assert_receive {:agent, ^child, {:done, false}}
@@ -233,7 +230,7 @@ defmodule Elia.ChatDoneTest do
     await_status(child, :idle)
 
     assert Store.load_done(child) == false
-    assert Store.load_task(child).status == "done"
+    assert Store.load_task(child).title == "Add the file"
   end
 
   ## Continuing a done chat (DONE-8, DONE-9, SESS-36)
@@ -310,8 +307,8 @@ defmodule Elia.ChatDoneTest do
     assert_receive {:agent, ^id, {:done, false}}
   end
 
-  # DONE-3, DONE-7: the tool works in a sub-task too, where it is bookkeeping
-  # beside the task's status (SUBTASK-3).
+  # DONE-3, DONE-7: the tool works in a sub-task too, where the flag is the
+  # chat's own and the task keeps ending with `finish_task` (SUBTASK-3).
   test "the mark_done tool marks a sub-task chat done" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
@@ -323,8 +320,8 @@ defmodule Elia.ChatDoneTest do
     assert {:ok, output} = Elia.Tool.call(tool, %{}, %{session_id: child})
     assert output =~ "marked done"
     assert Store.load_done(child) == true
-    # DONE-3: the task still ends with the child's own `finish_task` result.
-    assert Store.load_task(child).status == "done"
+    # DONE-3: the task's own metadata is untouched — the flag is the chat's.
+    assert Store.load_task(child).title == "Add the file"
 
     assert {:ok, output} = Elia.Tool.call(tool, %{"done" => false}, %{session_id: child})
     assert output =~ "open again"

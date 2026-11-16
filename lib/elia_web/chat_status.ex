@@ -1,21 +1,20 @@
 defmodule EliaWeb.ChatStatus do
   @moduledoc """
   The one status indicator a listed chat shows (UI-46, UI-47, UI-58, UI-59,
-  UI-72), shared by the chat page's sidebar and the dashboard (DASH-3, DASH-5,
-  DASH-7) so that both read the same.
+  UI-72): the chat page's sidebar, the dashboard (DASH-3, DASH-5, DASH-7), a
+  sub-task's card in its parent (UI-44) and a task chat's own header (UI-48) all
+  read it, so a chat shows one status however it is drawn. A sub-task chat has
+  no status of its own to add: its status is its chat's (SUBTASK-26, SUBTASK-34),
+  which is why there is nothing here about tasks.
 
   `status/2` answers for a listed chat (`Elia.Store.list/1`) together with what
   the registry says about it (`Elia.Agent.awaiting_approval/0`, `paused/0`,
   `running/0`, SESS-19) and the record a restart left behind (STORE-31). A chat
-  marked done (DONE-2, STORE-35) reads `done` in place of `idle`, and a task
-  chat's own status (UI-46) reads `done` or `working` in place of a task
-  status that means the task is over.
+  marked done (DONE-2, STORE-35) reads `done` in place of `idle`. `for_chat/2`
+  is the same answer for a caller that holds the markers a page keeps, which is
+  what the row, the card, the header and `list_tasks` (SUBTASK-26) use.
   """
   use EliaWeb, :html
-
-  # DONE-2, UI-46: the task statuses that mean the task is over, so the chat's
-  # own flag or a turn of it running right now can stand in for one.
-  @task_over ~w(done blocked failed unfinished cancelled)
 
   @doc """
   UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: the status a listed chat shows.
@@ -31,8 +30,6 @@ defmodule EliaWeb.ChatStatus do
       # UI-76: waiting for an answer (ASK-3) is waiting for the user too.
       Map.get(state, :input, false) -> "awaiting_input"
       Map.get(state, :paused, false) -> "paused"
-      # UI-46: a task chat shows its task status (STORE-17).
-      is_binary(Map.get(chat, :task_status)) -> task_chat_status(chat, state)
       # UI-72: a turn a restart cut short (STORE-31).
       Map.get(state, :interrupted, false) -> "interrupted"
       # UI-59: an ordinary chat's loop activity.
@@ -43,18 +40,27 @@ defmodule EliaWeb.ChatStatus do
     end
   end
 
-  # DONE-2, UI-46: a task chat's own status is its task's, and the chat's own
-  # flag or a turn of it running right now stands in only for a status that
-  # means the task is over — a task still running, interrupted, paused or
-  # waiting for the user keeps its own.
-  defp task_chat_status(chat, state) do
-    cond do
-      chat.task_status not in @task_over -> chat.task_status
-      Map.get(state, :running, false) -> "working"
-      Map.get(chat, :done, false) -> "done"
-      true -> chat.task_status
-    end
+  @doc """
+  UI-44, UI-46, UI-48, SUBTASK-26: the status of one chat, where the caller
+  holds the markers a page keeps about every chat with a session rather than the
+  booleans `status/2` takes: `marks` is `EliaWeb.ChatList`'s state or a map of
+  the same shape, with a list of chat ids under `:awaiting`, `:input`, `:paused`
+  and `:running`, and the chats a restart cut short under `:interrupted`
+  (UI-72, STORE-31). The row (UI-46), the parent's card (UI-44) and a task
+  chat's header (UI-48) all read this one.
+  """
+  @spec for_chat(map(), map()) :: String.t()
+  def for_chat(chat, marks) do
+    status(chat, %{
+      awaiting: marked?(marks, :awaiting, chat.id),
+      input: marked?(marks, :input, chat.id),
+      paused: marked?(marks, :paused, chat.id),
+      running: marked?(marks, :running, chat.id),
+      interrupted: marked?(marks, :interrupted, chat.id)
+    })
   end
+
+  defp marked?(marks, key, id), do: id in Map.get(marks, key, [])
 
   attr :id, :string, required: true
   attr :status, :string, required: true
@@ -79,19 +85,15 @@ defmodule EliaWeb.ChatStatus do
 
   @doc "UI-46, UI-59: the icon and colour for a status."
   def icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
-  def icon_spec("running"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}
   def icon_spec("awaiting_approval"), do: {"hero-hand-raised", "text-warning"}
   def icon_spec("awaiting_input"), do: {"hero-chat-bubble-left-right", "text-warning"}
   def icon_spec("paused"), do: {"hero-pause-circle", "text-warning"}
   def icon_spec("done"), do: {"hero-check-circle", "text-success"}
-  def icon_spec("blocked"), do: {"hero-pause-circle", "text-warning"}
-  def icon_spec("failed"), do: {"hero-x-circle", "text-error"}
-  def icon_spec("unfinished"), do: {"hero-question-mark-circle", "text-warning"}
-  def icon_spec("cancelled"), do: {"hero-stop-circle", "text-base-content/60"}
-  # UI-72: a turn a restart cut short (INTR-2), and the task status STORE-17
-  # gives a child whose session was lost.
+  # UI-72: a turn a restart cut short (INTR-2).
   def icon_spec("interrupted"), do: {"hero-exclamation-triangle", "text-warning"}
   def icon_spec("idle"), do: {nil, "text-base-content/30"}
+  # UI-50 retired: the task statuses a chat used to be drawn with are gone with
+  # the vocabulary, so anything else is an unknown status rather than a task's.
   def icon_spec(_other), do: {"hero-exclamation-triangle", "text-base-content/50"}
 
   @doc "UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: the status in words, as its `title`."
@@ -102,5 +104,5 @@ defmodule EliaWeb.ChatStatus do
   def title("paused"), do: "Paused"
   def title("interrupted"), do: "Interrupted: the app restarted during the turn"
   def title("done"), do: "Done"
-  def title(status), do: "Task #{status}"
+  def title(status), do: status
 end

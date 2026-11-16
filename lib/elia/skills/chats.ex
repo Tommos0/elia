@@ -191,11 +191,11 @@ defmodule Elia.Skills.Chats do
   end
 
   # HIST-3: what the chat as a whole is in, read from its saved file — and from
-  # the registry, for one that is working right now.
+  # the registry, for one that is working right now. A sub-task chat has no
+  # status of its own (STORE-17, SUBTASK-34): it reads as the chat it is.
   defp status(entry, running) do
     cond do
       MapSet.member?(running, entry.id) -> "working"
-      is_binary(Map.get(entry, :task_status)) -> entry.task_status
       Map.get(entry, :done) == true -> "done"
       Map.get(entry, :interrupted) == true -> "interrupted"
       true -> "open"

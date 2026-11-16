@@ -1412,7 +1412,7 @@ defmodule Elia.AgentTest do
   test "task metadata is saved with the chat and can be updated" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
-    task = %{parent_id: "p", title: "T", brief: "B", status: "running"}
+    task = %{parent_id: "p", title: "T", brief: "B"}
     selection = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
     default = Elia.Settings.get(:model)
 
@@ -1437,11 +1437,11 @@ defmodule Elia.AgentTest do
     assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
     assert Elia.Store.load_auto_approve(id) == ["shell"]
 
-    :ok = Agent.update_task(id, %{status: "done"})
-    assert %{status: "done", title: "T"} = Elia.Store.load_task(id)
+    :ok = Agent.update_task(id, %{title: "Renamed"})
+    assert %{title: "Renamed"} = Elia.Store.load_task(id)
     # SESS-20, SESS-7
-    assert_receive {:agent, ^id, {:task, %{status: "done", title: "T"}}}
-    assert %{task: %{status: "done"}} = Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:task, %{title: "Renamed"}}}
+    assert %{task: %{title: "Renamed"}} = Agent.snapshot(id)
   end
 
   # SESS-7
@@ -1580,24 +1580,26 @@ defmodule Elia.AgentTest do
     assert Elia.Store.load_turn(id) == nil
   end
 
-  # INTR-4, STORE-17, SUBTASK-20
+  # INTR-4, STORE-31, SUBTASK-20
   test "a sub-task chat whose turn a restart cut short says so too" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
 
-    task = %{parent_id: "parent-1", title: "T", brief: "B", status: "running"}
+    task = %{parent_id: "parent-1", title: "T", brief: "B"}
     turn = %{id: "turn-1", started_at: DateTime.utc_now()}
     :ok = Elia.Store.save(id, [Message.user("do it")], task: task, turn: turn)
 
-    # The task status is the one its parent's card shows (STORE-17).
-    assert %{task_status: "interrupted", interrupted: true} = listed(id)
+    # STORE-31: the record the restart left behind is the chat's own, so the
+    # status its parent's card reads (STORE-36, UI-46) is `interrupted`.
+    assert %{interrupted: true} = listed(id)
+    refute Map.has_key?(listed(id), :task_status)
 
     {:ok, pid} = Agent.ensure_started(id)
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
 
     assert [%Message{role: :user}, %Message{meta: %{interrupted: true}}] = Elia.Store.load(id)
-    # Nothing else about the task changes: it is still saved as running.
-    assert %{status: "running"} = Elia.Store.load_task(id)
+    # Nothing else about the task changes (STORE-16: it carries no status).
+    assert Elia.Store.load_task(id).title == "T"
   end
 
   defp listed(id), do: Enum.find(Elia.Store.list(1000), &(&1.id == id)) || %{interrupted: false}
@@ -1619,6 +1621,38 @@ defmodule Elia.AgentTest do
     :ok = Agent.approve(id, "c1")
     assert_receive {:chat_status, ^id, :idle}, 5000
     refute id in Agent.awaiting_approval()
+  end
+
+  # SESS-19, SESS-35, UI-44, UI-49: a chat's done flag is announced on the
+  # activity topic as its status, so a page showing other chats — a parent's
+  # task card (UI-44) — learns a child was marked done live.
+  test "a chat's done flag is announced on the activity topic", %{id: id} do
+    Agent.subscribe_activity()
+
+    assert {:ok, true} = Agent.set_done(id, true)
+    assert_receive {:agent, ^id, {:done, true}}
+    assert_receive {:chat_status, ^id, :done}
+
+    # DONE-9: reopening it announces the status the chat goes back to, which is
+    # the one its row shows (UI-59).
+    assert {:ok, false} = Agent.set_done(id, false)
+    assert_receive {:agent, ^id, {:done, false}}
+    assert_receive {:chat_status, ^id, :idle}
+  end
+
+  # SESS-19, SESS-35: a turn that ends keeps announcing what it announces — the
+  # status a chat marked done was set to is not left standing in the registry,
+  # and the flag's own event never replaces a turn's (PUSH-11, PUSH-12).
+  test "a done chat's turn still runs to idle", %{id: id} do
+    Agent.subscribe_activity()
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    assert {:ok, true} = Agent.set_done(id, true)
+    assert_receive {:chat_status, ^id, :done}
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:chat_status, ^id, :idle}, 5000
+    assert Agent.snapshot(id).done == false
   end
 
   # SESS-28

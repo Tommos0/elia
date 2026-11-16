@@ -27,6 +27,12 @@ defmodule Elia.Push.Notifier do
   end
 
   @impl true
+  # SESS-19, SESS-35: a chat's done flag is announced on the same topic, and
+  # marking a chat done is not one of the changes that notify (PUSH-11,
+  # PUSH-12). It isn't recorded either, so the turn that ends after the chat was
+  # marked done (DONE-6) still reads as the turn that ended.
+  def handle_info({:chat_status, _chat_id, :done}, state), do: {:noreply, state}
+
   def handle_info({:chat_status, chat_id, status}, state) do
     if reason = reason(Map.get(state.status, chat_id), status), do: notify(chat_id, reason)
     {:noreply, put_in(state.status[chat_id], status)}

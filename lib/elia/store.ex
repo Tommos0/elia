@@ -297,13 +297,15 @@ defmodule Elia.Store do
 
   @doc """
   The saved sub-task metadata of a chat started by `spawn_task`, or `nil`
-  (STORE-16): `%{parent_id, title, brief, started_at, status, start_commit,
-  result}`.
+  (STORE-16): `%{parent_id, title, brief, started_at, start_commit, result}`.
+  It carries no status — a chat's status is derived from the chat itself
+  (UI-59, STORE-31) — and a `status` key an earlier version wrote is dropped
+  here, so such a chat's metadata reads as the rest of its keys (STORE-16).
   """
   @spec load_task(binary()) :: map() | nil
   def load_task(id) do
     case load_meta(id) do
-      %{task: %{parent_id: _} = task} -> task
+      %{task: %{parent_id: _} = task} -> Map.delete(task, :status)
       _ -> nil
     end
   end
@@ -372,15 +374,16 @@ defmodule Elia.Store do
 
   @doc """
   The chat to resume when the user opens the chat list (STORE-29, UI-77): the most
-  recently started chat (STORE-12) that isn't a task chat (STORE-17) and isn't
-  done (STORE-35, DONE-10), as a listed entry, or `nil` when there is none.
-  Every saved chat is considered, not only the first page of `list/1`.
+  recently started chat (STORE-12) that isn't a task chat (STORE-17 — one
+  started by `spawn_task` carries its `parent_id`) and isn't done (STORE-35,
+  DONE-10), as a listed entry, or `nil` when there is none. Every saved chat is
+  considered, not only the first page of `list/1`.
   """
   @spec latest() :: map() | nil
   def latest do
     all_entries()
     |> Enum.find(fn entry ->
-      valid_id?(entry.id) and Map.get(entry, :task_status) == nil and
+      valid_id?(entry.id) and Map.get(entry, :parent_id) == nil and
         Map.get(entry, :done) != true
     end)
   end
@@ -415,8 +418,8 @@ defmodule Elia.Store do
   end
 
   # A file's listed entry: the saved fields, plus the title and description the
-  # chat list shows (STORE-10, STORE-33, STORE-35) and a task chat's own listed
-  # status (STORE-17), or `nil` when the file is gone. A corrupt or unreadable
+  # chat list shows (STORE-10, STORE-33, STORE-35) and what a sub-task chat adds
+  # to them (STORE-17), or `nil` when the file is gone. A corrupt or unreadable
   # file is listed as a chat with nothing saved, as it always was.
   defp listed(file) do
     id = Path.rootname(file)
@@ -448,22 +451,16 @@ defmodule Elia.Store do
     end
   end
 
-  # STORE-17: a sub-task chat is listed under its task title, with its parent
-  # and status. A task saved as running whose child isn't the active one lost
-  # its session (app restart), so it is shown as interrupted.
+  # STORE-17: a sub-task chat is listed under its task title, with the parent it
+  # belongs to and the call that started it, so the list nests it (UI-45) and a
+  # parent's card finds it (UI-44). Nothing else: its status is its chat's
+  # (UI-46), so it carries no status of its own.
   defp put_task(entry, %{parent_id: parent_id} = task) do
-    status =
-      case task[:status] do
-        "running" -> if Elia.Tasks.running?(entry.id), do: "running", else: "interrupted"
-        status -> status
-      end
-
     title = if is_binary(task[:title]) and task.title != "", do: task.title, else: entry.title
 
     Map.merge(entry, %{
       title: title,
       parent_id: parent_id,
-      task_status: status,
       parent_call_id: task[:parent_call_id]
     })
   end

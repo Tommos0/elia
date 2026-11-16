@@ -19,6 +19,7 @@ defmodule Elia.Tasks do
 
   alias Elia.{Deploy, Store, Workspace}
   alias Elia.LLM.Message
+  alias EliaWeb.ChatStatus
 
   @default_steps 100
   @max_steps 100
@@ -294,7 +295,6 @@ defmodule Elia.Tasks do
       title: String.trim(input["title"]),
       brief: input["brief"],
       started_at: DateTime.utc_now(),
-      status: "running",
       start_commit: start_commit
     }
 
@@ -354,9 +354,6 @@ defmodule Elia.Tasks do
 
     case start_watcher(meta, task) do
       {:ok, watcher} ->
-        # SUBTASK-7: the parent is told the child started.
-        broadcast(parent_id, ctx[:call_id], child_id, "running")
-
         # SUBTASK-5: the brief is the child's first user message.
         :ok =
           Elia.Agent.send_message(
@@ -367,9 +364,11 @@ defmodule Elia.Tasks do
         send(watcher, {:subtask_started, child_id})
 
         # SUBTASK-2: the start, not the result: the parent goes on working and
-        # asks for the result with `await_task` when it wants it.
+        # asks for the result with `await_task` when it wants it. `status` is
+        # the child chat's own status (UI-59), which is `working` while the turn
+        # this spawn started runs.
         {:ok,
-         Jason.encode!(%{"task_id" => child_id, "title" => task.title, "status" => "running"})}
+         Jason.encode!(%{"task_id" => child_id, "title" => task.title, "status" => "working"})}
 
       {:error, message} ->
         terminate_child(child_pid)
@@ -398,15 +397,19 @@ defmodule Elia.Tasks do
   held, so the child's turn must not start before it.
 
   `pid` is the child's session and `root` the workspace it works in. Nothing is
-  written for a task that has already ended; `{:error, message}` when another
-  running child already writes in that workspace, and when the task says nothing
-  about the commit it started from — a watcher needs one to build the result, so
-  such a child is not resumed (SUBTASK-4, SUBTASK-11).
+  written for a task that has already ended — one whose result is saved
+  (SUBTASK-9, SUBTASK-13); `{:error, message}` when another running child
+  already writes in that workspace, and when the task says nothing about the
+  commit it started from — a watcher needs one to build the result, so such a
+  child is not resumed (SUBTASK-4, SUBTASK-11).
   """
   @spec rewatch(binary(), pid(), binary()) :: :ok | {:error, binary()}
   def rewatch(child_id, pid, root) do
     case Store.load_task(child_id) do
-      %{status: "running", parent_id: parent_id, start_commit: start_commit} = task
+      %{result: _result} ->
+        :ok
+
+      %{parent_id: parent_id, start_commit: start_commit} = task
       when is_binary(start_commit) ->
         meta = %{
           child_id: child_id,
@@ -420,7 +423,7 @@ defmodule Elia.Tasks do
 
         start_rewatch(meta, task)
 
-      %{status: "running"} ->
+      %{parent_id: _parent_id} ->
         {:error, "the sub-task's task has no start commit to report its work against"}
 
       _task ->
@@ -575,10 +578,9 @@ defmodule Elia.Tasks do
     end
   end
 
-  defp abandoned(child_id, meta) do
+  defp abandoned(child_id, _meta) do
     terminate_session(child_id)
     release(child_id)
-    broadcast(meta.parent_id, meta.call_id, child_id, "cancelled")
   end
 
   # SUBTASK-8, SUBTASK-13: the child's turn is over when its session goes idle
@@ -590,9 +592,8 @@ defmodule Elia.Tasks do
     result =
       build_result(child_id, meta.start_commit, outcome, finish_record(child_id), meta.root)
 
-    update_saved(child_id, task, %{status: result["status"], result: result})
+    update_saved(child_id, task, %{result: result})
     release(child_id)
-    broadcast(meta.parent_id, meta.call_id, child_id, saved_status(child_id))
     result
   end
 
@@ -704,21 +705,6 @@ defmodule Elia.Tasks do
       Store.update(child_id, &Map.put(&1, :task, Map.merge(task, changes)))
   end
 
-  defp saved_status(child_id) do
-    case Store.load_task(child_id) do
-      %{status: status} -> status
-      _ -> "failed"
-    end
-  end
-
-  defp broadcast(parent_id, call_id, child_id, status) do
-    Phoenix.PubSub.broadcast(
-      Elia.PubSub,
-      Elia.Agent.topic(parent_id),
-      {:agent, parent_id, {:subtask, call_id, child_id, status}}
-    )
-  end
-
   ## Listing and awaiting (SUBTASK-26, SUBTASK-27)
 
   @doc """
@@ -732,12 +718,20 @@ defmodule Elia.Tasks do
 
     case input["task_id"] do
       nil ->
-        tasks = parent_id |> Store.children() |> Enum.reverse() |> Enum.map(&task_json(&1.id))
+        children = Store.children(parent_id)
+        marks = status_marks(children)
+
+        tasks =
+          children
+          |> Enum.reverse()
+          |> Enum.map(&task_json(&1.id, marks))
+
         {:ok, Jason.encode!(tasks)}
 
       task_id ->
         with {:ok, _task} <- task_of(parent_id, task_id) do
-          {:ok, Jason.encode!(task_json(task_id, true))}
+          marks = status_marks(Store.children(parent_id))
+          {:ok, Jason.encode!(task_json(task_id, marks, true))}
         end
     end
   end
@@ -755,33 +749,23 @@ defmodule Elia.Tasks do
       {:error, "task_id must be the id of a sub-task of this chat (see `list_tasks`)."}
     else
       with {:ok, _task} <- task_of(ctx[:session_id], task_id) do
-        if reported_status(task_id) == "running",
-          do: wait_for(task_id),
-          else: saved_result(task_id)
+        # SUBTASK-11: the entry a running child holds is what "still running"
+        # means, so a task that has ended returns its saved result at once.
+        if running?(task_id), do: wait_for(task_id), else: saved_result(task_id)
       end
     end
   end
 
-  # The task's status as the parent sees it: "running" while its entry is held
-  # (SUBTASK-11), else its saved status — which reads as "interrupted" when a
-  # restart left it running (SUBTASK-20, STORE-17).
-  defp reported_status(child_id) do
-    cond do
-      running?(child_id) -> "running"
-      saved_status(child_id) == "running" -> "interrupted"
-      true -> saved_status(child_id)
-    end
-  end
-
   # SUBTASK-26: `result` is added only in the single-task form, and only once the
-  # task has finished.
-  defp task_json(child_id, with_result? \\ false) do
+  # task has finished. `status` is the child chat's own status (UI-59, UI-72) —
+  # the same one its row in the chat list shows (UI-45, UI-46).
+  defp task_json(child_id, marks, with_result? \\ false) do
     task = Store.load_task(child_id) || %{}
 
     json = %{
       "task_id" => child_id,
       "title" => task[:title],
-      "status" => reported_status(child_id),
+      "status" => chat_status(child_id, marks),
       "reason" => reason(task),
       "started_at" => iso8601(task[:started_at])
     }
@@ -789,6 +773,31 @@ defmodule Elia.Tasks do
     case if(with_result?, do: Map.get(task, :result)) do
       %{} = result -> Map.put(json, "result", result)
       _ -> json
+    end
+  end
+
+  # UI-44, UI-59, UI-72: the markers a child's own status is read from
+  # (`EliaWeb.ChatStatus.for_chat/2`): what the registry says about every chat
+  # with a session (SESS-19, SESS-28) and the children whose saved turn a
+  # restart cut short (STORE-31), which is what the chat list carries too
+  # (UI-46).
+  defp status_marks(children) do
+    %{
+      awaiting: Elia.Agent.awaiting_approval(),
+      input: Elia.Agent.awaiting_input(),
+      paused: Elia.Agent.paused(),
+      running: Elia.Agent.running(),
+      interrupted: for(%{interrupted: true} = child <- children, do: child.id)
+    }
+  end
+
+  # UI-59, UI-72: the child's own status, from its listed entry (STORE-36) and
+  # those markers — the one derivation the chat list reads (`EliaWeb.ChatStatus`),
+  # so a parent sees what it would see in the list (SUBTASK-26).
+  defp chat_status(child_id, marks) do
+    case Store.entry(child_id) do
+      %{} = entry -> ChatStatus.for_chat(entry, marks)
+      _none -> nil
     end
   end
 
@@ -804,7 +813,7 @@ defmodule Elia.Tasks do
   defp wait_for(task_id) do
     Phoenix.PubSub.subscribe(Elia.PubSub, task_topic(task_id))
 
-    if reported_status(task_id) == "running" do
+    if running?(task_id) do
       receive do
         {:subtask_done, ^task_id, result} -> {:ok, Jason.encode!(result)}
       end
@@ -844,7 +853,10 @@ defmodule Elia.Tasks do
 
     result =
       case Store.load_task(child_id) do
-        %{status: "running"} = task ->
+        %{result: %{} = saved} ->
+          saved
+
+        %{parent_id: _parent_id} = task ->
           # SUBTASK-19: the watcher the child's end belonged to is gone, so the
           # task ends here as crashed, whatever the child's last turn was.
           outcome = {:crashed, "The process waiting for this sub-task stopped."}
@@ -858,21 +870,16 @@ defmodule Elia.Tasks do
               root
             )
 
-          update_saved(child_id, task, %{status: result["status"], result: result})
+          update_saved(child_id, task, %{result: result})
           result
 
-        %{result: %{} = result} ->
-          result
-
-        _ ->
+        _none ->
           nil
       end
 
     release(child_id)
 
     if result != nil do
-      broadcast(entry.parent_id, entry[:call_id], child_id, saved_status(child_id))
-
       Phoenix.PubSub.broadcast(
         Elia.PubSub,
         task_topic(child_id),

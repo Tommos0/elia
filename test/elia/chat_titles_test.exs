@@ -103,8 +103,7 @@ defmodule Elia.ChatTitlesTest do
       parent_id: Agent.new_id(),
       title: "Add the file",
       brief: "b",
-      started_at: DateTime.utc_now(),
-      status: "done"
+      started_at: DateTime.utc_now()
     }
 
     :ok = Store.save(child, [Message.user("preamble")], title: "Not this one", task: task)
@@ -170,8 +169,7 @@ defmodule Elia.ChatTitlesTest do
       parent_id: Agent.new_id(),
       title: "Add the file",
       brief: "b",
-      started_at: DateTime.utc_now(),
-      status: "running"
+      started_at: DateTime.utc_now()
     }
 
     :ok = Store.save(child, [Message.user("preamble")], task: task)

@@ -392,14 +392,14 @@ defmodule Elia.Agent.Session do
   end
 
   # SESS-35, DONE-1, DONE-6: the chat's done flag, set by the model's
-  # `mark_done` tool (DONE-6) or the page's control (DONE-4). A task chat takes
-  # it too, as bookkeeping beside its task's status: marking one done never
-  # touches the task itself (DONE-3).
+  # `mark_done` tool (DONE-6) or the page's control (DONE-4). It is the chat's
+  # own flag on every chat, a task chat included, where marking it done is what
+  # ends the task (DONE-3, SUBTASK-33): there is no task status beside it.
   def handle_call({:set_done, on?}, _from, state) do
     state = %{state | done: on?}
     # As with the model selection, an empty chat is saved with its first message.
     state = if state.messages == [], do: state, else: save(state)
-    broadcast(state, {:done, on?})
+    announce_done(state, on?)
     {:reply, {:ok, on?}, state}
   end
 
@@ -639,7 +639,7 @@ defmodule Elia.Agent.Session do
     # takes the flag with it — the save the user message triggers writes it away.
     state =
       if state.done do
-        broadcast(state, {:done, false})
+        announce_done(state, false)
         %{state | done: false}
       else
         state
@@ -1434,13 +1434,28 @@ defmodule Elia.Agent.Session do
     # SESS-19
     Registry.update_value(Elia.Agent.Registry, state.id, fn _ -> status end)
 
+    announce_status(state.id, status)
+
+    %{state | status: status}
+  end
+
+  # SESS-19, SESS-35: a change to the chat's done flag reaches this chat's own
+  # views and, on the activity topic, the pages that show other chats — which is
+  # how a parent's card follows a child being marked done (UI-44, UI-46, UI-49).
+  # What is announced is `:done` when the flag is set, and the chat's own status
+  # when it is cleared: either way it is the status its row shows, since a chat
+  # marked done shows `done` in place of `idle` (UI-59, UI-80).
+  defp announce_done(state, on?) do
+    broadcast(state, {:done, on?})
+    announce_status(state.id, if(on?, do: :done, else: state.status))
+  end
+
+  defp announce_status(id, status) do
     Phoenix.PubSub.broadcast(
       Elia.PubSub,
       Elia.Agent.activity_topic(),
-      {:chat_status, state.id, status}
+      {:chat_status, id, status}
     )
-
-    %{state | status: status}
   end
 
   defp put_tool_status(state, call_id, status) do

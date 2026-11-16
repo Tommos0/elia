@@ -163,20 +163,21 @@ defmodule EliaWeb.ChatList do
   # started — which is what clears the record the restart left behind (INTR-3).
   # The page's own handler for the same message runs after this one (UI-44).
   defp handle_info({:chat_status, id, status}, socket) do
-    state = socket.assigns.chat_list
+    # UI-49: the list is read again, so a row follows a change the status alone
+    # doesn't carry — a chat's done flag (STORE-35, DONE-2), or a task chat
+    # started since the page drew the list. A page that shows no list pays
+    # nothing (UI-92).
+    socket =
+      if socket.assigns.chat_list.open or socket.assigns.chat_list.chats != [] do
+        refresh(socket)
+      else
+        socket
+      end
 
-    state = %{
-      state
-      | awaiting: put_member(state.awaiting, id, status == :awaiting_approval),
-        input: put_member(state.input, id, status == :awaiting_input),
-        paused: put_member(state.paused, id, status == :paused),
-        running: put_member(state.running, id, status == :running),
-        interrupted: List.delete(state.interrupted, id)
-    }
-
-    if state == socket.assigns.chat_list,
-      do: {:cont, socket},
-      else: {:cont, assign(socket, :chat_list, state)}
+    # UI-47, UI-58, UI-59, UI-72, UI-76: the event says what the chat is doing
+    # now, so its row reads that — whatever the list, read a moment ago, said
+    # about it — and its interrupted marker goes (INTR-3).
+    {:cont, put_status_marks(socket, id, status)}
   end
 
   # UI-34: the list's relative times keep up with the clock wherever it is
@@ -187,6 +188,19 @@ defmodule EliaWeb.ChatList do
   end
 
   defp handle_info(_message, socket), do: {:cont, socket}
+
+  # UI-47, UI-58, UI-59, UI-72, UI-76: the markers one chat's status event sets.
+  defp put_status_marks(socket, id, status) do
+    state = socket.assigns.chat_list
+
+    put_state(socket,
+      awaiting: put_member(state.awaiting, id, status == :awaiting_approval),
+      input: put_member(state.input, id, status == :awaiting_input),
+      paused: put_member(state.paused, id, status == :paused),
+      running: put_member(state.running, id, status == :running),
+      interrupted: List.delete(state.interrupted, id)
+    )
+  end
 
   defp clock(socket) do
     if connected?(socket) do
@@ -386,18 +400,12 @@ defmodule EliaWeb.ChatList do
 
   # UI-4, UI-34, UI-46, UI-47, UI-58, UI-59, UI-64, UI-72, UI-76
   defp chat_row(assigns) do
-    status_state = %{
-      awaiting: assigns.chat.id in assigns.statuses.awaiting,
-      input: assigns.chat.id in assigns.statuses.input,
-      paused: assigns.chat.id in assigns.statuses.paused,
-      running: assigns.chat.id in assigns.statuses.running,
-      interrupted: assigns.chat.id in assigns.statuses.interrupted
-    }
-
     assigns =
       assign(assigns,
         status_id: "#{assigns.scope}chat-status-#{assigns.chat.id}",
-        status: ChatStatus.status(assigns.chat, status_state)
+        # UI-46: a task chat's row is the row any chat has, from the one
+        # derivation its card (UI-44) and its header (UI-48) read too.
+        status: ChatStatus.for_chat(assigns.chat, assigns.statuses)
       )
 
     ~H"""

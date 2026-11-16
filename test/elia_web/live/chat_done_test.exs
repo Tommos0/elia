@@ -99,17 +99,18 @@ defmodule EliaWeb.ChatDoneTest do
       parent_id: Agent.new_id(),
       title: "Add the file",
       brief: "Create child.txt.",
-      started_at: DateTime.utc_now(),
-      status: "failed"
+      started_at: DateTime.utc_now()
     }
 
     :ok = saved(id, task: task)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
+    # UI-46, UI-48, DONE-2: a task chat's status is its own chat's — `idle` until
+    # it is marked done — in the row and in the header alike.
     assert has_element?(view, "#task-header")
-    assert has_element?(view, "#task-header-status[data-status='failed']")
-    assert has_element?(view, "#chat-status-#{id}[data-status='failed']")
+    assert has_element?(view, "#task-header-status[data-status='idle']")
+    assert has_element?(view, "#chat-status-#{id}[data-status='idle']")
     assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
 
     view |> element("#done-toggle") |> render_click()
@@ -117,16 +118,18 @@ defmodule EliaWeb.ChatDoneTest do
     assert has_element?(view, "#done-toggle[aria-pressed=true]", "Reopen")
     assert has_element?(view, "#chat-status-#{id}[data-status='done'][title='Done']")
     assert Store.load_done(id) == true
-    # UI-48: the header still shows the task's own status.
-    assert has_element?(view, "#task-header-status[data-status='failed']")
+    # UI-48: and the header follows it, since it is the same status.
+    assert has_element?(view, "#task-header-status[data-status='done']")
 
-    # DONE-4: clicking it again reopens the chat, and the task status is back.
+    # DONE-4: clicking it again reopens the chat, and its status is back.
     view |> element("#done-toggle") |> render_click()
 
     assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
-    assert has_element?(view, "#chat-status-#{id}[data-status='failed']")
+    assert has_element?(view, "#chat-status-#{id}[data-status='idle']")
     assert Store.load_done(id) == false
-    # DONE-3: nothing about the task changed.
-    assert Store.load_task(id).status == "failed"
+    # DONE-3, STORE-16: nothing about the task changed, and it carries no status
+    # for the flag to touch.
+    assert Store.load_task(id).title == "Add the file"
+    refute Map.has_key?(Store.load_task(id), :status)
   end
 end

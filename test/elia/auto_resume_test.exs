@@ -60,17 +60,17 @@ defmodule Elia.AutoResumeTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 20_000)
 
-  defp await_task_status(id, status, tries \\ 250) do
+  defp await_task_result(id, tries \\ 250) do
     case Store.load_task(id) do
-      %{status: ^status} ->
-        :ok
+      %{result: %{} = result} ->
+        result
 
       _ ->
         if tries == 0 do
-          flunk("the task #{id} never became #{status}")
+          flunk("the task #{id} never ended with a result")
         else
           Process.sleep(20)
-          await_task_status(id, status, tries - 1)
+          await_task_result(id, tries - 1)
         end
     end
   end
@@ -137,8 +137,7 @@ defmodule Elia.AutoResumeTest do
 
     :ok = saved_turn(parent, [Message.user("run it")])
 
-    :ok =
-      saved_turn(child, [Message.user("do it")], task: %{parent_id: parent, status: "running"})
+    :ok = saved_turn(child, [Message.user("do it")], task: %{parent_id: parent})
 
     # A chat whose last turn ended is not started: the record is what the scan
     # goes by (STORE-39).
@@ -371,7 +370,6 @@ defmodule Elia.AutoResumeTest do
       parent_call_id: "call-1",
       title: "T",
       brief: "B",
-      status: "running",
       start_commit: start_commit
     }
 
@@ -395,22 +393,24 @@ defmodule Elia.AutoResumeTest do
     await_status(child, :awaiting_approval)
 
     # RESUME-7: the entry was taken again before the turn started, so the child
-    # is a running child (SUBTASK-11) and its task is listed as running rather
-    # than interrupted (STORE-17).
+    # is a running child (SUBTASK-11), and its own chat's status is `working`
+    # rather than `interrupted` (UI-72, STORE-31).
     assert Tasks.running?(child)
-    assert %{task_status: "running"} = listed(child)
+    assert %{interrupted: false} = listed(child)
+    refute Map.has_key?(listed(child), :task_status)
+    assert EliaWeb.ChatStatus.for_chat(listed(child), %{running: [child]}) == "working"
 
     # The entry that was put back is the one `finish_task` records through
     # (SUBTASK-3), and the watcher ends the task when the turn does (SUBTASK-8).
     :ok = Agent.approve(child, "c1")
 
-    await_task_status(child, "done")
+    assert %{"status" => "done", "summary" => "did it"} = await_task_result(child)
 
     # So the parent's wait gets the result rather than SUBTASK-20's "interrupted
     # by a restart" (SUBTASK-27).
     assert {:ok, json} = Tasks.await_task(%{"task_id" => child}, %{session_id: parent})
     assert %{"task_id" => ^child, "status" => "done", "summary" => "did it"} = Jason.decode!(json)
-    assert %{task_status: "done"} = listed(child)
+    assert %{result: %{"status" => "done"}} = Store.load_task(child)
   end
 
   # RESUME-7
@@ -422,7 +422,7 @@ defmodule Elia.AutoResumeTest do
     child = Agent.new_id()
     on_exit(fn -> stop_session(child) end)
 
-    task = %{parent_id: parent, parent_call_id: "call-1", title: "T", status: "running"}
+    task = %{parent_id: parent, parent_call_id: "call-1", title: "T"}
     :ok = saved_turn(child, [Message.user("do it")], task: task)
 
     # SUBTASK-4, SUBTASK-11: the tree has one writer, and it is another child.

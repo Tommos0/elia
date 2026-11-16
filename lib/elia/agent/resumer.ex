@@ -39,7 +39,9 @@ defmodule Elia.Agent.Resumer do
     # such a chat is exactly what INTR-2 and INTR-3 describe.
     if enabled?() do
       Elia.Store.interrupted()
-      |> Enum.sort_by(&(Map.get(&1, :task_status) == nil))
+      # SUBTASK-20, STORE-17: a sub-task chat carries its `parent_id`, so the
+      # children are started before the chats that started them.
+      |> Enum.sort_by(&(Map.get(&1, :parent_id) == nil))
       |> Enum.each(&resume/1)
     end
 

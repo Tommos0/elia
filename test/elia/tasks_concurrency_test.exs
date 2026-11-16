@@ -59,6 +59,21 @@ defmodule Elia.TasksConcurrencyTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 30_000)
 
+  # Waits until the task's entry is released, which is what its end means
+  # (SUBTASK-11, SUBTASK-13).
+  defp await_released(child, tries \\ 1500)
+
+  defp await_released(child, 0), do: flunk("the task of #{child} was never released")
+
+  defp await_released(child, tries) do
+    if Tasks.running?(child) do
+      Process.sleep(20)
+      await_released(child, tries - 1)
+    else
+      :ok
+    end
+  end
+
   defp tool_names(request), do: Enum.map(request.tools, & &1.name)
 
   defp parent?(request), do: "spawn_task" in tool_names(request)
@@ -206,9 +221,12 @@ defmodule Elia.TasksConcurrencyTest do
     assert Deploy.worktree_path(alpha) != Deploy.worktree_path(beta)
     assert Tasks.active() == []
 
-    # SUBTASK-2: both spawn calls returned the start, not a result.
+    # SUBTASK-2: both spawn calls returned the start, not a result — the child
+    # chat's own status, `working` (SUBTASK-26).
     for index <- [0, 1] do
-      assert %{"status" => "running", "task_id" => id} = session_json(parent, "spawn_task", index)
+      assert %{"status" => "working", "task_id" => id} =
+               session_json(parent, "spawn_task", index)
+
       assert id in [alpha, beta]
     end
 
@@ -219,19 +237,20 @@ defmodule Elia.TasksConcurrencyTest do
     assert %{"task_id" => ^alpha, "status" => "done", "files" => ["Alpha.txt"]} =
              session_json(parent, "await_task", 1)
 
-    # SUBTASK-26: the list reports each child's final status.
+    # SUBTASK-26, UI-59: the list reports each child's own status — neither chat
+    # is marked done, so both are `idle`, with the result each ended with.
     listing = session_json(parent, "list_tasks", 0)
-    assert Enum.map(listing, & &1["status"]) == ["done", "done"]
+    assert Enum.map(listing, & &1["status"]) == ["idle", "idle"]
 
     assert listing |> Enum.map(& &1["task_id"]) |> Enum.sort() ==
              Enum.sort([alpha, beta])
 
-    # SUBTASK-13, SUBTASK-21: each result names its own commit.
+    # SUBTASK-13, SUBTASK-21, STORE-16: each result names its own commit, and
+    # the task's metadata carries no status of its own.
     for id <- [alpha, beta] do
-      assert %{status: "done", result: %{"task_id" => ^id, "commit" => commit}} =
-               Store.load_task(id)
-
+      assert %{result: %{"task_id" => ^id, "commit" => commit}} = Store.load_task(id)
       assert is_binary(commit)
+      refute Map.has_key?(Store.load_task(id), :status)
     end
   end
 
@@ -280,9 +299,13 @@ defmodule Elia.TasksConcurrencyTest do
     assert_receive {:agent, ^parent, {:tool_status, "a1", :running}}, 30_000
     assert Agent.snapshot(parent).status == :running
 
-    # SUBTASK-7: both starts were announced.
-    assert_receive {:agent, ^parent, {:subtask, "s1", ^alpha, "running"}}, 30_000
-    assert_receive {:agent, ^parent, {:subtask, "s2", ^beta, "running"}}, 30_000
+    # SUBTASK-7 retired, SUBTASK-26: each child's status is its own chat's, so
+    # the parent's topic carries no per-task event at all; both children are
+    # held and their chats are working.
+    assert Tasks.running?(alpha)
+    assert Tasks.running?(beta)
+    assert Agent.snapshot(alpha).status == :running
+    assert Agent.snapshot(beta).status == :running
 
     :ok = Agent.stop(parent)
 
@@ -291,11 +314,10 @@ defmodule Elia.TasksConcurrencyTest do
     # reported.
     for child <- [alpha, beta] do
       assert Agent.snapshot(child).status == :idle
-      assert %{status: "running"} = Store.load_task(child)
+      refute Map.has_key?(Store.load_task(child), :result)
     end
 
     assert length(Tasks.active()) == 2
-    refute_received {:agent, ^parent, {:subtask, _, _, _}}
 
     # SESS-22, STOP-1: the cancelled call, and then the stop the user asked for.
     messages = Agent.snapshot(parent).messages
@@ -305,14 +327,15 @@ defmodule Elia.TasksConcurrencyTest do
 
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
 
-    # SUBTASK-16, SUBTASK-31: each child ends when a turn of it ends, and that is
-    # what the parent's topic is told.
+    # SUBTASK-16, SUBTASK-31: each child ends when a turn of it ends. Its
+    # status is its own chat's (SUBTASK-26), so nothing per task is announced;
+    # the result is what the watcher saved (SUBTASK-13).
     for child <- [alpha, beta] do
       :ok = Agent.send_message(child, "carry on")
       assert_receive {:child_running, ^child, loop}, 30_000
       send(loop, :never)
-      assert_receive {:agent, ^parent, {:subtask, _, ^child, "unfinished"}}, 30_000
-      assert %{status: "unfinished"} = Store.load_task(child)
+      await_released(child)
+      assert %{result: %{"status" => "unfinished"}} = Store.load_task(child)
     end
 
     assert Tasks.active() == []

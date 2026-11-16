@@ -404,7 +404,8 @@ defmodule EliaWeb.ChatLiveTest do
 
     :ok =
       Elia.Store.save(child, [Message.user("preamble")],
-        task: %{parent_id: parent, parent_call_id: "s1", title: "Nested task", status: "done"}
+        task: %{parent_id: parent, parent_call_id: "s1", title: "Nested task"},
+        done: true
       )
 
     {:ok, view, _html} = live(conn, ~p"/c/#{observer}")
@@ -415,6 +416,8 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#chat-link-#{parent}")
     refute has_element?(view, "#chat-children-#{parent}")
     assert has_element?(view, "#chat-list #chat-link-#{child}", "Nested task")
+    # UI-46, DONE-2: its status is its own chat's — `done`, since its chat is
+    # marked done — not a task status of its own (STORE-16).
     assert has_element?(view, "#chat-status-#{child}[data-status='done']")
     # The task chat is left saved, with its parent metadata (STORE-17).
     assert [%Message{}] = Elia.Store.load(child)

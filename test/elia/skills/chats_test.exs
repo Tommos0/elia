@@ -102,7 +102,7 @@ defmodule Elia.Skills.ChatsTest do
   end
 
   # HIST-3: the status a chat as a whole is in, from its saved file.
-  test "HIST-3 a listed chat's status is open, done, interrupted, a task's or working" do
+  test "HIST-3 a listed chat's status is open, done, interrupted or working" do
     open = save([Message.user("an open chat")], title: "Status open")
 
     done = save([Message.user("a done chat")], title: "Status done", done: true)
@@ -113,9 +113,11 @@ defmodule Elia.Skills.ChatsTest do
         turn: %{id: "turn-1", started_at: DateTime.utc_now()}
       )
 
+    # STORE-16, STORE-17, UI-46: a sub-task chat has no status of its own — it
+    # reads as the chat it is, and keeps its task's title.
     task =
       save([Message.user("preamble")],
-        task: %{parent_id: "someone", title: "Status blocked task", status: "blocked"}
+        task: %{parent_id: "someone", title: "A task chat", status: "blocked"}
       )
 
     working = save([Message.user("a chat being worked on")], title: "Status working")
@@ -127,9 +129,8 @@ defmodule Elia.Skills.ChatsTest do
     assert statuses[open] == "open"
     assert statuses[done] == "done"
     assert statuses[interrupted] == "interrupted"
-    # A task chat keeps its task's status, and its task's title (STORE-17).
-    assert statuses[task] == "blocked"
-    assert listed(task)["title"] == "Status blocked task"
+    assert statuses[task] == "open"
+    assert listed(task)["title"] == "A task chat"
     assert statuses[working] == "working"
   end
 

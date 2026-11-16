@@ -40,12 +40,15 @@ defmodule EliaWeb.DashboardTest do
   end
 
   # A sub-task chat (STORE-16).
-  defp saved_task_chat(parent, status \\ "done") do
+  # A task chat: a normal chat with a parent, and — since STORE-16 has no task
+  # status — marked done when the caller wants it to read `done` (DONE-2).
+  defp saved_task_chat(parent, done \\ true) do
     id = Agent.new_id()
 
     :ok =
       Store.save(id, [Message.user("preamble")],
-        task: %{parent_id: parent, title: "A task", brief: "Brief", status: status}
+        task: %{parent_id: parent, title: "A task", brief: "Brief"},
+        done: done
       )
 
     id
@@ -190,7 +193,7 @@ defmodule EliaWeb.DashboardTest do
       waiting = saved_chat("waiting on me")
       paused = saved_chat("paused one")
       # UI-47: a sub-task chat needs the user too.
-      task = saved_task_chat(waiting, "running")
+      task = saved_task_chat(waiting, false)
       cut = interrupted_chat("a turn a restart killed")
 
       publish_status(waiting, :awaiting_approval)
@@ -234,7 +237,7 @@ defmodule EliaWeb.DashboardTest do
   test "the Needs attention card is quiet when nothing needs you", %{conn: conn} do
     with_empty_store(fn ->
       fine = saved_chat("all done")
-      task = saved_task_chat(fine, "done")
+      task = saved_task_chat(fine, true)
 
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -364,11 +367,11 @@ defmodule EliaWeb.DashboardTest do
   end
 
   # DASH-7, UI-45, UI-46: a sub-task chat is listed under its task title, with
-  # its task status.
+  # the status any chat's row has — its own.
   test "a task chat in the Recent chats card shows its task", %{conn: conn} do
     with_empty_store(fn ->
       parent = saved_chat("the parent chat")
-      task = saved_task_chat(parent, "done")
+      task = saved_task_chat(parent, true)
 
       {:ok, view, _html} = live(conn, ~p"/")
 

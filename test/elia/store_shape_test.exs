@@ -109,7 +109,6 @@ defmodule Elia.StoreShapeTest do
         title: "A task",
         brief: "Do it",
         started_at: @turn,
-        status: "done",
         start_commit: "abc",
         result: "done"
       }

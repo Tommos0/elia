@@ -19,7 +19,8 @@ defmodule Elia.Skills.Tasks do
     """
     `spawn_task` starts a separate chat (a sub-task) with a fresh context and \
     returns as soon as it has started, as `{"task_id", "title", "status": \
-    "running"}`. Use it for a self-contained step of a long job (for example: \
+    "working"}` — the status of the sub-task's own chat, as the chat list \
+    shows it. Use it for a self-contained step of a long job (for example: \
     implement one spec, then test it) so this chat's context isn't filled with \
     the details. The sub-task does not see this chat, so the `brief` is its \
     whole input: give the goal, the files and specs to read first, the \
@@ -70,7 +71,8 @@ defmodule Elia.Skills.Tasks do
         name: "spawn_task",
         description:
           "Start a sub-task in a new chat and return as soon as it has started " <>
-            "(`{\"task_id\", \"title\", \"status\": \"running\"}`). The brief must be " <>
+            "(`{\"task_id\", \"title\", \"status\": \"working\"}` — the sub-task's own " <>
+            "chat status). The brief must be " <>
             "self-contained. Collect the result later with `await_task` (or check on it " <>
             "with `list_tasks`). In Elia's own project the sub-task's work is left on " <>
             "branch `chat/<task_id>` for you to merge yourself; it is not merged for you.",
@@ -101,9 +103,11 @@ defmodule Elia.Skills.Tasks do
       %Elia.Tool{
         name: "list_tasks",
         description:
-          "List the sub-tasks this chat started, newest first, with the status each one has " <>
-            "now (`running`, or its final status) and, for a finished one, its reason. With " <>
-            "`task_id`, list just that one and include its result.",
+          "List the sub-tasks this chat started, newest first, with the status each one's " <>
+            "own chat has now (`working`, `awaiting_approval`, `awaiting_input`, `paused`, " <>
+            "`interrupted`, `done` or `idle` — what the chat list shows) and, for a " <>
+            "finished one, its reason. With `task_id`, list just that one and include its " <>
+            "result.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
