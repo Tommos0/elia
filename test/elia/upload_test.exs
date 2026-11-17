@@ -29,7 +29,7 @@ defmodule Elia.UploadsTest do
     # folder of its project, which for a chat in Elia's own project is the live
     # tree (DEPLOY-1) — so an attachment is where the agent's own tools (FILE)
     # and the Files page look for it (FLINK-5). The view hands this module exactly
-    # the root it resolves for the chat, `Elia.Deploy.existing_workspace/2`; the
+    # the root its project's folder resolves to for it (PROJ-12); the
     # LiveView test covers that side of it
     # (`test/elia_web/live/chat_upload_test.exs`).
     test "the directory is created under the root it is given, whatever that is", %{root: root} do

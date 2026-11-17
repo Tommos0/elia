@@ -1235,6 +1235,40 @@ defmodule Elia.SelfModificationTest do
       # Folder skills apply in every project: they are the harness skill's.
       refute instructions =~ "folder skill"
     end
+
+    # DEPLOY-28, DEPLOY-29, DEPLOY-30, SHELL-14: the instruction tells a chat
+    # its workspace is the project's folder and no worktree was made for it, how
+    # to make its own — forked from the trunk, on the branch its chat id names,
+    # with the copies that save its first command minutes — and what to do when
+    # it can't be made.
+    test "instructions say to make a worktree of its own before changing code" do
+      instructions = Elia.Skills.SelfModification.instructions()
+
+      assert instructions =~ "works in the project's folder"
+      assert instructions =~ "don't change code in it"
+      assert instructions =~ "git worktree add"
+      assert instructions =~ "tmp/worktrees/"
+      assert instructions =~ "chat/$ELIA_CHAT_ID"
+      assert instructions =~ "deps _build"
+      assert instructions =~ "cp -a"
+      assert instructions =~ "cp -a assets/node_modules"
+      assert instructions =~ "ELIA_CHAT_ID"
+      # ...and it says what to do when the worktree can't be made (DEPLOY-30).
+      assert instructions =~ "ask the user"
+      assert instructions =~ "don't fall back to editing the live tree"
+    end
+
+    # DEPLOY-30, used by the harness-injected AGENTS.md too: the same recipe,
+    # so a chat that reads either is told the same thing.
+    test "the project's AGENTS.md carries the same worktree recipe" do
+      agents = File.read!("AGENTS.md")
+
+      assert agents =~ "git worktree add"
+      assert agents =~ "chat/$ELIA_CHAT_ID"
+      assert agents =~ "cp -a"
+      assert agents =~ "assets/node_modules"
+      assert agents =~ "git push . HEAD:master"
+    end
   end
 
   describe "run_tests" do

@@ -114,9 +114,10 @@ tree's front end (`/recover`, RECOVER-10).
   fast-forwards `live` onto the trunk (DEPLOY-5). `Elia.Deploy.deployable/1`
   returns `:ok` or an error naming what is missing and the one-time fix
   (`git checkout -b live`, `git branch master`, `git branch -f master live`).
-  A tree that isn't set up for deployment is still a tree a chat can work in —
-  its workspace is the live tree either way (DEPLOY-1) — but a deploy is refused
-  until it is set up, and the Settings page says what is missing.
+  A tree that isn't set up for deployment is still the workspace of a chat in
+  it (DEPLOY-1), but the worktree route can't finish there: `master` is checked
+  out in the live tree, so git refuses to push to it (DEPLOY-30). A deploy is
+  refused too, and the Settings page says what is missing.
 - **DEPLOY-13** When a chat in Elia's own project has finished a change — made
   in the worktree it made itself, on its own branch (DEPLOY-28) — the agent
   merges that branch into the trunk itself: it commits its work,
@@ -141,8 +142,8 @@ tree's front end (`/recover`, RECOVER-10).
   *merge*: no tests run, the live tree's front end is still made current before
   the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens.
 - **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
-  test in the live tree itself — `mix deps.get`, jailed with `:live_tree`
-  (ISOL-14) — before the suite runs. A dependency a chat added lives in the
+  test in the live tree itself — `mix deps.get`, jailed in the live tree
+  (ISOL-13, ISOL-14) — before the suite runs. A dependency a chat added lives in the
   `deps` of the worktree it made itself (DEPLOY-29) and the live tree has never
   seen it, so without this the merged trunk fails to build for a reason the
   deploy invented.
@@ -321,6 +322,24 @@ tree's front end (`/recover`, RECOVER-10).
   `workspace.ex` to weaken them" stays as prose in
   `AGENTS.md` and the self-modification skill. The no-op request behaviour
   (GUARD-8) is kept by DEPLOY-8.
+
+## Stored data
+
+Backward compatible, and no migration: a saved chat is read as it was, and
+nothing is rewritten.
+
+- A chat's saved working directory (`cwd`, STORE-46) may name a directory inside
+  a worktree the harness used to make, under the live tree's data dir. That path
+  is still inside the chat's workspace, which is now the live tree itself
+  (DEPLOY-1), so such a chat resumes there; once that directory is gone it reads
+  as the chat's project folder, which is what a saved directory that is no
+  longer there already does (WD-2, WD-7).
+- The worktrees the harness made are left where they are: nothing removes them,
+  so they and their `chat/<id>` branches stay until the user clears them with
+  ordinary git (`git worktree prune`, `git worktree remove`, `git branch -d`).
+  Nothing else reads them (DEPLOY-10).
+- Nothing else outlives the process here: the saved sessions and the settings
+  database gain and lose no key.
 
 ## Implementation
 

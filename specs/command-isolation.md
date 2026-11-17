@@ -189,7 +189,7 @@ genuinely needs the rest of the machine (ISOL-16).
   call can reach outside that one tree is bound.
 
 - **ISOL-14** The deploy's fetch (`mix deps.get` in the live tree, DEPLOY-18)
-  and its test run (`Elia.Deploy`, DEPLOY-5) are jailed with `:live_tree`, and no
+  and its test run (`Elia.Deploy`, DEPLOY-5) are jailed in the live tree, and no
   chat's setting is involved: they run the merged trunk in the live tree, which
   needs write access there.
 - **ISOL-15** The tool context carries the jail decision, like `:workspace`

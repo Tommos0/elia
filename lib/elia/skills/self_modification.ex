@@ -34,17 +34,23 @@ defmodule Elia.Skills.SelfModification do
     ```sh
     mkdir -p tmp/worktrees
     git worktree add -b "chat/$ELIA_CHAT_ID" "tmp/worktrees/$ELIA_CHAT_ID" master
-    cp -a deps _build "tmp/worktrees/$ELIA_CHAT_ID/"
+    for d in deps _build; do [ -d "$d" ] && cp -a "$d" "tmp/worktrees/$ELIA_CHAT_ID/"; done
     [ -d assets/node_modules ] && cp -a assets/node_modules "tmp/worktrees/$ELIA_CHAT_ID/assets/"
     cd "tmp/worktrees/$ELIA_CHAT_ID"
     ```
 
     `$ELIA_CHAT_ID` is your chat's id, which every `shell` call is given \
-    (SHELL-14). The two copies are what makes the first command in that worktree \
+    (SHELL-14). The copies are what makes the first command in that worktree \
     quick: without them every dependency is fetched and compiled from source and \
     the browser bundle is built from nothing — minutes, every time; with them \
-    the first compile is warm. A sub-task forks the branch its brief names (its \
-    parent's), and stops at its own branch for its parent to merge.
+    the first compile is warm. A copy the live tree doesn't have is skipped. A \
+    sub-task forks the branch its brief names (its parent's), and stops at its \
+    own branch for its parent to merge.
+
+    If the worktree can't be made, or the merge back can't be made because the \
+    live tree isn't set up for deployment (it has `master` checked out, not \
+    `live`), say so and ask the user — don't fall back to editing the live tree \
+    (DEPLOY-30).
 
     Running code never changes while you edit in there: an Elixir change reaches \
     the running app only through a deploy, which \
