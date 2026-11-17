@@ -84,7 +84,11 @@ call takes.
   the chat's id to it as `ELIA_CHAT_ID`, so a chat can name the worktree and
   branch it makes for itself (DEPLOY-28) without being told its own id. The
   variable is absent when a command belongs to no chat, which is what the
-  harness's own steps are (DEPLOY-18).
+  harness's own steps are (DEPLOY-18) — absent even where the process that runs
+  the command carries one, as a suite a chat started does. `Elia.Shell` unsets
+  it in the shell that runs the command unless the caller passes one, the way it
+  unsets the server's own `MIX_ENV` (ISOL-24), since a port's environment can
+  only add to the one it inherits.
 
 ## Configuration
 
@@ -124,8 +128,8 @@ passes to a command, SHELL-14),
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
   ending at its deadline, a command whose waiting process exits being killed
-  with its group, the output a capped run holds while it runs — SHELL-2 to
-  SHELL-5, SHELL-11 to SHELL-13).
+  with its group, the output a capped run holds while it runs, a caller's own
+  chat id reaching the command — SHELL-2 to SHELL-5, SHELL-11 to SHELL-14).
 - `test/elia/agent_test.exs` (a call needs approval before it runs, SHELL-1).
 - No test: SHELL-7 — that an approved command is not confined by the workspace
   policy is not asserted anywhere; the approval prompt is the safeguard.

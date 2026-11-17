@@ -3,6 +3,14 @@ defmodule Elia.ShellTest do
 
   alias Elia.{Priority, Shell}
 
+  # SHELL-14: a caller that passes an id of its own keeps it — the unset is for a
+  # command that belongs to no chat, not for one that names its chat.
+  test "a caller's own chat id reaches the command" do
+    assert {:ok, output, 0} = Shell.run("printenv ELIA_CHAT_ID", env: [{"ELIA_CHAT_ID", "chatX"}])
+
+    assert output == "chatX\n"
+  end
+
   # SHELL-2
   test "runs with bash when it is installed, and POSIX sh when it is not" do
     case System.find_executable("bash") do

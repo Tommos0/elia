@@ -87,7 +87,28 @@ defmodule Elia.Skills.ShellTest do
     assert {:ok, output} = Shell.run(%{"command" => "printenv ELIA_CHAT_ID; echo status=$?"}, %{})
     assert output =~ "status=1"
     refute output =~ "aBc123"
+
+    # The same, when the process running the command has one of its own: a suite
+    # a chat started inherits that chat's id, and a command for no chat must not
+    # be told it (SHELL-14, DEPLOY-18).
+    previous = System.get_env("ELIA_CHAT_ID")
+    System.put_env("ELIA_CHAT_ID", "leaked1")
+    on_exit(fn -> restore("ELIA_CHAT_ID", previous) end)
+
+    assert {:ok, output} = Shell.run(%{"command" => "printenv ELIA_CHAT_ID; echo status=$?"}, %{})
+    assert output =~ "status=1"
+    refute output =~ "leaked1"
+
+    # And a command for a chat is given that chat's id, not the inherited one.
+    assert {:ok, output} =
+             Shell.run(%{"command" => "printenv ELIA_CHAT_ID"}, %{session_id: "aBc123"})
+
+    assert output =~ "aBc123"
+    refute output =~ "leaked1"
   end
+
+  defp restore(name, nil), do: System.delete_env(name)
+  defp restore(name, value), do: System.put_env(name, value)
 
   test "does not wait on stdin" do
     assert {:ok, "\n[exit: 0]"} = Shell.run(%{"command" => "cat", "timeout_seconds" => 5})

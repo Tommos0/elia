@@ -195,7 +195,7 @@ defmodule Elia.Shell do
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
     # Commands must not wait on stdin.
-    script = "exec </dev/null\n" <> drop_mix_env(command, opts)
+    script = "exec </dev/null\n" <> drop_env(command, opts)
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
 
     execute(script, cd, opts)
@@ -207,12 +207,23 @@ defmodule Elia.Shell do
   # asks for. Mix honours a project's `preferred_envs` only while `MIX_ENV` is
   # unset, so `mix precommit` would compile and test in the server's `dev`. The
   # unset has to be in the shell that runs the command — `env: [{"MIX_ENV",
-  # false}]` is not a port option and `nil` crashes the child — and `unset` is
+  # false}]` is not a port option (it sets the value "false") and `unset` is
   # POSIX, so it works under either shell (SHELL-2). A caller that sets the value
   # itself keeps it (VERIFY-1), and a caller's `:env` reaches the command anyway
   # where it set the value itself (ISOL-8).
-  defp drop_mix_env(command, opts) do
-    if env_set?(opts, "MIX_ENV"), do: command, else: "unset MIX_ENV\n" <> command
+  #
+  # SHELL-14 needs the same treatment for `ELIA_CHAT_ID`, which belongs to the
+  # chat the command was started for (DEPLOY-18): a command that belongs to no
+  # chat must have no id, not the id of whatever process started it. A suite is
+  # exactly that process — a chat's own `mix test` inherits the chat's id, and
+  # the test that runs a command for no chat (`Elia.Skills.Shell` with no
+  # session) would otherwise find the chat that started the suite. So the
+  # variable is unset here unless the caller passes one, and a chat's own
+  # commands, which pass theirs, are unaffected.
+  defp drop_env(command, opts) do
+    Enum.reduce(["MIX_ENV", "ELIA_CHAT_ID"], command, fn name, command ->
+      if env_set?(opts, name), do: command, else: "unset #{name}\n" <> command
+    end)
   end
 
   # A caller's `:env` keys may arrive as strings or atoms.
