@@ -8,7 +8,10 @@ defmodule Elia.Skills.ChatsTest do
   alias Elia.Store
 
   defp tool(name), do: Enum.find(Chats.tools(), &(&1.name == name))
-  defp call(name, input), do: Elia.Tool.call(tool(name), input, %{})
+
+  # HIST-2: a call runs in a chat, which is what the `children` filter reads
+  # (`ctx[:session_id]`, STORE-18); a case that doesn't care runs with none.
+  defp call(name, input, ctx \\ %{}), do: Elia.Tool.call(tool(name), input, ctx)
 
   # A chat of this test's own, removed when it ends.
   defp save(messages, opts \\ []) do
@@ -100,6 +103,65 @@ defmodule Elia.Skills.ChatsTest do
     {:ok, json} = call("list_chats", input)
     Jason.decode!(json)
   end
+
+  # HIST-2: the `children` filter — this chat's own sub-tasks with `true`,
+  # those together with their own children with `"all"`, nothing filtered by
+  # parent without it — and the `parent` every listed chat carries (STORE-17,
+  # STORE-18).
+  test "HIST-2 list_chats filters by parent with children, and lists parent" do
+    parent = save([Message.user("the parent")], title: "A parent")
+    first = child_of(parent, "First child")
+    second = child_of(parent, "Second child")
+    grandchild = child_of(first, "Grandchild")
+    unrelated = save([Message.user("nothing to do with the task")], title: "Unrelated")
+
+    # `true` keeps the chats this one started and nothing else.
+    assert group_of(parent, true) == Enum.sort([first, second])
+
+    # `"all"` keeps those together with their own children.
+    assert group_of(parent, "all") == Enum.sort([first, second, grandchild])
+
+    # Absent, and `false`, filter nothing by parent: the listing is every chat,
+    # as it was before the filter existed.
+    assert unrelated in ids(%{"limit" => 100})
+    assert unrelated in ids(%{"children" => false, "limit" => 100})
+
+    # A chat with no children of its own keeps nothing with `true` ...
+    assert group_of(unrelated, true) == []
+
+    # ... while a chat that is itself a sub-task lists with `"all"` the job it
+    # is one of — its own chat among its siblings, like any other chat
+    # (SUBTASK-1, SUBTASK-31) — and `true` still keeps only its own children.
+    assert group_of(first, "all") == Enum.sort([first, second, grandchild])
+    assert group_of(first, true) == [grandchild]
+
+    # A tool context that names no chat has no sub-tasks to keep, so the filter
+    # keeps none of them.
+    assert group_of(nil, true) == []
+    assert group_of(nil, "all") == []
+
+    # HIST-2, STORE-17: an entry's `parent` is the chat that spawned it, or
+    # null for a chat nothing spawned.
+    assert listed(first)["parent"] == parent
+    assert listed(grandchild)["parent"] == first
+    assert listed(parent)["parent"] == nil
+  end
+
+  # A chat started by `parent`, as a spawn starts one (STORE-16).
+  defp child_of(parent, title) do
+    save([Message.user("a brief for #{title}")],
+      title: title,
+      task: %{parent_id: parent, started_at: DateTime.utc_now()}
+    )
+  end
+
+  defp group_of(session_id, children) do
+    ctx = %{session_id: session_id}
+    {:ok, json} = call("list_chats", %{"children" => children, "limit" => 100}, ctx)
+    json |> Jason.decode!() |> Enum.map(& &1["id"]) |> Enum.sort()
+  end
+
+  defp ids(input), do: list(input) |> Enum.map(& &1["id"])
 
   # HIST-3: the status a chat as a whole is in, from its saved file.
   test "HIST-3 a listed chat's status is open, done, interrupted or working" do

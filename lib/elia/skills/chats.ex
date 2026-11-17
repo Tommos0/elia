@@ -68,6 +68,13 @@ defmodule Elia.Skills.Chats do
     is done, was interrupted by a restart, or is a sub-task, and how many \
     messages it holds, which is usually enough to tell whether it is the one \
     you want.
+
+    `list_chats` takes a `children` argument when what you want is the chats \
+    of a task rather than the recent ones: `true` keeps this chat's own \
+    sub-tasks, and `"all"` keeps those together with their own children. A \
+    chat that is itself a sub-task has no children of its own, so `"all"` is \
+    how it lists the siblings of its job. Each listed chat's `parent` names \
+    the chat that spawned it, or is `null` for a chat nothing spawned.
     """
   end
 
@@ -78,10 +85,11 @@ defmodule Elia.Skills.Chats do
         name: "list_chats",
         description:
           "List chats other than this one, newest first, as JSON: each chat's `id`, " <>
-            "`title`, `created_at`, `updated_at`, `project`, `status` and how many " <>
-            "`messages` it holds. `query` keeps the chats whose title or description " <>
-            "contains it and `project` those of one project. Use it to find the id to " <>
-            "read.",
+            "`title`, `created_at`, `updated_at`, `project`, `parent`, `status` and how " <>
+            "many `messages` it holds. `query` keeps the chats whose title or description " <>
+            "contains it and `project` those of one project. `children` keeps this chat's " <>
+            "own sub-tasks (`true`), or those together with their own children " <>
+            "(`\"all\"`). Use it to find the id to read.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -93,6 +101,13 @@ defmodule Elia.Skills.Chats do
             "limit" => %{
               "type" => "integer",
               "description" => "How many chats, newest first (default 20, at most 100)"
+            },
+            "children" => %{
+              "type" => ["boolean", "string"],
+              "description" =>
+                "`true` keeps only this chat's own sub-tasks; `\"all\"` keeps those " <>
+                  "together with their own children. Absent or `false`: nothing is " <>
+                  "filtered by parent."
             }
           },
           "required" => []
@@ -100,7 +115,7 @@ defmodule Elia.Skills.Chats do
         # HIST-10: reading a saved chat changes nothing on the machine, so it
         # never needs approval, like `list_tasks` (SUBTASK-26).
         approval: :never,
-        run: fn input, _ctx -> list_chats(input) end
+        run: fn input, ctx -> list_chats(input, ctx) end
       },
       %Elia.Tool{
         name: "read_chat",
@@ -156,20 +171,68 @@ defmodule Elia.Skills.Chats do
 
   ## list_chats (HIST-2, HIST-3)
 
-  defp list_chats(input) do
+  defp list_chats(input, ctx) do
     query = blank_to_nil(input["query"])
     project = blank_to_nil(input["project"])
     limit = clamp(input["limit"], @list_default, @list_max)
+    children = children_ids(input["children"], ctx[:session_id])
     running = MapSet.new(Elia.Agent.running())
 
     chats =
       Elia.Store.list(@scan)
       |> Enum.filter(&Elia.Store.valid_id?(&1.id))
       |> Enum.filter(&matching?(&1, query, project))
+      |> Enum.filter(&of_group?(&1, children))
       |> Enum.take(limit)
       |> Enum.map(&listed(&1, running))
 
     {:ok, Jason.encode!(chats)}
+  end
+
+  # HIST-2, STORE-18: the ids a `children` filter keeps, or `nil` when it
+  # filters nothing by parent — which is what absent, `false` and any value
+  # that isn't one of the two do, so a listing is every chat, as before the
+  # filter existed. A call whose tool context names no chat has no sub-tasks to
+  # keep, so the filter keeps none of them.
+  defp children_ids(value, id) do
+    cond do
+      value not in [true, "all"] -> nil
+      not is_binary(id) -> MapSet.new()
+      value == true -> id |> Elia.Store.children() |> MapSet.new(& &1.id)
+      true -> group_ids(id)
+    end
+  end
+
+  defp of_group?(_entry, nil), do: true
+  defp of_group?(entry, ids), do: MapSet.member?(ids, entry.id)
+
+  # HIST-2: the chats of this chat's task — the chat itself and everything it
+  # started, or, for a chat that is itself a sub-task, the job it is one of:
+  # the job's chats are its parent's children, so this chat is listed among its
+  # siblings like any other chat. Its own chat has no children to walk
+  # (SUBTASK-1), so the parent's are the whole of it.
+  defp group_ids(id) do
+    id
+    |> group_anchor()
+    |> descendants(MapSet.new())
+  end
+
+  defp group_anchor(id) do
+    case Elia.Store.entry(id) do
+      %{} = entry -> Map.get(entry, :parent_id) || id
+      _none -> id
+    end
+  end
+
+  # Every chat below `id`, their own children included, however deep the tree
+  # is. Depth is one today — a child has no `spawn_task` (SUBTASK-1) — and the
+  # walk is written for a tree anyway.
+  defp descendants(id, seen) do
+    Enum.reduce(Elia.Store.children(id), seen, fn child, seen ->
+      if MapSet.member?(seen, child.id),
+        do: seen,
+        else: descendants(child.id, MapSet.put(seen, child.id))
+    end)
   end
 
   defp matching?(entry, query, project) do
@@ -185,6 +248,9 @@ defmodule Elia.Skills.Chats do
       "created_at" => iso(entry.created_at),
       "updated_at" => iso(entry.updated_at),
       "project" => Map.get(entry, :project_id),
+      # HIST-2, STORE-17: whose child this chat is, or `null` for a chat
+      # nothing spawned.
+      "parent" => Map.get(entry, :parent_id),
       "status" => status(entry, running),
       "messages" => entry.id |> Elia.Store.load() |> length()
     }
