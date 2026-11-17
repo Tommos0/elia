@@ -12,7 +12,9 @@ git worktree inside that folder and does the work on its own branch there,
 merging that branch into the trunk itself when the work is done (DEPLOY-28,
 DEPLOY-13). Deploying is then the user's own step, on the Settings page: Elia
 brings the trunk to `live` and loads the result into the running app, by hot
-reload or by a restart (DEPLOY-5–DEPLOY-7). A chat's worktree keeps an
+reload or by a restart (DEPLOY-5–DEPLOY-7) — a restart only where something
+outside the VM is there to bring the server back (DEPLOY-33, RESTART-12). A
+chat's worktree keeps an
 in-progress or broken edit out of the tree that runs — the isolation is one the
 chat arranges for itself (DEPLOY-28), not a gate — and a deploy refuses to load
 a tree whose suite or compile fails (DEPLOY-5, HOT-4).
@@ -20,8 +22,11 @@ a tree whose suite or compile fails (DEPLOY-5, HOT-4).
 A deploy is not a black box and not a one-way door: it reports the steps it
 takes while it takes them and what it did when it is over (DEPLOY-21–DEPLOY-23,
 CONF-21, CONF-22), it refuses to load a tree whose front end it could not make
-current (DEPLOY-24), and the app can be sent back to a revision it has run
-before (DEPLOY-25, DEPLOY-26) — from the Settings page or, when a deploy has
+current (DEPLOY-24) — the bundle it builds is staged and is promoted only once
+the deploy is committed to it, so a deploy that is rejected leaves the bytes a
+browser loads as they were (DEPLOY-31, DEPLOY-32) — and the app can be sent
+back to a revision it has run before (DEPLOY-25, DEPLOY-26) — from the Settings
+page or, when a deploy has
 left that page's own UI unusable, from a plain HTML page that needs none of the
 tree's front end (`/recover`, RECOVER-10).
 
@@ -153,9 +158,10 @@ tree's front end (`/recover`, RECOVER-10).
 - **DEPLOY-19** A deploy makes the live tree's front end current before it loads
   it: after the suite passes and `live` is fast-forwarded onto the trunk it
   installs the trunk's Node packages in the live tree's `assets/` (`npm
-  install`) and builds its assets (`mix assets.build`), in the live tree and
-  jailed the way DEPLOY-18's fetch is (ISOL-14), and says in its message when it
-  rebuilt them. What the browser loads is therefore what the tree it just
+  install`) and builds its assets into a staging directory inside the live tree
+  (DEPLOY-31), in the live tree and jailed the way DEPLOY-18's fetch is
+  (ISOL-14), and says in its message when it rebuilt them. What the browser
+  loads is therefore what the tree it just
   deployed says — the hook a new page's markup asks for, the class its markup
   uses — rather than a bundle from before the change, or a tree that cannot
   build one at all: a Node package a chat added is in the worktree it made
@@ -163,9 +169,10 @@ tree's front end (`/recover`, RECOVER-10).
   asset build fails and no bundle is written. A tree with no `assets/` directory has no
   front end and is left alone. A failure is a deploy failure like a failing
   suite: `live` is rolled back to where it was, nothing is loaded, and the error
-  carries the command's output. Building writes under `priv/static`, so the
-  browser's live reload fires (DEPLOY-12) and a page that is already open comes
-  back on the new bundle instead of keeping the one it loaded (HOT-8).
+  carries the command's output. Building — and the promotion that follows it
+  (DEPLOY-32) — writes under `priv/static`, so the browser's live reload fires
+  (DEPLOY-12) and a page that is already open comes back on the new bundle
+  instead of keeping the one it loaded (HOT-8).
 - **DEPLOY-20** The front-end step of a deploy (DEPLOY-19) runs on every deploy,
   including one whose `live` is already at the trunk and so has nothing to merge
   (DEPLOY-5): what a deploy loads is then always what the tree it loads builds.
@@ -184,6 +191,22 @@ tree's front end (`/recover`, RECOVER-10).
   (RESTART-3, RESTART-11). Its control is on the Settings page (CONF-19), and
   it only works when `bin/serve` (or another service manager) runs the server
   (RESTART-1, RESTART-2).
+- **DEPLOY-33** Whether a restart is possible is a separate question from
+  whether hot reload is (DEPLOY-6, HOT-2), and its answer is something the tree
+  can observe rather than Mix or the code reloader: an explicit *supervised*
+  marker in the environment — `ELIA_SUPERVISED=1`, which `bin/serve` exports
+  (RESTART-12) and which a service manager that runs the app says too
+  (RESTART-8) — is that signal. With the marker set,
+  `Elia.Deploy.restartable?/0` is `:ok`, and both the restart control
+  (CONF-19) and the restart itself (DEPLOY-7) are offered; the same check is
+  what the operation's restart mode consults, so the page and the operation
+  agree. Without it the check is `{:error, reason}`, and the reason is the
+  message a bare `mix phx.server` gets: restarting is only available when the
+  server runs, started by `bin/serve` (or a service manager) so it comes back.
+  A restart is therefore never offered to a server that would not survive one,
+  and hot reload stays available where it is (HOT-2) whatever the marker says.
+  `Elia.Deploy.restartable?/0` is this one check and not a second copy of
+  `hot_reload_available?/0` (HOT-2).
 - **DEPLOY-8** The running app never recompiles or loads code on its own: a
   request does not reload code, and a merge into `live` stays inert until a
   deploy loads it (GUARD-8). Only a deploy loads code.
@@ -245,15 +268,40 @@ tree's front end (`/recover`, RECOVER-10).
 ### Losing nothing to a bad deploy
 
 - **DEPLOY-24** A deploy never loads a tree whose front end it could not make
-  current: after the build (DEPLOY-19) it checks that the bundle the browser
-  loads is there — `priv/static/assets/js/app.js` and
-  `priv/static/assets/css/app.css`, the two entry points the endpoint serves —
-  and a bundle that is missing or empty fails the deploy the way a failing
-  suite does (DEPLOY-5): `live` is rolled back to where it was, nothing is
-  loaded, and the error names the file. A build that exits 0 having written
+  current: after the build (DEPLOY-19) it checks the bundle the build produced
+  (DEPLOY-31) — the two entry points the endpoint serves,
+  `priv/static/assets/js/app.js` and
+  `priv/static/assets/css/app.css` — and a bundle that is missing or empty
+  fails the deploy the way a failing suite does (DEPLOY-5): nothing is promoted
+  (DEPLOY-32), `live` is rolled back to where it was, nothing is loaded, and
+  the error names the file. A build that exits 0 having written
   nothing — a wiped `priv/static`, a misconfigured `esbuild` or `tailwind` — is
   therefore a failed deploy rather than a running app with no stylesheet or no
   hook. A tree with no front end (DEPLOY-19) has nothing to check.
+- **DEPLOY-31** The assets are built into a **staging directory** of the live
+  tree — `priv/static/assets/.staging` — rather than over the two files the
+  running server serves: the build fetches that tree's own
+  `assets/css/app.css`, `assets/js/` and `assets/package.json` (DEPLOY-19), and
+  writes an isolated copy of the bundle the endpoint serves,
+  `priv/static/assets/js/app.js` and `priv/static/assets/css/app.css`, inside
+  the staging directory. A build that fails, or one that exits 0 having written
+  nothing, has therefore changed nothing a browser can fetch (DEPLOY-24,
+  DEPLOY-32): the build writes inside `priv/static`, so the browser's live
+  reload still fires (DEPLOY-12), and nothing else in the tree moves for it.
+  The staging directory sits under the `priv/static/assets/` the tree ignores,
+  as the bundle it copies does.
+- **DEPLOY-32** What the build produced reaches the served bundle only once it
+  is checked and the deploy is committed to loading it: when both staged entry
+  points are there and not empty (DEPLOY-24), the deploy replaces
+  `priv/static/assets/js/app.js` and `priv/static/assets/css/app.css` with them
+  — the *promotion* — and only then loads the tree (DEPLOY-6, DEPLOY-7). A
+  deployment that is rejected, or one that fails at any step — the merge, the
+  fetch, the suite, the build, the bundle check, the load — therefore leaves
+  the bytes a browser fetches exactly as they were: the files it had are still
+  there, unchanged and not partial, and the staged copy of the attempt is
+  removed, whether it got as far as promoting or not. In particular a rejected
+  deploy leaves no staged directory behind, so a second deploy starts from the
+  same state as the first (DEPLOY-20).
 - **DEPLOY-25** The revisions the running app has loaded are kept, not only the
   newest (DEPLOY-17): the record (DEPLOY-23) keeps the last few revisions the
   app has run, newest first, each with when it was first loaded and by what — a
@@ -315,6 +363,26 @@ tree's front end (`/recover`, RECOVER-10).
   if they want it cleared. A branch is still kept while it exists — chats are
   resumable — and nothing prunes by time.
 
+### Setting up a tree
+
+- **DEPLOY-34** A fresh clone that follows the README ends up with a tree the
+  app can build and run: the documented first-run sequence installs the Node
+  packages of `assets/package.json` — an `npm install` in `assets/` — before the
+  assets are built, so `assets/node_modules` is there when the build needs it,
+  and `mix setup` itself goes on doing what it does: fetch the Mix dependencies,
+  install the asset tool binaries and build the assets (`deps.get`,
+  `assets.setup`, `assets.build`). Which entry point installs the packages is
+  the README's to say, and it says it where a fresh clone reads it.
+- **DEPLOY-35** The README says what Node is for and what stops working without
+  it: the bundle and the stylesheet import `assets/node_modules`, which Git
+  ignores and only an npm install fills, so a tree without Node and those
+  packages still compiles and still starts and serves a page with no stylesheet
+  and no JavaScript — there is no `/assets/js/app.js` or `/assets/css/app.css`
+  to fetch. The real-browser tests and `bin/preview` install the packages for
+  themselves and need Node too (BROWSER-10, PREVIEW-14). No document repeats
+  the bare claim that Node is optional for a tree that builds its own bundle
+  without saying this.
+
 ### Retired: guarded files
 
 - **DEPLOY-11** There is no guarded-file list: `Elia.Guarded` and GUARD-1,
@@ -338,6 +406,14 @@ nothing is rewritten.
   so they and their `chat/<id>` branches stay until the user clears them with
   ordinary git (`git worktree prune`, `git worktree remove`, `git branch -d`).
   Nothing else reads them (DEPLOY-10).
+- A deploy's staging directory (DEPLOY-31) is a build artifact under the
+  gitignored `priv/static/assets/`, not stored data: the deployment removes it
+  when it ends, successfully or not (DEPLOY-32), nothing else reads it, and a
+  later build writes over it. Whether a restart is possible (DEPLOY-33) is read
+  from the environment when it is asked, so nothing about it is stored either.
+- The shapes that do outlive the process — a deploy record, the loaded
+  revisions, the settings database — gain and lose no key and no file here, so
+  an older record, revision file or settings row still loads.
 - Nothing else outlives the process here: the saved sessions and the settings
   database gain and lose no key.
 
@@ -362,7 +438,9 @@ goes with the harness's own: ISOL-7, ISOL-22, ISOL-27, ISOL-28), SHELL
 deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
 `last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), the front-end step
 a deploy runs before it loads — `npm install` in the live tree's `assets/` and
-`mix assets.build`, DEPLOY-19 — with the check that the bundle is there
+`mix assets.build`, DEPLOY-19 — the staged build and the promotion of the two
+entry points it checked, including the removal of what a rejected attempt wrote
+(DEPLOY-31, DEPLOY-32), with the check that the bundle is there
 (DEPLOY-24) and the seam its tests replace the way `load:` and `stop:` are, and
 `rollback/3`, DEPLOY-26, and `changes/1`, DEPLOY-27),
 `Elia.Deploy.Runner` (the deploy's own process, its step and its result,
@@ -375,9 +453,13 @@ workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}` (the
 `ELIA_CHAT_ID` a command gets, SHELL-14, and the instruction a chat carries,
 DEPLOY-28 to DEPLOY-30),
 `EliaWeb.SettingsLive` (the
-deployment section: the steps, the record, going back, and what a tree that
-isn't set up for deployment is missing), `EliaWeb.Endpoint`
-(inert request reloader, the recovery plug, RECOVER-10), `bin/serve`.
+deployment section: the steps, the record, going back, what a tree that
+isn't set up for deployment is missing, and the restart control it offers only
+where the marker says a restart can be survived — DEPLOY-33), `EliaWeb.Endpoint`
+(inert request reloader, the recovery plug, RECOVER-10), `bin/serve` (the loop
+that brings the server back, RESTART-1, and the supervised marker it exports,
+DEPLOY-33, RESTART-12), `README.md` and `bin/preview` (what a fresh clone has to
+install and what Node is for, DEPLOY-34, DEPLOY-35).
 
 Removed with the harness's own worktree: `Elia.Deploy`'s worktree creation,
 removal and child-worktree functions (`workspace/2`, `existing_workspace/2`,
@@ -393,15 +475,25 @@ served from there (PREVIEW-2, PREVIEW-4).
 
 `test/elia/deployment_test.exs` (a chat's workspace is its project's folder and
 nothing is created for it, the trunk, the deploy, the front
-end it builds before it loads and the bundle it checks for, the steps it
+end it builds before it loads — the staged build, what it promotes, and what a
+rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
+checks for, whether a restart is possible (DEPLOY-33), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
 restart, the runner, the loaded revision and what a deploy brought, DEPLOY-1 to
-DEPLOY-27),
+DEPLOY-33),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to
 DEPLOY-30),
 `test/elia_web/live/settings_live_test.exs` (the deployment section, including
 a page that mounts mid-deploy, a page that comes back after a restart and after
-one), `test/elia_web/recovery_test.exs` (the recovery page, RECOVER-10 to
+one, and the restart control it offers only where a restart can be survived,
+DEPLOY-33), `test/elia/serve_script_test.exs` (the loop `bin/serve` runs, and
+the supervised marker it exports, RESTART-12), `test/elia_web/recovery_test.exs`
+(the recovery page, RECOVER-10 to
 RECOVER-15), `test/support/live_tree.ex` (a throwaway live tree).
+
+No test: DEPLOY-34, DEPLOY-35 — the acceptance is the literal README sequence in
+a clean checkout (a bundle that builds, a page that loads its assets, a working
+terminal hook, run twice), which is an integration check rather than a unit
+test, and whether a README says what it must is a reviewer's question.

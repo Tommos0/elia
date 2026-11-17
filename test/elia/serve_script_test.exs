@@ -102,6 +102,30 @@ defmodule Elia.ServeScriptTest do
     assert File.read!(Path.join(dir, "dump")) == "0\n"
   end
 
+  # RESTART-12, DEPLOY-33: the server is told that something outside the VM will
+  # bring it back — that marker is the whole of whether a restart is offered —
+  # and it is told on every start, not only the first.
+  test "marks the server it runs as supervised, on every start (RESTART-12)", %{tmp_dir: dir} do
+    cmd = fake!(dir, "echo \"$ELIA_SUPERVISED\" >> \"$d/marker\"\n")
+
+    {_, 0} = serve(cmd)
+
+    assert File.read!(Path.join(dir, "marker")) == "1\n"
+  end
+
+  test "marks a server it restarts too (RESTART-12)", %{tmp_dir: dir} do
+    cmd =
+      fake!(dir, """
+      echo "$ELIA_SUPERVISED" >> "$d/marker"
+      [ "$(wc -l < "$d/marker")" -gt 1 ] && exit 0
+      exit 1
+      """)
+
+    {_, 0} = serve(cmd)
+
+    assert File.read!(Path.join(dir, "marker")) == "1\n1\n"
+  end
+
   test "the application is permanent outside of tests (RESTART-7)" do
     # `mix test` runs in the :test environment, where it isn't.
     assert Mix.Project.config()[:start_permanent] == false

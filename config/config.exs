@@ -41,12 +41,35 @@ config :phoenix_live_view,
 config :elia,
   playwright_dir: System.get_env("ELIA_PLAYWRIGHT_DIR", Path.expand("~/.local/lib"))
 
-# Configure esbuild (the version is required)
+# Configure esbuild (the version is required).
+#
+# DEPLOY-31: a deploy builds into a staging directory rather than over the two
+# entry points the endpoint serves, and it does that by pointing both tools'
+# output at it — one variable, read here and by tailwind below, naming that
+# directory. Each tool is pointed at its own subdirectory of it, since that is
+# where it writes the entry point it serves — `<staging>/js/app.js` and
+# `<staging>/css/app.css`, the same two the tree has (DEPLOY-24). Unset, which
+# is every other caller (`mix assets.build`, the dev watchers), nothing changes.
+# The paths are made relative to each tool's own `cd`, since that is where it
+# runs from.
+asset_out = System.get_env("ELIA_ASSET_OUT")
+
+esbuild_out =
+  if asset_out,
+    do: Path.join(Path.relative_to(asset_out, Path.expand("../assets", __DIR__)), "js"),
+    else: "../priv/static/assets/js"
+
+tailwind_out =
+  if asset_out,
+    do: Path.join(Path.relative_to(asset_out, Path.expand("..", __DIR__)), "css"),
+    else: "priv/static/assets/css"
+
 config :esbuild,
   version: "0.25.4",
   elia: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.js --bundle --target=es2022 --external:/fonts/* --external:/images/* --alias:@=.) ++
+        ["--outdir=#{esbuild_out}"],
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
@@ -55,10 +78,7 @@ config :esbuild,
 config :tailwind,
   version: "4.3.3",
   elia: [
-    args: ~w(
-      --input=assets/css/app.css
-      --output=priv/static/assets/css/app.css
-    ),
+    args: ["--input=assets/css/app.css", "--output=#{tailwind_out}/app.css"],
     cd: Path.expand("..", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]

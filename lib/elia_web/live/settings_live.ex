@@ -683,8 +683,8 @@ defmodule EliaWeb.SettingsLive do
                 id="deploy-restart"
                 phx-click="deploy"
                 phx-value-mode="restart"
-                disabled={@deploy_op != nil}
-                title="Run the tests, merge master into live and restart the server on the deployed code"
+                disabled={@deploy_op != nil or not restartable?(@restartable)}
+                title={restart_title(@restartable)}
                 class="flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-content transition hover:brightness-110 disabled:opacity-50"
               >
                 <.spinner :if={operation_running?(@deploy_op, :deploy, :restart)} />
@@ -801,8 +801,8 @@ defmodule EliaWeb.SettingsLive do
                   phx-click="rollback"
                   phx-value-sha={@rollback.sha}
                   phx-value-mode="restart"
-                  disabled={@deploy_op != nil}
-                  title="Move live back to that revision and restart the server on it"
+                  disabled={@deploy_op != nil or not restartable?(@restartable)}
+                  title={rollback_restart_title(@restartable)}
                   class="flex h-10 items-center gap-1.5 rounded-xl border border-base-300 px-4 text-sm font-medium transition hover:bg-base-200 disabled:opacity-50"
                 >
                   <.spinner :if={operation_running?(@deploy_op, :rollback, :restart)} />
@@ -1342,6 +1342,23 @@ defmodule EliaWeb.SettingsLive do
   defp deploy_ready?({:ok, _status}), do: true
   defp deploy_ready?({:error, _reason}), do: false
 
+  # DEPLOY-33: whether the server is one something would bring back — a restart
+  # control is offered only where it is, and says why when it is not.
+  defp restartable?(:ok), do: true
+  defp restartable?({:error, _reason}), do: false
+
+  defp restart_title(:ok) do
+    "Run the tests, merge master into live and restart the server on the deployed code"
+  end
+
+  defp restart_title({:error, reason}), do: reason
+
+  defp rollback_restart_title(:ok) do
+    "Move live back to that revision and restart the server on it"
+  end
+
+  defp rollback_restart_title({:error, reason}), do: reason
+
   # CONF-19, DEPLOY-17: `live` is merged but the running app never got it — the
   # deploy was interrupted after the merge. Say so, rather than "nothing to do".
   defp deploy_status({:ok, %{behind?: true} = status}) do
@@ -1797,6 +1814,9 @@ defmodule EliaWeb.SettingsLive do
 
     assign(socket,
       deployment: deployment,
+      # DEPLOY-33: whether a restart can be survived is the tree's to answer, and
+      # the section asks it rather than assuming it can be.
+      restartable: Deploy.restartable?(),
       deploy_op: state.running,
       deploy_last: last,
       # CONF-21: while an operation runs, the section shows where it is rather

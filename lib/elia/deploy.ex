@@ -51,8 +51,16 @@ defmodule Elia.Deploy do
   @front_end_timeout :timer.minutes(10)
 
   # The bundle the browser loads, checked after the build (DEPLOY-24): the two
-  # entry points the endpoint serves.
-  @bundle ~w(priv/static/assets/js/app.js priv/static/assets/css/app.css)
+  # entry points the endpoint serves, named as they are under the assets
+  # directory — which is also what the build stages them as (DEPLOY-31).
+  @bundle ~w(js/app.js css/app.css)
+
+  # Where the bundle lives in a tree (DEPLOY-24), and where the build writes the
+  # copy of it the deploy checks and promotes (DEPLOY-31): inside the assets
+  # directory the tree ignores, so it is never over the files the endpoint serves
+  # and a rejected deploy has nothing to undo (DEPLOY-32).
+  @assets "priv/static/assets"
+  @staging "priv/static/assets/.staging"
 
   # The steps a deploy or a rollback takes (DEPLOY-21): the order a deploy takes
   # them is the order they are reported in, and what the record can hold. A
@@ -833,15 +841,22 @@ defmodule Elia.Deploy do
   def run(:reload, root), do: hot_reload(root)
   def run(:restart, root), do: restart(root)
 
+  # DEPLOY-33: what says that something outside the VM started the server and
+  # will bring it back is a marker in its environment — set by `bin/serve`
+  # (RESTART-12), or by another service manager that runs it (RESTART-8) — not
+  # Mix or the code reloader, which a server started by hand in a shell has the
+  # same of.
+  @supervised "ELIA_SUPERVISED"
+
   @doc """
   Whether the server can be restarted: only a server run by `bin/serve` or
-  another service manager comes back after it stops (DEPLOY-7). A server
-  started by hand in a shell can't be, so the Settings page says so instead of
-  stopping it for good.
+  another service manager comes back after it stops (DEPLOY-7, DEPLOY-33). A
+  server started by hand in a shell can't be — nothing is waiting to start it
+  again — so the Settings page says so instead of stopping it for good.
   """
   @spec restartable?() :: :ok | {:error, binary()}
   def restartable? do
-    if hot_reload_available?() do
+    if supervised?() do
       :ok
     else
       {:error,
@@ -849,6 +864,10 @@ defmodule Elia.Deploy do
          "(or a service manager) so it comes back."}
     end
   end
+
+  # DEPLOY-33: the marker `bin/serve` exports before it runs the server
+  # (RESTART-12), read from the environment when it is asked for.
+  defp supervised?, do: System.get_env(@supervised) == "1"
 
   @doc "Whether in-VM code reloading is available (the endpoint's code reloader, HOT-2, HOT-7)."
   def hot_reload_available? do
@@ -991,15 +1010,27 @@ defmodule Elia.Deploy do
   # and so nothing to check (DEPLOY-24).
   defp build_front_end(root) do
     if File.exists?(Path.join(root, "assets/package.json")) do
-      with {:ok, _packages} <-
-             step(:packages, root, fn -> seam(:packages, &install/1).(root) end),
-           {:ok, _assets} <- step(:assets, root, fn -> seam(:assets, &build/1).(root) end) do
-        # DEPLOY-24: after the build, and inside the step that builds.
-        case bundle?(root) do
-          :ok -> {:ok, " The live tree's front end was rebuilt."}
-          {:error, reason} -> {:error, reason}
+      staging = Path.join(root, @staging)
+      # DEPLOY-32: nothing a previous attempt staged is promoted, or left
+      # behind, whatever this one does: a deploy starts from the state it found.
+      File.rm_rf(staging)
+
+      result =
+        with {:ok, _packages} <-
+               step(:packages, root, fn -> seam(:packages, &install/1).(root) end),
+             {:ok, _assets} <- step(:assets, root, fn -> seam(:assets, &build/1).(root) end) do
+          # DEPLOY-24, DEPLOY-31, DEPLOY-32: after the build, what it staged is
+          # checked and then promoted — in that order, so a build that wrote
+          # nothing, or one whose bundle is incomplete, has changed nothing the
+          # browser can fetch.
+          case promote(staging, root) do
+            :ok -> {:ok, " The live tree's front end was rebuilt."}
+            {:error, reason} -> {:error, reason}
+          end
         end
-      end
+
+      File.rm_rf(staging)
+      result
     else
       {:ok, ""}
     end
@@ -1007,14 +1038,25 @@ defmodule Elia.Deploy do
 
   defp seam(name, default), do: Application.get_env(:elia, __MODULE__, [])[name] || default
 
-  # DEPLOY-24: the bundle the browser loads, checked after the build. A build
-  # that exits 0 having written nothing — a wiped `priv/static`, a misconfigured
-  # `esbuild` or `tailwind` — is a failed deploy rather than a running app with
-  # no stylesheet or no hook.
-  defp bundle?(root) do
-    case Enum.find(@bundle, &missing?(Path.join(root, &1))) do
-      nil -> :ok
-      file -> {:error, "The build left no bundle: #{file} is missing or empty (DEPLOY-24)."}
+  # DEPLOY-24, DEPLOY-31, DEPLOY-32: the bundle the build staged, checked and
+  # then promoted over the two files the endpoint serves — in that order, so a
+  # build that exits 0 having written nothing — a wiped `priv/static`, a
+  # misconfigured `esbuild` or `tailwind` — is a failed deploy rather than a
+  # running app with no stylesheet or no hook, and nothing a browser fetches has
+  # changed. The error names the file the browser would have loaded.
+  defp promote(staging, root) do
+    case Enum.find(@bundle, &missing?(Path.join(staging, &1))) do
+      nil ->
+        Enum.each(@bundle, fn file ->
+          File.cp!(Path.join(staging, file), Path.join([root, @assets, file]))
+        end)
+
+        :ok
+
+      file ->
+        {:error,
+         "The build left no bundle: #{Path.join(@assets, file)} is missing or empty " <>
+           "(DEPLOY-24, DEPLOY-31)."}
     end
   end
 
@@ -1036,13 +1078,20 @@ defmodule Elia.Deploy do
 
   # The build the live tree's own watchers run while the server is up (HOT-7),
   # here by hand and before anything loads the tree: what writes `priv/static`,
-  # and so what makes the browser's live reload fire (DEPLOY-12).
-  defp build(root), do: run_step(root, "mix assets.build")
+  # and so what makes the browser's live reload fire (DEPLOY-12). DEPLOY-31: it
+  # writes its bundle into the staging directory rather than over the files the
+  # endpoint serves, and only the promotion moves those (DEPLOY-32).
+  defp build(root) do
+    run_step(root, "mix assets.build", env: [{"ELIA_ASSET_OUT", Path.join(root, @staging)}])
+  end
 
-  defp run_step(root, command) do
+  defp run_step(root, command, opts \\ []) do
     # DEPLOY-19: in the live tree, jailed the way DEPLOY-18's fetch is — the
     # tree the jail holds is the one the step runs in (ISOL-13, ISOL-14).
-    case Elia.Shell.run(command, cd: root, workspace: root, timeout: @front_end_timeout) do
+    case Elia.Shell.run(
+           command,
+           [cd: root, workspace: root, timeout: @front_end_timeout] ++ opts
+         ) do
       {:ok, output, 0} ->
         {:ok, output}
 

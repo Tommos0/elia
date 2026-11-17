@@ -598,6 +598,19 @@ defmodule EliaWeb.SettingsLiveTest do
     on_exit(fn -> Application.put_env(:elia, Deploy, deploy) end)
   end
 
+  # DEPLOY-33, RESTART-12: a server something outside the VM would bring back —
+  # what `bin/serve` marks, and so what the restart control is offered on.
+  defp supervised do
+    previous = System.get_env("ELIA_SUPERVISED")
+    System.put_env("ELIA_SUPERVISED", "1")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("ELIA_SUPERVISED", previous),
+        else: System.delete_env("ELIA_SUPERVISED")
+    end)
+  end
+
   # The server going away under an operation (DEPLOY-15, DEPLOY-23): the runner
   # and the operation it holds die together, and the record is what is left
   # behind — the state a restart deploy leaves for the page that comes up after
@@ -676,14 +689,19 @@ defmodule EliaWeb.SettingsLiveTest do
     assert LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
   end
 
-  # CONF-19, CONF-20, DEPLOY-7, RESTART-11
+  # CONF-19, CONF-20, DEPLOY-7, DEPLOY-33, RESTART-11
   test "restart deploys and restarts the server", %{conn: conn} do
     running_server()
     stop_server_with(self())
+    supervised()
     tree = live_tree()
     work_on_trunk()
 
     {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # DEPLOY-33: a server with something to bring it back is offered the restart.
+    refute has_element?(view, "#deploy-restart[disabled]")
+
     Runner.subscribe()
     view |> element("#deploy-restart") |> render_click()
 
@@ -695,6 +713,34 @@ defmodule EliaWeb.SettingsLiveTest do
     assert message =~ "Restarting the server"
     assert has_element?(view, "#deploy-result", "Restarting the server")
     assert LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
+  end
+
+  # CONF-19, DEPLOY-33: a server nothing outside the VM would bring back is not
+  # offered a restart — the control is there, disabled, and says why — since a
+  # restart would be the end of it.
+  test "a server nothing would bring back is not offered a restart (DEPLOY-33)", %{conn: conn} do
+    running_server()
+    stop_server_with(self())
+    tree = live_tree()
+    work_on_trunk()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert has_element?(view, "#deploy-restart[disabled]", "Restart")
+    assert render(view) =~ "Restarting is only available when the server runs"
+
+    # Hot reload is a different question (DEPLOY-6, HOT-2): it is still there.
+    refute has_element?(view, "#deploy-reload[disabled]")
+
+    # And the operation refuses the same way, so nothing starts one behind the
+    # control's back.
+    assert {:error, reason} = Deploy.restart()
+    assert reason =~ "bin/serve"
+    refute_received {:stop, _status}
+
+    # Nothing was deployed on either path: the trunk's commit is still only on
+    # the trunk.
+    refute LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
   end
 
   # CONF-20
@@ -925,6 +971,7 @@ defmodule EliaWeb.SettingsLiveTest do
   # deploy did, and where it stopped when it did not finish.
   test "a page that comes back after a restart deploy shows the record", %{conn: conn} do
     running_server()
+    supervised()
     live_tree(front_end: true)
     work_on_trunk()
     test = self()
@@ -941,6 +988,7 @@ defmodule EliaWeb.SettingsLiveTest do
       end
     end)
 
+    # Never reached: the deploy is held in the step before it (DEPLOY-15).
     stub_step(:assets, fn _root -> {:ok, ""} end)
 
     Runner.subscribe()

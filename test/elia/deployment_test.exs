@@ -331,6 +331,39 @@ defmodule Elia.DeploymentTest do
     on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
   end
 
+  # DEPLOY-24, DEPLOY-31, DEPLOY-32: the bundle where the two of them live — the
+  # two entry points the endpoint serves, and the staging directory a build
+  # writes before the promotion moves them.
+  defp served(root, file), do: Path.join([root, "priv/static/assets", file])
+
+  defp staged(root, file), do: Path.join([root, "priv/static/assets/.staging", file])
+
+  # The build step's stand-in (DEPLOY-31): what a real build writes — those two
+  # entry points, inside the staging directory — since that is what the deploy
+  # checks and then promotes (DEPLOY-24, DEPLOY-32).
+  defp staged_build(root, js \\ "// built\n", css \\ "body {}\n") do
+    for {file, content} <- [{"js/app.js", js}, {"css/app.css", css}] do
+      path = staged(root, file)
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+    end
+
+    {:ok, ""}
+  end
+
+  # DEPLOY-33, RESTART-12: a server something outside the VM would bring back —
+  # what `bin/serve` marks, and so what a restart is offered on.
+  defp supervised do
+    previous = System.get_env("ELIA_SUPERVISED")
+    System.put_env("ELIA_SUPERVISED", "1")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("ELIA_SUPERVISED", previous),
+        else: System.delete_env("ELIA_SUPERVISED")
+    end)
+  end
+
   # A deploy run in the runner, waited out, for a test that only needs the
   # revision it loaded and not the steps of the deploy itself.
   defp reload_now do
@@ -352,8 +385,9 @@ defmodule Elia.DeploymentTest do
     end
   end
 
-  # A front end that installs and builds, telling the test it ran, and writing
-  # nothing: the bundle the tree already has is what DEPLOY-24 checks.
+  # A front end that installs and builds, telling the test it ran: the build
+  # stages the bundle the deploy checks and promotes (DEPLOY-24, DEPLOY-31,
+  # DEPLOY-32).
   defp build_front_end_with(test_pid) do
     stub_step(:packages, fn root ->
       send(test_pid, {:packages, root})
@@ -362,7 +396,7 @@ defmodule Elia.DeploymentTest do
 
     stub_step(:assets, fn root ->
       send(test_pid, {:assets, root})
-      {:ok, ""}
+      staged_build(root)
     end)
   end
 
@@ -890,10 +924,13 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == before
   end
 
-  # DEPLOY-7, RESTART-11, RESTART-1, RESTART-2
+  # DEPLOY-7, DEPLOY-33, RESTART-11, RESTART-1, RESTART-2
   test "restart deploys and restarts the server on a non-zero status", %{tree: tree} do
     running_server()
     stop_server_with(self())
+    # DEPLOY-33, RESTART-12: the marker `bin/serve` exports is what makes a
+    # restart possible at all.
+    supervised()
 
     {_id, path} = new_worktree()
     work_on_trunk(path)
@@ -909,16 +946,27 @@ defmodule Elia.DeploymentTest do
     assert head(tree) != before
   end
 
-  # DEPLOY-7, RESTART-2
+  # DEPLOY-7, DEPLOY-33, RESTART-2, RESTART-12: whether a restart is possible is
+  # one check on the marker `bin/serve` exports, not a second copy of whether the
+  # code reloader is on (DEPLOY-6, HOT-2) — so a server started by hand in a
+  # shell, which has the reloader but nothing to bring it back, is refused.
   test "restart refuses when nothing would bring the server back", %{tree: tree} do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
     before = head(tree)
-    assert {:error, message} = Deploy.restart()
+
+    # The suite runs the reloader off (config/test.exs, HOT-7), so this test says
+    # what it is: the marker is the whole question.
+    assert {:error, message} = Deploy.restartable?()
     assert message =~ "bin/serve"
+    assert {:error, ^message} = Deploy.restart()
     refute_received {:stop, _}
     assert head(tree) == before
+
+    # With the marker, the same tree, and nothing else changed, is restartable.
+    supervised()
+    assert Deploy.restartable?() == :ok
   end
 
   # DEPLOY-10 (retired), STORE-23: deleting a chat removes its saved file and
@@ -1363,7 +1411,7 @@ defmodule Elia.DeploymentTest do
       end
     end)
 
-    stub_step(:assets, fn _root -> {:ok, ""} end)
+    stub_step(:assets, &staged_build/1)
 
     {_id, path} = new_worktree()
     work_on_trunk(path)
@@ -1538,32 +1586,34 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == old
   end
 
-  ## The bundle a deploy loads (DEPLOY-24)
+  ## The bundle a deploy loads (DEPLOY-24, DEPLOY-31, DEPLOY-32)
 
-  # DEPLOY-24: a build that exits 0 having written nothing is a failed deploy,
-  # not a running app with no hook: `live` is rolled back and nothing is loaded,
-  # and the error names the file.
-  test "a bundle the build did not write fails the deploy (DEPLOY-24)" do
+  # DEPLOY-24, DEPLOY-31: a build that exits 0 having staged nothing is a failed
+  # deploy, not a running app with no hook: `live` is rolled back, nothing is
+  # loaded, and the error names the file the browser would have loaded.
+  test "a bundle the build did not stage fails the deploy (DEPLOY-24, DEPLOY-31)" do
     running_server()
     tree = front_end_tree()
 
-    # A misconfigured `esbuild`, or a wiped `priv/static`: the build is happy and
-    # the entry point the browser loads is gone.
+    # A misconfigured `esbuild`, or one that wrote somewhere else entirely: the
+    # build is happy and there is nothing to promote (DEPLOY-32).
     stub_step(:packages, fn _root -> {:ok, ""} end)
-
-    stub_step(:assets, fn _root ->
-      File.rm!(Path.join(tree, "priv/static/assets/js/app.js"))
-      {:ok, ""}
-    end)
+    stub_step(:assets, fn _root -> {:ok, ""} end)
 
     {_id, path} = new_worktree()
     file = work_on_trunk(path)
     live = head(tree)
+    before = File.read!(served(tree, "js/app.js"))
 
     assert {:error, message} = Deploy.hot_reload()
     assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
     assert message =~ "priv/static/assets/js/app.js"
     assert message =~ "DEPLOY-24"
+
+    # DEPLOY-32: nothing was promoted, so the bytes a browser fetches are the
+    # ones it had, and the attempt left nothing staged behind.
+    assert File.read!(served(tree, "js/app.js")) == before
+    refute File.exists?(staged(tree, "js/app.js"))
 
     # Nothing is deployed, and the live tree is the one it was (DEPLOY-5).
     assert head(tree) == live
@@ -1572,26 +1622,62 @@ defmodule Elia.DeploymentTest do
     refute_received :loaded
   end
 
-  # DEPLOY-24: a bundle that is there but empty is no bundle either.
-  test "an empty bundle fails the deploy (DEPLOY-24)" do
+  # DEPLOY-24, DEPLOY-31: a bundle that is there but empty is no bundle either.
+  test "an empty bundle fails the deploy (DEPLOY-24, DEPLOY-31)" do
     running_server()
     tree = front_end_tree()
 
     stub_step(:packages, fn _root -> {:ok, ""} end)
 
-    stub_step(:assets, fn _root ->
-      File.write!(Path.join(tree, "priv/static/assets/css/app.css"), "")
-      {:ok, ""}
-    end)
+    # The script is staged and the stylesheet is not: the build is happy and what
+    # it staged is not a bundle.
+    stub_step(:assets, fn root -> staged_build(root, "// built\n", "") end)
 
     {_id, path} = new_worktree()
     work_on_trunk(path)
     live = head(tree)
+    before = File.read!(served(tree, "css/app.css"))
 
     assert {:error, message} = Deploy.hot_reload()
     assert message =~ "priv/static/assets/css/app.css"
     assert head(tree) == live
+    # DEPLOY-32: and the stylesheet a browser fetches is the one it had.
+    assert File.read!(served(tree, "css/app.css")) == before
     refute_received :loaded
+  end
+
+  # DEPLOY-31, DEPLOY-32: what the build stages is what the endpoint serves, and
+  # only once the bundle check has passed — so a promotion over the two files a
+  # browser fetches is the deploy's last write to the tree.
+  test "the bundle the build staged is the bundle the deploy promotes (DEPLOY-31, DEPLOY-32)" do
+    running_server()
+    tree = front_end_tree()
+    before = File.read!(served(tree, "js/app.js"))
+
+    stub_step(:packages, fn _root -> {:ok, ""} end)
+
+    stub_step(:assets, fn root ->
+      # Something a build of *this* revision would write, and not what the tree
+      # already has.
+      staged_build(root, "// a new bundle\n", "body { color: red }\n")
+    end)
+
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    assert {:ok, message} = Deploy.hot_reload()
+    assert message =~ "front end was rebuilt"
+    assert_receive :loaded
+
+    assert File.read!(served(tree, "js/app.js")) == "// a new bundle\n"
+    assert File.read!(served(tree, "css/app.css")) == "body { color: red }\n"
+    refute before == File.read!(served(tree, "js/app.js"))
+
+    # DEPLOY-32: the staged copy is not left behind for the next deploy, and a
+    # promoted bundle is still nothing for git to see (DEPLOY-31) — the tree is
+    # one a deploy can be run in again.
+    refute File.exists?(Path.join(tree, "priv/static/assets/.staging"))
+    assert Deploy.deployable(tree) == :ok
   end
 
   ## Going back (DEPLOY-26)
@@ -1656,7 +1742,7 @@ defmodule Elia.DeploymentTest do
       end
     end)
 
-    stub_step(:assets, fn _root -> {:ok, ""} end)
+    stub_step(:assets, &staged_build/1)
 
     {_id, path} = new_worktree()
     Runner.subscribe()
@@ -1794,11 +1880,11 @@ defmodule Elia.DeploymentTest do
     # build can fail where the deploys' did not.
     stub_step(:packages, fn _root -> {:ok, ""} end)
 
-    stub_step(:assets, fn _root ->
+    stub_step(:assets, fn root ->
       send(test_pid, {:assets, self()})
 
       receive do
-        :ok -> {:ok, ""}
+        :ok -> staged_build(root)
         :fail -> {:error, "mix assets.build exited with 1"}
       after
         30_000 -> {:error, "the test did not answer"}
@@ -1852,6 +1938,9 @@ defmodule Elia.DeploymentTest do
        %{tree: tree} do
     running_server()
     stop_server_with(self())
+    # DEPLOY-33, RESTART-12: a restart is only offered where something outside
+    # the VM would bring the server back.
+    supervised()
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
@@ -1869,6 +1958,26 @@ defmodule Elia.DeploymentTest do
 
     assert List.last(steps).step == :restart
     assert [%{sha: ^live, by: :deploy, mode: :restart} | _rest] = Deploy.loaded_revisions()
+  end
+
+  # DEPLOY-33: a server nothing would bring back is not restarted — the operation
+  # refuses before it deploys, rather than stopping the server for good.
+  test "a server nothing would bring back is not restarted (DEPLOY-33)", %{tree: tree} do
+    running_server()
+    stop_server_with(self())
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+    live = head(tree)
+
+    assert {:error, reason} = Deploy.restart()
+    assert reason =~ "Restarting is only available when the server runs"
+    assert reason =~ "bin/serve"
+
+    # Nothing was deployed and nothing was stopped: `live` is where it was, and
+    # the running app never heard about it.
+    assert head(tree) == live
+    refute_received {:stop, _status}
+    refute_received :loaded
   end
 
   ## What the last deploy brought (DEPLOY-27)

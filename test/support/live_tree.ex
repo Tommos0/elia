@@ -30,8 +30,15 @@ defmodule Elia.LiveTree do
 
     # DEPLOY-28: a chat makes its own worktree in `tmp/worktrees/`, and an
     # untracked `tmp/` would make the tree a dirty one that can't be deployed
-    # (DEPLOY-5) — as in the project itself, where `/tmp/` is ignored.
-    File.write!(Path.join(dir, ".gitignore"), "/_build/\n/deps/\n/.elia/\n/tmp/\n")
+    # (DEPLOY-5) — as in the project itself, where `/tmp/` is ignored. The
+    # generated outputs the real project ignores too are here as well: what a
+    # deploy installs and builds is not something a tree has to commit
+    # (DEPLOY-31, DEPLOY-32).
+    File.write!(
+      Path.join(dir, ".gitignore"),
+      "/_build/\n/deps/\n/.elia/\n/tmp/\n/assets/node_modules/\n/priv/static/assets/\n"
+    )
+
     if opts[:front_end], do: front_end(dir)
 
     write(dir, "mix.exs", """
@@ -141,7 +148,11 @@ defmodule Elia.LiveTree do
   end
 
   # The front end a deploy makes current (DEPLOY-19) and the bundle it checks
-  # for (DEPLOY-24), committed with the rest of the tree.
+  # for (DEPLOY-24), as the real tree has it: `assets/package.json` is tracked,
+  # while the bundle is a generated output the tree ignores (DEPLOY-31,
+  # DEPLOY-32) — a deploy and its promotion leave it where it is — so a test can
+  # look at the bytes a browser would fetch, and a tree that has been deployed is
+  # still a tree with nothing to commit (DEPLOY-5).
   defp front_end(dir) do
     write(dir, "assets/package.json", ~s({"name": "tmp", "private": true}\n))
     write(dir, "priv/static/assets/js/app.js", "// the bundle a browser loads\n")

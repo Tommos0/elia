@@ -53,12 +53,21 @@ crash takes the VM down instead of leaving it empty.
 - **RESTART-11** The Settings page's restart control (CONF-19) deploys the
   trunk `master` into `live` and restarts the server, so the server comes up on
   the deployed code with a clean process (DEPLOY-5, DEPLOY-7).
+- **RESTART-12** `bin/serve` says that it is the parent that brings the server
+  back, for the server itself to see: on every start it exports
+  `ELIA_SUPERVISED=1` before it runs the command (RESTART-1), so a launch
+  something is waiting behind can be told from a bare `mix phx.server`. That is
+  the marker a restart is offered on (DEPLOY-33, DEPLOY-7): a server started by
+  hand, or by a manager that runs the command without it, is not offered one and
+  says why instead.
 
 ## Out of scope
 
 - Restarting a server that wasn't started through `bin/serve`: nothing outside
-  the VM exists to bring it back. Use a service manager (systemd, etc.) for
-  that, with `bin/serve` as the command (RESTART-8).
+  the VM exists to bring it back, and the server can't tell that it is not
+  supervised, so it doesn't claim to be (RESTART-12). Use a service manager
+  (systemd, etc.) for that, with `bin/serve` as the command (RESTART-8), which
+  is what exports the marker.
 - Starting the user service at boot without a login: that needs
   `loginctl enable-linger $USER`, which is a system setting the installer
   doesn't change.
@@ -78,9 +87,11 @@ crash takes the VM down instead of leaving it empty.
 ## Tests
 
 - `test/elia/serve_script_test.exs` (the loop and the command it runs, its
-  exits, its signals, the backoff and the crash dump, RESTART-1 to RESTART-7).
+  exits, its signals, the backoff and the crash dump, RESTART-1 to RESTART-7,
+  and the supervised marker it exports to the command it runs, RESTART-12).
 - `test/elia/install_service_test.exs` (the unit template, the installer and
   its refusals, RESTART-8 to RESTART-10).
 - `test/elia/shell_test.exs` (the jail reaches the unit file, RESTART-8).
 - `test/elia/deployment_test.exs` and `test/elia_web/live/settings_live_test.exs`
-  (the Settings page's restart control, RESTART-11).
+  (the Settings page's restart control, and the server that is not offered one
+  because nothing would bring it back, RESTART-11, RESTART-12).

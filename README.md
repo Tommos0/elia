@@ -21,9 +21,13 @@ index are in `specs/README.md`. The topic notes for editing the code are in
 - **`bubblewrap`** (`bwrap`) — optional. Every OS command Elia runs is jailed;
   without bubblewrap, or where user namespaces or their mounts are unavailable,
   commands run unjailed instead, which the chat's settings page says (ISOL-12).
-- **Node ≥ 20** — optional, and only for the real-browser tests and
-  `bin/preview`, which install the browser layer's packages in `assets/`
-  (BROWSER-10, PREVIEW-14).
+- **Node ≥ 20** — needed to build the front end: the bundle and the stylesheet
+  import `assets/node_modules`, which Git ignores and only an `npm install` in
+  `assets/` fills. Without Node, or without that install, Elia still compiles
+  and still serves, and a browser gets no stylesheet and no JavaScript — there
+  is no `/assets/js/app.js` or `/assets/css/app.css` to fetch (DEPLOY-34,
+  DEPLOY-35). The real-browser tests and `bin/preview` need Node too, and
+  install the packages themselves (BROWSER-10, PREVIEW-14).
 
 Nothing else: no database, no Ecto, no Docker, and no API key needed to start.
 
@@ -32,9 +36,15 @@ Nothing else: no database, no Ecto, no Docker, and no API key needed to start.
 ```sh
 git clone <the repository> elia
 cd elia
+npm install --prefix assets  # the front end's Node packages (DEPLOY-34)
 mix setup                    # deps, the tailwind/esbuild binaries, the assets
 mix phx.server               # http://localhost:7000
 ```
+
+`npm install` is the step that fills `assets/node_modules`, which Git ignores:
+skip it and the last step of `mix setup` builds what it can without those
+packages, so the app runs but a browser gets no stylesheet and no JavaScript
+(DEPLOY-35).
 
 Then add a provider key, in the browser: open <http://localhost:7000>, go to the
 Settings page (`/settings`) and paste an Anthropic or OpenRouter key into its
@@ -157,7 +167,9 @@ ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat
 ```
 
 The real-browser tests are excluded from a plain `mix test` so `mix test` and
-`mix precommit` stay fast and need no Node (BROWSER, `specs/browser-tests.md`).
+`mix precommit` stay fast and neither builds assets nor drives a browser
+(BROWSER, `specs/browser-tests.md`) — Node is what a tree's front end and those
+tests need, not the suite (DEPLOY-35).
 `bin/preview` screenshots the workspace's own code in a real headless browser,
 in the test env — no deploy, no API key — and prints a Markdown image link per
 page (PREVIEW-9, `specs/ui-preview.md`).

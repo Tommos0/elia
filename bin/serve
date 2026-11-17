@@ -9,6 +9,10 @@
 #   ELIA_SERVE_MAX_DELAY   longest wait before restarting after quick failures (default 30)
 #
 # Exit status 0 from the server, or SIGINT/SIGTERM sent to this script, stops the loop.
+#
+# Before it runs the command it exports ELIA_SUPERVISED=1, so the server it runs
+# can tell that something outside the VM would bring it back: that is the marker
+# a restart is offered on (DEPLOY-33, RESTART-12).
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -18,6 +22,11 @@ max_delay=${ELIA_SERVE_MAX_DELAY:-30}
 
 # A crash loop must not fill the disk with erl_crash.dump files (RESTART-6).
 export ERL_CRASH_DUMP_SECONDS=0
+
+# DEPLOY-33, RESTART-12: what says the server is run by something that brings it
+# back is a marker in its environment, so a restart is offered only where this
+# loop (or another manager that says so) is what is running it.
+export ELIA_SUPERVISED=1
 
 log() { echo "[serve] $*" >&2; }
 

@@ -140,7 +140,7 @@ defmodule EliaWeb.RecoveryTest do
         end,
         stop: fn status -> send(test, {:stop, status}) end,
         packages: fn _root -> {:ok, ""} end,
-        assets: fn _root -> {:ok, ""} end
+        assets: &staged_build/1
       )
     )
 
@@ -156,6 +156,21 @@ defmodule EliaWeb.RecoveryTest do
     deploy = Application.get_env(:elia, Elia.Deploy, [])
     Application.put_env(:elia, Elia.Deploy, Keyword.put(deploy, name, fun))
     on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
+  end
+
+  # DEPLOY-24, DEPLOY-31: what the build writes — the bundle, inside the staging
+  # directory a deploy checks and then promotes (DEPLOY-32) — so a rollback here
+  # gets past the step without building a throwaway tree's assets for real.
+  defp staged_build(root) do
+    bundle = [{"js/app.js", "// built\n"}, {"css/app.css", "body {}\n"}]
+
+    for {file, content} <- bundle do
+      path = Path.join([root, "priv/static/assets/.staging", file])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+    end
+
+    {:ok, ""}
   end
 
   # A build step that waits for the test, so a page can be rendered while the
