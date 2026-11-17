@@ -181,6 +181,18 @@ defmodule Elia.StoreTest do
     assert [%Message{}] = Store.load(id)
   end
 
+  # STORE-47: a data directory that can't be made is a save that failed like any
+  # other — an error for the caller that logs it and carries on (SESS-13) — and
+  # not a raise, which would take the caller down with it.
+  test "a save whose data directory can't be made returns an error" do
+    with_empty_store(fn ->
+      # A file where the data directory belongs, so nothing can be made under it.
+      File.write!(Elia.Workspace.data_dir(), "")
+
+      assert {:error, _reason} = Store.save(Elia.Agent.new_id(), [Message.user("hi")])
+    end)
+  end
+
   # STORE-2: saves of one chat at the same time each have a temporary file of
   # their own, so every one succeeds and the file is always one of them, whole.
   test "saves of one chat at the same time never truncate or mix it" do

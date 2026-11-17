@@ -235,10 +235,14 @@ every view.
   (SESS-3), the end of a turn however it ends (the model finishing, a stop,
   SESS-8, a refusal, SESS-10, an error or the loop's death, a limit's pause,
   SESS-27), and every change to the chat's settings, title, done flag, task
-  metadata, pins or compaction state. A session that is shut down — the app
+  metadata, pins or compaction state. A save that fails (SESS-13) leaves the
+  chat unsaved — what it was writing is still not on disk — and the session
+  keeps it unsaved (SESS-46). A session that is shut down — the app
   stopping or restarting (DEPLOY-7), or its chat being deleted (SESS-29) —
-  first saves what it has not. Only an end of the VM that runs no shutdown (it
-  is killed, or the machine loses power) can lose messages: at most those of
+  first saves what it has not, whether a save is waiting for the interval or an
+  earlier one failed. Only an end of the VM that runs no shutdown (it
+  is killed, or the machine loses power), or a storage failure that outlives
+  the session (SESS-13, SESS-46), can lose messages: at most those of
   the last interval, and the next start closes their dangling tool calls as
   SESS-21 says. Every message is still broadcast as it is appended (SESS-6), so
   an open page sees it at once; a listing read from the saved file (STORE-6)
@@ -253,6 +257,16 @@ every view.
   direction: the stop kills the loop, and a loop that dies on its own is still
   SESS-12's crash. The chat's saved turn is left as it is (STORE-30, INTR-1),
   so the chat is still one whose turn a new session carries on (RESUME-2).
+
+- **SESS-46** A save that fails (SESS-13) is retried while the chat's session
+  lives: the session keeps the chat unsaved and tries again at the save
+  interval after the failure (SESS-44), whether or not anything changed since,
+  so a storage failure that recovers leaves the chat saved without a further
+  message, a further change or a shutdown. Each failed attempt is logged again
+  (SESS-13), and a session that does not persist writes and retries nothing.
+  *Changed:* a failed save used to clear the one thing that marked the chat
+  unsaved, so nothing was retried until the chat changed again and a later
+  shutdown saved nothing.
 
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).
@@ -406,6 +420,9 @@ config :elia, Elia.Agent.Session,
   addresses. Every step also builds the request view from the whole history
   (COMPACT-29), so a cheaper append would not change how a step's cost grows
   with the history.
+- Telling the user that a save failed, or which chat has unsaved work: a failed
+  save stays a log line (SESS-13) and is retried (SESS-46), and no event, page
+  or chat list entry says so.
 - Folding a chat's title, its done flag or its compaction state into the
   `settings` map (SESS-41): a title and a done flag are chat state rather than
   settings — a message clears the done flag (DONE-9) and a chat with task
@@ -424,6 +441,14 @@ written now is what an older version wrote. SESS-45 changes no stored shape
 either: a session that dies still leaves the turn it was running in the file
 (STORE-30), which is what makes the chat one a new session carries on
 (RESUME-2, INTR-1), so there is nothing to migrate and no read-time fallback.
+SESS-46 changes nothing about the shape either — the unsaved state it keeps is
+the process's, never a field — but it does mean the file can lag the chat by
+more than one interval: a chat whose save failed keeps the `turn` entry of a turn
+that has ended until a save succeeds, which is read as interrupted only when no
+session is live (INTR-2) — the record a session that dies mid-turn leaves
+(STORE-30) — and a start with no session to resume it says so (INTR-3). Nothing
+is added, removed or re-meant on disk, so an older file loads as it did before
+and a file written now is what an older version wrote.
 
 ## Implementation
 
@@ -437,17 +462,17 @@ either: a session that dies still leaves the turn it was running in the file
   it loads, the one write path and what it refuses, `ensure_started/2`'s
   options, task metadata, `compact/1`, the
   session's state at a limit, `running/0`, `live?/1`, `delete/1`, a question
-  held, a pause recorded and the stop a turn ends in, and the loop and command a
-  dying session ends — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-45).
+  held, a pause recorded and the stop a turn ends in, the loop and command a
+  dying session ends, and the saves themselves: the interval, a save that fails
+  and the retry after it — SESS-2 to SESS-8,
+  SESS-10 to SESS-12, SESS-13, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-46).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,
   `test/elia_web/live/chat_live_test.exs`) but never asserted.
-- No test: SESS-9, SESS-13 — that a message from a loop the session no longer
-  runs is dropped, and that a save that fails is logged without stopping the
-  session, are asserted nowhere; the tests that stop a turn assert the
-  transcript it leaves, not a late message.
+- No test: SESS-9 — that a message from a loop the session no longer runs is
+  dropped is asserted nowhere; the tests that stop a turn assert the transcript
+  it leaves, not a late message.
 - `test/elia/chat_titles_test.exs` (SESS-33, the
   title's event and its refusals).
 - `test/elia/chat_done_test.exs` (SESS-35,

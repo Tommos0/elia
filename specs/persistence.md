@@ -46,6 +46,11 @@ values a save can carry, deleting a chat, and the two tables themselves.
   leaves no temporary file behind, and a temporary file a crash left behind is
   never read or listed as a chat. *Changed:* every save of a chat used to share
   the one `<id>.term.tmp`.
+- **STORE-47** A save never raises for a filesystem it can't write: when the
+  sessions directory can't be made, the write fails and `save/3` answers the
+  same `{:error, reason}` a write that fails for any other reason gives
+  (STORE-2), so a caller that logs a failed save and carries on (SESS-13) is not
+  brought down by one.
 - **STORE-3** Loading a chat that is missing, unreadable or corrupt returns
   an empty history. Decoding is safe and never creates new atoms; all of
   Elia's modules are loaded first, so atoms a saved chat uses exist even
@@ -318,7 +323,7 @@ an older version wrote. STORE-2 and STORE-43 are unchanged.
 - `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
   listing and the fields an entry carries, saving and loading each one, deleting
   a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
-  STORE-29, STORE-36 to STORE-38, STORE-43).
+  STORE-29, STORE-36 to STORE-38, STORE-43, STORE-47).
 - `test/elia/store_cache_test.exs` (one decode for a session's settings, a
   listing that decodes only what changed, and a write, a replacement or a removal
   by another process seen at the next read — STORE-44, STORE-45).

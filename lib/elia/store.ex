@@ -126,20 +126,32 @@ defmodule Elia.Store do
   # or rename away each other's. The name doesn't end in `.term`, so a file a
   # crash leaves behind is never listed (`all_entries/0`).
   defp write(id, chat) do
-    File.mkdir_p!(dir())
-    path = path(id)
-    tmp = "#{path}.#{System.os_time()}-#{System.unique_integer([:positive])}.tmp"
+    with :ok <- ensure_dir() do
+      path = path(id)
+      tmp = "#{path}.#{System.os_time()}-#{System.unique_integer([:positive])}.tmp"
 
-    with :ok <- write_synced(tmp, :erlang.term_to_binary(chat)),
-         :ok <- File.rename(tmp, path) do
-      # STORE-45: the rename already changed the file's identity; the entry
-      # goes now rather than waiting for a listing to find it stale.
-      Cache.drop(id)
-      :ok
-    else
-      error ->
-        _ = File.rm(tmp)
-        error
+      with :ok <- write_synced(tmp, :erlang.term_to_binary(chat)),
+           :ok <- File.rename(tmp, path) do
+        # STORE-45: the rename already changed the file's identity; the entry
+        # goes now rather than waiting for a listing to find it stale.
+        Cache.drop(id)
+        :ok
+      else
+        error ->
+          _ = File.rm(tmp)
+          error
+      end
+    end
+  end
+
+  # STORE-47: a data directory that can't be made is a save that failed like any
+  # other — logged and carried on from (SESS-13) — so it answers an error rather
+  # than raising as `File.mkdir_p!/1` would.
+  defp ensure_dir do
+    case File.mkdir_p(dir()) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+      {:error, reason, _path} -> {:error, reason}
     end
   end
 

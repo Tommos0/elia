@@ -97,8 +97,9 @@ defmodule Elia.Agent.Session do
     # Whether the chat is marked done (DONE-1, STORE-34): its work has landed
     # and it needs nothing more, though a message still continues it (DONE-8).
     done: false,
-    # SESS-44: `{timer, token}` while the loop's appended messages wait for
-    # their save, nil when everything is saved. Read with `Map.get/2`: a session
+    # SESS-44: `{timer, token}` while messages the loop appended wait for their
+    # save, or while a save that failed waits to be tried again (SESS-46); nil
+    # when everything is saved. Read with `Map.get/2`: a session
     # that outlived a hot reload has no such key.
     save_timer: nil
   ]
@@ -1159,8 +1160,10 @@ defmodule Elia.Agent.Session do
   end
 
   # SESS-44: the first unsaved message starts the interval, and the one save at
-  # its end writes all of them. The exit trap is set here too, for a session
-  # that outlived a hot reload and so never ran this `init/1`.
+  # its end writes all of them. SESS-46: a save that failed starts it again, so
+  # a pending save means the chat is unsaved whichever way it got that way. The
+  # exit trap is set here too, for a session that outlived a hot reload and so
+  # never ran this `init/1`.
   defp save_later(%{persist: false} = state), do: state
 
   defp save_later(state) do
@@ -1180,18 +1183,23 @@ defmodule Elia.Agent.Session do
     do: Application.get_env(:elia, __MODULE__, [])[:save_interval_ms] || 5_000
 
   # SESS-44: a shutdown — the app stopping or restarting, the chat deleted —
-  # saves what the interval had not yet. So does a crash in a callback: the
-  # state `terminate/2` gets is the last one a callback returned, which holds
-  # only messages that were appended whole.
+  # saves what the interval had not yet, and a save an earlier failure left
+  # unsaved (SESS-46). So does a crash in a callback: the state `terminate/2`
+  # gets is the last one a callback returned, which holds only messages that
+  # were appended whole.
   @impl true
   def terminate(_reason, state) do
-    if Map.get(state, :save_timer), do: save(state)
+    if Map.get(state, :save_timer), do: save(state, false)
     :ok
   end
 
-  defp save(%{persist: false} = state), do: state
+  defp save(state), do: save(state, true)
 
-  defp save(state) do
+  defp save(%{persist: false} = state, _retry?), do: state
+
+  # `retry?` is false for the one save a shutdown makes: there is no later
+  # attempt for a failure to be kept for (SESS-44).
+  defp save(state, retry?) do
     # SESS-44: every save writes the whole chat, so it covers any message that
     # was waiting for the interval.
     state =
@@ -1206,29 +1214,38 @@ defmodule Elia.Agent.Session do
 
     auto = names(settings(state).auto_approve)
 
-    with {:error, reason} <-
-           Elia.Store.save(state.id, state.messages,
-             model: settings(state).model,
-             auto_approve: auto,
-             task: Map.get(state, :task_meta),
-             project: project(state).id,
-             compaction: saved_compaction(Map.get(state, :compaction)),
-             jail: settings(state).jail,
-             limits: settings(state).limits,
-             effort: settings(state).effort,
-             # STORE-30, INTR-1: the turn in flight, or nothing when there is
-             # none (which takes the entry off the file).
-             turn: Map.get(state, :turn),
-             title: Map.get(state, :title),
-             done: Map.get(state, :done, false),
-             # STORE-46, WD-2: the chat's working directory, saved so it
-             # outlives this process.
-             cwd: stored_cwd(Map.get(state, :cwd), state)
-           ) do
-      Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
-    end
+    result =
+      Elia.Store.save(state.id, state.messages,
+        model: settings(state).model,
+        auto_approve: auto,
+        task: Map.get(state, :task_meta),
+        project: project(state).id,
+        compaction: saved_compaction(Map.get(state, :compaction)),
+        jail: settings(state).jail,
+        limits: settings(state).limits,
+        effort: settings(state).effort,
+        # STORE-30, INTR-1: the turn in flight, or nothing when there is
+        # none (which takes the entry off the file).
+        turn: Map.get(state, :turn),
+        title: Map.get(state, :title),
+        done: Map.get(state, :done, false),
+        # STORE-46, WD-2: the chat's working directory, saved so it
+        # outlives this process.
+        cwd: stored_cwd(Map.get(state, :cwd), state)
+      )
 
-    state
+    case result do
+      :ok ->
+        state
+
+      # SESS-13, SESS-46: logged and not fatal, and the chat is still unsaved —
+      # the interval starts again from here, so a pending save is what says so
+      # (a shutdown reads it for its own save, SESS-44) and storage that
+      # recovers gets the chat written without another change.
+      error ->
+        Logger.error("Could not save session #{state.id}: #{inspect(error)}")
+        if retry?, do: save_later(state), else: state
+    end
   end
 
   # COMPACT-24: nothing is written for a chat that has never compacted or

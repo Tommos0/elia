@@ -963,6 +963,17 @@ defmodule Elia.AgentTest do
 
   defp saved_count(id), do: length(Elia.Store.load(id))
 
+  # SESS-46: storage that fails for one chat — the path its file belongs at is a
+  # directory, so the rename the write ends in cannot happen, whatever user the
+  # suite runs as. `File.rmdir!/1` puts storage back.
+  defp break_storage(id) do
+    path = Path.join(Elia.Store.dir(), id <> ".term")
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+    on_exit(fn -> File.rm_rf(path) end)
+    path
+  end
+
   # SESS-44, SESS-5: the loop's messages wait for the interval and go in one
   # save, while the message that started the turn was saved at once.
   test "a running turn's messages are saved together at the end of the interval" do
@@ -1018,6 +1029,88 @@ defmodule Elia.AgentTest do
 
     assert saved_count(id) == 3
     assert %{id: _} = Elia.Store.load_turn(id)
+  end
+
+  # SESS-44, SESS-46, SESS-13: every save the turn made failed, and nothing
+  # changes the chat afterwards — so the shutdown save is the one that writes
+  # it, which is the save the failed one used to take with it.
+  test "a failed save leaves the chat unsaved for the shutdown save" do
+    save_interval(60_000)
+    id = start_fake_skill_session([])
+    push_held_step(self())
+    # Storage fails for this chat from its first save on.
+    path = break_storage(id)
+
+    :ok = Agent.send_message(id, "go")
+    assert_receive {:model_waiting, loop}, 10_000
+
+    # SESS-13: the message that starts the turn, the call the step made and its
+    # result, and the turn's own record (INTR-1), are all in the session's
+    # history and none of them is on disk.
+    assert [_user, _call, _result] = Agent.snapshot(id).messages
+    assert saved_count(id) == 0
+
+    send(loop, :go)
+    await_status(id, :idle)
+
+    # The turn ended — its record cleared in the session (INTR-1) — and the save
+    # that would have written that failed, so the chat is still unsaved.
+    assert %{status: :idle} = Agent.snapshot(id)
+    assert saved_count(id) == 0
+
+    # Storage recovers, and the session is shut down with no message, setting or
+    # title in between: the retry a live session would make (SESS-46) is 60 s
+    # away, so the shutdown save is the only chance the chat gets.
+    File.rmdir!(path)
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+
+    assert saved_count(id) == 4
+    assert Elia.Store.load_turn(id) == nil
+  end
+
+  # SESS-46: a failed save is tried again while the session lives, one interval
+  # after it failed, whether or not the chat changes in between — so storage
+  # that recovers gets the write at the next attempt.
+  test "a failed save is retried at the next interval" do
+    save_interval(100)
+    id = start_fake_skill_session([])
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "fake_tool", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    path = break_storage(id)
+
+    :ok = Agent.send_message(id, "go")
+    await_status(id, :idle)
+    # Every save the turn made failed, the turn's own end included.
+    assert saved_count(id) == 0
+
+    File.rmdir!(path)
+
+    assert eventually(fn -> saved_count(id) == 4 end)
+    assert Elia.Store.load_turn(id) == nil
+  end
+
+  # SESS-13: a save that fails is logged and does not stop the session — the
+  # turn ends as it would have, with the file the only thing that is behind.
+  test "a failed save is logged and the session carries on", %{id: id} do
+    save_interval(200)
+    FakeLLM.push(FakeLLM.assistant([Message.text("Hello.")]))
+    path = break_storage(id)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        :ok = Agent.send_message(id, "hi")
+        await_status(id, :idle)
+      end)
+
+    assert log =~ "Could not save session #{id}"
+    assert %{status: :idle, messages: [_, _]} = Agent.snapshot(id)
+
+    # Storage recovers while the session is alive, so the chat is written
+    # without anything else happening to it.
+    File.rmdir!(path)
+    assert eventually(fn -> saved_count(id) == 2 end)
   end
 
   # SESS-45: a session its supervisor terminates — no stop of any kind, and
