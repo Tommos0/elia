@@ -13,13 +13,17 @@ machines that have spare cores, without weakening a single test.
 ## Requirements
 
 - **SUITE-1** A test run's shared state is per run: the scratch workspace, the
-  settings database, the endpoint port and the temp directory tests name their
-  own paths in come from `ELIA_TEST_WORKSPACE`, `ELIA_TEST_SETTINGS`,
-  `ELIA_TEST_PORT` and `TMPDIR`, each falling back to the current single-run
-  default when unset, so two runs on one machine don't collide. `TMPDIR` is part
-  of it because a test's temp path is named with `System.unique_integer/1`,
-  which is unique inside one BEAM node only: two partitions sharing a temp
-  directory can pick the same live tree.
+  settings database and the temp directory tests name their own paths in live
+  under a run directory that belongs to that run alone, so two runs on one
+  machine cannot collide on them — in one worktree or in several, jailed or not.
+  `ELIA_TEST_WORKSPACE` and `ELIA_TEST_SETTINGS` still override the workspace and
+  the settings database, and `ELIA_TEST_PORT` still moves the endpoint port
+  (default `4002`), where each of the first two falls back to the run's own path
+  when unset. `TMPDIR` is part of the state because a test's temp path is named
+  with `System.unique_integer/1`, which is unique inside one BEAM node only: two
+  runs sharing a temp directory can pick the same path — and a run's boot removes
+  its own scratch workspace (`test/test_helper.exs`), so a shared one is not
+  merely dirty but deleted under a test that is still running.
 
 - **SUITE-2** `bin/test` runs the suite as concurrent partitions: one OS process
   per partition, started together, each with its own shared state (SUITE-1), so
@@ -69,31 +73,63 @@ machines that have spare cores, without weakening a single test.
   sessions for chats it did not save — and a session it starts for another
   test's chat outlives that test and posts into the fake provider.
 
+- **SUITE-11** `bin/test` makes one run directory for the run it starts — one
+  nothing can predict, `mktemp -d` — and puts each partition's workspace, settings
+  database and temp directory under it (SUITE-1). It removes that whole directory
+  when the run ends: after the partitions, on a partition that failed and on a
+  signal, so a partitioned run leaves nothing behind.
+
+- **SUITE-12** A run that is not `bin/test` — a plain `mix test`, the deploy's own
+  suite run, a preview — gets a run directory of its own by derivation rather than
+  from a fixed path, named for the node and the moment it started, so two of them
+  on one machine differ even where both see the same pid (a command runs in its
+  own pid namespace, ISOL-9). The run names its directory in the environment
+  (`ELIA_TEST_RUN`), so a node handed that environment resolves the same one; a
+  name that is blank or absent is a run that derives one of its own. A run that
+  starts a suite of its own clears that name for it — the harness's suite run
+  does (VERIFY-1) — so a nested run is never the run it was started from.
+  `bin/test` names each partition's directory this way (SUITE-11).
+
+- **SUITE-13** A run directory a run left behind — one that was killed rather than
+  exited, and so could not clean up after itself — is removed by a later run on
+  that machine once it is older than a day, and never while it is fresh. A run
+  prunes as it starts, so leftovers cannot accumulate.
+
 ## Configuration
 
 | Env var | Meaning | Default |
 | --- | --- | --- |
 | `ELIA_TEST_PARTITIONS` | How many partitions `bin/test` starts | `4` |
-| `ELIA_TEST_WORKSPACE` | Scratch workspace root of one run | `<tmp>/elia-test-workspace` |
-| `ELIA_TEST_SETTINGS` | Settings database file of one run | `<tmp>/elia-test-settings/settings.dets` |
+| `ELIA_TEST_RUN` | The run directory this run's nodes share | derived per run: `<tmp>/elia-test-<run>` |
+| `ELIA_TEST_WORKSPACE` | Scratch workspace root of one run | `<run>/workspace` |
+| `ELIA_TEST_SETTINGS` | Settings database file of one run | `<run>/settings/settings.dets` |
 | `ELIA_TEST_PORT` | Endpoint port of one run | `4002` |
-| `TMPDIR` | Where a run derives its own temp paths | the system temp dir |
+| `TMPDIR` | Where a test's own temp paths go | `<run>/tmp` |
 | `ELIA_TEST_CMD` | Command a partition runs, for the script's own tests | `mix test` |
 
-A partition's state lives under `<tmp>/elia-test-p<n>/`, which each partition's
-`test_helper.exs` clears as it starts (it already does for the single run). A
-run the harness starts itself — the deploy's suite run — needs no variable: it
-is a jailed single run (VERIFY-1, ISOL-14) and the jail mounts its own tmpfs
-`/tmp` (ISOL-2), so its scratch workspace, settings database and temp directory
-are already its own, and a `mix test` or `bin/test` on the same machine cannot
-clear them mid-run.
+A partitioned run's state lives under the directory `bin/test` makes for it, each
+partition's under its own subdirectory of that, and a single run's under the one it
+derives for itself, which each run's `test_helper.exs` clears as it starts (as the
+single run already does). `bin/test --plan` prints the run's directory once and a
+partition's paths under it, so the plan reads the same for the same files on
+another run (SUITE-3, SUITE-4). A run the harness starts itself — the deploy's
+suite run — is a `mix test` of its own whatever the jail does: it is a run
+directory of its own either way (VERIFY-1, ISOL-14).
 
 ## Tests
 
-- `test/elia/test_script_test.exs` covers SUITE-2, SUITE-3, SUITE-4 and SUITE-5
-  with `--plan` and with `ELIA_TEST_CMD` standing in for `mix test`.
-- SUITE-1 is covered where the paths are read: a test asserts the env var
-  overrides win and the defaults apply when it is unset.
+- `test/elia/test_script_test.exs` (SUITE-2, SUITE-3, SUITE-4, SUITE-5,
+  SUITE-11) covers the plan with `--plan` and a fake `ELIA_TEST_CMD` standing in
+  for `mix test`, and the run directory the script makes and removes with the
+  partitions' state under it — after a partition failed too. SUITE-3's
+  determinism is asserted by comparing two `--plan` runs byte for byte, so a path
+  that differs between runs is the run's own line and not part of a partition's
+  state.
+- `test/elia/test_script_test.exs` (SUITE-1, SUITE-12, SUITE-13) is where the
+  run's own paths are read: the overrides win and the derived defaults apply when
+  unset, two runs derive different directories, `ELIA_TEST_RUN` names the
+  directory a node the run starts inherits, and an old run directory is pruned as
+  a run starts while a fresh one is left alone.
 - SUITE-6, SUITE-7 and SUITE-8 are covered by running `bin/test` on a one-file
   argument and reading what it prints (SUITE-6, SUITE-7), and by asserting the
   `precommit` alias (SUITE-8).
@@ -105,10 +141,17 @@ clear them mid-run.
 
 ## Implementation
 
-- `bin/test` — the runner (POSIX `sh`, like `bin/serve`).
-- `config/test.exs` — the env-overridable paths and port (SUITE-1).
+- `bin/test` — the runner (POSIX `sh`, like `bin/serve`): the run directory it
+  makes, its partitions' state under it, and its removal (SUITE-11).
+- `config/test.exs` — the derived paths and the env overrides (SUITE-1, SUITE-12).
+- `test/test_helper.exs`, and a helper beside it under `test/support/` so the
+  pruning is testable — the run directory a single run reads, the scratch
+  workspace it clears and the old directories a run prunes as it starts
+  (SUITE-12, SUITE-13).
 - `mix.exs` — the `precommit` alias's test step (SUITE-8).
 - `test/support/fake_llm.ex` — which chats the scripted provider serves
   (SUITE-9).
 - `test/elia/auto_resume_test.exs` — the store the scan runs against (SUITE-10).
-- `docs/agents/testing.md` — how to run the suite, and why.
+- `docs/agents/testing.md` and `AGENTS.md` — how to run the suite, and why: the
+  "never run two test runs at once" rule went with the shared paths it guarded,
+  and what is left is the port a browser run binds (SUITE-1).

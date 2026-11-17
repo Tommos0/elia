@@ -23,14 +23,20 @@ if [ "$1" = "--plan" ]; then
   shift
 fi
 
-# A partition's own scratch state, so several runs share the machine (SUITE-1).
+# A partition's own scratch state, under the run's own directory (SUITE-1,
+# SUITE-11): `mktemp -d` makes that directory, every partition's state lives in a
+# subdirectory of it, and the trap removes the whole thing when the run ends.
 # TMPDIR matters as much as the rest: test paths are named with
 # `System.unique_integer/1`, which is unique inside one BEAM node only, so two
-# partitions in a shared temp dir would otherwise pick the same live tree.
-base_of() { echo "${TMPDIR:-/tmp}/elia-test-p$1"; }
-tmpdir_of() { echo "$(base_of "$1")/tmp"; }
-workspace_of() { echo "$(base_of "$1")/workspace"; }
-settings_of() { echo "$(base_of "$1")/settings/settings.dets"; }
+# runs in a shared temp dir would otherwise pick the same live tree.
+#
+# Each names a path from the run's directory, so the plan passes the literal
+# `<run>` and a real run passes the directory it made: the real one differs every
+# run, and a plan that printed it would differ too (SUITE-3, SUITE-4).
+run_of() { echo "$1/p$2"; }
+tmpdir_of() { echo "$(run_of "$1" "$2")/tmp"; }
+workspace_of() { echo "$(run_of "$1" "$2")/workspace"; }
+settings_of() { echo "$(run_of "$1" "$2")/settings/settings.dets"; }
 port_of() { echo $((4002 + $1 - 1)); }
 
 # How slow a file is, in rough ExUnit milliseconds, measured with
@@ -78,10 +84,12 @@ if [ "$plan_only" = 1 ]; then
   if [ $# -gt 0 ]; then
     echo "single run: $cmd $*"
   else
+    echo "run: <run> — one \`mktemp -d\` directory per run, removed when it ends (SUITE-11)"
+    plan_root="<run>"
     split | while read -r p weight files; do
       echo "partition $p (weight $weight)"
       echo "  files: $files"
-      echo "  env: TMPDIR=$(tmpdir_of "$p") ELIA_TEST_WORKSPACE=$(workspace_of "$p") ELIA_TEST_SETTINGS=$(settings_of "$p") ELIA_TEST_PORT=$(port_of "$p")"
+      echo "  env: ELIA_TEST_RUN=$(run_of "$plan_root" "$p") TMPDIR=$(tmpdir_of "$plan_root" "$p") ELIA_TEST_WORKSPACE=$(workspace_of "$plan_root" "$p") ELIA_TEST_SETTINGS=$(settings_of "$plan_root" "$p") ELIA_TEST_PORT=$(port_of "$p")"
       echo "  command: $cmd --no-compile $files"
     done
   fi
@@ -101,7 +109,7 @@ if [ "$partitions" -lt 1 ]; then
   exit 2
 fi
 
-tmp=$(mktemp -d) || exit 1
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/elia-test-run-XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 start=$(date +%s)
@@ -120,11 +128,14 @@ while read -r p weight files; do
   log="$tmp/p$p.log"
 
   (
-    TMPDIR=$(tmpdir_of "$p")
-    ELIA_TEST_WORKSPACE=$(workspace_of "$p")
-    ELIA_TEST_SETTINGS=$(settings_of "$p")
+    # SUITE-1, SUITE-11: the partition's own state, under the run's directory,
+    # which the trap above removes with the logs when the run ends.
+    ELIA_TEST_RUN=$(run_of "$tmp" "$p")
+    TMPDIR=$(tmpdir_of "$tmp" "$p")
+    ELIA_TEST_WORKSPACE=$(workspace_of "$tmp" "$p")
+    ELIA_TEST_SETTINGS=$(settings_of "$tmp" "$p")
     ELIA_TEST_PORT=$(port_of "$p")
-    export TMPDIR ELIA_TEST_WORKSPACE ELIA_TEST_SETTINGS ELIA_TEST_PORT
+    export ELIA_TEST_RUN TMPDIR ELIA_TEST_WORKSPACE ELIA_TEST_SETTINGS ELIA_TEST_PORT
     mkdir -p "$TMPDIR"
     exec $cmd --no-compile $files
   ) > "$log" 2>&1 &

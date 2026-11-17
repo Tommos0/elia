@@ -72,7 +72,14 @@ defmodule Elia.Harness do
           # ISOL-14: the suite runs in the live tree the caller names, which is
           # what its jail holds — not the directory the run happens to start in.
           workspace: root,
-          env: [{"MIX_ENV", "test"}],
+          # SUITE-12: the suite this starts is a run of its own, never the one that
+          # asked for it. `Elia.Shell` gives a command its variables on top of the
+          # environment it inherited, so an `ELIA_TEST_RUN` from the caller would
+          # otherwise be the directory this child resolves — and a test run clears
+          # its own scratch workspace as it boots (`test/test_helper.exs`), which
+          # would delete the caller's under the tests still running in it. Cleared,
+          # so the child derives a directory of its own.
+          env: [{"MIX_ENV", "test"}, {"ELIA_TEST_RUN", ""}],
           timeout: timeout,
           jail: opts[:jail],
           max_output: Elia.Skills.Shell.max_output()

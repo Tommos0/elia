@@ -48,19 +48,57 @@ config :elia, Elia.LLM, provider: Elia.FakeLLM
 # resume turns it on for itself (specs/auto-resume.md).
 config :elia, Elia.Agent.Resumer, enabled: false
 
-# Settings (API keys, model selection) go to a scratch database.
-# A run's state can be pointed elsewhere, so several test runs share the machine
-# without colliding — `bin/test` gives each partition its own (SUITE-1).
+# A test run's own state, under a run directory that belongs to that run alone
+# (SUITE-1, specs/test-suite.md): the settings database here, the scratch
+# workspace below, and — in `test/test_helper.exs` — the temp directory a test
+# names its own paths in. `bin/test` makes its run directory with `mktemp -d` and
+# names it in `ELIA_TEST_RUN` for each partition; a run that is not `bin/test`,
+# such as a plain `mix test` or the deploy's own suite run, derives one here from
+# its own process, so two runs on one machine differ whatever they are.
+#
+# `Elia.TestRun` in `test/support/` reads the value back, and prunes the run
+# directories a killed run left behind by matching this name (SUITE-13), so the
+# places that name a run directory have to agree on it.
+run =
+  case System.get_env("ELIA_TEST_RUN") do
+    nil -> :derived
+    value -> if String.trim(value) == "", do: :derived, else: String.trim(value)
+  end
+
+run =
+  case run do
+    :derived ->
+      # Named for this node and the moment it started: a command runs in its own
+      # pid namespace (ISOL-9), so two runs on one machine can see the same pid.
+      Path.join(
+        System.tmp_dir!(),
+        "elia-test-run-#{System.pid()}-#{System.system_time(:nanosecond)}"
+      )
+
+    run ->
+      run
+  end
+
+config :elia, :test_run, run
+
+# The run names its directory in the environment too, so a node it hands its
+# environment to resolves the same one (SUITE-12). A run that starts a suite of
+# its own names that one explicitly instead (`Elia.Harness`), since `Elia.Shell`
+# hands a command its variables *on top of* the environment it inherited.
+System.put_env("ELIA_TEST_RUN", run)
+
+# Settings (API keys, model selection) go to a scratch database, in a directory
+# of its own below the run's: `Elia.Settings` keeps the directory it creates
+# private (CONF-2), so this must not be one that already exists.
 config :elia, Elia.Settings,
   path:
     System.get_env("ELIA_TEST_SETTINGS") ||
-      Path.join([System.tmp_dir!(), "elia-test-settings", "settings.dets"])
+      Path.join([run, "settings", "settings.dets"])
 
 # Tests run against a scratch workspace (a fresh git repo, see test_helper.exs).
 config :elia,
        :workspace,
-       System.get_env("ELIA_TEST_WORKSPACE") ||
-         Path.join(System.tmp_dir!(), "elia-test-workspace")
+       System.get_env("ELIA_TEST_WORKSPACE") || Path.join(run, "workspace")
 
 # The suite runs commands unjailed so it needs no bubblewrap; the isolation
 # tests turn the jail on per call and skip where bubblewrap is missing

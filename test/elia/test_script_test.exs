@@ -87,6 +87,10 @@ defmodule Elia.TestScriptTest do
     planned = Enum.flat_map(partitions, & &1.files)
     files = Path.wildcard("test/**/*_test.exs")
 
+    # SUITE-3, SUITE-11: the run's own directory differs every run, so the plan
+    # names it once, as `<run>`, instead of printing a path that would.
+    assert out =~ "run: <run> — "
+
     assert Enum.sort(planned) == Enum.sort(files)
     assert length(planned) == length(Enum.uniq(planned))
 
@@ -124,6 +128,57 @@ defmodule Elia.TestScriptTest do
       values = Enum.map(envs, &Map.fetch!(&1, key))
       assert length(Enum.uniq(values)) == length(values)
     end
+  end
+
+  # SUITE-11: a partitioned run keeps every partition's state under one directory
+  # it makes for the run and removes when the run ends — so a run leaves nothing
+  # behind, and two runs can't meet in a fixed path.
+  test "the run's directory holds the partitions' state and goes with the run", %{dir: dir} do
+    marker = Path.join(dir, "state")
+
+    fake =
+      fake!(dir, """
+      echo "$ELIA_TEST_RUN|$TMPDIR|$ELIA_TEST_WORKSPACE|$ELIA_TEST_SETTINGS" >> '#{marker}'
+      echo '1 test, 0 failures'
+      """)
+
+    {out, 0} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "2"}])
+
+    assert out =~ "total: "
+
+    rows =
+      marker
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.split(&1, "|"))
+
+    assert length(rows) == 2
+
+    # Each partition's state is under its own directory, and both under the run's.
+    for [dir, tmp, workspace, settings] <- rows do
+      assert String.starts_with?(tmp, dir <> "/")
+      assert String.starts_with?(workspace, dir <> "/")
+      assert String.starts_with?(settings, dir <> "/")
+    end
+
+    assert [run_root] = rows |> Enum.map(fn [dir | _] -> Path.dirname(dir) end) |> Enum.uniq()
+
+    for [dir | _] <- rows, do: refute(File.exists?(dir))
+    refute File.exists?(run_root), "the run's directory goes with the run"
+  end
+
+  # SUITE-11: a run that ends because a partition failed cleans up after itself too.
+  test "the run's directory goes with a run whose partition failed", %{dir: dir} do
+    marker = Path.join(dir, "run")
+    fake = fake!(dir, "echo \"$ELIA_TEST_RUN\" >> '#{marker}'\nexit 1\n")
+
+    {out, status} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "1"}])
+
+    assert status != 0
+    assert out =~ "FAILED"
+
+    partition_dir = marker |> File.read!() |> String.trim()
+    refute File.exists?(Path.dirname(partition_dir)), "a failed run cleans up too"
   end
 
   # SUITE-2, SUITE-7: the partitions all run, and each one's summary and the
@@ -196,17 +251,20 @@ defmodule Elia.TestScriptTest do
     assert "cmd bin/test" in Mix.Project.config()[:aliases][:precommit]
   end
 
-  # SUITE-1: the config reads a run's scratch state from the environment,
-  # falling back to the single-run default.
-  test "the test env takes its scratch state from ELIA_TEST_*" do
-    tmp = System.tmp_dir!()
+  # SUITE-1, SUITE-12: the config reads a run's scratch state from the environment
+  # it was given, falling back to paths under the run's own directory.
+  test "the test env takes its scratch state from the run's own directory" do
+    run = Elia.TestRun.dir()
+
+    assert Application.fetch_env!(:elia, :test_run) == run
+    assert System.get_env("ELIA_TEST_RUN") == run
 
     assert Application.fetch_env!(:elia, :workspace) ==
-             System.get_env("ELIA_TEST_WORKSPACE") || Path.join(tmp, "elia-test-workspace")
+             System.get_env("ELIA_TEST_WORKSPACE") || Path.join(run, "workspace")
 
     assert Elia.Settings.path() ==
              System.get_env("ELIA_TEST_SETTINGS") ||
-             Path.join([tmp, "elia-test-settings", "settings.dets"])
+             Path.join([run, "settings", "settings.dets"])
 
     port = Application.fetch_env!(:elia, EliaWeb.Endpoint)[:http][:port]
     assert port == String.to_integer(System.get_env("ELIA_TEST_PORT") || "4002")

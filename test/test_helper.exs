@@ -1,3 +1,8 @@
+# SUITE-1, SUITE-12, SUITE-13: this run's own directory — the temp directory its
+# tests are named in, and the run directories a killed run left behind — before
+# anything names a path of its own.
+Elia.TestRun.prepare!()
+
 # Scratch workspace for file and session tests (see config/test.exs).
 root = Application.fetch_env!(:elia, :workspace)
 File.rm_rf!(root)

@@ -103,11 +103,11 @@ a browser during `mix test`.
 - One file: `mix test test/path_test.exs`. Previously failed: `mix test --failed`.
 - The whole suite: `bin/test` — the same tests as `mix test`, but as concurrent
   partitions (`specs/test-suite.md`, SUITE). Each partition gets its own scratch
-  workspace, settings database and port (`ELIA_TEST_WORKSPACE`,
-  `ELIA_TEST_SETTINGS`, `ELIA_TEST_PORT`, SUITE-1), so the wall time is the
-  slowest partition instead of the sum. `bin/test --plan` prints the split
-  without running anything, and `bin/test test/foo_test.exs` (or `--failed`, or
-  `--only`) falls back to one plain `mix test` (SUITE-6).
+  workspace, settings database and temp directory, under one run directory the
+  run makes for itself (SUITE-1, SUITE-11), so the wall time is the slowest
+  partition instead of the sum. `bin/test --plan` prints the split without
+  running anything, and `bin/test test/foo_test.exs` (or `--failed`, or `--only`)
+  falls back to one plain `mix test` (SUITE-6).
 - The split is by file, weighted by how slow each one measured: the deploy tests
   and the restart tests each lead their own partition. A new file needs no entry
   — it weighs 1 and lands on the lightest partition (SUITE-3). The weights are
@@ -115,12 +115,16 @@ a browser during `mix test`.
   partition feels lopsided.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8).
-- **Never run two test runs at once** — no `mix test`, `bin/test` or
-  `mix precommit` while another is running, in this tree or any other. Every
-  worktree's partitions use the same `/tmp/elia-test-pN` scratch directories, so
-  concurrent runs corrupt each other's `settings.dets` and fail with phantom
-  `bad_object` errors. Wait for one run to end before starting the next, and
-  don't put two test commands in one step.
+- Runs don't have to take turns. Every run's state is its own: the scratch
+  workspace, the settings database and the temp directory the run's tests name
+  their own paths in all live under a run directory belonging to that run
+  (SUITE-1, SUITE-11, SUITE-12), whether it is a `bin/test` partition, a plain
+  `mix test`, a preview or the suite a deploy runs for itself. Leftovers from a
+  run that was killed rather than exited are cleared away the next time a run
+  starts (SUITE-13).
+- What two runs still cannot share is the port: a run that starts the endpoint
+  binds one, so give a second browser run its own `ELIA_TEST_PORT` (`bin/preview`
+  takes `ELIA_PREVIEW_PORT`, default 4010, and moves the test server there).
 - A suite run through the `shell` tool needs a longer timeout than the shell's
   default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four
