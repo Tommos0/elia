@@ -379,6 +379,19 @@ built.
   delete it like any chat; a later `await_task` on it waits as for any child
   whose chat isn't marked done (SUBTASK-27, SUBTASK-34).
 
+- **SUBTASK-37** The `tasks` skill's instructions tell a parent chat to number
+  the sub-tasks it starts — `001`, `002`, … in the order it spawns them — and to
+  hand each brief over as a file rather than in the call itself: the brief in
+  `.tasks/<n>/brief.md`, in the chat's own workspace root, with the spawn's
+  `brief` left as little more than the absolute path of that file to read
+  (SUBTASK-2, SUBTASK-5).
+
+- **SUBTASK-38** A child's preamble tells it that the brief it was sent names a
+  file it works from and that its report belongs beside that file as
+  `report.md` — what it did, what it changed and anything the user must settle —
+  written before it marks its chat done (SUBTASK-33), the path itself being the
+  one the brief names (SUBTASK-37).
+
 ## Out of scope
 
 - Sub-tasks of sub-tasks: a child has no `spawn_task` (SUBTASK-1), so depth is
@@ -422,7 +435,10 @@ the child's session, `set_done/2` as the end of a task, SUBTASK-33),
 `Elia.Skills.Chats` (`list_chats`'s `children` filter, HIST-2),
 `Elia.Agent.Resumer` (a resumed child, RESUME-7), `EliaWeb.ChatStatus` and
 `EliaWeb.ChatLive` (the child's header, UI-48) and `AGENTS.md` (the `tasks`
-skill's section: how a sub-task ends and what it reports).
+skill's section: how a sub-task ends and what it reports, and the rule that a
+sub-task is numbered and briefed through `.tasks/<n>/brief.md`, answered in
+`report.md` beside it — SUBTASK-37, SUBTASK-38). `.gitignore` ignores `/.tasks/`,
+which is scratch passed between two chats and never work either one commits.
 
 ## Tests
 
@@ -432,7 +448,8 @@ skill's section: how a sub-task ends and what it reports).
   while a parent waits, a child whose session dies, and stopping a parent's turn
   and its children's — SUBTASK-1 to SUBTASK-6, SUBTASK-9, SUBTASK-13,
   SUBTASK-15 to SUBTASK-17, SUBTASK-20, SUBTASK-23 to SUBTASK-25,
-  SUBTASK-27, SUBTASK-30, SUBTASK-31, SUBTASK-33 to SUBTASK-35, SESS-22).
+  SUBTASK-27, SUBTASK-30, SUBTASK-31, SUBTASK-33 to SUBTASK-35, SUBTASK-37,
+  SUBTASK-38, SESS-22).
 - `test/elia/store_test.exs` (the task metadata saved and loaded, and a file an
   earlier version wrote — with a `status`, `title`, `brief`, `parent_call_id` or
   `start_commit`, and a result carrying `commit` and `files` — read for the keys

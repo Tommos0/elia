@@ -27,12 +27,15 @@ defmodule Elia.Skills.Tasks do
 
   @preamble """
   You are a sub-task agent started by another chat. Work only from the brief \
-  below: you don't see that chat. Do the work in the workspace and commit it \
-  with git on this branch; this chat's work is not landed on `master` for you \
-  (DEPLOY-13). Say what you did in your last message, and put anything you need \
-  the user to settle there too — don't wait for an answer and don't ask. Then \
-  call `mark_done` to finish: that is what ends this task and reports the result \
-  to the chat that started it.
+  below: you don't see that chat. Where that brief names a file to read, the \
+  file is the brief — read it and follow it. Where it names a report file, write \
+  your report as `report.md` beside the brief file it points at, before you \
+  finish: what you did, what you changed and anything the user must settle. Do \
+  the work in the workspace and commit it with git on this branch; this chat's \
+  work is not landed on `master` for you (DEPLOY-13). Say what you did in your \
+  last message too, and put anything you need the user to settle there — don't \
+  wait for an answer and don't ask. Then call `mark_done` to finish: that is what \
+  ends this task and reports the result to the chat that started it.
   """
 
   @impl true
@@ -49,13 +52,25 @@ defmodule Elia.Skills.Tasks do
     the status of the sub-task's own chat, as the chat list shows it (`working` \
     while its first turn runs). Use it for a self-contained step of a long job \
     (for example: implement one spec, then test it) so this chat's context \
-    isn't filled with the details. The sub-task does not see this chat, so the \
-    `brief` is its whole input: give the goal, the files and specs to read \
-    first, the constraints, and what "done" means (including that it should \
-    commit). Commit your own work before spawning: in Elia's own project the \
-    sub-task forks from your branch's last commit, so it never sees uncommitted \
-    changes. A sub-task can't start sub-tasks of its own. The user approves \
-    each spawn, and approves the sub-task's own tool calls in its chat.
+    isn't filled with the details. The sub-task does not see this chat, so hand \
+    its brief over as a file rather than in the call: number the sub-tasks you \
+    start — `001`, `002`, … in the order you spawn them — and write the brief \
+    to `.tasks/001/brief.md` inside your workspace. Hold the title, the goal, \
+    the specs and requirement IDs to satisfy, the files, the constraints and \
+    what "done" means (including that it should commit), and add the child's \
+    own `task_id` to it once the spawn has returned it. Then let the `brief` \
+    here be little more than the absolute path of that file and of the report \
+    beside it: "Read /your/workspace/.tasks/001/brief.md and follow the \
+    instructions. Write your report to /your/workspace/.tasks/001/report.md." \
+    The path is absolute because the child works in your workspace but may \
+    change directory within it. The child answers in that `report.md` before it \
+    marks its chat done, so read it as well as the result `await_task` returns. \
+    Neither file is work: don't commit them (`.tasks/` is ignored in Elia's own \
+    tree, as `tmp/` is). Commit your own work before spawning: in Elia's own \
+    project the sub-task forks from your branch's last commit, so it never sees \
+    uncommitted changes. A sub-task can't start sub-tasks of its own. The user \
+    approves each spawn, and approves the sub-task's own tool calls in its own \
+    chat.
 
     A sub-task ends when its own chat is marked done: its preamble tells it to \
     call `mark_done` as its last act, and the user can mark its chat done from \
@@ -104,7 +119,10 @@ defmodule Elia.Skills.Tasks do
         description:
           "Start a sub-task in a new chat and return as soon as it has started " <>
             "(`{\"task_id\", \"title\", \"status\"}` — the sub-task's own chat status). " <>
-            "The brief must be self-contained. Collect the result later with `await_task`. " <>
+            "Hand its brief over as a numbered file — `.tasks/<n>/brief.md` in this " <>
+            "chat's workspace — and pass that file's absolute path as the brief. " <>
+            "Collect the result later with `await_task`, and read the `report.md` " <>
+            "the sub-task writes beside it. " <>
             "In Elia's own project the sub-task's work is left on branch " <>
             "`chat/<task_id>` for you to merge yourself; it is not merged for you.",
         input_schema: %{
@@ -113,7 +131,9 @@ defmodule Elia.Skills.Tasks do
             "title" => %{"type" => "string", "description" => "Short title for the chat list"},
             "brief" => %{
               "type" => "string",
-              "description" => "Everything the sub-task needs: goal, what to read, done criteria"
+              "description" =>
+                "The work the sub-task is given, by convention the absolute path of " <>
+                  "`.tasks/<n>/brief.md` to read, with the report's path beside it"
             },
             "model" => %{
               "type" => "string",

@@ -359,6 +359,25 @@ defmodule Elia.TasksTest do
            ] = Elia.Skills.Tasks.tools()
   end
 
+  # SUBTASK-37, SUBTASK-38: the skill teaches the file convention — a parent
+  # numbers its sub-tasks and hands each brief over as `.tasks/<n>/brief.md`,
+  # passed by path, and the child answers in `report.md` beside it.
+  test "the skill hands a brief over as a numbered file, answered in report.md" do
+    instructions = Elia.Skills.Tasks.instructions()
+
+    assert instructions =~ "`001`, `002`"
+    assert instructions =~ ".tasks/001/brief.md"
+    assert instructions =~ ".tasks/001/report.md"
+    assert instructions =~ "absolute"
+    refute instructions =~ "the `brief` is its whole input"
+
+    # SUBTASK-2: the tool says the same, since that is what the model reads at
+    # the call itself.
+    assert [%Elia.Tool{name: "spawn_task"} = spawn | _] = Elia.Skills.Tasks.tools()
+    assert spawn.description =~ ".tasks/"
+    assert spawn.input_schema["properties"]["brief"]["description"] =~ ".tasks/"
+  end
+
   # SUBTASK-2, SUBTASK-5, SUBTASK-6, SUBTASK-9, SUBTASK-13, SUBTASK-15,
   # SUBTASK-27, SUBTASK-33, LIMIT-5
   test "a parent starts a sub-task, goes on, and collects its result", %{parent: parent} do
@@ -425,6 +444,10 @@ defmodule Elia.TasksTest do
     assert Message.text_content(brief) =~ "Create child.txt and commit it."
     assert Message.text_content(brief) =~ "mark_done"
     assert Message.text_content(brief) =~ "commit"
+    # SUBTASK-38: and where the brief names a file to read, it names the report
+    # beside it too — the file the child writes before it marks the chat done.
+    assert Message.text_content(brief) =~ "report.md"
+    assert Message.text_content(brief) =~ "beside the brief file"
 
     # SUBTASK-1, SUBTASK-6: the child's own tools, and the model that was asked
     # for. It has `mark_done` and no sub-task tool, and no `tasks` skill.
