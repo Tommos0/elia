@@ -325,17 +325,20 @@ defmodule Elia.SelfModificationTest do
       assert File.read!(outside) == "keep me"
     end
 
-    # FILE-13, ISOL-13: a chat worktree reaches the trees its jail profile also
-    # binds — the shared deps and the repository's git directory.
-    test "a worktree reaches the shared deps and the repo's git dir" do
+    # FILE-13, ISOL-13: a chat's worktree reaches its own tree, and nothing of the
+    # live tree around it — not the `deps` the live tree holds, which a worktree
+    # has its own copy of now (DEPLOY-29), and not the repository's git
+    # directory.
+    test "a worktree reaches its own tree, not the live tree's deps or git dir" do
       live = Workspace.root()
-      worktree = Path.join([live, ".elia", "worktrees", "reach"])
+      id = "reach-#{System.unique_integer([:positive])}"
+      worktree = Path.join([live, "tmp", "worktrees", id])
       File.mkdir_p!(Path.join([live, "deps", "shared"]))
       File.write!(Path.join([live, "deps", "shared", "mix.exs"]), "x")
       File.write!(Path.join(live, "outside.txt"), "x")
-      File.mkdir_p!(worktree)
+      File.mkdir_p!(Path.join(worktree, "lib"))
+      File.write!(Path.join([worktree, "lib", "own.ex"]), "x")
       File.ln_s!(Path.join(live, "deps"), Path.join(worktree, "deps"))
-      File.ln_s!(Path.join(live, ".git"), Path.join(worktree, ".gitdir"))
 
       on_exit(fn ->
         File.rm_rf!(worktree)
@@ -345,9 +348,12 @@ defmodule Elia.SelfModificationTest do
 
       ctx = %{jail: true, workspace: worktree}
 
-      # `deps` is a link to the shared tree, which the jail binds (ISOL-7).
-      assert Files.read_policy(%{"path" => "deps/shared/mix.exs"}, ctx) == :never
-      assert Files.read_policy(%{"path" => ".gitdir/config"}, ctx) == :never
+      # Its own tree is what the jail holds.
+      assert Files.read_policy(%{"path" => "lib/own.ex"}, ctx) == :never
+
+      # The link to the live tree's `deps` reaches nothing, because that tree is
+      # not in the jail (ISOL-13, DEPLOY-29).
+      assert {:deny, _} = Files.read_policy(%{"path" => "deps/shared/mix.exs"}, ctx)
 
       # The live tree around the worktree is not bound, so it is out of reach,
       # by an absolute path or one that leaves the worktree (ISOL-6).

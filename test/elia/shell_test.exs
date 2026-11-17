@@ -314,11 +314,12 @@ defmodule Elia.ShellTest do
 end
 
 defmodule Elia.ShellReachTest do
-  # ISOL-25: what a jailed command can reach is a property of the jail's profile
-  # (ISOL-13), and the file tools follow it (FILE-12) rather than reimplementing
-  # it. This is the bind list, not a run, so it needs no bubblewrap (ISOL-12) —
-  # but it does write links in the scratch workspace, and `wanted?/1` is the
-  # host's setting, so the module doesn't run async.
+  # ISOL-25: what a jailed command can reach is its workspace and nothing else —
+  # one tree, which is what the jail binds (ISOL-13) — and the file tools follow
+  # it (FILE-12) rather than reimplementing it. This is the reach, not a run, so
+  # it needs no bubblewrap (ISOL-12) — but it does write links in the scratch
+  # workspace, and `wanted?/1` is the host's setting, so the module doesn't run
+  # async.
   use ExUnit.Case, async: false
 
   alias Elia.{Shell, Workspace}
@@ -327,36 +328,38 @@ defmodule Elia.ShellReachTest do
     live = Workspace.runtime_root()
 
     worktree =
-      Path.join([live, ".elia", "worktrees", "reach-#{System.unique_integer([:positive])}"])
+      Path.join([live, "tmp", "worktrees", "reach-#{System.unique_integer([:positive])}"])
 
     File.mkdir_p!(worktree)
     on_exit(fn -> File.rm_rf!(worktree) end)
     %{live: live, worktree: worktree}
   end
 
-  # ISOL-13, ISOL-4: a chat worktree is bound on its own, with the repository's
-  # git directory and the shared `deps` — and nothing else of the live tree.
-  test "a worktree reaches itself, the repo's git dir and the shared deps", %{
+  # ISOL-25, ISOL-13: a chat's worktree reaches itself and nothing else of the
+  # live tree — no `deps`, which is its own copy now (DEPLOY-29), and no
+  # repository git directory, which the jail binds but the reach does not
+  # include.
+  test "a worktree reaches itself and nothing else of the live tree", %{
     live: live,
     worktree: worktree
   } do
     assert Shell.reachable?(Path.join(worktree, "lib/x.ex"), worktree)
-    assert Shell.reachable?(Path.join([live, ".git", "config"]), worktree)
-    assert Shell.reachable?(Path.join([live, "deps", "req", "mix.exs"]), worktree)
 
     refute Shell.reachable?(Path.join(live, "lib/elia/shell.ex"), worktree)
+    refute Shell.reachable?(Path.join([live, "deps", "req", "mix.exs"]), worktree)
+    refute Shell.reachable?(Path.join([live, ".git", "config"]), worktree)
     refute Shell.reachable?(Path.join([live, ".elia", "sessions"]), worktree)
     refute Shell.reachable?("/etc/passwd", worktree)
   end
 
-  # ISOL-6: the live tree is bound with `.elia` masked over it (DEPLOY-14).
+  # ISOL-6: the live tree reaches itself, but not the `.elia` masked over it.
   test "the live tree reaches itself, but not its .elia", %{live: live} do
     assert Shell.reachable?(Path.join(live, "lib/elia/shell.ex"), live)
     refute Shell.reachable?(Path.join([live, ".elia", "sessions"]), live)
 
-    # The harness's own steps keep `.elia` in reach (ISOL-22): a worktree is
-    # created inside it.
-    assert Shell.reachable?(Path.join([live, ".elia", "worktrees"]), live, profile: :deps_sync)
+    # No profile keeps `.elia` in reach any more (ISOL-22): the harness makes no
+    # worktree there, and a chat makes its own in `tmp/worktrees` (DEPLOY-28).
+    refute Shell.reachable?(Path.join([live, ".elia", "worktrees"]), live)
   end
 
   # ISOL-4: another project's folder is bound on its own (PROJ-12).
@@ -466,24 +469,23 @@ defmodule Elia.ShellMixEnvTest do
     end
   end
 
-  # ISOL-12, ISOL-27: a caller that reads a run's output as a value takes the
-  # notices off it, whichever one the run put there.
-  test "the notices a run may put in front of its output come off it" do
+  # ISOL-12: a caller that reads a run's output as a value takes the notice off
+  # it.
+  test "the notice a run may put in front of its output comes off it" do
     assert Shell.strip_notices(Shell.jail_skipped_notice() <> "\nhi\n") == "hi\n"
-    assert Shell.strip_notices(Shell.deps_read_only_notice() <> "\nhi\n") == "hi\n"
     assert Shell.strip_notices("hi\n") == "hi\n"
   end
 end
 
-defmodule Elia.ShellMountTest do
-  # ISOL-28, ISOL-27: the jail that mounts a worktree's dependency layer takes a
-  # lock and asks bubblewrap to report when it is up, and a jail that can't mount
-  # the layer falls back to the shared tree read-only. These check the argv, so
-  # they need bubblewrap only to build one (ISOL-12) — but they write the live
-  # tree's `deps`, so the module doesn't run async.
+defmodule Elia.ShellJailTest do
+  # ISOL-13, ISOL-6, ISOL-4: the bind list of the jail, built from the workspace
+  # the call belongs to — one profile, decided by which tree that is — with
+  # `--chdir` left at the directory the call runs in (WD-1). These check the
+  # argv, so bubblewrap is only needed to build one (ISOL-12) — but the worktree
+  # case makes a real git worktree, so the module doesn't run async.
   use ExUnit.Case, async: false
 
-  alias Elia.{Shell, Workspace}
+  alias Elia.{LiveTree, Shell}
 
   @moduletag skip:
                if(Elia.Shell.available?(),
@@ -493,36 +495,34 @@ defmodule Elia.ShellMountTest do
 
   setup do
     # The suite runs unjailed (config/test.exs); these are about the jail's argv,
-    # so the host is made to allow one (ISOL-20).
+    # so the host is made to allow one (ISOL-20). The tree is a live tree of the
+    # test's own, with the `.elia` a live tree holds (DEPLOY-2).
     previous = Application.get_env(:elia, Elia.Shell)
+    previous_root = Application.get_env(:elia, :runtime_root)
+    tree = LiveTree.create()
+    File.mkdir_p!(Path.join(tree, ".elia"))
+
     Application.put_env(:elia, Elia.Shell, jail: true)
-    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
-
-    live = Workspace.runtime_root()
-
-    worktree =
-      Path.join([live, ".elia", "worktrees", "mount-#{System.unique_integer([:positive])}"])
-
-    deps = Path.join(live, "deps")
-
-    File.mkdir_p!(Path.join(deps, "phoenix/priv/templates"))
-    File.mkdir_p!(worktree)
-    File.ln_s(deps, Path.join(worktree, "deps"))
+    Application.put_env(:elia, :runtime_root, tree)
 
     on_exit(fn ->
-      File.rm_rf!(worktree)
-      File.rm_rf!(deps)
-      Elia.Deps.remove(worktree, live)
+      Application.put_env(:elia, Elia.Shell, previous)
+
+      if previous_root,
+        do: Application.put_env(:elia, :runtime_root, previous_root),
+        else: Application.delete_env(:elia, :runtime_root)
+
+      LiveTree.remove(tree)
     end)
 
-    %{live: live, worktree: worktree}
+    %{tree: tree}
   end
 
   # ISOL-2: the jail is bubblewrap with its own namespaces — a fresh pid, UTS,
   # IPC and cgroup namespace, its own `/proc`, `/dev` and `/tmp` — and a `chdir`
-  # into the workspace.
-  test "the jail is bubblewrap with its own namespaces", %{worktree: worktree} do
-    {_exe, args} = Shell.argv("echo hi", worktree, jail: true)
+  # into the directory the call runs in.
+  test "the jail is bubblewrap with its own namespaces", %{tree: tree} do
+    {_exe, args} = Shell.argv("echo hi", tree, jail: true)
 
     for flag <-
           ~w(--die-with-parent --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try --proc --dev --tmpfs) do
@@ -530,35 +530,124 @@ defmodule Elia.ShellMountTest do
     end
 
     assert Enum.take(args, -4) == ["--", Shell.shell([]), "-c", "echo hi"]
-    chdir = Enum.find_index(args, &(&1 == "--chdir"))
-    assert Enum.at(args, chdir + 1) == worktree
+    assert chdir(args) == tree
   end
 
-  # ISOL-28: the report is what ends the mount lock, so the jail that mounts the
-  # layer asks for it and no other does.
-  test "a jail that mounts the layer asks bubblewrap to report when it is up", %{
-    worktree: worktree
-  } do
-    {_exe, args} = Shell.argv("echo hi", worktree, jail: true)
+  # ISOL-13, WD-1: the jail holds the workspace the call belongs to and `--chdir`
+  # is still the directory it runs in — so a call that `cd`s into a subdirectory
+  # is jailed to the whole tree and runs in the subdirectory.
+  test "the jail holds the workspace and chdir the directory the call runs in", %{tree: tree} do
+    sub = Path.join(tree, "lib")
 
-    assert "--overlay" in args
-    assert "--info-fd" in args
+    {_exe, args} = Shell.argv("echo hi", sub, jail: true, workspace: tree)
+
+    assert tree_binds(args, tree) == [{tree, tree}]
+    assert chdir(args) == sub
   end
 
-  test "a jail that mounts nothing doesn't ask for the report", %{live: live} do
-    {_exe, args} = Shell.argv("echo hi", live, jail: true, profile: :live_tree)
+  # ISOL-13: a caller that names no workspace gets the directory it runs in
+  # bound — the one tree it could mean.
+  test "without a workspace the jail holds the directory the call runs in", %{tree: tree} do
+    sub = Path.join(tree, "lib")
 
-    refute "--overlay" in args
-    refute "--info-fd" in args
+    {_exe, args} = Shell.argv("echo hi", sub, jail: true)
+
+    assert tree_binds(args, tree) == [{sub, sub}]
+    assert chdir(args) == sub
   end
 
-  # ISOL-27: the fallback the retry ends in.
-  test "deps: :read_only binds the shared tree read-only instead of overlaying it", %{
-    worktree: worktree
-  } do
-    {_exe, args} = Shell.argv("echo hi", worktree, jail: true, deps: :read_only)
+  # ISOL-6: the live tree is bound whole, and its `.elia` masked with an empty
+  # tmpfs made *after* that bind — bubblewrap mounts in argument order, so the
+  # mask wins.
+  test "the live tree is bound, then its .elia masked over it", %{tree: tree} do
+    data = Path.join(tree, ".elia")
 
-    refute "--overlay" in args
-    assert "--ro-bind-try" in args
+    {_exe, args} = Shell.argv("echo hi", tree, jail: true, workspace: tree)
+
+    assert tree_binds(args, tree) == [{tree, tree}]
+    assert index(args, "--tmpfs", data) > index(args, "--bind", tree)
+  end
+
+  # ISOL-4, DEPLOY-13: a chat's worktree — one it made itself inside the live
+  # tree (DEPLOY-28) — is bound with the repository's git directory behind its
+  # `.git` pointer file, read-write, so a commit, a rebase and its fast-forward
+  # of `master` all work from inside. The live tree itself is not bound, so
+  # Elia's data and the other chats' worktrees are out of reach (ISOL-6).
+  test "a worktree is bound with the repository's git directory", %{tree: tree} do
+    id = "jail-#{System.unique_integer([:positive])}"
+    worktree = LiveTree.worktree(tree, id)
+    git = Path.join(tree, ".git")
+
+    {_exe, args} = Shell.argv("echo hi", worktree, jail: true, workspace: worktree)
+    bound = tree_binds(args, tree)
+
+    assert {worktree, worktree} in bound
+    assert {Path.join([git, "worktrees", id]), Path.join([git, "worktrees", id])} in bound
+    assert {git, git} in bound
+    refute {tree, tree} in bound
+    assert chdir(args) == worktree
+  end
+
+  # ISOL-7 retired, DEPLOY-29: no dependency tree is bound into a jail and
+  # nothing is overlaid any more — a chat's worktree holds its own copies of
+  # `deps` and `_build`, which the chat made itself — so there is no mount to
+  # report on or to serialise (ISOL-28).
+  test "no jail overlays or binds a dependency tree", %{tree: tree} do
+    worktree = LiveTree.worktree(tree, "deps-#{System.unique_integer([:positive])}")
+    deps = Path.join(tree, "deps")
+
+    for opts <- [[workspace: worktree], [workspace: tree], []] do
+      {_exe, args} = Shell.argv("echo hi", worktree, [jail: true] ++ opts)
+
+      refute "--overlay" in args
+      refute "--overlay-src" in args
+      refute "--info-fd" in args
+      refute Enum.any?(binds(args), fn {source, _dest} -> source == deps end)
+    end
+  end
+
+  # ISOL-4: another project's folder is bound on its own (PROJ-12).
+  test "another project's folder is bound on its own", %{tree: tree} do
+    project =
+      Path.join(System.tmp_dir!(), "elia-jail-project-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(project)
+    on_exit(fn -> File.rm_rf!(project) end)
+
+    {_exe, args} = Shell.argv("echo hi", project, jail: true, workspace: project)
+
+    assert {project, project} in binds(args)
+    refute {tree, tree} in binds(args)
+    assert chdir(args) == project
+  end
+
+  # The binds a jail's argv makes, in order: `--bind` and `--bind-try` both bind
+  # read-write. `tree_binds/2` keeps the ones into one tree, since the toolchain
+  # and `$HOME` are bound beyond them (ISOL-4).
+  defp binds(args), do: triples(args, ~w(--bind --bind-try))
+
+  defp tree_binds(args, tree) do
+    Enum.filter(binds(args), fn {source, _dest} ->
+      source == tree or String.starts_with?(source, tree <> "/")
+    end)
+  end
+
+  defp triples(args, flags) do
+    args
+    |> Enum.with_index()
+    |> Enum.filter(fn {arg, _index} -> arg in flags end)
+    |> Enum.map(fn {_flag, index} -> {Enum.at(args, index + 1), Enum.at(args, index + 2)} end)
+  end
+
+  # The position of a flag followed by `path`, or nil when there is none.
+  defp index(args, flag, path) do
+    Enum.find_index(Enum.with_index(args), fn {arg, at} ->
+      arg == flag and Enum.at(args, at + 1) == path
+    end)
+  end
+
+  defp chdir(args) do
+    at = Enum.find_index(args, &(&1 == "--chdir"))
+    Enum.at(args, at + 1)
   end
 end

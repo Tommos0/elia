@@ -6,25 +6,22 @@ defmodule Elia.Shell do
   `sh -c` (SHELL-2), so bash-only syntax works only where bash is present.
 
   A command runs inside a bubblewrap jail unless it is turned off (ISOL): a
-  fresh mount namespace holding the workspace, the toolchain and nothing else,
-  and a fresh pid namespace whose `/proc` doesn't show the server. So a command
-  can't reach the settings database with the provider API keys (CONF-1), the
-  saved conversations under `.elia/sessions` or the user's credentials
-  (ISOL-5), and can't read the server's memory (ISOL-9). `jail: false` — the
-  chat's own setting (ISOL-16) — or a host without bubblewrap (ISOL-12,
-  ISOL-20) runs the command directly, as it did before.
+  fresh mount namespace holding the tree the call belongs to — its workspace
+  (ISOL-13) — the toolchain and nothing else, and a fresh pid namespace whose
+  `/proc` doesn't show the server. So a command can't reach the settings
+  database with the provider API keys (CONF-1), the saved conversations under
+  `.elia/sessions` or the user's credentials (ISOL-5), and can't read the
+  server's memory (ISOL-9). `jail: false` — the chat's own setting (ISOL-16) —
+  or a host without bubblewrap (ISOL-12, ISOL-20) runs the command directly, as
+  it did before.
 
   Every command starts below the server's own CPU and I/O priority (PRIO-1), so
   a compile or a test suite doesn't take the machine from the UI and the agent
   loops: see `Elia.Priority` and `run/2`'s `:priority`.
   """
   alias Elia.{Priority, Workspace}
-  alias Elia.Shell.Lock
-
-  require Logger
 
   @type result :: {:ok, binary(), non_neg_integer()} | {:timeout, binary()}
-  @type profile :: :worktree | :deps_sync | :live_tree
 
   # Bound read-only so a jailed command finds the shell, Elixir, git and mix
   # (ISOL-4).
@@ -36,12 +33,6 @@ defmodule Elia.Shell do
   # ISOL-12: a run that wanted a jail and didn't get one says so, so it never
   # looks like one that was isolated.
   @jail_skipped_notice "[jail: skipped, bubblewrap is unavailable]"
-
-  # ISOL-27: the jail couldn't mount the worktree's dependency layer, so the
-  # command ran against the shared tree read-only. Said out loud for the same
-  # reason as the notice above: a run that could not write inside a dependency
-  # never looks like one that could.
-  @deps_read_only_notice "[jail: the worktree's deps layer could not be mounted, the shared deps tree was read-only]"
 
   @doc """
   The shell that runs commands: bash when it is installed, otherwise POSIX
@@ -68,15 +59,6 @@ defmodule Elia.Shell do
   """
   @spec jail_skipped_notice() :: binary()
   def jail_skipped_notice, do: @jail_skipped_notice
-
-  @doc """
-  What a run says when its jail couldn't mount the worktree's dependency layer
-  and it ran against the shared `deps` read-only instead (ISOL-27). Prepended to
-  the command's own output, like `jail_skipped_notice/0`, so a caller that reads
-  that output as a value takes it off first.
-  """
-  @spec deps_read_only_notice() :: binary()
-  def deps_read_only_notice, do: @deps_read_only_notice
 
   @doc """
   Resolves the timeout of one call against the configured default and ceiling
@@ -113,15 +95,13 @@ defmodule Elia.Shell do
   end
 
   @doc """
-  Takes the notices a run may have put in front of its output off it (ISOL-12,
-  ISOL-27), for a caller that reads that output as a value — a ref, a path, a
+  Takes the notice a run may have put in front of its output off it (ISOL-12),
+  for a caller that reads that output as a value — a ref, a path, a
   NUL-separated list — rather than showing it.
   """
   @spec strip_notices(binary()) :: binary()
   def strip_notices(output) do
-    output
-    |> String.replace_leading(@jail_skipped_notice <> "\n", "")
-    |> String.replace_leading(@deps_read_only_notice <> "\n", "")
+    String.replace_leading(output, @jail_skipped_notice <> "\n", "")
   end
 
   @doc """
@@ -147,49 +127,37 @@ defmodule Elia.Shell do
   end
 
   @doc """
-  Whether a jailed command in the workspace `cd` can reach the absolute path
-  `abs` (ISOL-25): the workspace, plus, for a chat worktree, the trees its
-  profile also binds there — the repository's git directory and the shared
-  `deps` (ISOL-4, ISOL-13) — and never the `.elia` a `:live_tree` is masked with
-  (ISOL-6). Another project's folder reaches no further than itself.
+  Whether a jailed command in `workspace` can reach the absolute path `abs`
+  (ISOL-25): the workspace it belongs to and nothing else — a jail binds one
+  tree (ISOL-13) — and never the `.elia` the live tree is masked with (ISOL-6).
+  Another project's folder reaches no further than itself, and neither does a
+  chat's worktree, whose jail holds its own tree.
 
   Symlinks are followed (WS-5), so a link inside the workspace that points out
   of it is not reachable either. The toolchain and `$HOME/.mix` (ISOL-4) are
   bound too, but they are for running a program, not for reading, so they are
   not part of this reach.
   """
-  @spec reachable?(binary(), binary(), keyword()) :: boolean()
-  def reachable?(abs, cd, opts \\ []) do
-    profile = profile(cd, opts)
+  @spec reachable?(binary(), binary()) :: boolean()
+  def reachable?(abs, workspace) do
     live = Workspace.real_location(Workspace.runtime_root())
-    cd = Workspace.real_location(cd)
+    workspace = Workspace.real_location(workspace)
     abs = Workspace.real_location(abs)
 
     cond do
       # WS-6: a path with no real location is reachable by nothing.
-      :unresolvable in [live, cd, abs] ->
+      :unresolvable in [live, workspace, abs] ->
         false
 
-      not inside?(cd, live) ->
-        inside?(abs, cd)
+      not inside?(abs, workspace) ->
+        false
 
-      cd == live ->
-        inside?(abs, cd) and
-          (profile == :deps_sync or not inside?(abs, Path.join(live, ".elia")))
+      workspace == live ->
+        not inside?(abs, Path.join(live, ".elia"))
 
       true ->
-        inside?(abs, cd) or bound?(abs, live)
+        true
     end
-  end
-
-  # What a chat worktree's profile binds besides the worktree itself (ISOL-13).
-  defp bound?(abs, live) do
-    Enum.any?([Path.join(live, "deps"), Path.join(live, ".git")], fn path ->
-      case Workspace.real_location(path) do
-        :unresolvable -> false
-        real -> inside?(abs, real)
-      end
-    end)
   end
 
   @doc """
@@ -208,16 +176,21 @@ defmodule Elia.Shell do
   @doc """
   Runs `command` with the shell from `shell/1`.
 
-  Options: `:cd` (default `Elia.Workspace.root/0`), `:env` (list of string
-  pairs), `:shell` (path or name, to override the shell), `:timeout` in
-  milliseconds (default 60s), `:jail` (`false` runs the command unjailed,
-  ISOL-16), `:profile` (`:deps_sync` for the harness's own steps in the live
-  tree, ISOL-22; otherwise it follows `:cd`, ISOL-13), `:priority`
-  (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to run it at the
-  server's own priority, PRIO-5) and `:max_output` (characters: the output is
-  held bounded while the command runs and comes back cut as `truncate/2` cuts
-  it, SHELL-13; without it the run keeps every byte, as the harness's own
-  commands need).
+  Options: `:cd` (default `Elia.Workspace.root/0`), `:workspace` (the tree the
+  jail holds, default: the `cd` — ISOL-13), `:env` (list of string pairs),
+  `:shell` (path or name, to override the shell), `:timeout` in milliseconds
+  (default 60s), `:jail` (`false` runs the command unjailed, ISOL-16),
+  `:priority` (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to
+  run it at the server's own priority, PRIO-5) and `:max_output` (characters:
+  the output is held bounded while the command runs and comes back cut as
+  `truncate/2` cuts it, SHELL-13; without it the run keeps every byte, as the
+  harness's own commands need).
+
+  `:workspace` is what the jail holds; `:cd` is where the command runs in it
+  (WD-1). A caller that knows the tree its command belongs to — a chat's
+  workspace (PROJ-12), the live tree (ISOL-14) — passes it, so a call that
+  `cd`s into a subdirectory, or a folder skill's script in its own folder
+  (FOLDER-6), is still confined to the tree it belongs to.
   """
   @spec run(binary(), keyword()) :: result()
   def run(command, opts \\ []) do
@@ -236,8 +209,8 @@ defmodule Elia.Shell do
   # unset has to be in the shell that runs the command — `env: [{"MIX_ENV",
   # false}]` is not a port option and `nil` crashes the child — and `unset` is
   # POSIX, so it works under either shell (SHELL-2). A caller that sets the value
-  # itself keeps it (VERIFY-1, ISOL-7), and a jailed command inherits no
-  # environment at all (ISOL-8).
+  # itself keeps it (VERIFY-1), and a caller's `:env` reaches the command anyway
+  # where it set the value itself (ISOL-8).
   defp drop_mix_env(command, opts) do
     if env_set?(opts, "MIX_ENV"), do: command, else: "unset MIX_ENV\n" <> command
   end
@@ -257,6 +230,10 @@ defmodule Elia.Shell do
   priority, so a change to either reaches the terminal as well, and a terminal
   is confined exactly like a command instead of by a second copy of the same
   arguments.
+
+  The jail holds the tree the call belongs to — `opts[:workspace]`, or `cd`
+  when the caller names none (ISOL-13) — and `--chdir` is `cd`, the directory
+  the call runs in (WD-1).
   """
   @spec argv(binary(), binary(), keyword()) :: {binary(), [binary()]}
   def argv(script, cd, opts \\ []) do
@@ -294,75 +271,10 @@ defmodule Elia.Shell do
   defp execute(script, cd, opts) do
     timeout = Keyword.get(opts, :timeout, :timer.seconds(60))
     deadline = System.monotonic_time(:millisecond) + timeout
-    {_exe, args} = argv(script, cd, opts)
-
-    if "--overlay" in args do
-      # ISOL-28: this jail mounts the worktree's dependency layer itself, and two
-      # jails that mount the same layer at the same instant collide. The lock is
-      # held only until the jail reports that it is up, not for the command.
-      key = Elia.Deps.layer(cd)
-
-      case Lock.acquire(key) do
-        :ok ->
-          try do
-            run_jail(script, cd, opts, deadline)
-          after
-            Lock.release(key)
-          end
-
-        # No lock in time: run anyway, as before this requirement. A rare
-        # collision is better than a command that never runs.
-        :timeout ->
-          run_jail(script, cd, opts, deadline)
-      end
-    else
-      run_jail(script, cd, opts, deadline)
-    end
-  end
-
-  # ISOL-27: a jail that can't mount the layer is tried once more, and then runs
-  # with the shared `deps` read-only, saying so.
-  defp run_jail(script, cd, opts, deadline) do
-    case attempt(script, cd, opts, deadline) do
-      {:setup_failed, _reason} ->
-        case attempt(script, cd, opts, deadline) do
-          {:setup_failed, reason} -> read_only(script, cd, opts, deadline, reason)
-          result -> result
-        end
-
-      result ->
-        result
-    end
-  end
-
-  defp attempt(script, cd, opts, deadline) do
     {exe, args} = argv(script, cd, opts)
     port = open(exe, args, cd, opts)
 
-    watched(port, fn ->
-      if "--info-fd" in args do
-        case await_ready(port, "", deadline) do
-          {:ready, rest} -> collect(port, add(buffer(opts), rest), deadline) |> skipped(opts)
-          {:failed, reason} -> {:setup_failed, reason}
-        end
-      else
-        collect(port, buffer(opts), deadline) |> skipped(opts)
-      end
-    end)
-  end
-
-  defp read_only(script, cd, opts, deadline, reason) do
-    Logger.warning("jail: could not mount the worktree's deps layer: #{String.trim(reason)}")
-
-    opts = Keyword.put(opts, :deps, :read_only)
-    {exe, args} = argv(script, cd, opts)
-    port = open(exe, args, cd, opts)
-    notice = @deps_read_only_notice <> "\n"
-
-    case watched(port, fn -> collect(port, buffer(opts), deadline) |> skipped(opts) end) do
-      {:ok, output, status} -> {:ok, notice <> output, status}
-      {:timeout, output} -> {:timeout, notice <> output}
-    end
+    watched(port, fn -> collect(port, buffer(opts), deadline) |> skipped(opts) end)
   end
 
   # SHELL-12: a command never outlives the process waiting on it. A watcher of
@@ -417,42 +329,10 @@ defmodule Elia.Shell do
     ])
   end
 
-  # ISOL-28: bubblewrap writes its report of the running sandbox to stderr once
-  # the mounts are made, so the first `}` line of the stream is the moment the
-  # overlay is up and the lock can go. What follows it is the command's own
-  # output, which is why the report is taken off the front of it.
-  defp await_ready(port, acc, deadline) do
-    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
-
-    receive do
-      {^port, {:data, data}} ->
-        acc = acc <> data
-
-        case split_report(acc) do
-          {:ok, rest} -> {:ready, rest}
-          :more -> await_ready(port, acc, deadline)
-        end
-
-      {^port, {:exit_status, _status}} ->
-        {:failed, acc}
-    after
-      remaining ->
-        kill(port)
-        {:failed, acc}
-    end
-  end
-
-  defp split_report(acc) do
-    case :binary.split(acc, "}\n") do
-      [report, rest] -> if String.contains?(report, "child-pid"), do: {:ok, rest}, else: :more
-      [_incomplete] -> :more
-    end
-  end
-
   ## The jail
 
   defp jail_args(script, cd, opts) do
-    binds = bind_args(cd, profile(cd, opts), opts)
+    binds = bind_args(workspace(cd, opts))
 
     [
       "--die-with-parent",
@@ -463,7 +343,6 @@ defmodule Elia.Shell do
       "--clearenv"
     ] ++
       setenv_args(Keyword.get(opts, :env, [])) ++
-      ready_args(binds) ++
       ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"] ++
       read_only_args(@toolchain) ++
       home_args() ++
@@ -471,12 +350,13 @@ defmodule Elia.Shell do
       ["--chdir", cd, "--", shell(opts), "-c", script]
   end
 
-  # ISOL-28: bubblewrap reports the sandbox as up on stderr once its mounts are
-  # made, and that report is what ends the mount lock — so it is asked for only
-  # by the jail that mounts the worktree's dependency layer, the one that has to
-  # wait for the lock in the first place.
-  defp ready_args(binds) do
-    if "--overlay" in binds, do: ["--info-fd", "2"], else: []
+  # ISOL-13: the tree the jail holds — the workspace the call belongs to, which
+  # is the `cd` when the caller names none.
+  defp workspace(cd, opts) do
+    case Keyword.get(opts, :workspace) do
+      nil -> cd
+      path -> Path.expand(path)
+    end
   end
 
   # The environment is rebuilt, not inherited: nothing else reaches a command,
@@ -514,6 +394,8 @@ defmodule Elia.Shell do
     end
   end
 
+  defp bind_try(path, flag), do: [flag, path, path]
+
   defp mix_args(home), do: bind_try(Path.join(home, ".mix"), "--bind-try")
 
   defp browser_args(home) do
@@ -536,84 +418,77 @@ defmodule Elia.Shell do
     end)
   end
 
-  defp profile(cd, opts) do
-    Keyword.get(opts, :profile) ||
-      if(cd == Workspace.runtime_root(), do: :live_tree, else: :worktree)
-  end
-
-  defp bind_args(cd, profile, opts) do
-    live = Workspace.runtime_root()
+  # ISOL-13: what the jail holds follows from the workspace the call belongs to —
+  # the tree itself, bound read-write, and never its parent (ISOL-6).
+  defp bind_args(workspace) do
+    live = Workspace.real_location(Workspace.runtime_root())
+    real = Workspace.real_location(workspace)
 
     cond do
-      not inside?(cd, live) ->
-        # Another project (PROJ-12): its own folder is all it needs.
-        ["--bind", cd, cd]
+      real == :unresolvable ->
+        ["--bind", workspace, workspace]
 
-      cd == live ->
-        # The live tree itself, for a chat that works in it (DEPLOY-14) and for
-        # the deploy's own suite run (ISOL-14). Elia's data is masked with an
-        # empty tmpfs *after* the tree is bound — bubblewrap mounts in argument
-        # order, so the mask wins (ISOL-6).
-        ["--bind", cd, cd] ++ mask_args(cd, profile)
+      real == live ->
+        # The live tree itself, for a chat that works in it (DEPLOY-1) and for
+        # the deploy's own steps (ISOL-14). Elia's data is masked with an empty
+        # tmpfs *after* the tree is bound — bubblewrap mounts in argument order,
+        # so the mask wins (ISOL-6).
+        ["--bind", workspace, workspace] ++ mask_args(workspace)
+
+      inside?(real, live) ->
+        # A worktree a chat made inside the live tree (DEPLOY-28): its own tree
+        # and the repository's git directory behind its `.git` pointer file
+        # (ISOL-4) — the live tree around it is not bound, so `.elia/sessions`
+        # and the other chats' worktrees are not in the jail (ISOL-6).
+        ["--bind", workspace, workspace] ++ git_args(workspace)
 
       true ->
-        # A chat worktree: its own tree, the repository's git directory (the
-        # worktree's `.git` is a pointer file into `<live>/.git/worktrees/<id>`,
-        # whose common dir commits need), and the shared dependencies.
-        ["--bind", cd, cd] ++ git_args(live) ++ deps_args(live, profile, cd, opts)
+        # Another project (PROJ-12): its own folder is all it needs.
+        ["--bind", workspace, workspace]
     end
   end
 
-  # Elia's data under the live tree is masked with an empty tmpfs (ISOL-6) — but
-  # not for the harness's own `:deps_sync` steps, whose bind list keeps the live
-  # tree reachable as it is (ISOL-13): a chat's worktree is created *inside*
-  # `.elia/worktrees`, and a masked `.elia` would swallow it.
-  defp mask_args(_live, :deps_sync), do: []
-
-  defp mask_args(live, _profile) do
+  # Elia's data under the live tree is masked with an empty tmpfs (ISOL-6): the
+  # sessions and the settings database live there, and a jail holds neither.
+  defp mask_args(live) do
     data = Path.join(live, ".elia")
     if File.exists?(data), do: ["--tmpfs", data], else: []
   end
 
-  # ISOL-4, ISOL-29: the repository's git directory read-write, which the
-  # chat's commits, rebases and its fast-forward of `master` need (DEPLOY-13) —
-  # but not the parts that decide what git runs. Those are bound read-only on
-  # top, after the read-write bind, since bubblewrap mounts in argument order.
-  defp git_args(live) do
-    git = Path.join(live, ".git")
-
-    ["--bind-try", git, git] ++
-      Enum.flat_map(~w(config hooks info), &bind_try(Path.join(git, &1), "--ro-bind-try"))
+  # ISOL-4: a workspace that is a linked git worktree — one a chat made inside
+  # its project's folder (DEPLOY-28) — comes with the repository's git directory
+  # behind its `.git` pointer file, read-write: the worktree's own directory,
+  # which holds its index, HEAD and in-progress rebase or merge, and the common
+  # directory it shares with the repository, where the objects, the refs and the
+  # logs are. A commit, a rebase and the fast-forward of `master` need both
+  # (ISOL-3, DEPLOY-13). A workspace whose `.git` is a directory — the live tree
+  # itself, another project — is bound whole with the workspace, so it needs
+  # nothing here.
+  defp git_args(workspace) do
+    workspace
+    |> git_dirs()
+    |> Enum.uniq()
+    |> Enum.flat_map(fn dir -> ["--bind-try", dir, dir] end)
   end
 
-  # ISOL-7: a chat's commands see the shared dependency tree as an overlay — the
-  # live tree's `deps` read-only as the lower layer, and that worktree's own
-  # writable layer on top — so a compile that writes inside a dependency, or a
-  # fetch for one the chat added, succeeds without changing what the live tree
-  # and the other chats compile against. A tree that isn't there, or a layer that
-  # can't be made, falls back to the read-only bind: the command then fails on
-  # its own write and says what it could not write. `deps: :read_only` asks for
-  # that fallback itself, which is what a jail whose mount failed retries with
-  # (ISOL-27).
-  defp deps_args(live, :worktree, cd, opts) do
-    deps = Path.join(live, "deps")
-
-    with :overlay <- Keyword.get(opts, :deps, :overlay),
-         true <- File.dir?(deps),
-         {:ok, {upper, work}} <- Elia.Deps.open(cd, live) do
-      ["--overlay-src", deps, "--overlay", upper, work, deps]
+  defp git_dirs(workspace) do
+    with {:ok, text} <- File.read(Path.join(workspace, ".git")),
+         [_, dir] <- Regex.run(~r/^gitdir:[ \t]*(.+?)[ \t]*$/m, text) do
+      gitdir = Path.expand(dir, workspace)
+      [gitdir | common_dirs(gitdir)]
     else
-      _ -> bind_try(deps, "--ro-bind-try")
+      _ -> []
     end
   end
 
-  defp deps_args(live, :deps_sync, _cd, _opts),
-    do: bind_try(Path.join(live, "deps"), "--bind-try")
-
-  defp deps_args(live, _profile, _cd, _opts),
-    do: bind_try(Path.join(live, "deps"), "--ro-bind-try")
-
-  defp bind_try(path, flag), do: [flag, path, path]
+  # A linked worktree's git directory names the directory it shares with the
+  # repository in a `commondir` file, relative to itself.
+  defp common_dirs(gitdir) do
+    case File.read(Path.join(gitdir, "commondir")) do
+      {:ok, text} -> [Path.expand(String.trim(text), gitdir)]
+      {:error, _reason} -> []
+    end
+  end
 
   defp inside?(path, dir), do: path == dir or String.starts_with?(path, dir <> "/")
 

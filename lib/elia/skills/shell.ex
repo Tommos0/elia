@@ -121,6 +121,11 @@ defmodule Elia.Skills.Shell do
             # SHELL-2, WD-9: the command runs in the chat's working directory,
             # which is its workspace root until `cd` changes it (WD-3).
             cd: dir(ctx),
+            # ISOL-13: the jail holds the tree the call belongs to — the chat's
+            # workspace (PROJ-12) — not the directory it runs in, so a call that
+            # `cd`s into a subdirectory is still confined to the whole tree.
+            workspace: workspace(ctx),
+            env: chat_env(ctx),
             timeout: timeout,
             jail: ctx[:jail],
             max_output: max_output()
@@ -138,9 +143,26 @@ defmodule Elia.Skills.Shell do
   end
 
   # SHELL-2, WD-9: the command runs in the chat's working directory — its
-  # workspace root until `cd` changes it (PROJ-12: the chat's own worktree in
-  # Elia's own project, DEPLOY-1) — else Elia's own root.
+  # workspace root until `cd` changes it (PROJ-12: the folder of the chat's
+  # project, the live tree for a chat in Elia's own project, DEPLOY-1) — else
+  # Elia's own root.
   defp dir(ctx), do: Elia.Workdir.of(ctx)
+
+  # ISOL-13: what the call's jail holds is the chat's workspace — the tree it
+  # belongs to (PROJ-12) — not the directory it runs in, so a call that `cd`s
+  # into a subdirectory is confined to the whole tree all the same.
+  defp workspace(ctx), do: ctx[:workspace] || Elia.Workspace.root()
+
+  # SHELL-14: a command is told which chat it belongs to, so a chat can name the
+  # worktree and the branch it makes for itself (DEPLOY-28) without being told
+  # its own id. A step the harness runs for no chat gets no such variable
+  # (DEPLOY-18).
+  defp chat_env(ctx) do
+    case ctx[:session_id] do
+      id when is_binary(id) and id != "" -> [{"ELIA_CHAT_ID", id}]
+      _no_chat -> []
+    end
+  end
 
   @doc """
   The tool result for a run: the combined output and its exit status (SHELL-4).

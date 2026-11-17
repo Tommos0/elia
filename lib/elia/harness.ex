@@ -69,6 +69,9 @@ defmodule Elia.Harness do
       run =
         Elia.Shell.run(command,
           cd: root,
+          # ISOL-14: the suite runs in the live tree the caller names, which is
+          # what its jail holds — not the directory the run happens to start in.
+          workspace: root,
           env: [{"MIX_ENV", "test"}],
           timeout: timeout,
           jail: opts[:jail],

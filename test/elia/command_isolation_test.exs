@@ -95,6 +95,19 @@ defmodule Elia.CommandIsolationTest do
     end
   end
 
+  # SHELL-14, ISOL-8: what a caller adds to a jailed command's environment
+  # reaches it — `--setenv` comes after `--clearenv`, so the chat's id is there
+  # although the allowlist knows nothing of it.
+  test "a jailed command is told the chat id the caller gave it (SHELL-14, ISOL-8)" do
+    assert {:ok, output} =
+             Elia.Skills.Shell.run(%{"command" => "printenv ELIA_CHAT_ID"}, %{
+               session_id: "chat-jailed",
+               jail: true
+             })
+
+    assert output =~ "chat-jailed"
+  end
+
   test "the server is not visible (ISOL-9)" do
     # A process that is definitely running outside the jail.
     assert {:ok, output, 0} =
@@ -113,57 +126,6 @@ defmodule Elia.CommandIsolationTest do
     assert {:ok, "hi\n", 0} = jailed("echo hi > jail_probe && cat jail_probe && rm jail_probe")
 
     assert {:ok, "true\n", 0} = jailed("git rev-parse --is-inside-work-tree")
-  end
-
-  # ISOL-7: a chat's commands see the shared dependency tree as an overlay — the
-  # live tree's `deps` read-only as the lower layer, the worktree's own writable
-  # layer on top — so a compile that writes inside a dependency succeeds, and
-  # what the live tree and the other chats compile against is unchanged.
-  test "a command writes inside the shared deps without changing it (ISOL-7)" do
-    live = Elia.Workspace.runtime_root()
-    id = "overlay-#{System.unique_integer([:positive])}"
-    worktree = Path.join([live, ".elia", "worktrees", id])
-    deps = Path.join(live, "deps")
-    templates = Path.join(deps, "phoenix/priv/templates")
-
-    File.mkdir_p!(templates)
-    File.write!(Path.join(templates, "kept.eex"), "shared\n")
-    File.mkdir_p!(worktree)
-    File.ln_s(deps, Path.join(worktree, "deps"))
-
-    on_exit(fn ->
-      File.rm_rf!(worktree)
-      File.rm_rf!(deps)
-      Elia.Deps.remove(worktree, live)
-    end)
-
-    # The worktree's `deps` is the live tree's (DEPLOY-1), and a write through it
-    # lands in the worktree's own layer.
-    assert {:ok, output, 0} =
-             jailed(
-               "cat deps/phoenix/priv/templates/kept.eex && " <>
-                 "echo written > deps/phoenix/priv/templates/new.eex && " <>
-                 "ls deps/phoenix/priv/templates",
-               cd: worktree
-             )
-
-    assert output =~ "shared"
-    assert output =~ "new.eex"
-
-    # The shared tree is unchanged: the write is in the layer, which the command
-    # can't reach either (ISOL-6).
-    refute File.exists?(Path.join(templates, "new.eex"))
-
-    layer = Elia.Deps.layer(worktree, live)
-
-    assert File.read!(Path.join([layer, "upper", "phoenix/priv/templates/new.eex"])) ==
-             "written\n"
-
-    assert {:ok, output, status} =
-             jailed("ls #{Path.join(live, ".elia/deps_layer")} 2>&1", cd: worktree)
-
-    assert status != 0
-    assert output =~ "No such file"
   end
 
   test "a timed-out jail leaves nothing running (ISOL-10)" do
@@ -267,103 +229,10 @@ defmodule Elia.CommandIsolationTest do
     end
   end
 
-  describe "one mount at a time (ISOL-28, ISOL-27)" do
-    setup do
-      # A worktree whose `deps` is the live tree's (DEPLOY-1), so a jail for it
-      # mounts the overlay this is about.
-      live = Elia.Workspace.runtime_root()
-      id = "mount-#{System.unique_integer([:positive])}"
-      worktree = Path.join([live, ".elia", "worktrees", id])
-      deps = Path.join(live, "deps")
-
-      File.mkdir_p!(Path.join(deps, "phoenix/priv/templates"))
-      File.mkdir_p!(worktree)
-      File.ln_s(deps, Path.join(worktree, "deps"))
-
-      on_exit(fn ->
-        File.rm_rf!(worktree)
-        File.rm_rf!(deps)
-        Elia.Deps.remove(worktree, live)
-      end)
-
-      %{worktree: worktree}
-    end
-
-    # ISOL-28: the lock is held while a jail mounts, so a command in the worktree
-    # waits for whoever is mounting and never mounts alongside it. This is the
-    # part the timing-dependent test above can't pin down: it either collides or
-    # it doesn't, depending on how the mounts line up.
-    test "a command waits for the mount lock, then runs", %{worktree: worktree} do
-      key = Elia.Deps.layer(worktree)
-      assert :ok = Elia.Shell.Lock.acquire(key)
-
-      task = Task.async(fn -> jailed("echo hi", cd: worktree) end)
-      refute Task.yield(task, 300), "a command must not mount while the lock is held"
-
-      assert :ok = Elia.Shell.Lock.release(key)
-      assert {:ok, "hi\n", 0} = Task.await(task, 60_000)
-    end
-
-    # ISOL-28: two jails that mounted this layer at the same instant used to
-    # collide — one of them failed before its command ran (35 commands across 11
-    # chats, 8.8% of the steps that ran two shell commands). The lock has them
-    # take turns mounting, so every command runs.
-    test "commands started at once in one worktree all run", %{worktree: worktree} do
-      results =
-        1..4
-        |> Enum.map(fn n -> Task.async(fn -> jailed("echo one-#{n}", cd: worktree) end) end)
-        |> Task.await_many(60_000)
-
-      for {result, n} <- Enum.with_index(results, 1) do
-        assert {:ok, output, 0} = result
-        assert output =~ "one-#{n}"
-        refute output =~ "Can't make overlay mount"
-      end
-    end
-
-    # ISOL-27: a jail that can't mount the layer is tried once more, and then
-    # runs with the shared `deps` read-only, saying so — never "the command
-    # ran and failed" when it never ran.
-    test "a jail that can't mount the layer is retried, then runs read-only", %{
-      worktree: worktree
-    } do
-      real = System.find_executable("bwrap")
-      dir = Path.join(System.tmp_dir!(), "elia-fake-bwrap-#{System.unique_integer([:positive])}")
-      File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf(dir) end)
-
-      count = Path.join(dir, "count")
-      script = Path.join(dir, "bwrap")
-
-      # A bubblewrap that can't mount the layer twice — the attempt and its retry
-      # — and then is the real one, which is what the read-only fallback runs.
-      File.write!(script, """
-      #!/bin/sh
-      n=$(cat #{count} 2>/dev/null || echo 0)
-      echo $((n + 1)) > #{count}
-      if [ "$n" -lt 2 ]; then
-        echo "bwrap: Can't make overlay mount on (null) with options upperdir=/x,workdir=/y,lowerdir=/z,userxattr: No such file or directory" >&2
-        exit 1
-      fi
-      exec #{real} "$@"
-      """)
-
-      File.chmod!(script, 0o755)
-
-      previous = Application.get_env(:elia, Elia.Shell)
-      Application.put_env(:elia, Elia.Shell, jail: true, bwrap: script)
-      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
-
-      assert {:ok, output, 0} = jailed("echo hi", cd: worktree)
-      assert output =~ Shell.deps_read_only_notice()
-      assert output =~ "hi"
-    end
-  end
-
-  describe "the repository's git directory in a chat worktree's jail (ISOL-29)" do
+  describe "a chat's worktree in the live tree's jail (ISOL-4, ISOL-6, ISOL-13)" do
     # A chat's commands run in a tree of its own — the worktree it makes for
-    # itself inside the live tree (DEPLOY-28), which still gets the `:worktree`
-    # profile (ISOL-13). The harness makes none, so the test makes the one a
+    # itself inside the live tree (DEPLOY-28) — jailed to the workspace the call
+    # belongs to (ISOL-13). The harness makes none, so the test makes the one a
     # chat would.
     setup do
       tree = Elia.LiveTree.create()
@@ -383,44 +252,111 @@ defmodule Elia.CommandIsolationTest do
       %{git: Path.join(tree, ".git"), tree: tree, worktree: worktree}
     end
 
-    # ISOL-29: none of what decides what a later git run in the live tree runs
-    # can be written from inside — not by writing into it, replacing it, removing
-    # it, or through git itself.
-    test "config, hooks and info can't be written from inside", %{git: git, worktree: worktree} do
-      config = File.read!(Path.join(git, "config"))
-      assert File.dir?(Path.join(git, "hooks")) and File.dir?(Path.join(git, "info"))
-
-      attempts = [
-        "printf '#!/bin/sh\\n' > '#{git}/hooks/post-merge'",
-        "printf '[core]\\n\\thooksPath = /tmp\\n' >> '#{git}/config'",
-        "printf 'x' > '#{git}/config.new' && mv '#{git}/config.new' '#{git}/config'",
-        "rm -f '#{git}/config'",
-        "printf '* filter=x\\n' > '#{git}/info/attributes'",
-        "git config core.fsmonitor /bin/true"
-      ]
-
-      for command <- attempts do
-        assert {:ok, output, status} = jailed(command, cd: worktree)
-        assert status != 0, "#{command} succeeded inside the jail: #{output}"
-      end
-
-      assert File.read!(Path.join(git, "config")) == config
-      refute File.exists?(Path.join(git, "hooks/post-merge"))
-      refute File.exists?(Path.join(git, "info/attributes"))
-    end
-
-    # ISOL-29, DEPLOY-13: the rest of the git directory is still the chat's to
-    # write, so a commit and the fast-forward of `master` still work from inside.
+    # ISOL-4, DEPLOY-13: a commit and the fast-forward of `master` work from
+    # inside the jail, because the repository's git directory comes with the
+    # worktree.
     test "a chat still commits and fast-forwards master", %{tree: tree, worktree: worktree} do
       command =
-        "printf 'x' > isol29.txt && git add isol29.txt && " <>
-          "git -c user.name=t -c user.email=t@e commit -q -m isol29 && " <>
+        "printf 'x' > committed.txt && git add committed.txt && " <>
+          "git -c user.name=t -c user.email=t@e commit -q -m work && " <>
           "git push -q . HEAD:master"
 
       assert {:ok, output, 0} = jailed(command, cd: worktree)
       refute output =~ "Read-only"
 
       assert Elia.LiveTree.sha(tree, "master") == Elia.LiveTree.head(worktree)
+    end
+
+    # ISOL-6: the live tree around the worktree is not bound, so Elia's data and
+    # the rest of the tree are out of reach.
+    test "the live tree around the worktree is not in its jail", %{tree: tree, worktree: worktree} do
+      File.mkdir_p!(Path.join(tree, ".elia/sessions"))
+      File.write!(Path.join(tree, ".elia/sessions/one.term"), "secret\n")
+      File.write!(Path.join(tree, "outside.txt"), "outside\n")
+
+      for path <- [Path.join(tree, "outside.txt"), Path.join(tree, ".elia/sessions/one.term")] do
+        assert {:ok, output, status} = jailed("cat #{path} 2>&1", cd: worktree)
+        assert status != 0, "#{path} must not be reachable inside the jail"
+        assert output =~ "No such file"
+      end
+    end
+
+    # DEPLOY-29: a chat's worktree holds its own copies of `deps` and `_build`,
+    # which the chat copied in itself, so a command writes into its own copy —
+    # and the live tree's `deps` is not bound at all (ISOL-6), so what the live
+    # tree compiles against is untouched by anything a chat's command does.
+    test "a command writes inside its own worktree's deps, not the live tree's", %{
+      tree: tree,
+      worktree: worktree
+    } do
+      live_deps = Path.join(tree, "deps")
+      mine = Path.join(worktree, "deps/phoenix/priv/templates")
+      File.mkdir_p!(mine)
+      File.mkdir_p!(live_deps)
+      File.write!(Path.join(live_deps, "kept.eex"), "shared\n")
+
+      assert {:ok, output, 0} =
+               jailed(
+                 "echo written > deps/phoenix/priv/templates/new.eex && " <>
+                   "ls deps/phoenix/priv/templates",
+                 cd: worktree
+               )
+
+      assert output =~ "new.eex"
+      assert File.read!(Path.join(mine, "new.eex")) == "written\n"
+      assert File.read!(Path.join(live_deps, "kept.eex")) == "shared\n"
+      refute File.exists?(Path.join(live_deps, "phoenix/priv/templates/new.eex"))
+    end
+
+    # ISOL-13: the jail holds the workspace, not the directory the call runs in.
+    # A chat that `cd`-ed into a subdirectory reads a file beside the tree's root
+    # — outside that subdirectory — because its call is jailed to the whole tree.
+    test "a call in a subdirectory is jailed to the whole workspace", %{worktree: worktree} do
+      sub = Path.join(worktree, "sub")
+      File.mkdir_p!(sub)
+      File.write!(Path.join(worktree, "root_file"), "at the root\n")
+
+      assert {:ok, output} =
+               Elia.Skills.Shell.run(%{"command" => "cat ../root_file"},
+                 cwd: sub,
+                 workspace: worktree,
+                 jail: true
+               )
+
+      assert output =~ "at the root"
+    end
+
+    # ISOL-13, FOLDER-6, FOLDER-7: a folder skill's script runs in the skill's own
+    # folder, and the jail still holds the chat's workspace — so it reaches the
+    # whole project rather than only its own folder.
+    test "a folder skill's script is jailed to the whole workspace", %{worktree: worktree} do
+      File.write!(Path.join(worktree, "root_file"), "at the root\n")
+      dir = Path.join([worktree, "skills", "probe"])
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "SKILL.md"),
+        "---\nname: probe\ndescription: probe\n---\nprobe\n"
+      )
+
+      File.write!(
+        Path.join(dir, "tools.json"),
+        Jason.encode!([
+          %{
+            "name" => "probe",
+            "description" => "probe",
+            "command" => "echo \"ws=$ELIA_WORKSPACE\"; cat ../../root_file",
+            "input_schema" => %{"type" => "object", "properties" => %{}}
+          }
+        ])
+      )
+
+      {:ok, skill} = Elia.Skills.Folder.load(dir)
+      [tool] = skill.tools
+
+      assert {:ok, output} = Elia.Tool.call(tool, %{}, %{jail: true, workspace: worktree})
+      assert output =~ "ws=#{worktree}"
+      assert output =~ "at the root"
     end
   end
 end

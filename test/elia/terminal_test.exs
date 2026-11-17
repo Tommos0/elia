@@ -390,6 +390,38 @@ defmodule Elia.TerminalTest do
     end
   end
 
+  # TERM-2, TERM-7: a session's jail is built from the chat's workspace, by the
+  # same `Elia.Shell.argv/3` a command runs with (ISOL-13) — so the app in the
+  # pane reaches the whole workspace and nothing around it.
+  test "a jailed session's jail holds the whole workspace", %{id: id, dir: dir} do
+    if Elia.Shell.available?() do
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+      File.mkdir_p!(Path.join(dir, "a/b"))
+      File.write!(Path.join(dir, "a/b/deep"), "deep\n")
+
+      # A file beside the workspace, not in it.
+      outside = Path.join(System.tmp_dir!(), "elia-outside-#{id}")
+      File.write!(outside, "SECRETCONTENT\n")
+      on_exit(fn -> File.rm_rf(outside) end)
+
+      assert {:ok, _} =
+               Terminal.start(id,
+                 command: "cat a/b/deep; cat #{outside} 2>&1; printf 'done\\n'; sleep 60",
+                 workspace: dir,
+                 jail: true
+               )
+
+      :ok = Terminal.subscribe(id)
+      output = collect_until("done")
+
+      assert output =~ "deep"
+      refute output =~ "SECRETCONTENT"
+    end
+  end
+
   # TERM-17: a client that falls too far behind is dropped and told, rather than
   # the session holding its backlog in memory. This test is the slow client: it
   # never takes the output out of its mailbox.

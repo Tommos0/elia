@@ -72,6 +72,23 @@ defmodule Elia.Skills.ShellTest do
     end
   end
 
+  # SHELL-14: a command is told which chat it belongs to, as `ELIA_CHAT_ID`, so a
+  # chat can name the worktree and the branch it makes for itself (DEPLOY-28)
+  # without being told its own id — and a step the harness runs for no chat gets
+  # no such variable (DEPLOY-18).
+  test "a chat's command is told its chat id, and the harness's own is not" do
+    assert {:ok, output} =
+             Shell.run(%{"command" => "printenv ELIA_CHAT_ID"}, %{session_id: "aBc123"})
+
+    assert output =~ "aBc123"
+    refute output =~ "[exit: 1]"
+
+    # No chat: nothing to name, so the variable is not set at all.
+    assert {:ok, output} = Shell.run(%{"command" => "printenv ELIA_CHAT_ID; echo status=$?"}, %{})
+    assert output =~ "status=1"
+    refute output =~ "aBc123"
+  end
+
   test "does not wait on stdin" do
     assert {:ok, "\n[exit: 0]"} = Shell.run(%{"command" => "cat", "timeout_seconds" => 5})
   end

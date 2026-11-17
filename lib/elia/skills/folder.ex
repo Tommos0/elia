@@ -162,7 +162,11 @@ defmodule Elia.Skills.Folder do
 
     Elia.Skills.Shell.result(
       Elia.Shell.run(command,
+        # FOLDER-6: the script runs in the skill's own folder — and the jail
+        # holds the chat's workspace, the tree the call belongs to (ISOL-13),
+        # so the script can read the project it belongs to and nothing else.
         cd: dir,
+        workspace: workspace(ctx),
         env: env,
         timeout: timeout,
         jail: ctx[:jail],

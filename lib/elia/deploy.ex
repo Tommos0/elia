@@ -938,9 +938,8 @@ defmodule Elia.Deploy do
   end
 
   # ISOL-14: the merged trunk's suite runs in the live tree, jailed by default —
-  # no chat's setting is involved (ISOL-15), and the live tree's `:live_tree`
-  # profile is what `Elia.Harness.run_tests/2` gets from the working directory
-  # it runs in (ISOL-13).
+  # no chat's setting is involved (ISOL-15), and the workspace the jail holds is
+  # the live tree the caller names (ISOL-13).
   defp run_suite(root) do
     case Elia.Harness.run_tests([], root) do
       {:ok, output} -> {:ok, output}
@@ -948,13 +947,13 @@ defmodule Elia.Deploy do
     end
   end
 
-  # DEPLOY-18: a dependency a chat added lives in that chat's own dependency
-  # layer (ISOL-7), which the live tree never sees, so the merged trunk's
-  # `mix.lock` is fetched here before its suite runs. In the live tree, whose own
-  # `deps` is writable under the `:live_tree` profile (ISOL-13, ISOL-14); a lock
-  # that is already satisfied fetches nothing.
+  # DEPLOY-18: a dependency a chat added lives in the `deps` of the worktree it
+  # made itself (DEPLOY-29), which the live tree has never seen, so the merged
+  # trunk's `mix.lock` is fetched here before its suite runs — in the live tree,
+  # which the jail holds (ISOL-13, ISOL-14); a lock that is already satisfied
+  # fetches nothing.
   defp fetch_deps(root) do
-    case Elia.Shell.run("mix deps.get", cd: root, timeout: @deps_timeout) do
+    case Elia.Shell.run("mix deps.get", cd: root, workspace: root, timeout: @deps_timeout) do
       {:ok, output, 0} ->
         {:ok, output}
 
@@ -1026,11 +1025,11 @@ defmodule Elia.Deploy do
     end
   end
 
-  # DEPLOY-19: a Node package a chat added lives in that chat's own dependency
-  # layer (ISOL-7), which the live tree has never installed — and without it the
-  # tree can't build a bundle at all, since the build is what resolves the
-  # import. Run from the live tree's own directory, so it gets the live tree's
-  # profile (ISOL-13, ISOL-14) the way the fetch above does.
+  # DEPLOY-19: a Node package a chat added is in the worktree that chat made
+  # itself (DEPLOY-29), which the live tree has never installed — and without it
+  # the tree can't build a bundle at all, since the build is what resolves the
+  # import. Run in the live tree, which is the workspace the jail holds
+  # (ISOL-13, ISOL-14) the way the fetch above is.
   defp install(root) do
     run_step(root, "npm install --prefix assets --no-audit --no-fund")
   end
@@ -1041,7 +1040,9 @@ defmodule Elia.Deploy do
   defp build(root), do: run_step(root, "mix assets.build")
 
   defp run_step(root, command) do
-    case Elia.Shell.run(command, cd: root, timeout: @front_end_timeout) do
+    # DEPLOY-19: in the live tree, jailed the way DEPLOY-18's fetch is — the
+    # tree the jail holds is the one the step runs in (ISOL-13, ISOL-14).
+    case Elia.Shell.run(command, cd: root, workspace: root, timeout: @front_end_timeout) do
       {:ok, output, 0} ->
         {:ok, output}
 
@@ -1176,7 +1177,8 @@ defmodule Elia.Deploy do
   # own output (ISOL-12), which is what `strip_notice/1` takes off.
   defp git(root, args, opts \\ []) do
     command = "git " <> Enum.map_join(Elia.Shell.harness_git_flags() ++ args, " ", &quote_arg/1)
-    opts = Keyword.merge([cd: root, timeout: :timer.minutes(2)], opts)
+    # The live tree's own git work — the jail holds it (ISOL-1, ISOL-13).
+    opts = Keyword.merge([cd: root, workspace: root, timeout: :timer.minutes(2)], opts)
 
     case Elia.Shell.run(command, opts) do
       {:ok, output, 0} -> {:ok, out(output)}

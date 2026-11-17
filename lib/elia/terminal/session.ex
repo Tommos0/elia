@@ -75,7 +75,6 @@ defmodule Elia.Terminal.Session do
     :command,
     :workspace,
     :jail,
-    :lock,
     :socket,
     # TERM-36: where the server's socket file is, as tmux reported it at start;
     # nil until then, and for a jailed session it is the jail's own `/tmp`.
@@ -203,20 +202,16 @@ defmodule Elia.Terminal.Session do
 
     # TERM-7, TERM-8: the jail's argv and the priority wrapper come from
     # `Elia.Shell.argv/3`, the same ones a command runs with — a terminal is not
-    # a way around either.
+    # a way around either. The jail holds the chat's workspace, the tree the
+    # session belongs to, not the directory it starts in (TERM-2, ISOL-13).
     {exe, args} =
       Shell.argv(
         script(socket, argv, Terminal.tmux()),
         workspace,
+        workspace: workspace,
         jail: jail,
         env: [{"TERM", "xterm-256color"}]
       )
-
-    # ISOL-28: the session's jail mounts the worktree's dependency layer as a
-    # command's does, so it takes the same lock — and gives it back as soon as
-    # the session says it is up, which is its first output (or its death).
-    lock = if "--overlay" in args, do: Elia.Deps.layer(workspace), else: nil
-    if lock, do: Shell.Lock.acquire(lock)
 
     port =
       Port.open({:spawn_executable, exe}, [
@@ -235,7 +230,6 @@ defmodule Elia.Terminal.Session do
       workspace: workspace,
       jail: jail,
       jailed: Shell.jailed?(jail: jail),
-      lock: lock,
       socket: socket,
       port: port,
       cols: @initial_cols,
@@ -341,18 +335,17 @@ defmodule Elia.Terminal.Session do
 
   @impl true
   def handle_info({port, {:data, {_eol, data}}}, %{port: port} = state) do
-    # ISOL-28: the jail is up and talking, so the mount lock can go.
-    {:noreply, %{release_lock(state) | stderr: cap_stderr(state.stderr <> data)}}
+    {:noreply, %{state | stderr: cap_stderr(state.stderr <> data)}}
   end
 
   def handle_info({port, {:data, data}}, %{port: port} = state),
-    do: {:noreply, ingest(release_lock(state), data)}
+    do: {:noreply, ingest(state, data)}
 
   # The port program is gone: the client exited, so either the session ended on
   # its own or it never started. Either way there is nothing left to talk to.
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
     state =
-      case %{state | port: nil} |> release_lock() do
+      case %{state | port: nil} do
         %{status: :running} = state -> end_session(state, :crashed, code)
         %{status: :ending} = state -> end_session(state, state.ended, state.exit_status)
       end
@@ -370,7 +363,6 @@ defmodule Elia.Terminal.Session do
   def terminate(_reason, state) do
     # TERM-3: a session that goes away — the chat was deleted, the server is
     # shutting down — takes its process tree with it.
-    release_lock(state)
     if state.port, do: kill_port(state.port)
     # TERM-36: a session that already ended released its tmux then.
     if state.status != :ended, do: release_tmux(state)
@@ -401,16 +393,6 @@ defmodule Elia.Terminal.Session do
   end
 
   defp release_tmux(_state), do: :ok
-
-  # ISOL-28: the mount lock is held only until the jail is up. A session that
-  # ends before it ever spoke gives it back here, so a terminal that failed to
-  # start can't keep a worktree's commands waiting.
-  defp release_lock(%{lock: nil} = state), do: state
-
-  defp release_lock(%{lock: key} = state) do
-    Shell.Lock.release(key)
-    %{state | lock: nil}
-  end
 
   ## The protocol
 

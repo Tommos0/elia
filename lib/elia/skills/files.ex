@@ -246,14 +246,14 @@ defmodule Elia.Skills.Files do
   # FILE-4, FILE-18, WS-8, WS-9: approval for a read (`list_files` with no path
   # means the chat's working directory, which is inside the workspace like any
   # other).
-  # Under the jail, reaching the path is the whole answer, and that is
-  # deliberate: `deps` and `.git` in a worktree are symlinks into the live tree,
-  # which the jail's profile binds (ISOL-7, ISOL-25), so their real location
-  # classifies as outside the worktree and a routine read of
-  # `deps/req/lib/req.ex` must not start asking for approval. Unjailed, where the
-  # user can still hand the agent a file outside the workspace by approving the
-  # read (FILE-12), the class of where the path lands decides: outside is offered
-  # for approval, everything else is inside the workspace and needs none.
+  # Under the jail, reaching the path is the whole answer (ISOL-25): the jail
+  # holds one tree (ISOL-13), and what a path inside it resolves to is inside it
+  # — a routine read of a path in the workspace must not start asking for
+  # approval. A link that leaves the tree is not reachable and is refused
+  # (FILE-13). Unjailed, where the user can still hand the agent a file outside
+  # the workspace by approving the read (FILE-12), the class of where the path
+  # lands decides: outside is offered for approval, everything else is inside the
+  # workspace and needs none.
   def read_policy(input, ctx) do
     {abs, _real, class} = referent(input["path"] || ".", ctx)
 

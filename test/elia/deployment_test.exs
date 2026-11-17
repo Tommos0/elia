@@ -490,10 +490,10 @@ defmodule Elia.DeploymentTest do
     assert File.exists?(Path.join(tree, file))
   end
 
-  # DEPLOY-18: a dependency a chat added lives in that chat's own layer (ISOL-7),
-  # so the deploy fetches the merged trunk's dependencies in the live tree before
-  # its suite runs — and a fetch that fails is a deploy failure that rolls `live`
-  # back, like a failing suite.
+  # DEPLOY-18: a dependency a chat added lives in the `deps` of the worktree it
+  # made itself (DEPLOY-29), so the deploy fetches the merged trunk's
+  # dependencies in the live tree before its suite runs — and a fetch that fails
+  # is a deploy failure that rolls `live` back, like a failing suite.
   test "a deploy fetches the trunk's dependencies before its suite (DEPLOY-18)", %{
     tree: tree
   } do
