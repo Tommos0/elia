@@ -14,8 +14,8 @@ defmodule Elia.Workspace do
       config :elia, :workspace, "/path/to/root"
 
   The live tree is where the server runs and where Elia's data lives; a chat in
-  Elia's own project works in its own git worktree instead, and its tools use
-  that worktree as their root (DEPLOY-1):
+  Elia's own project works in it, and one that changes code makes itself a git
+  worktree inside it and works there (DEPLOY-1, DEPLOY-28):
 
       config :elia, :runtime_root, "/path/to/live/tree"
   """

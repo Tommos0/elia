@@ -42,8 +42,10 @@ defmodule Elia.Agent.Session do
     :id,
     # The project the chat belongs to (PROJ-9): a `%{id, name, folder, harness?}`.
     :project,
-    # The workspace root of this chat (PROJ-12): for a chat in Elia's own
-    # project its own git worktree (DEPLOY-1), else the project's folder.
+    # The workspace root of this chat (PROJ-12, DEPLOY-1): the folder of the
+    # project it is in — the live tree for a chat in Elia's own project. A chat
+    # that changes code makes itself a worktree inside it (DEPLOY-28) and moves
+    # there with its working directory (WD-1).
     :workspace,
     # The chat's working directory (WD-1): an absolute path inside `workspace`
     # that its file tool calls and its `shell` call resolve relative paths
@@ -117,8 +119,7 @@ defmodule Elia.Agent.Session do
     project = opts[:project] || load_project(opts[:id], persist)
 
     workspace =
-      opts[:workspace] || Keyword.get(loop_opts, :workspace) ||
-        Elia.Deploy.workspace(project, opts[:id])
+      opts[:workspace] || Keyword.get(loop_opts, :workspace) || project.folder
 
     state = %__MODULE__{
       id: opts[:id],
@@ -193,7 +194,7 @@ defmodule Elia.Agent.Session do
     upgraded =
       if is_map_key(state, :workspace),
         do: upgraded,
-        else: %{upgraded | workspace: Elia.Deploy.workspace(upgraded.project, upgraded.id)}
+        else: %{upgraded | workspace: upgraded.project.folder}
 
     upgraded =
       if is_map_key(state, :task_meta),
@@ -1104,11 +1105,10 @@ defmodule Elia.Agent.Session do
   # The chat's project, for state that predates the field (SESS-15).
   defp project(state), do: Map.get(state, :project) || Elia.Projects.harness()
 
-  # The chat's workspace root (PROJ-12): its own worktree in Elia's own project
-  # (DEPLOY-1), else the project's folder (DEPLOY-3). State from before the
-  # field existed (SESS-15) resolves it here.
-  defp workspace(state),
-    do: Map.get(state, :workspace) || Elia.Deploy.workspace(project(state), state.id)
+  # The chat's workspace root (PROJ-12): the folder of its project, the live
+  # tree for a chat in Elia's own project (DEPLOY-1, DEPLOY-3). State from
+  # before the field existed (SESS-15) resolves it here.
+  defp workspace(state), do: Map.get(state, :workspace) || project(state).folder
 
   # WD-1, WD-7: the chat's working directory — the one it has, or its workspace
   # root while it works there.

@@ -361,19 +361,18 @@ defmodule Elia.CommandIsolationTest do
   end
 
   describe "the repository's git directory in a chat worktree's jail (ISOL-29)" do
-    # A throwaway live tree, so the test never touches the server's own tree
-    # (DEPLOY-2), and a chat's worktree in it, which gets the `:worktree`
-    # profile (ISOL-13).
+    # A chat's commands run in a tree of its own — the worktree it makes for
+    # itself inside the live tree (DEPLOY-28), which still gets the `:worktree`
+    # profile (ISOL-13). The harness makes none, so the test makes the one a
+    # chat would.
     setup do
       tree = Elia.LiveTree.create()
       previous = Application.get_env(:elia, :runtime_root)
       Application.put_env(:elia, :runtime_root, tree)
 
-      chat = Elia.Agent.new_id()
-      assert {:ok, worktree} = Elia.Deploy.ensure_worktree(chat)
+      worktree = Elia.LiveTree.worktree(tree, Elia.Agent.new_id())
 
       on_exit(fn ->
-        Elia.Deploy.remove_worktree(chat, tree)
         Elia.LiveTree.remove(tree)
 
         if previous,

@@ -5,29 +5,26 @@ defmodule Elia.Deploy do
   Elia's own project runs from the *live tree* (`Elia.Workspace.runtime_root/0`):
   that is where the server runs, where the code reloader reloads, and where
   Elia's data lives (DEPLOY-2). Two branches of its repository matter: the
-  *trunk* `master`, the chats' fork point and the branch they merge their work
-  into (DEPLOY-1, DEPLOY-13), and `live`, the branch the live tree is checked out
-  on and a deploy's target (DEPLOY-14).
+  *trunk* `master`, the chats' fork point and the branch their work is merged
+  into (DEPLOY-13), and `live`, the branch the live tree is checked out on and a
+  deploy's target (DEPLOY-14).
 
-  A chat in that project never edits the live tree: it works in its own git
-  worktree, on branch `chat/<chat id>`, forked from the trunk (DEPLOY-1). When a
-  change is done the chat's agent merges its branch into the trunk itself
-  (`git push . HEAD:master`, which refuses anything but a fast-forward,
-  DEPLOY-13). A *deploy* is then the user's step, from the Settings page
+  A chat in that project works in the project's folder, which is the live tree
+  itself (DEPLOY-1, PROJ-12). The harness creates no worktree and no branch for
+  a chat: before a chat changes code it makes itself a git worktree inside that
+  folder, on branch `chat/<chat id>`, forked from the trunk (DEPLOY-28), so the
+  tree it was given stays as it was and nothing half-done is in the tree that
+  runs. When the work is done the chat's agent merges that branch into the trunk
+  itself (`git push . HEAD:master`, which refuses anything but a fast-forward,
+  DEPLOY-13), and removes the worktree and its branch once it is merged. A
+  *deploy* is then the user's step, from the Settings page
   (`EliaWeb.SettingsLive`): it runs the full test suite in the live tree,
   fast-forwards `live` to the trunk when the tests pass (DEPLOY-5), makes the
   tree's front end current — the Node packages and the bundle a browser loads
   (DEPLOY-19) — on every deploy, merge or not (DEPLOY-20) — and loads the result
   into the running app, by hot reload
   (`hot_reload/1`, DEPLOY-6) or by restarting the server (`restart/1`,
-  DEPLOY-7). Because the tree a chat edits is
-  never the tree that runs, an in-progress or broken edit cannot reach the
-  running app at all, and no request ever reloads code (DEPLOY-8).
-
-  A chat works in a worktree when the live tree is *set up for deployment*
-  (`deployable/1`, DEPLOY-14). When it isn't (a tree that was never set up for
-  deployment, such as a test workspace), the chat works in the live tree itself,
-  as before.
+  DEPLOY-7). No request ever reloads code (DEPLOY-8).
   """
 
   require Logger
@@ -36,7 +33,6 @@ defmodule Elia.Deploy do
 
   @live "live"
   @trunk "master"
-  @chat_prefix "chat/"
 
   # What the runtime system exits with when a deploy restarts the server. It
   # must not be 0: `bin/serve` treats a zero exit as a deliberate shutdown and
@@ -72,35 +68,13 @@ defmodule Elia.Deploy do
   # app has run and no longer is can still be named and gone back to.
   @keep_revisions 10
 
-  ## Paths and branches
-
-  @doc "The dir holding the chats' worktrees: under the live tree's data dir (DEPLOY-1)."
-  def worktrees_dir(root \\ Workspace.runtime_root()),
-    do: Path.join(Workspace.data_dir(root), "worktrees")
-
-  @doc "The worktree path of a chat (DEPLOY-1)."
-  def worktree_path(chat_id, root \\ Workspace.runtime_root()),
-    do: Path.join(worktrees_dir(root), chat_id)
-
-  @doc "The branch a chat's worktree is checked out on (DEPLOY-1)."
-  def branch(chat_id), do: @chat_prefix <> chat_id
+  ## Branches
 
   @doc "The branch the live tree is checked out on and a deploy fast-forwards (DEPLOY-5)."
   def live_branch, do: @live
 
   @doc "The trunk: the branch the chats fork from and merge into, and a deploy's target (DEPLOY-13)."
   def trunk_branch, do: @trunk
-
-  @doc """
-  The chat whose worktree is at `workspace`, or `nil` when `workspace` isn't a
-  chat worktree of this live tree (the live tree itself, or a project folder).
-  """
-  @spec worktree_chat(binary(), binary()) :: binary() | nil
-  def worktree_chat(workspace, root \\ Workspace.runtime_root()) do
-    workspace = Path.expand(workspace)
-
-    if Path.dirname(workspace) == worktrees_dir(root), do: Path.basename(workspace)
-  end
 
   ## The trunk and the deploy target (DEPLOY-14)
 
@@ -601,187 +575,16 @@ defmodule Elia.Deploy do
     end
   end
 
-  ## Worktree per chat
+  ## The workspace of a chat
 
-  @doc """
-  The workspace root of a chat (PROJ-12): its own worktree when it is in Elia's
-  own project (DEPLOY-1), the project's folder otherwise, where no worktree is
-  created (DEPLOY-3). Falls back to the folder — the live tree — when no
-  worktree can be made, so a chat always has a workspace to work in.
-  """
-  @spec workspace(Elia.Projects.t(), binary()) :: binary()
-  def workspace(%{harness?: true} = project, chat_id) do
-    case ensure_worktree(chat_id) do
-      {:ok, path} ->
-        path
-
-      {:error, reason} ->
-        Logger.debug("Chat #{chat_id} works in #{project.folder}: #{reason}")
-        project.folder
-    end
-  end
-
-  def workspace(project, _chat_id), do: project.folder
-
-  @doc """
-  The workspace a chat works in when one already exists (EXPL-17, FLINK-5): its
-  own worktree for a chat in Elia's own project, the project's folder otherwise
-  (PROJ-12). Unlike `workspace/2` it creates nothing — a page that resolves it —
-  the Files page browsing a chat, or a file link checked against its workspace —
-  must not fork a branch as a side effect of being read.
-  """
-  @spec existing_workspace(Elia.Projects.t(), binary() | nil) :: binary()
-  def existing_workspace(project, nil), do: project.folder
-
-  def existing_workspace(%{harness?: true} = project, chat_id) do
-    path = worktree_path(chat_id)
-    if File.dir?(path), do: path, else: project.folder
-  end
-
-  def existing_workspace(project, _chat_id), do: project.folder
-
-  @doc """
-  Creates the chat's worktree, on branch `chat/<chat id>` forked from the trunk
-  `master`, unless it already exists. Idempotent: a chat that is opened again,
-  or resumes after a restart, keeps the worktree (and its uncommitted work) it
-  had (DEPLOY-1, DEPLOY-10).
-  """
-  @spec ensure_worktree(binary(), binary()) :: {:ok, binary()} | {:error, binary()}
-  def ensure_worktree(chat_id, root \\ Workspace.runtime_root()) do
-    path = worktree_path(chat_id, root)
-
-    cond do
-      File.dir?(path) ->
-        {:ok, path}
-
-      true ->
-        case deployable(root) do
-          :ok -> add_worktree(chat_id, path, root, @trunk)
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
-
-  defp add_worktree(chat_id, path, root, base) do
-    File.mkdir_p!(worktrees_dir(root))
-
-    args =
-      if branch_exists?(branch(chat_id), root),
-        do: ["worktree", "add", "--force", path, branch(chat_id)],
-        else: ["worktree", "add", "--force", "-b", branch(chat_id), path, base]
-
-    # The worktree is created *inside* the live tree's data dir, so this call
-    # needs that writable: the profile for the harness's own steps in the live
-    # tree (ISOL-13), not the masked `:live_tree` one a tool call there gets
-    # (ISOL-6).
-    case git(root, args, profile: :deps_sync) do
-      {:ok, _output} ->
-        link_deps(path, root)
-        seed_build(path, root)
-        {:ok, path}
-
-      {:error, reason} ->
-        {:error, "could not create a worktree for this chat: #{reason}"}
-    end
-  end
-
-  @doc """
-  Creates a sub-task's own worktree (SUBTASK-23, DEPLOY-9): branch
-  `chat/<sub-task id>`, forked from its parent's branch `chat/<parent id>`, the
-  state the parent is in when it hands the work over. Idempotent, like
-  `ensure_worktree/2`, so the same worktree is reused.
-  """
-  @spec ensure_child_worktree(binary(), binary(), binary()) ::
-          {:ok, binary()} | {:error, binary()}
-  def ensure_child_worktree(child_id, parent_id, root \\ Workspace.runtime_root()) do
-    path = worktree_path(child_id, root)
-
-    cond do
-      File.dir?(path) ->
-        {:ok, path}
-
-      branch_exists?(branch(parent_id), root) ->
-        add_worktree(child_id, path, root, branch(parent_id))
-
-      true ->
-        {:error, "the parent chat has no worktree to fork from"}
-    end
-  end
-
-  # A fresh worktree has no dependencies (`deps` is git-ignored), so `mix test`
-  # couldn't run there (DEPLOY-5). Share the live tree's, which a command reads
-  # through an overlay and writes in its own layer (ISOL-7).
-  defp link_deps(path, root) do
-    deps = Path.join(root, "deps")
-    link = Path.join(path, "deps")
-
-    if File.dir?(deps) and not File.exists?(link), do: File.ln_s(deps, link)
-    :ok
-  end
-
-  # BUILD-1: a fresh worktree has no build output of its own either, so its
-  # first compile would build every dependency from source — 29 s of a 35 s cold
-  # `mix compile`, and 28 s of 33 s under `MIX_ENV=test`, measured. Seed it with
-  # a copy of the live tree's: a dependency's sources are the same files at the
-  # same path in both trees (ISOL-7), so Mix finds its artifacts current in the
-  # worktree and skips them (BUILD-4), while the worktree's own modules are
-  # always compiled from the worktree's own sources. A copy and not a compile
-  # (BUILD-3), taken once, with the worktree (BUILD-1) — and the worktree's own,
-  # so a deploy rewriting the live tree's `_build` while a command reads the
-  # worktree's cannot be read through it, and no chat's compile writes the
-  # artifacts the server runs from (BUILD-2). A copy that fails leaves the
-  # worktree usable, with no build output, as it was before (BUILD-5).
-  defp seed_build(path, root) do
-    build = Path.join(root, "_build")
-    target = Path.join(path, "_build")
-
-    if File.dir?(build) and not File.exists?(target) do
-      command = "cp -a #{quote_arg(build)} #{quote_arg(target)}"
-
-      # The harness's own step in the live tree, the same profile the worktree's
-      # `git worktree add` runs with (ISOL-13): the tree is bound as it is, so
-      # the worktree inside it is writable too.
-      case Elia.Shell.run(command, cd: root, profile: :deps_sync, timeout: :timer.minutes(2)) do
-        {:ok, _output, 0} ->
-          :ok
-
-        other ->
-          Logger.debug("could not seed #{target}: #{Elia.Shell.truncate(inspect(other), 500)}")
-      end
-    end
-
-    :ok
-  rescue
-    e -> Logger.debug("could not seed #{path}/_build: #{Exception.message(e)}")
-  end
-
-  @doc """
-  Removes the chat's worktree and deletes its branch (DEPLOY-10). Used when the
-  chat is deleted; a branch is kept while its chat exists, since chats are
-  resumable.
-  """
-  @spec remove_worktree(binary(), binary()) :: :ok
-  def remove_worktree(chat_id, root \\ Workspace.runtime_root()) do
-    path = worktree_path(chat_id, root)
-
-    if File.dir?(path) do
-      # The worktree itself lives under the live tree's data dir, so its
-      # removal is one of the harness's own steps there (ISOL-13).
-      case git(root, ["worktree", "remove", "--force", path], profile: :deps_sync) do
-        {:ok, _} -> :ok
-        {:error, _} -> File.rm_rf!(path)
-      end
-
-      git(root, ["worktree", "prune"], profile: :deps_sync)
-    end
-
-    if branch_exists?(branch(chat_id), root) do
-      git(root, ["branch", "-D", branch(chat_id)])
-    end
-
-    Elia.Deps.remove(path, root)
-    :ok
-  end
+  # A chat's workspace root is the folder of its project (PROJ-12, DEPLOY-1,
+  # DEPLOY-3): the live tree for a chat in Elia's own project, since that
+  # project's folder *is* the live tree. Nothing here creates a worktree or a
+  # branch for a chat (the resolution is `project.folder`, in the session and the
+  # pages that need it); a chat that is about to change code makes itself a
+  # worktree inside that folder (DEPLOY-28), and every later step in that chat
+  # works there by its working directory (`Elia.Workdir`, WD-1), not by its
+  # workspace root.
 
   ## Deploying
 
@@ -1334,8 +1137,8 @@ defmodule Elia.Deploy do
   @doc """
   The `live_reload` patterns for the endpoint (DEPLOY-12): the live tree's own
   static assets only. The pattern is anchored at the live tree, so the copies
-  of those assets that appear when a chat's worktree is created (DEPLOY-1) do
-  not match: reloading on those would reload the browser while it navigates to
+  of those assets in a worktree a chat made for itself (DEPLOY-28) do not
+  match: reloading on those would reload the browser while it navigates to
   a new chat, undoing the navigation.
   """
   @spec static_reload_patterns() :: [Regex.t()]

@@ -553,16 +553,15 @@ defmodule Elia.Store do
   def exists?(id), do: valid_id?(id) and File.exists?(path(id))
 
   @doc """
-  Deletes a saved chat. A chat's worktree goes with it — removed, and its branch
-  pruned (DEPLOY-10) — and a chat that has no saved file yet is deleted too
-  (STORE-23). Only that chat goes: a parent's task chats, and a task chat's
-  parent, are left saved (UI-66). Its step records go too, so no `.timing` file
-  outlives its chat (TIME-10).
+  Deletes a saved chat and nothing else. A chat that has no saved file yet is
+  deleted too (STORE-23). Only that chat goes: a parent's task chats, and a task
+  chat's parent, are left saved (UI-66), and so is a worktree a chat made for
+  itself (DEPLOY-28, DEPLOY-10) — the harness removes no tree of a chat's. Its
+  step records go too, so no `.timing` file outlives its chat (TIME-10).
   """
   @spec delete(binary()) :: :ok | {:error, term()}
   def delete(id) do
     if valid_id?(id) do
-      Elia.Deploy.remove_worktree(id)
       Elia.StepTiming.delete(id)
 
       # STORE-45: the entry goes now, not at the next listing.

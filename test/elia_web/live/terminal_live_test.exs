@@ -126,7 +126,7 @@ defmodule EliaWeb.TerminalLiveTest do
   end
 
   defp workspace(id) do
-    snapshot = Agent.snapshot(id)
-    Elia.Deploy.workspace(snapshot.project, id)
+    # DEPLOY-1, PROJ-12: the chat's workspace root is its project's folder.
+    Agent.snapshot(id).project.folder
   end
 end

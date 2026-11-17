@@ -56,11 +56,12 @@ defmodule Elia.DeploymentTest do
     commit(tree, subject)
   end
 
-  # A chat's worktree, from the trunk, removed again at the end of the test.
+  # DEPLOY-28: the worktree a chat makes for itself inside the live tree — the
+  # harness makes none — removed again at the end of the test.
   defp new_worktree do
     id = Agent.new_id()
-    assert {:ok, path} = Deploy.ensure_worktree(id)
-    on_exit(fn -> Deploy.remove_worktree(id) end)
+    path = LiveTree.worktree(Workspace.runtime_root(), id)
+    on_exit(fn -> File.rm_rf!(path) end)
     {id, path}
   end
 
@@ -85,9 +86,10 @@ defmodule Elia.DeploymentTest do
     do: if(File.exists?(marker), do: marker |> File.read!() |> String.split(), else: [])
 
   # ISOL-30: the harness's own git runs no hook and no monitor the repository
-  # names — `git worktree add` (a checkout), the deploy's merge, and a sub-task's
-  # git in a child's worktree — while plain git in the same tree runs all three.
-  # The suite runs unjailed, so nothing but the flags keeps them from running.
+  # names — the deploy's merge, its status and its reset — while plain git in
+  # the same tree runs all of them. A chat's own worktree is the chat's git, not
+  # the harness's (DEPLOY-28). The suite runs unjailed, so nothing but the flags
+  # keeps them from running.
   test "the harness's own git runs no hook and no fsmonitor (ISOL-30)", %{tree: tree} do
     dir = Path.join(System.tmp_dir!(), "elia-isol30-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
@@ -101,43 +103,28 @@ defmodule Elia.DeploymentTest do
     assert "fsmonitor" in ran(marker) and "post-checkout" in ran(marker)
     File.rm!(marker)
 
-    {id, path} = new_worktree()
-    assert ran(marker) == []
-
-    # The chat's own work and fast-forward run plain git, which may run the
-    # monitor; what matters is what the harness runs afterwards.
+    # The chat's own work and fast-forward run plain git — the chat's git, which
+    # runs what the repository names and is not the harness's (ISOL-30,
+    # DEPLOY-28) — so the marker is cleared after them, and what matters is what
+    # the harness runs afterwards.
+    {_id, path} = new_worktree()
     work_on_trunk(path)
+    assert "post-checkout" in ran(marker)
     File.rm(marker)
 
     assert {:ok, _message} = Deploy.deploy()
     assert ran(marker) == []
-
-    # A child's own worktree, which the harness adds for a spawn, is the
-    # harness's git too (ISOL-30, SUBTASK-23).
-    assert {:ok, _child_path} = Deploy.ensure_child_worktree(Agent.new_id(), id, tree)
-    assert ran(marker) == []
   end
 
-  # Build output in the live tree, the way a real one has it (BUILD-1).
-  defp seed_build(tree, path) do
-    file = Path.join([tree, "_build", path])
-    File.mkdir_p!(Path.dirname(file))
-    File.write!(file, "beam")
-  end
-
-  # `mix compile` in a tree, as a command runs it (BUILD-2, BUILD-4).
-  defp compile(dir) do
-    System.cmd("mix", ["compile"], cd: dir, env: [{"MIX_ENV", "dev"}], stderr_to_stdout: true)
-  end
-
-  # DEPLOY-1: the file tools and `mix test` for a chat in Elia's own project run
-  # in its own worktree, not in the tree the server runs from.
-  defp chat do
+  # DEPLOY-1: a chat in Elia's own project works in the live tree itself — the
+  # harness makes no worktree for it, so its file tools and its `mix test` run
+  # there, and a chat that changes code makes itself a worktree first (DEPLOY-28).
+  defp chat(project \\ Projects.harness()) do
     id = Agent.new_id()
 
     {:ok, pid} =
       Agent.ensure_started(id,
-        project: Projects.harness(),
+        project: project,
         loop_opts: [llm: %{provider: FakeLLM}],
         # APPR-14: a new chat auto-approves every tool; these chats ask, since
         # the tests approve each spawn.
@@ -148,6 +135,13 @@ defmodule Elia.DeploymentTest do
     on_exit(fn -> stop_session(id) end)
     _ = pid
     id
+  end
+
+  # PROJ-12, DEPLOY-1: the workspace root the chat's session resolved — its
+  # project's folder, with nothing made for it.
+  defp session_workspace(id) do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    :sys.get_state(pid).workspace
   end
 
   defp stop_session(id) do
@@ -415,26 +409,33 @@ defmodule Elia.DeploymentTest do
     assert Regex.match?(pattern, Path.join(tree, "priv/static/images/logo.svg"))
     assert Regex.match?(pattern, Path.join(tree, "priv/static/assets/app.js"))
 
-    # A worktree's copies of those assets (DEPLOY-1) are not a live-tree change.
+    # A worktree's copies of those assets (DEPLOY-28) are not a live-tree change.
     refute Regex.match?(
              pattern,
-             Path.join(tree, ".elia/worktrees/abc/priv/static/images/logo.svg")
+             Path.join(tree, "tmp/worktrees/abc/priv/static/images/logo.svg")
            )
 
-    refute Regex.match?(pattern, Path.join(tree, ".elia/worktrees/abc/priv/static/sw.js"))
+    refute Regex.match?(pattern, Path.join(tree, "tmp/worktrees/abc/priv/static/sw.js"))
 
     # User uploads never reload the browser, as before.
     refute Regex.match?(pattern, Path.join(tree, "priv/static/uploads/pic.png"))
   end
 
-  # DEPLOY-3, PROJ-3
-  test "Elia's own project's folder is the live tree, and its chats work in worktrees", %{
+  # DEPLOY-3, PROJ-3, DEPLOY-1: Elia's own project's folder is the live tree, and
+  # a chat in it works there — the harness makes no worktree and no branch for a
+  # chat, so every chat's workspace is the folder (DEPLOY-9, DEPLOY-28).
+  test "Elia's own project's folder is the live tree, and its chats work in it", %{
     tree: tree
   } do
     assert Projects.harness().folder == tree
 
-    {id, path} = new_worktree()
-    assert Deploy.workspace(Projects.harness(), id) == path
+    # A chat's session resolves its workspace root to the folder, and nothing was
+    # made for it: no worktree, no branch (DEPLOY-1, DEPLOY-28).
+    id = chat()
+    assert session_workspace(id) == tree
+    refute File.dir?(Path.join([tree, "tmp", "worktrees"]))
+    refute File.dir?(Path.join([tree, ".elia", "worktrees", id]))
+    assert {_, 1} = git(tree, ["rev-parse", "--verify", "--quiet", "refs/heads/chat/#{id}"])
   end
 
   # DEPLOY-3, PROJ-12, PROJ-14
@@ -443,162 +444,20 @@ defmodule Elia.DeploymentTest do
     File.mkdir_p!(folder)
     on_exit(fn -> File.rm_rf!(folder) end)
 
-    id = Agent.new_id()
-    project = %{id: "other", name: "Other", folder: folder, harness?: false}
+    id = chat(%{id: "other", name: "Other", folder: folder, harness?: false})
+    assert session_workspace(id) == folder
+    assert File.ls!(folder) == []
 
-    assert Deploy.workspace(project, id) == folder
-    refute File.exists?(Deploy.worktree_path(id))
-
-    # A chat in Elia's own project in a tree that isn't set up for deployment
-    # (nothing to fork from, DEPLOY-1) works in the live tree itself.
+    # So does a chat in Elia's own project in a tree that isn't set up for
+    # deployment: there is no branch to fork from any more (DEPLOY-14).
     other_live = Path.join(System.tmp_dir!(), "elia-plain-#{System.unique_integer([:positive])}")
     File.mkdir_p!(other_live)
     on_exit(fn -> File.rm_rf!(other_live) end)
     Application.put_env(:elia, :runtime_root, other_live)
 
-    assert {:error, message} = Deploy.ensure_worktree(id)
-    assert message =~ "not on the branch live"
-    assert Deploy.workspace(Projects.harness(), id) == other_live
-    refute File.exists?(Deploy.worktree_path(id))
-  end
-
-  # EXPL-17, FLINK-5: resolving the workspace a chat works in creates nothing —
-  # the Files page and a file link read it, so a read must not fork a branch —
-  # and it is the same answer the chat's own tools get (PROJ-12).
-  test "resolving a chat's workspace creates no worktree", %{tree: tree} do
-    id = Agent.new_id()
-    project = Projects.harness()
-
-    assert Deploy.existing_workspace(project, id) == tree
-    assert Deploy.existing_workspace(project, nil) == tree
-    refute File.dir?(Deploy.worktree_path(id))
-
-    {id, path} = new_worktree()
-    assert Deploy.existing_workspace(project, id) == path
-    assert Deploy.existing_workspace(project, id) == Deploy.workspace(project, id)
-
-    # A project without worktrees browses its folder (PROJ-12).
-    assert Deploy.existing_workspace(%{id: "o", name: "O", folder: tree, harness?: false}, id) ==
-             tree
-  end
-
-  # DEPLOY-1, DEPLOY-13
-  test "a chat's worktree is on its own branch, forked from the trunk", %{tree: tree} do
-    {id, path} = new_worktree()
-
-    assert path == Path.join([tree, ".elia", "worktrees", id])
-    assert branch(path) == "chat/#{id}"
-    # Forked from the trunk, so it has the live tree's committed files.
-    assert head(path) == trunk(tree)
-    assert File.exists?(Path.join(path, "mix.exs"))
-
-    # Asking again keeps the worktree, and the work in it (DEPLOY-10).
-    File.write!(Path.join(path, "notes.txt"), "wip")
-    assert {:ok, ^path} = Deploy.ensure_worktree(id)
-    assert File.read!(Path.join(path, "notes.txt")) == "wip"
-  end
-
-  # ISOL-7: nothing runs ahead of a command. A chat's worktree is created with
-  # the shared `deps` linked in and no compile of its own, so a chat that runs no
-  # command compiles nothing at all.
-  test "a new worktree links the shared deps and starts no compile (ISOL-7)", %{tree: tree} do
-    File.mkdir_p!(Path.join(tree, "deps/req"))
-    {_id, path} = new_worktree()
-
-    assert File.read_link!(Path.join(path, "deps")) == Path.join(tree, "deps")
-    refute File.exists?(Elia.Deps.layer(path, tree))
-  end
-
-  # BUILD-1: creating a worktree seeds it with the live tree's build output, so
-  # its first compile reuses the dependencies' artifacts instead of building
-  # them from source.
-  test "a new worktree is seeded with the live tree's build output (BUILD-1)", %{tree: tree} do
-    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
-
-    {_id, path} = new_worktree()
-
-    assert File.read!(Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])) == "beam"
-  end
-
-  # BUILD-1: taken once, when the worktree is created — a worktree that already
-  # exists keeps the build output it has.
-  test "seeding happens once, with the worktree (BUILD-1)", %{tree: tree} do
-    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
-    {id, path} = new_worktree()
-    beam = Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])
-
-    File.write!(Path.join([tree, "_build", "dev/lib/req/ebin/Elixir.Req.beam"]), "rebuilt")
-    assert {:ok, ^path} = Deploy.ensure_worktree(id)
-
-    assert File.read!(beam) == "beam"
-  end
-
-  # BUILD-2: the copy is the worktree's own, so nothing a chat compiles reaches
-  # the live tree's build output — the artifacts the running server runs from.
-  test "a worktree's build output is its own copy (BUILD-2)", %{tree: tree} do
-    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
-    {_id, path} = new_worktree()
-
-    File.write!(Path.join([path, "_build", "dev/lib/req/ebin/Elixir.Req.beam"]), "worktree")
-
-    assert File.read!(Path.join([tree, "_build", "dev/lib/req/ebin/Elixir.Req.beam"])) == "beam"
-  end
-
-  # BUILD-3, BUILD-5: seeding is a copy, not a compile, and a live tree with no
-  # build output gives a worktree with none — the worktree is still created and
-  # the command that needed it runs as it does today.
-  test "a live tree with no build output still gives a worktree (BUILD-3, BUILD-5)", %{tree: tree} do
-    refute File.exists?(Path.join(tree, "_build"))
-
-    {_id, path} = new_worktree()
-
-    refute File.exists?(Path.join(path, "_build"))
-    assert branch(path) == "chat/" <> Path.basename(path)
-  end
-
-  # BUILD-6: the seeded copy lives inside the worktree, so it goes with it.
-  test "removing a worktree takes its seeded build output with it (BUILD-6)", %{tree: tree} do
-    seed_build(tree, "dev/lib/req/ebin/Elixir.Req.beam")
-    {id, path} = new_worktree()
-    assert File.dir?(Path.join(path, "_build"))
-
-    Deploy.remove_worktree(id)
-
-    refute File.exists?(path)
-  end
-
-  # BUILD-2, BUILD-4: a command that compiles in a worktree writes only the
-  # worktree's own build output — the live tree's is left as it was — and a
-  # module the worktree changed is compiled there, from the worktree's sources.
-  test "a worktree compiles on its own build output (BUILD-2, BUILD-4)", %{tree: tree} do
-    assert {_, 0} = compile(tree)
-    live_beam = Path.join([tree, "_build", "dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"])
-    live = File.read!(live_beam)
-
-    {_id, path} = new_worktree()
-    assert File.exists?(Path.join(path, "_build/dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"))
-
-    File.write!(Path.join(path, "lib/deploy_tmp.ex"), """
-    defmodule DeployTmp do
-      def hello, do: :changed
-    end
-    """)
-
-    assert {_, 0} = compile(path)
-
-    worktree_beam = Path.join([path, "_build", "dev/lib/deploy_tmp/ebin/Elixir.DeployTmp.beam"])
-    assert File.read!(live_beam) == live
-    refute File.read!(worktree_beam) == live
-  end
-
-  # DEPLOY-10: a worktree's dependency layer goes with it.
-  test "removing a worktree removes its dependency layer (DEPLOY-10)", %{tree: tree} do
-    {id, path} = new_worktree()
-    assert {:ok, _} = Elia.Deps.open(path, tree)
-    assert File.dir?(Elia.Deps.layer(path, tree))
-
-    Deploy.remove_worktree(id)
-    refute File.exists?(Elia.Deps.layer(path, tree))
+    id = chat()
+    assert session_workspace(id) == other_live
+    assert File.ls!(other_live) == []
   end
 
   # DEPLOY-13: a chat merges its own branch into the trunk, so the next chat to
@@ -1062,30 +921,40 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == before
   end
 
-  # DEPLOY-10
-  test "deleting a chat removes its worktree and prunes its branch", %{tree: tree} do
+  # DEPLOY-10 (retired), STORE-23: deleting a chat removes its saved file and
+  # nothing else. The harness removes no worktree and no branch for a chat any
+  # more, so the one a chat made for itself (DEPLOY-28) stays where it is.
+  test "deleting a chat removes its saved file and leaves the tree alone", %{tree: tree} do
     id = Agent.new_id()
-    {:ok, path} = Deploy.ensure_worktree(id)
-    assert File.dir?(path)
+    path = LiveTree.worktree(tree, id)
+    on_exit(fn -> File.rm_rf!(path) end)
 
     # A saved chat, so deleting it has something to delete.
     File.mkdir_p!(Store.dir())
-    File.write!(Path.join(Store.dir(), id <> ".term"), :erlang.term_to_binary(%{messages: []}))
+
+    File.write!(
+      Path.join(Store.dir(), id <> ".term"),
+      :erlang.term_to_binary(%{messages: []})
+    )
 
     assert :ok = Store.delete(id)
 
-    refute File.exists?(path)
-    assert elem(git(tree, ["rev-parse", "--verify", "--quiet", "refs/heads/chat/#{id}"]), 1) != 0
-    # A branch is kept while its chat exists (DEPLOY-10).
-    assert {:ok, _} = Deploy.ensure_worktree(id)
+    refute Store.exists?(id)
+    assert File.dir?(path)
+    assert File.exists?(Path.join(path, "mix.exs"))
+    assert branch(path) == "chat/#{id}"
+    assert {_, 0} = git(tree, ["rev-parse", "--verify", "--quiet", "refs/heads/chat/#{id}"])
   end
 
-  # DEPLOY-9, SUBTASK-23, SUBTASK-25
-  test "a sub-task works in its own worktree, and the parent merges its work", %{
+  # SUBTASK-23, SUBTASK-25, SUBTASK-30
+  test "a sub-task works in its parent's folder, and the parent merges its work", %{
     tree: tree
   } do
     parent = chat()
-    path = Deploy.worktree_path(parent)
+    # DEPLOY-28: the parent makes itself a worktree before it changes code — its
+    # own step, not the harness's — and the child's is forked from its branch.
+    path = LiveTree.worktree(tree, parent)
+    on_exit(fn -> File.rm_rf!(path) end)
     test_pid = self()
 
     parent_turn = fn request ->
@@ -1103,8 +972,8 @@ defmodule Elia.DeploymentTest do
       end
     end
 
-    # The child writes its note and commits it in its own worktree, then marks
-    # its chat done, which is what ends its task (SUBTASK-33).
+    # The child, in the worktree it made for itself, writes its note and commits
+    # it, then marks its chat done, which is what ends its task (SUBTASK-33).
     child_turn = fn request ->
       if counts(request, "mark_done") > 0 do
         reply([Message.text("Done.")])
@@ -1112,7 +981,7 @@ defmodule Elia.DeploymentTest do
         # STORE-18: a running child is read from the saved chats — its chat is
         # saved before its session starts (SUBTASK-5), so it is here.
         [%{id: child}] = Elia.Store.children(parent)
-        child_path = Deploy.worktree_path(child)
+        child_path = LiveTree.worktree(tree, child, "chat/#{parent}")
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         LiveTree.commit(child_path, "child note")
         send(test_pid, {:child, child})
@@ -1134,9 +1003,15 @@ defmodule Elia.DeploymentTest do
 
     assert_receive {:child, child}
 
-    # SUBTASK-23: the child has its own worktree and branch, cut from the
-    # parent's, so its work never touches the parent's tree while it runs.
-    child_path = Deploy.worktree_path(child)
+    # SUBTASK-23, SUBTASK-30: the child's workspace is its parent's — the live
+    # tree, with nothing forked for it by the harness (DEPLOY-1, DEPLOY-28).
+    assert session_workspace(child) == tree
+    assert session_workspace(parent) == tree
+
+    # The worktree the child made for itself is its own, on its own branch,
+    # forked from its parent's, so its work never touches the tree while it runs.
+    child_path = Path.join([tree, "tmp", "worktrees", child])
+    on_exit(fn -> File.rm_rf!(child_path) end)
     assert child_path != path
     assert branch(child_path) == "chat/#{child}"
     assert head(child_path) != before
@@ -1173,10 +1048,13 @@ defmodule Elia.DeploymentTest do
     stop_session(child)
   end
 
-  # DEPLOY-9, SUBTASK-25, SUBTASK-33
-  test "a sub-task that ends its turn without marking its chat done keeps its work on its own branch" do
+  # SUBTASK-23, SUBTASK-25, SUBTASK-33
+  test "a sub-task that ends its turn without marking its chat done keeps its work on its own branch",
+       %{tree: tree} do
     parent = chat()
-    path = Deploy.worktree_path(parent)
+    # DEPLOY-28: the parent makes itself a worktree before it changes code.
+    path = LiveTree.worktree(tree, parent)
+    on_exit(fn -> File.rm_rf!(path) end)
     test_pid = self()
 
     parent_turn = fn request ->
@@ -1203,7 +1081,7 @@ defmodule Elia.DeploymentTest do
       else
         # STORE-18: a running child is read from the saved chats (SUBTASK-34).
         [%{id: child}] = Elia.Store.children(parent)
-        child_path = Deploy.worktree_path(child)
+        child_path = LiveTree.worktree(tree, child, "chat/#{parent}")
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         File.write!(Path.join(child_path, "wip.txt"), "wip")
         LiveTree.commit(child_path, "child note")
@@ -1220,10 +1098,12 @@ defmodule Elia.DeploymentTest do
     :ok = Agent.approve(parent, "s1")
 
     assert_receive {:child, child}
-    child_path = Deploy.worktree_path(child)
+    child_path = Path.join([tree, "tmp", "worktrees", child])
+    on_exit(fn -> File.rm_rf!(child_path) end)
 
     # SUBTASK-25: nothing is merged — the parent's worktree is untouched and the
-    # work stays on the child's branch.
+    # work stays on the child's branch, which the child made for itself
+    # (SUBTASK-23, DEPLOY-28).
     assert File.read!(Path.join(child_path, "child-note.txt")) == "child"
     refute File.exists?(Path.join(path, "child-note.txt"))
     assert head(path) != head(child_path)
@@ -1270,28 +1150,6 @@ defmodule Elia.DeploymentTest do
     assert Deploy.reload(EliaWeb.Endpoint, []) == :ok
     assert Deploy.reload(EliaWeb.Endpoint) == :ok
     refute Code.ensure_loaded?(Elia.Guarded)
-  end
-
-  # ISOL-1, ISOL-6, ISOL-13: the harness's own git calls go through
-  # `Elia.Shell.run/2` too, so with the host allowing the jail they run jailed.
-  # A chat's worktree is created *inside* the live tree's data dir, which the
-  # `:live_tree` profile masks (ISOL-6), so those calls run under the profile
-  # whose bind list leaves the live tree reachable (ISOL-13) — under the masked
-  # one, git reports success and the worktree is written into the mask and lost.
-  @tag skip: @jail_skip
-  test "a chat's worktree is created and removed with the jail on", %{tree: tree} do
-    with_jail(fn ->
-      {id, path} = new_worktree()
-
-      assert path == Path.join([tree, ".elia", "worktrees", id])
-      assert File.dir?(path)
-      assert File.exists?(Path.join(path, "mix.exs"))
-      assert branch(path) == "chat/#{id}"
-      assert head(path) == trunk(tree)
-
-      assert :ok = Deploy.remove_worktree(id)
-      refute File.exists?(path)
-    end)
   end
 
   # ISOL-1, ISOL-12: on a host where the jail is wanted and bubblewrap is

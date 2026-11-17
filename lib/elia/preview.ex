@@ -12,7 +12,7 @@ defmodule Elia.Preview do
   """
 
   alias Elia.LLM.Message
-  alias Elia.{Agent, Deploy, Explorer, Store, Workspace}
+  alias Elia.{Agent, Explorer, Store, Workspace}
 
   # PREVIEW-4: a preview's own dir, gitignored so it never reaches a commit or
   # a deploy.
@@ -132,31 +132,52 @@ defmodule Elia.Preview do
 
   @doc """
   The URL the chat shows `file` at (PREVIEW-5, PREVIEW-7). The running app
-  serves it from the chat's own worktree, whoever is looking.
+  serves it from the `tmp/preview/` the preview wrote it to.
   """
   @spec url(binary(), binary()) :: binary()
   def url(chat_id, file), do: "/preview/#{chat_id}/#{file}"
 
   @doc """
-  The file `file` names in `chat_id`'s worktree, if it is there and may be
-  served (PREVIEW-7): `{:ok, absolute path}`, or `:not_found` for anything else
-  — an unknown chat, a file name that isn't a single segment with an image
-  extension, a path that leads out of `tmp/preview/` or through a symlink
-  (EXPL-1, EXPL-2), or a file that isn't a regular file. There is nothing here
-  to enumerate and nothing else to reach.
+  The file `file` names in the `tmp/preview/` a preview ran in, if it is there
+  and may be served (PREVIEW-7): `{:ok, absolute path}`, or `:not_found` for
+  anything else — an unknown chat, a file name that isn't a single segment with
+  an image extension, a path that leads out of `tmp/preview/` or through a
+  symlink (EXPL-1, EXPL-2), or a file that isn't a regular file. There is
+  nothing here to enumerate and nothing else to reach.
+
+  `root` is the chat's project's folder, which for a chat in Elia's own project
+  is the live tree. A chat that made itself a worktree inside that folder
+  (DEPLOY-28) wrote its pictures in the worktree's own `tmp/preview/`, so that
+  one is served first; the folder's own is served when the chat made none or
+  the file isn't there.
   """
   @spec path(binary(), binary(), binary()) :: {:ok, binary()} | {:error, :not_found}
   def path(chat_id, file, root \\ Workspace.runtime_root()) do
     with :ok <- check_id(chat_id),
          :ok <- check_file(file),
          {:ok, abs} <-
-           Explorer.safe_path(Path.join(@dir, file), Deploy.worktree_path(chat_id, root)),
-         {:ok, %File.Stat{type: :regular}} <- File.stat(abs) do
+           Enum.find_value(served_roots(chat_id, root), {:error, :not_found}, fn tree ->
+             case Explorer.safe_path(Path.join(@dir, file), tree) do
+               {:ok, path} ->
+                 case File.stat(path) do
+                   {:ok, %File.Stat{type: :regular}} -> {:ok, path}
+                   _ -> nil
+                 end
+
+               _ ->
+                 nil
+             end
+           end) do
       {:ok, abs}
     else
       _ -> {:error, :not_found}
     end
   end
+
+  # PREVIEW-7: the trees whose `tmp/preview/` a chat's pictures go in, in the
+  # order they are looked for — the worktree the chat made for itself under its
+  # project's folder first, then the folder's own.
+  defp served_roots(chat_id, root), do: [Path.join([root, "tmp", "worktrees", chat_id]), root]
 
   defp check_id(chat_id) do
     if Store.valid_id?(chat_id), do: :ok, else: {:error, :not_found}
@@ -168,27 +189,6 @@ defmodule Elia.Preview do
       Path.basename(file) != file -> {:error, :not_found}
       String.downcase(Path.extname(file)) not in @extensions -> {:error, :not_found}
       true -> :ok
-    end
-  end
-
-  @doc """
-  The chat whose worktree `root` is, or `nil` when it isn't one (PREVIEW-5).
-
-  A preview runs *inside* the worktree, where the live tree isn't the configured
-  root (a test run's config points at its own scratch workspace), so the chat
-  comes from the path itself: the one `Elia.Deploy.worktrees_dir/1` puts a
-  chat's worktree at, `<data dir>/worktrees/<chat id>` (DEPLOY-1).
-  """
-  @spec worktree_chat(binary()) :: binary() | nil
-  def worktree_chat(root) do
-    root = Path.expand(root)
-    dir = Path.dirname(root)
-    id = Path.basename(root)
-
-    if Path.basename(dir) == Path.basename(Deploy.worktrees_dir()) and
-         Path.basename(Path.dirname(dir)) == Path.basename(Workspace.data_dir()) and
-         Store.valid_id?(id) do
-      id
     end
   end
 

@@ -4,11 +4,11 @@ defmodule Elia.Uploads do
   (`specs/file-uploads.md`).
 
   An attachment lands in `uploads/` under the workspace the chat works in
-  (UPLOAD-6, PROJ-12) — its own worktree when the chat is in Elia's own project
-  (DEPLOY-1), its project's folder otherwise — where the agent reaches it with
-  its own file tools (FILE). It is an ordinary file of that workspace and
-  nothing of Elia's own: no other chat sees it, and no conversion is applied to
-  it, so what the user handed over is what is there.
+  (UPLOAD-6, PROJ-12) — the folder of its project, which for a chat in Elia's
+  own project is the live tree (DEPLOY-1) — where the agent reaches it with its
+  own file tools (FILE). It is an ordinary file of that workspace and nothing
+  of Elia's own: no other chat sees it, and no conversion is applied to it, so
+  what the user handed over is what is there.
   """
 
   @dir "uploads"

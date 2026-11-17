@@ -1,7 +1,7 @@
 defmodule EliaWeb.FileLinksTest do
   use ExUnit.Case, async: false
 
-  alias Elia.{Deploy, Projects, Workspace}
+  alias Elia.{Projects, Workspace}
   alias EliaWeb.FileLinks
 
   # STORE-5: a chat id is 12 URL-safe characters.
@@ -9,26 +9,18 @@ defmodule EliaWeb.FileLinksTest do
   @dir "file_links_fixture"
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
-  defp in_worktree(path), do: Path.join(Deploy.worktree_path(@chat), path)
 
   setup do
     File.rm_rf!(in_root(@dir))
-    File.rm_rf!(Deploy.worktree_path(@chat))
-    # A chat in Elia's own project works in its own worktree (DEPLOY-1, PROJ-12),
-    # and its project folder is the live tree: both hold a file of the same
-    # relative path, so a test can tell which one is browsed.
-    File.mkdir_p!(in_worktree(@dir))
-    File.write!(in_worktree("#{@dir}/note.txt"), "the chat's copy\n")
-    File.mkdir_p!(in_worktree("#{@dir}/nested"))
+    # FLINK-5, PROJ-12, DEPLOY-1: a chat's workspace is its project's folder —
+    # the live tree, for a chat in Elia's own project — and the harness makes no
+    # worktree for it, so a file of that folder is a file of the chat's
+    # workspace.
     File.mkdir_p!(in_root(@dir))
-    File.write!(in_root("#{@dir}/note.txt"), "the live tree's copy\n")
-    # A file only the live tree has, and one only the worktree has.
-    File.write!(in_root("#{@dir}/uncommitted.ex"), "uncommitted\n")
+    File.write!(in_root("#{@dir}/note.txt"), "the tree's copy\n")
+    File.mkdir_p!(in_root("#{@dir}/nested"))
 
-    on_exit(fn ->
-      File.rm_rf!(in_root(@dir))
-      File.rm_rf!(Deploy.worktree_path(@chat))
-    end)
+    on_exit(fn -> File.rm_rf!(in_root(@dir)) end)
 
     %{links: FileLinks.context(Projects.harness(), @chat)}
   end
@@ -43,18 +35,7 @@ defmodule EliaWeb.FileLinksTest do
     assert FileLinks.url(links, "#{@dir}/nested") ==
              "/files?chat=#{@chat}&path=#{@dir}%2Fnested"
 
-    # The live tree's own copy of the same path is not this chat's (PROJ-12).
-    assert FileLinks.url(links, "#{@dir}/uncommitted.ex") == nil
-
-    # A chat with no worktree is browsed in its project's folder, and a chat in
-    # another project has that project's folder (PROJ-12, EXPL-17).
-    without = FileLinks.context(Projects.harness(), "flinksnochat")
-
-    assert FileLinks.url(without, "#{@dir}/note.txt") ==
-             "/files?chat=flinksnochat&path=#{@dir}%2Fnote.txt"
-
-    assert FileLinks.url(without, "#{@dir}/uncommitted.ex") =~ "uncommitted"
-
+    # Another project's chat has that project's folder (PROJ-12, EXPL-17).
     other = %{id: "flinksproject", name: "Other", folder: Workspace.root(), harness?: false}
 
     assert FileLinks.url(FileLinks.context(other, "flinksother1"), "#{@dir}/note.txt") ==
@@ -79,19 +60,19 @@ defmodule EliaWeb.FileLinksTest do
 
   # FLINK-3: an absolute path inside the chat's workspace is the same file.
   test "an absolute path inside the workspace links too", %{links: links} do
-    assert FileLinks.url(links, in_worktree("#{@dir}/note.txt")) ==
+    assert FileLinks.url(links, in_root("#{@dir}/note.txt")) ==
              "/files?chat=#{@chat}&path=#{@dir}%2Fnote.txt"
 
-    # One outside it is no mention at all (FLINK-5).
-    assert FileLinks.url(links, in_root("#{@dir}/uncommitted.ex")) == nil
+    # One outside it is no mention at all (FLINK-5). The scratch workspace is
+    # this test's root, so `/etc/passwd` is outside it.
     assert FileLinks.url(links, "/etc/passwd") == nil
   end
 
   # FLINK-5: only a path the Files page could show — otherwise the link would
   # land on a page that shows an error (EXPL-9).
   test "refuses what the Files page could not show", %{links: links} do
-    File.ln_s!("/etc", in_worktree("#{@dir}/etc-link"))
-    File.ln_s!(in_worktree("#{@dir}/note.txt"), in_worktree("#{@dir}/note-link.txt"))
+    File.ln_s!("/etc", in_root("#{@dir}/etc-link"))
+    File.ln_s!(in_root("#{@dir}/note.txt"), in_root("#{@dir}/note-link.txt"))
 
     for mention <- [
           # not there
@@ -117,13 +98,13 @@ defmodule EliaWeb.FileLinksTest do
     end
 
     # FLINK-5: the answer follows the filesystem, as the page would see it.
-    File.rm!(in_worktree("#{@dir}/note.txt"))
+    File.rm!(in_root("#{@dir}/note.txt"))
     assert FileLinks.url(links, "#{@dir}/note.txt") == nil
   end
 
   # FLINK-6: the URL holds no text of its own, so any path is linkable.
   test "percent-encodes the path it links", %{links: links} do
-    File.write!(in_worktree("#{@dir}/a & b<c>.ex"), "x\n")
+    File.write!(in_root("#{@dir}/a & b<c>.ex"), "x\n")
 
     url = FileLinks.url(links, "#{@dir}/a & b<c>.ex")
     refute url =~ "<"

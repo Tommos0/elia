@@ -532,9 +532,11 @@ defmodule EliaWeb.SettingsLiveTest do
 
   # A change on the trunk, the way a chat's merge leaves one (DEPLOY-13).
   defp work_on_trunk do
+    # DEPLOY-28: the chat makes its own worktree inside the live tree; nothing
+    # makes one for it. DEPLOY-13: it merges its branch into the trunk itself.
     id = Elia.Agent.new_id()
-    assert {:ok, path} = Deploy.ensure_worktree(id)
-    on_exit(fn -> Deploy.remove_worktree(id) end)
+    path = LiveTree.worktree(Elia.Workspace.runtime_root(), id)
+    on_exit(fn -> File.rm_rf!(path) end)
     LiveTree.work!(path)
     LiveTree.push_to_trunk(path)
   end

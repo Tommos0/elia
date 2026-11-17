@@ -25,14 +25,15 @@ defmodule Elia.UploadsTest do
       assert File.read!(Path.join([root, "uploads", "report.txt"])) == "hello"
     end
 
-    # UPLOAD-6: the chat's own workspace is the one it works in (PROJ-12) — its
-    # own worktree in Elia's own project (DEPLOY-1) — so an attachment is where
-    # the agent's own tools (FILE) and the Files page look for it (FLINK-5). The
-    # view hands this module exactly the root it resolves for the chat,
-    # `Elia.Deploy.existing_workspace/2`; the LiveView test covers that side of
-    # it (`test/elia_web/live/chat_upload_test.exs`).
+    # UPLOAD-6: the chat's own workspace is the one it works in (PROJ-12) — the
+    # folder of its project, which for a chat in Elia's own project is the live
+    # tree (DEPLOY-1) — so an attachment is where the agent's own tools (FILE)
+    # and the Files page look for it (FLINK-5). The view hands this module exactly
+    # the root it resolves for the chat, `Elia.Deploy.existing_workspace/2`; the
+    # LiveView test covers that side of it
+    # (`test/elia_web/live/chat_upload_test.exs`).
     test "the directory is created under the root it is given, whatever that is", %{root: root} do
-      nested = Path.join(root, "worktree")
+      nested = Path.join(root, "elsewhere")
 
       assert {:ok, "uploads/a.txt"} = Uploads.write(nested, "a.txt", "x")
       assert File.read!(Path.join([nested, "uploads", "a.txt"])) == "x"

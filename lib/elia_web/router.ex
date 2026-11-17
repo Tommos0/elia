@@ -26,7 +26,7 @@ defmodule EliaWeb.Router do
 
   # A UI preview's images (PREVIEW-7): directory-independent, so they are
   # served without the session, layout or static pipeline — straight from the
-  # chat's own worktree.
+  # `tmp/preview/` the preview wrote them to.
   scope "/preview", EliaWeb do
     get "/:chat_id/:file", PreviewController, :show
   end

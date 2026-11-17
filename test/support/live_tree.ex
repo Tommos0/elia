@@ -28,7 +28,10 @@ defmodule Elia.LiveTree do
     File.mkdir_p!(Path.join(dir, "lib"))
     File.mkdir_p!(Path.join(dir, "test"))
 
-    File.write!(Path.join(dir, ".gitignore"), "/_build/\n/deps/\n/.elia/\n")
+    # DEPLOY-28: a chat makes its own worktree in `tmp/worktrees/`, and an
+    # untracked `tmp/` would make the tree a dirty one that can't be deployed
+    # (DEPLOY-5) — as in the project itself, where `/tmp/` is ignored.
+    File.write!(Path.join(dir, ".gitignore"), "/_build/\n/deps/\n/.elia/\n/tmp/\n")
     if opts[:front_end], do: front_end(dir)
 
     write(dir, "mix.exs", """
@@ -100,6 +103,20 @@ defmodule Elia.LiveTree do
 
   @doc "The trunk: what a chat's worktree forks from and merges into (DEPLOY-13)."
   def trunk, do: "master"
+
+  @doc """
+  The worktree a chat makes for itself (DEPLOY-28): a git worktree of `dir`
+  inside its `tmp/worktrees/`, on branch `chat/<id>`, forked from `base` — the
+  trunk by default, the parent's branch for a sub-task (SUBTASK-23). The
+  harness makes none, so a test that wants a chat's tree asks for one here.
+  """
+  @spec worktree(binary(), binary(), binary()) :: binary()
+  def worktree(dir, id, base \\ nil) do
+    path = Path.join([dir, "tmp", "worktrees", id])
+    File.mkdir_p!(Path.dirname(path))
+    git!(dir, ["worktree", "add", "-b", "chat/" <> id, path, base || trunk()])
+    path
+  end
 
   @doc """
   Merges a worktree's branch into the trunk, the way a chat's agent does when

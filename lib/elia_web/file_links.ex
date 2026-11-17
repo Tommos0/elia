@@ -9,7 +9,7 @@ defmodule EliaWeb.FileLinks do
   plain text, so a link never leads to a page that would show an error.
   """
 
-  alias Elia.{Deploy, Explorer, Workspace}
+  alias Elia.{Explorer, Workspace}
 
   @typedoc """
   Where a chat's mentions resolve (FLINK-5): the workspace that chat works in
@@ -23,7 +23,7 @@ defmodule EliaWeb.FileLinks do
   """
   @spec context(Elia.Projects.t(), binary()) :: t()
   def context(project, chat_id) do
-    %{chat_id: chat_id, root: Deploy.existing_workspace(project, chat_id)}
+    %{chat_id: chat_id, root: project.folder}
   end
 
   @doc """

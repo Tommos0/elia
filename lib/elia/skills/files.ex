@@ -5,8 +5,10 @@ defmodule Elia.Skills.Files do
   Approval follows `Elia.Workspace` classes: changes under `skills/` run
   without asking, other workspace files need approval, protected paths and
   paths outside the workspace are refused (reading outside needs approval).
-  Paths are resolved against the chat's project folder (PROJ-12), or the
-  chat's own git worktree in Elia's own project (DEPLOY-1).
+  Paths are resolved against the chat's project folder (PROJ-12) — the live
+  tree for a chat in Elia's own project (DEPLOY-1) — and against the worktree
+  such a chat made for itself inside it once its working directory is there
+  (DEPLOY-28, WD-1).
 
   With the jail on — the default (ISOL-16) — the tools reach the workspace and
   nothing else (FILE-12, FILE-13): a path outside it is refused instead of
@@ -961,9 +963,10 @@ defmodule Elia.Skills.Files do
     |> Enum.reverse()
   end
 
-  # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
-  # in Elia's own project (DEPLOY-1), Elia's own root when unset. What a result
-  # names is relative to this, wherever the chat stands (WD-8).
+  # The workspace root of the turn (PROJ-12): the folder of the chat's project,
+  # the live tree for a chat in Elia's own project (DEPLOY-1), Elia's own root
+  # when unset. What a result names is relative to this, wherever the chat
+  # stands (WD-8).
   defp root(ctx), do: ctx[:workspace] || Workspace.root()
 
   # The directory a relative path resolves against (FILE-1, WD-1): the chat's

@@ -11,7 +11,7 @@ defmodule EliaWeb.TerminalLive do
   """
   use EliaWeb, :live_view
 
-  alias Elia.{Agent, Deploy, Store, Terminal}
+  alias Elia.{Agent, Store, Terminal}
 
   # TERM-22: the sizes the page offers, from a phone's smallest to a big screen,
   # and the one it opens with.
@@ -38,9 +38,9 @@ defmodule EliaWeb.TerminalLive do
         session_id: id,
         page_title: Store.chat_title(id),
         project: snapshot.project,
-        # What the workspace *is*, without creating one just by opening a page
-        # (DEPLOY): the worktree is forked when a terminal actually starts.
-        workspace: Deploy.existing_workspace(snapshot.project, id),
+        # What the workspace *is*: the chat's project's folder, which is the
+        # live tree for a chat in Elia's own project (DEPLOY-1).
+        workspace: snapshot.project.folder,
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         tmux: Terminal.available?(),
@@ -66,7 +66,7 @@ defmodule EliaWeb.TerminalLive do
 
     case Terminal.start(socket.assigns.session_id,
            command: if(command == "", do: nil, else: command),
-           workspace: Deploy.workspace(socket.assigns.project, socket.assigns.session_id),
+           workspace: socket.assigns.project.folder,
            jail: socket.assigns.jail
          ) do
       {:ok, _pid} -> {:noreply, refresh(socket, command)}

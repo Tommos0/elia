@@ -17,7 +17,7 @@ defmodule Elia.Skills.Tasks do
 
   @behaviour Elia.Skill
 
-  alias Elia.{Deploy, Store, Workspace}
+  alias Elia.{Store, Workspace}
 
   # SUBTASK-27, SUBTASK-35: how often a wait looks the child's chat up again, so
   # one deleted while it waits is an error rather than a wait for a chat that no
@@ -79,19 +79,20 @@ defmodule Elia.Skills.Tasks do
     the sub-task's own chat, which you can read like any chat, or the files it \
     says it changed, and tell the user what happened.
 
-    A sub-task in Elia's own project works in its own worktree, so its \
-    committed work stays on branch `chat/<task_id>` and is NOT merged into this \
-    chat's branch. Bring it in yourself when you want it: \
+    A sub-task works in your workspace — the same folder you do — and, like \
+    you, makes itself a worktree of its own when it changes code, on branch \
+    `chat/<task_id>` forked from your branch. Its committed work stays there \
+    and is NOT merged into your branch. Bring it in yourself when you want it: \
     `git merge --ff-only chat/<task_id>`, rebasing on your branch first and \
     resolving conflicts if it has moved since the spawn. Several sub-tasks can \
-    be merged in whatever order suits. In another project the sub-task commits \
-    in this chat's workspace, so there is nothing to merge.
+    be merged in whatever order suits, and one that committed nothing leaves \
+    nothing to merge.
 
     The harness never undoes a sub-task's work by itself. To discard it, don't \
-    merge its branch; when the user wants the worktree and branch gone as well, \
-    deleting the sub-task's chat removes them. Offer that rather than doing it \
-    by default, since the sub-task's partial work may be worth keeping or \
-    finishing.
+    merge its branch; deleting the sub-task's chat leaves its worktree and \
+    branch where they are, so removing them is a step of its own when the user \
+    wants that too. Offer it rather than doing it by default, since the \
+    sub-task's partial work may be worth keeping or finishing.
     """
   end
 
@@ -184,22 +185,9 @@ defmodule Elia.Skills.Tasks do
   defp blank?(text), do: not is_binary(text) or String.trim(text) == ""
 
   # The repository the spawn works in: the parent chat's own workspace, which is
-  # its git worktree for a chat in Elia's own project (DEPLOY-1) and its
-  # project's folder for a chat in another one (PROJ-12).
+  # its project's folder — the live tree for a chat in Elia's own project
+  # (DEPLOY-1) and that project's folder for a chat in another one (PROJ-12).
   defp parent_root(ctx), do: ctx[:workspace] || Workspace.root()
-
-  # SUBTASK-23: the root this child works in — its own worktree when the parent
-  # has one (Elia's own project, DEPLOY-1), the parent's workspace otherwise. A
-  # worktree that can't be made falls back to the parent's workspace, so the
-  # child always has somewhere to work.
-  defp child_workspace(child_id, parent_id, parent_root) do
-    with true <- Deploy.worktree_chat(parent_root) == parent_id,
-         {:ok, path} <- Deploy.ensure_child_worktree(child_id, parent_id) do
-      path
-    else
-      _ -> parent_root
-    end
-  end
 
   defp start_child(input, ctx) do
     parent_id = ctx[:session_id]
@@ -207,7 +195,10 @@ defmodule Elia.Skills.Tasks do
     project = ctx[:project]
     title = String.trim(input["title"])
     parent = Elia.Agent.snapshot(parent_id)
-    workspace = child_workspace(child_id, parent_id, parent_root(ctx))
+    # SUBTASK-23, SUBTASK-30: the child works in its parent's workspace — no
+    # worktree is forked for it and no branch is made — and it makes itself a
+    # worktree of its own there if the work needs one (DEPLOY-28).
+    workspace = parent_root(ctx)
 
     # STORE-16, SUBTASK-15: the metadata of a child from here on — the chat that
     # started it and when — is all a child saves of its task; its result is added

@@ -39,7 +39,8 @@ defmodule Elia.Projects do
   @doc """
   Elia's own project: id `harness`, folder `Elia.Workspace.runtime_root/0` — the
   live tree, where the server runs and where Elia's data lives (PROJ-3,
-  DEPLOY-3). Each of its chats works in its own worktree (DEPLOY-1).
+  DEPLOY-3). Its chats work in that folder, and one that changes code makes
+  itself a worktree inside it (DEPLOY-1, DEPLOY-28).
   """
   @spec harness() :: t()
   def harness do
@@ -113,9 +114,9 @@ defmodule Elia.Projects do
   end
 
   @doc """
-  Whether a tool context belongs to Elia's own project. Its workspaces are the
-  only ones a chat works in as its own worktree, and the only ones the deploy
-  workflow applies to (PROJ-14, DEPLOY-1).
+  Whether a tool context belongs to Elia's own project: the only project the
+  deploy workflow applies to, and the one whose folder is the live tree the
+  server runs from (PROJ-14, DEPLOY-1).
   """
   @spec harness_ctx?(map()) :: boolean()
   def harness_ctx?(ctx) do

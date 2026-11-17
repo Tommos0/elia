@@ -93,28 +93,15 @@ defmodule Elia.PreviewTest do
     end
   end
 
-  # PREVIEW-5
-  describe "the chat a preview's link is for" do
-    test "is the worktree's own name" do
-      assert Preview.worktree_chat("/live/.elia/worktrees/abc123") == "abc123"
-      assert Preview.worktree_chat("/live/.elia/worktrees/abc123/") == "abc123"
-    end
-
-    test "is nothing outside a chat's worktree" do
-      assert Preview.worktree_chat("/live") == nil
-      assert Preview.worktree_chat("/home/me/project") == nil
-      assert Preview.worktree_chat("/live/.elia/worktrees/") == nil
-      assert Preview.worktree_chat("/live/.elia/projects/abc123") == nil
-    end
-  end
-
   # PREVIEW-7
   describe "the file a URL names" do
     setup :live_tree
 
-    test "is the picture in that chat's own worktree", %{tree: tree} do
-      worktree = worktree(tree)
-      dir = Preview.dir(worktree)
+    # PREVIEW-7, DEPLOY-1: a chat's pictures are in the tmp/preview/ of the tree
+    # the preview ran in — its project's folder, which is where a chat's own
+    # workspace is now that the harness makes no worktree for it.
+    test "is the picture in the tree the preview ran in", %{tree: tree} do
+      dir = Preview.dir(tree)
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "0-root.png"), "png bytes")
 
@@ -122,15 +109,34 @@ defmodule Elia.PreviewTest do
       assert path == Path.join(dir, "0-root.png")
     end
 
-    test "is nothing else", %{tree: tree} do
-      worktree = worktree(tree)
+    # PREVIEW-7, DEPLOY-28: a chat that made itself a worktree inside that folder
+    # wrote its pictures in the worktree's own tmp/preview/, which is the one
+    # served first; one that isn't there is served from the folder's own.
+    test "is the picture in the worktree the chat made for itself", %{tree: tree} do
+      worktree = chat_worktree(tree)
       dir = Preview.dir(worktree)
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "0-root.png"), "the worktree's")
+      File.mkdir_p!(Preview.dir(tree))
+      File.write!(Path.join(Preview.dir(tree), "0-root.png"), "the folder's own")
+      File.write!(Path.join(Preview.dir(tree), "1-files.png"), "the folder's own")
+
+      assert {:ok, path} = Preview.path("previewChat", "0-root.png", tree)
+      assert path == Path.join(dir, "0-root.png")
+      assert File.read!(path) == "the worktree's"
+
+      assert {:ok, path} = Preview.path("previewChat", "1-files.png", tree)
+      assert path == Path.join(Preview.dir(tree), "1-files.png")
+    end
+
+    test "is nothing else", %{tree: tree} do
+      dir = Preview.dir(tree)
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "0-root.png"), "png bytes")
       File.mkdir_p!(Path.join(dir, "dir.png"))
       # A file outside the preview dir, and a link to it from inside (EXPL-2).
-      File.write!(Path.join(worktree, "secret.png"), "not a preview")
-      File.ln_s(Path.join(worktree, "secret.png"), Path.join(dir, "link.png"))
+      File.write!(Path.join(tree, "secret.png"), "not a preview")
+      File.ln_s(Path.join(tree, "secret.png"), Path.join(dir, "link.png"))
 
       assert {:error, :not_found} = Preview.path("previewChat", "1-root.png", tree)
       assert {:error, :not_found} = Preview.path("previewChat", "notes.txt", tree)
@@ -138,12 +144,16 @@ defmodule Elia.PreviewTest do
       assert {:error, :not_found} = Preview.path("previewChat", "link.png", tree)
       assert {:error, :not_found} = Preview.path("previewChat", "../secret.png", tree)
       assert {:error, :not_found} = Preview.path("previewChat", "sub/0-root.png", tree)
-      assert {:error, :not_found} = Preview.path("otherChat", "0-root.png", tree)
+      # A chat id that isn't one is a 404 whatever is on disk (PREVIEW-7); a
+      # valid one shares its project's own tmp/preview/, which is that tree's.
+      assert {:ok, _} = Preview.path("otherChat", "0-root.png", tree)
       assert {:error, :not_found} = Preview.path("bad/id", "0-root.png", tree)
     end
 
+    # A chat's own worktree is where its pictures are, not a way out of
+    # tmp/preview/: a symlinked preview dir reaches nothing (EXPL-2, PREVIEW-7).
     test "is not reached through a symlinked preview dir", %{tree: tree} do
-      worktree = worktree(tree)
+      worktree = chat_worktree(tree)
       elsewhere = Path.join(worktree, "elsewhere")
       File.mkdir_p!(elsewhere)
       File.write!(Path.join(elsewhere, "0-root.png"), "png bytes")
@@ -242,8 +252,11 @@ defmodule Elia.PreviewTest do
     end
   end
 
-  defp worktree(tree) do
-    {:ok, path} = Elia.Deploy.ensure_worktree("previewChat", tree)
+  # DEPLOY-28: the worktree a chat makes for itself, inside its project's folder
+  # — the harness makes none, so the test makes the one a chat would.
+  defp chat_worktree(tree) do
+    path = Path.join([tree, "tmp", "worktrees", "previewChat"])
+    File.mkdir_p!(path)
     path
   end
 

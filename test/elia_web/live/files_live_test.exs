@@ -200,24 +200,18 @@ defmodule EliaWeb.FilesLiveTest do
     end
   end
 
-  # EXPL-17, EXPL-18: a chat's own workspace can be browsed — its worktree for a
-  # chat in Elia's own project (PROJ-12, DEPLOY-1), not the project's folder —
-  # and the page names the chat it browses.
+  # EXPL-17, EXPL-18: a chat's own workspace can be browsed — its project's
+  # folder, which for a chat in Elia's own project is the live tree (PROJ-12,
+  # DEPLOY-1), since the harness makes no worktree for it — and the page names
+  # the chat it browses.
   test "browses a chat's own workspace", %{conn: conn} do
     chat = Elia.Agent.new_id()
-    worktree = Elia.Deploy.worktree_path(chat)
-    File.rm_rf!(worktree)
-    File.mkdir_p!(Path.join(worktree, "inner"))
-    File.write!(Path.join(worktree, "inner/only_in_worktree.ex"), "defmodule OnlyHere do\nend\n")
-    # The project's folder has the same directory with another file, so the test
-    # tells which of the two is in view.
     File.mkdir_p!(in_root("inner"))
-    File.write!(in_root("inner/live_only.txt"), "the live tree's copy\n")
+    File.write!(in_root("inner/only_here.ex"), "defmodule OnlyHere do\nend\n")
     :ok = Elia.Store.save(chat, [], project: "harness", title: "Where the file is")
 
     on_exit(fn ->
       Elia.Store.delete(chat)
-      File.rm_rf!(worktree)
       File.rm_rf!(in_root("inner"))
     end)
 
@@ -227,12 +221,10 @@ defmodule EliaWeb.FilesLiveTest do
 
     view |> element("[data-entry='inner']") |> render_click()
     assert_patch(view, ~p"/files?#{%{chat: chat, path: "inner"}}")
-    assert has_element?(view, "[data-entry='inner/only_in_worktree.ex']")
-    refute has_element?(view, "[data-entry='inner/live_only.txt']")
+    assert has_element?(view, "[data-entry='inner/only_here.ex']")
 
-    view |> element("[data-entry='inner/only_in_worktree.ex']") |> render_click()
+    view |> element("[data-entry='inner/only_here.ex']") |> render_click()
     assert has_element?(view, "#file-content", "defmodule OnlyHere do")
-    refute has_element?(view, "#file-content", "the live tree's copy")
 
     # Back to the directory, so the picker's current path is one the project has
     # too (EXPL-16, EXPL-18): it browses that project's folder and leaves the
@@ -243,8 +235,7 @@ defmodule EliaWeb.FilesLiveTest do
     view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
     assert_patch(view, "/files?path=inner")
     refute has_element?(view, "#workspace-note")
-    assert has_element?(view, "[data-entry='inner/live_only.txt']")
-    refute has_element?(view, "[data-entry='inner/only_in_worktree.ex']")
+    assert has_element?(view, "[data-entry='inner/only_here.ex']")
   end
 
   # EXPL-17: a chat that isn't a saved one is ignored, and the project decides.

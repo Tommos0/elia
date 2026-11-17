@@ -172,7 +172,8 @@ defmodule Elia.Skills.Folder do
     )
   end
 
-  # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
-  # in Elia's own project (DEPLOY-1), Elia's own root when unset.
+  # The workspace root of the turn (PROJ-12): the folder of the chat's project,
+  # the live tree for a chat in Elia's own project (DEPLOY-1), Elia's own root
+  # when unset.
   defp workspace(ctx), do: ctx[:workspace] || Elia.Workspace.root()
 end

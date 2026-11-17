@@ -152,10 +152,13 @@ defmodule EliaWeb.PreviewTest do
 
   # PREVIEW-5: what the agent needs to show the pictures — the file, and the URL
   # the chat renders it from — then what the pages logged, reported and not
-  # failed on. A preview outside a chat's worktree has no URL to offer: the
+  # failed on. The chat is the one the harness gave the command (`ELIA_CHAT_ID`,
+  # SHELL-14), not one read out of the workspace's path: a chat now works in its
+  # project's folder and makes its own worktree there, so the path says nothing
+  # about which chat it is. With no chat id there is no URL to offer — the
   # running app only serves a chat's own previews (PREVIEW-7).
   defp report(taken, root) do
-    chat_id = Preview.worktree_chat(root)
+    chat_id = chat_id()
 
     lines =
       Enum.map(taken, fn {path, file} ->
@@ -163,7 +166,7 @@ defmodule EliaWeb.PreviewTest do
           if chat_id do
             "![" <> path <> "](" <> Preview.url(chat_id, file) <> ")"
           else
-            "(no link: this workspace is not a chat's worktree)"
+            "(no link: ELIA_CHAT_ID is not set, so this preview is no chat's)"
           end
 
         ["  #{path}", "    #{Path.join(Preview.dir(root), file)}", "    #{link}"]
@@ -176,6 +179,16 @@ defmodule EliaWeb.PreviewTest do
         "\n"
       )
     )
+  end
+
+  # PREVIEW-5: the chat the command was run for, from the environment its shell
+  # call was given (SHELL-14) — and nothing at all when it wasn't.
+  defp chat_id do
+    case System.get_env("ELIA_CHAT_ID") do
+      nil -> nil
+      "" -> nil
+      id -> id
+    end
   end
 
   defp errors do

@@ -1,7 +1,7 @@
 defmodule EliaWeb.PreviewControllerTest do
   use EliaWeb.ConnCase, async: false
 
-  alias Elia.{Deploy, LiveTree, Preview}
+  alias Elia.{LiveTree, Preview}
 
   @chat "previewChat"
   @png <<137, 80, 78, 71, 13, 10, 26, 10>>
@@ -19,7 +19,9 @@ defmodule EliaWeb.PreviewControllerTest do
       LiveTree.remove(tree)
     end)
 
-    {:ok, worktree} = Deploy.ensure_worktree(@chat, tree)
+    # PREVIEW-7, DEPLOY-28: a chat that made itself a worktree inside the folder
+    # wrote its pictures in the worktree's own tmp/preview/.
+    worktree = Path.join([tree, "tmp", "worktrees", @chat])
     dir = Preview.dir(worktree)
     File.mkdir_p!(dir)
 
@@ -27,7 +29,7 @@ defmodule EliaWeb.PreviewControllerTest do
   end
 
   # PREVIEW-7
-  test "serves the picture a preview wrote in the chat's own worktree", %{
+  test "serves the picture a preview wrote in the chat's own tree", %{
     conn: conn,
     dir: dir
   } do
@@ -60,7 +62,7 @@ defmodule EliaWeb.PreviewControllerTest do
           "/preview/#{@chat}/link.png",
           # a path that leads out of the preview dir
           "/preview/#{@chat}/..%2F..%2Fsecret.png",
-          # no worktree for this chat
+          # no preview dir for this chat
           "/preview/otherChat/0-root.png",
           # not a chat id
           "/preview/bad%2Fid/0-root.png"

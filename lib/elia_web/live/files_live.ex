@@ -5,7 +5,7 @@ defmodule EliaWeb.FilesLive do
   """
   use EliaWeb, :live_view
 
-  alias Elia.{Deploy, Explorer, Store, SystemStats, Workspace}
+  alias Elia.{Explorer, Store, SystemStats, Workspace}
 
   @highlight_max 128 * 1024
 
@@ -18,7 +18,7 @@ defmodule EliaWeb.FilesLive do
   @impl true
   def handle_params(params, _uri, socket) do
     {project, chat} = viewed(params)
-    root = Deploy.existing_workspace(project, chat)
+    root = project.folder
     path = normalize(root, params["path"])
 
     {dir, file, error} =

@@ -2,13 +2,15 @@ defmodule EliaWeb.PreviewController do
   @moduledoc """
   Serves the images a UI preview wrote (PREVIEW-7).
 
-  A preview runs in a chat's own worktree (PREVIEW-1), which the live app would
-  otherwise never read from. This route is how a picture taken there reaches the
-  chat that asked for it, with nothing else reachable: a picture has to be a
-  single file name with an image extension, inside that chat's own `tmp/preview/`
-  (PREVIEW-4), reached without a symlink (`Elia.Explorer.safe_path/2`). Any
-  other chat id, name, extension or path — and a file that is not there — is a
-  404, never a listing and never another file of the workspace.
+  A preview writes its pictures into the `tmp/preview/` of the tree it ran in
+  (PREVIEW-1), which the running app would otherwise never read from. This
+  route is how a picture taken there reaches the chat that asked for it, with
+  nothing else reachable: a picture has to be a single file name with an image
+  extension, in that chat's own `tmp/preview/` (PREVIEW-4) — the worktree it
+  made for itself or its own folder, `Elia.Preview.path/3` decides — reached
+  without a symlink (`Elia.Explorer.safe_path/2`). Any other chat id, name,
+  extension or path — and a file that is not there — is a 404, never a listing
+  and never another file of the workspace.
   """
 
   use EliaWeb, :controller

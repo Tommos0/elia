@@ -225,9 +225,9 @@ defmodule Elia.Agent do
   @doc """
   Deletes a chat (SESS-29): stops its turn if one is running (SESS-8, which also
   stops its sub-tasks' turns, SESS-22), terminates its session process so no
-  stale session can save it again, then removes the saved chat and its worktree
-  (STORE-23). A chat with no session is simply removed. `{:error, :invalid_id}`
-  for an invalid id (STORE-4). A running sub-task's chat deleted is that task
+  stale session can save it again, then removes the saved chat (STORE-23). A
+  chat with no session is simply removed. `{:error, :invalid_id}` for an
+  invalid id (STORE-4). A running sub-task's chat deleted is that task
   over, so a parent waiting on it answers with an error (SUBTASK-35).
   """
   @spec delete(binary()) :: :ok | {:error, :invalid_id}
