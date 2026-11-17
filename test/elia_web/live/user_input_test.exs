@@ -171,8 +171,11 @@ defmodule EliaWeb.UserInputTest do
     assert has_element?(view, "#chat-status-#{other}[data-status='idle']")
   end
 
-  # ASK-9, UI-44: a parent's card says its child is waiting for an answer.
-  test "a parent's task card says the child is waiting for an answer", %{conn: conn} do
+  # ASK-9, UI-47: a parent's sidebar says its child is waiting for an answer.
+  # UI-44 (retired): the parent's transcript draws no card of its own for the
+  # child — the child's chat is an ordinary chat, and its own row is where its
+  # status is shown (UI-46).
+  test "a parent's sidebar says its child is waiting for an answer", %{conn: conn} do
     parent = Agent.new_id()
     child = Agent.new_id()
     on_exit(fn -> Enum.each([parent, child], &Store.delete/1) end)
@@ -185,24 +188,25 @@ defmodule EliaWeb.UserInputTest do
     ])
 
     Store.save(child, [Message.user("go")],
-      task: %{
-        parent_id: parent,
-        parent_call_id: "s1",
-        title: "Add the file",
-        brief: "Do it.",
-        started_at: DateTime.utc_now(),
-        status: "running"
-      }
+      title: "Add the file",
+      task: %{parent_id: parent, started_at: DateTime.utc_now()}
     )
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    assert has_element?(view, "#task-card-s1")
+
+    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}", "Add the file")
+    assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
+    refute has_element?(view, "#task-card-s1")
     refute has_element?(view, "#task-input-s1")
 
     activity_send(child, :awaiting_input)
 
-    assert has_element?(view, "#task-input-s1", "Waiting for your answer in the task chat")
-    assert has_element?(view, "#task-status-s1")
+    # ASK-9, UI-76: the child's own row says the user is waited on, from the same
+    # derivation every chat's row uses (UI-46).
+    assert has_element?(
+             view,
+             "#chat-status-#{child}[data-status='awaiting_input'][title='Needs your answer']"
+           )
   end
 
   # ASK-10, UI-61, UI-62

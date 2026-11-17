@@ -288,7 +288,8 @@ defmodule EliaWeb.ChatLiveTest do
 
     :ok =
       Elia.Store.save(child, [Message.user("preamble")],
-        task: %{parent_id: parent, parent_call_id: "s1", title: "Task one", status: "done"}
+        title: "Task one",
+        task: %{parent_id: parent, started_at: DateTime.utc_now()}
       )
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
@@ -404,7 +405,8 @@ defmodule EliaWeb.ChatLiveTest do
 
     :ok =
       Elia.Store.save(child, [Message.user("preamble")],
-        task: %{parent_id: parent, parent_call_id: "s1", title: "Nested task"},
+        title: "Nested task",
+        task: %{parent_id: parent, started_at: DateTime.utc_now()},
         done: true
       )
 

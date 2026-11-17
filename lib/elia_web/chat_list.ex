@@ -161,7 +161,6 @@ defmodule EliaWeb.ChatList do
   # flags those awaiting approval, those waiting for an answer, those paused at a
   # limit and those working, and drops the marker of a chat whose session has
   # started — which is what clears the record the restart left behind (INTR-3).
-  # The page's own handler for the same message runs after this one (UI-44).
   defp handle_info({:chat_status, id, status}, socket) do
     # UI-49: the list is read again, so a row follows a change the status alone
     # doesn't carry — a chat's done flag (STORE-35, DONE-2), or a task chat
@@ -404,7 +403,7 @@ defmodule EliaWeb.ChatList do
       assign(assigns,
         status_id: "#{assigns.scope}chat-status-#{assigns.chat.id}",
         # UI-46: a task chat's row is the row any chat has, from the one
-        # derivation its card (UI-44) and its header (UI-48) read too.
+        # derivation its header (UI-48) reads too.
         status: ChatStatus.for_chat(assigns.chat, assigns.statuses)
       )
 

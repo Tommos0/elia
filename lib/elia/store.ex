@@ -297,15 +297,18 @@ defmodule Elia.Store do
 
   @doc """
   The saved sub-task metadata of a chat started by `spawn_task`, or `nil`
-  (STORE-16): `%{parent_id, title, brief, started_at, start_commit, result}`.
-  It carries no status — a chat's status is derived from the chat itself
-  (UI-59, STORE-31) — and a `status` key an earlier version wrote is dropped
-  here, so such a chat's metadata reads as the rest of its keys (STORE-16).
+  (STORE-16): `%{parent_id, started_at}` and, once the chat is marked done, its
+  `result` (SUBTASK-9, SUBTASK-13). It carries no status — a chat's status is
+  derived from the chat itself (UI-59, STORE-31) — no title and no brief, which
+  are the chat's own title (STORE-32) and the first message of its transcript
+  (SUBTASK-5): a `status`, `title`, `brief`, `parent_call_id` or `start_commit`
+  key an earlier version wrote is ignored, and such a chat's metadata reads as
+  the keys it has (STORE-16).
   """
   @spec load_task(binary()) :: map() | nil
   def load_task(id) do
     case load_meta(id) do
-      %{task: %{parent_id: _} = task} -> Map.delete(task, :status)
+      %{task: %{parent_id: _} = task} -> Map.take(task, [:parent_id, :started_at, :result])
       _ -> nil
     end
   end
@@ -451,19 +454,12 @@ defmodule Elia.Store do
     end
   end
 
-  # STORE-17: a sub-task chat is listed under its task title, with the parent it
-  # belongs to and the call that started it, so the list nests it (UI-45) and a
-  # parent's card finds it (UI-44). Nothing else: its status is its chat's
-  # (UI-46), so it carries no status of its own.
-  defp put_task(entry, %{parent_id: parent_id} = task) do
-    title = if is_binary(task[:title]) and task.title != "", do: task.title, else: entry.title
-
-    Map.merge(entry, %{
-      title: title,
-      parent_id: parent_id,
-      parent_call_id: task[:parent_call_id]
-    })
-  end
+  # STORE-17: a sub-task chat is listed as the ordinary chat it is, with the
+  # parent it belongs to, so the list nests it (UI-45). Its title is its own
+  # (STORE-33, TITLE-3) and its status the status any chat's is (STORE-31), so
+  # it carries neither a task title nor a task status of its own.
+  defp put_task(entry, %{parent_id: parent_id}),
+    do: Map.put(entry, :parent_id, parent_id)
 
   defp put_task(entry, _task), do: entry
 

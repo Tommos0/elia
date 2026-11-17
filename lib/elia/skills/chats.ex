@@ -5,11 +5,10 @@ defmodule Elia.Skills.Chats do
   agent can consult the chats the user has had before this one — what was
   decided, which paths were used, what was already tried.
 
-  They read Elia's own saved chats (STORE-1) through the harness, the way
-  `list_tasks` reads a sub-task (SUBTASK-26) — no command is run and no
-  approval is asked — so they work in a chat whose jail is on too (HIST-1,
-  ISOL-16), where `.elia/sessions` is out of reach of the shell and the file
-  tools (FILE-12, ISOL-6).
+  They read Elia's own saved chats (STORE-1) through the harness — no command
+  is run and no approval is asked — so they work in a chat whose jail is on too
+  (HIST-1, ISOL-16), where `.elia/sessions` is out of reach of the shell and the
+  file tools (FILE-12, ISOL-6).
   """
 
   @behaviour Elia.Skill
@@ -113,7 +112,7 @@ defmodule Elia.Skills.Chats do
           "required" => []
         },
         # HIST-10: reading a saved chat changes nothing on the machine, so it
-        # never needs approval, like `list_tasks` (SUBTASK-26).
+        # never needs approval, as `read_chat` and `search_chats` never do.
         approval: :never,
         run: fn input, ctx -> list_chats(input, ctx) end
       },

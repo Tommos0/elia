@@ -97,9 +97,6 @@ defmodule EliaWeb.ChatLive do
         done: snapshot.done,
         # UI-57: the message of this chat's pause, when its turn is paused.
         pause: snapshot.pause,
-        # UI-44: spawn_task call id => the child's listed entry (STORE-36), from
-        # which its card shows the child chat's own status.
-        tasks: task_children(id),
         # UI-48: this chat's own task metadata, when it is a task chat.
         task: snapshot.task,
         parent_title: parent_title(snapshot.task),
@@ -140,8 +137,7 @@ defmodule EliaWeb.ChatLive do
       # UPLOAD-9: why a file could not be written, which the composer says.
       |> assign(upload_error: nil)
       # UI-4, UI-72: this page's sidebar is on screen from the first render, so
-      # the list is read here, before the transcript's task cards — which read
-      # the statuses it holds (UI-44, UI-47, UI-58) — are built. This chat's own
+      # the list is read here, before the transcript is drawn. This chat's own
       # record is gone by now: its session has just started and cleared it
       # (INTR-3).
       |> ChatList.refresh()
@@ -404,9 +400,8 @@ defmodule EliaWeb.ChatLive do
                 <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
               </button>
-              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. A task chat has
-              the same control: there the flag is the chat's own bookkeeping
-              beside the task's status (DONE-3). --%>
+              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. On a task
+              chat the same control is what ends the task (DONE-3). --%>
               <button
                 type="button"
                 id="done-toggle"
@@ -931,15 +926,6 @@ defmodule EliaWeb.ChatLive do
           </.link>
           <span class="ml-auto shrink-0 capitalize text-base-content/60">{@status}</span>
         </div>
-        <details :if={@task[:brief]} id="task-header-brief" class="group/brief">
-          <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
-            <.icon name="hero-chevron-right" class="size-3 transition group-open/brief:rotate-90" />
-            Brief
-          </summary>
-          <div class="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded-lg bg-base-100/70 px-3 py-2">
-            {@task.brief}
-          </div>
-        </details>
       </div>
     </div>
     """
@@ -1350,43 +1336,6 @@ defmodule EliaWeb.ChatLive do
           {@item.input["brief"]}
         </div>
       </details>
-      <div
-        :if={Map.get(@item, :task)}
-        id={"task-card-#{@item.call_id}"}
-        class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-2 text-xs"
-      >
-        <ChatStatus.status_icon id={"task-status-#{@item.call_id}"} status={@item.task.status} />
-        <span class="capitalize text-base-content/70">{@item.task.status}</span>
-        <span
-          :if={@item.task.awaiting}
-          id={"task-awaiting-#{@item.call_id}"}
-          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
-        >
-          <.icon name="hero-hand-raised" class="size-3" /> Waiting for approval in the task chat
-        </span>
-        <span
-          :if={@item.task.input}
-          id={"task-input-#{@item.call_id}"}
-          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
-        >
-          <.icon name="hero-chat-bubble-left-right" class="size-3" /> Waiting for your answer in the
-          task chat
-        </span>
-        <span
-          :if={@item.task.paused}
-          id={"task-paused-#{@item.call_id}"}
-          class="flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning"
-        >
-          <.icon name="hero-pause-circle" class="size-3" /> Paused at a limit in the task chat
-        </span>
-        <.link
-          navigate={~p"/c/#{@item.task.child_id}"}
-          id={"task-link-#{@item.call_id}"}
-          class="ml-auto flex items-center gap-1 font-medium text-primary transition hover:underline"
-        >
-          Open task chat <.icon name="hero-arrow-right" class="size-3" />
-        </.link>
-      </div>
       <details
         :if={detail = tool_detail(@item)}
         open={@item.status == :awaiting_approval}
@@ -1938,17 +1887,11 @@ defmodule EliaWeb.ChatLive do
 
   def handle_info({:agent, _id, event}, socket), do: {:noreply, apply_event(event, socket)}
 
-  # UI-44, UI-49, SESS-19: a child chat's status changed, or its done flag
-  # (SESS-35) did — the card follows the child's own chat, so this reads the
-  # child again and redraws the card with the status its row in the sidebar now
-  # carries. `EliaWeb.ChatList`'s handler has already updated the markers this
-  # page's card reads (its hook runs before this one), and a child this page did
-  # not list on mount joins in here.
-  def handle_info({:chat_status, id, _status}, socket) do
-    {call_id, socket} = task_call_id(socket, id)
-
-    {:noreply, if(call_id, do: refresh_task_card(socket, call_id), else: socket)}
-  end
+  # SESS-19, UI-49: another chat's status changed. This page shows another chat
+  # as its row in the sidebar and nothing else, and that row is the list's own
+  # (`EliaWeb.ChatList`'s hook, which runs before this clause) — a task chat is
+  # an ordinary chat, and its own page is where its transcript is.
+  def handle_info({:chat_status, _id, _status}, socket), do: {:noreply, socket}
 
   # Keeps the transcript's item times current (MSGAT-6), by sending again the
   # items whose text has moved on. The chat list has its own clock, wherever it
@@ -2068,14 +2011,6 @@ defmodule EliaWeb.ChatLive do
     socket
     |> assign(selection: LLM.selection(settings.model), jail: settings.jail)
     |> assign(context_window: LLM.context_window(settings.model))
-  end
-
-  # UI-48, UI-49: this chat's own task metadata changed (SESS-20) — this page's
-  # header draws the chat's own status, which the list carries (UI-46).
-  defp apply_event({:task, task}, socket) do
-    socket
-    |> assign(task: task)
-    |> ChatList.refresh()
   end
 
   # TITLE-4, UI-74: the model named this chat. Its page title and its row in the
@@ -2211,69 +2146,7 @@ defmodule EliaWeb.ChatLive do
     derive_view(socket, socket.assigns.messages, socket.assigns.compaction)
   end
 
-  ## Task cards (UI-43 to UI-48)
-
-  # UI-44: the task chats this chat started, by the `spawn_task` call that
-  # started each. The chat itself is read from the store when a card is drawn, so
-  # a card never shows a status the child's own row wouldn't (UI-46).
-  defp task_children(id) do
-    for %{parent_call_id: call_id} = child <- Elia.Store.children(id),
-        is_binary(call_id),
-        into: %{},
-        do: {call_id, child.id}
-  end
-
-  # UI-44, SUBTASK-2: the call that started this chat's child, once the page has
-  # listed it — or, for a child started while the page was open, the record of
-  # it as soon as its first own event arrives, so its card appears without a
-  # reload.
-  defp task_call_id(socket, child_id) do
-    case Enum.find(socket.assigns.tasks, fn {_call_id, id} -> id == child_id end) do
-      {call_id, _id} ->
-        {call_id, socket}
-
-      nil ->
-        case Elia.Store.load_task(child_id) do
-          %{parent_id: parent_id, parent_call_id: call_id}
-          when is_binary(call_id) ->
-            if parent_id == socket.assigns.session_id,
-              do:
-                {call_id,
-                 assign(socket, :tasks, Map.put(socket.assigns.tasks, call_id, child_id))},
-              else: {nil, socket}
-
-          _other ->
-            {nil, socket}
-        end
-    end
-  end
-
-  defp task_card(socket, call_id) do
-    with %{^call_id => child_id} <- socket.assigns.tasks,
-         %{} = child <- Elia.Store.entry(child_id) do
-      %{
-        child_id: child_id,
-        # UI-44, UI-46, UI-59, UI-72: the child chat's own status, from the
-        # markers this page's list keeps, so a card and the child's row in the
-        # sidebar say the same thing.
-        status: ChatStatus.for_chat(child, socket.assigns.chat_list),
-        awaiting: child_id in socket.assigns.chat_list.awaiting,
-        # UI-44, ASK-9: the child is waiting for an answer to a question.
-        input: child_id in socket.assigns.chat_list.input,
-        # UI-58: the child is paused at a limit (SESS-27).
-        paused: child_id in socket.assigns.chat_list.paused
-      }
-    else
-      _none -> nil
-    end
-  end
-
-  defp refresh_task_card(socket, call_id) do
-    case socket.assigns.calls do
-      %{^call_id => call} -> put_call(socket, %{call | task: task_card(socket, call_id)})
-      _ -> socket
-    end
-  end
+  ## Task header (UI-48)
 
   defp parent_title(%{parent_id: parent_id}), do: Elia.Store.chat_title(parent_id)
 
@@ -2562,7 +2435,6 @@ defmodule EliaWeb.ChatLive do
               input: call.input,
               index: index,
               result_index: nil,
-              task: task_card(socket, call.id),
               status: Map.get(socket.assigns.tool_status, call.id, :pending),
               output: nil,
               is_error: false,

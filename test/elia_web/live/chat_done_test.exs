@@ -95,14 +95,9 @@ defmodule EliaWeb.ChatDoneTest do
   # chat, and using it is the chat's own bookkeeping — its task header keeps
   # saying what the task did.
   test "a task chat has the done control too", %{conn: conn, id: id} do
-    task = %{
-      parent_id: Agent.new_id(),
-      title: "Add the file",
-      brief: "Create child.txt.",
-      started_at: DateTime.utc_now()
-    }
+    task = %{parent_id: Agent.new_id(), started_at: DateTime.utc_now()}
 
-    :ok = saved(id, task: task)
+    :ok = saved(id, task: task, title: "Add the file")
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
@@ -127,9 +122,16 @@ defmodule EliaWeb.ChatDoneTest do
     assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
     assert has_element?(view, "#chat-status-#{id}[data-status='idle']")
     assert Store.load_done(id) == false
-    # DONE-3, STORE-16: nothing about the task changed, and it carries no status
-    # for the flag to touch.
-    assert Store.load_task(id).title == "Add the file"
+    # DONE-3, STORE-16, SUBTASK-33: nothing about the task changes but the result
+    # its end saved (SUBTASK-9, SUBTASK-13), and it carries no status for the
+    # flag to touch. Its title is its chat's own (STORE-32, TITLE-3).
+    assert %{parent_id: parent_id, started_at: started_at, result: result} =
+             Store.load_task(id)
+
+    assert parent_id == task.parent_id
+    assert started_at == task.started_at
+    assert %{"task_id" => ^id, "summary" => _summary} = result
     refute Map.has_key?(Store.load_task(id), :status)
+    assert Elia.Store.chat_title(id) == "Add the file"
   end
 end

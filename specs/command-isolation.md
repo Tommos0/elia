@@ -409,8 +409,6 @@ lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
   commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an fsmonitor the
   repository names not run by the harness's own git, in the live tree or in a
   child's worktree, ISOL-30).
-- `test/elia/tasks_git_test.exs` (the harness's git calls, jailed — ISOL-1,
-  ISOL-3, ISOL-8, ISOL-13, ISOL-20).
 - `test/elia/self_modification_test.exs` (the file
   tools' confinement, FILE-12, FILE-13; the classes it is confined by, ISOL-13,
   ISOL-15, ISOL-16, ISOL-20, ISOL-25).

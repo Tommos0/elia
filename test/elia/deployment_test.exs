@@ -101,7 +101,7 @@ defmodule Elia.DeploymentTest do
     assert "fsmonitor" in ran(marker) and "post-checkout" in ran(marker)
     File.rm!(marker)
 
-    {_id, path} = new_worktree()
+    {id, path} = new_worktree()
     assert ran(marker) == []
 
     # The chat's own work and fast-forward run plain git, which may run the
@@ -110,7 +110,11 @@ defmodule Elia.DeploymentTest do
     File.rm(marker)
 
     assert {:ok, _message} = Deploy.deploy()
-    assert Elia.Tasks.git_out(["status", "--porcelain"], path) == ""
+    assert ran(marker) == []
+
+    # A child's own worktree, which the harness adds for a spawn, is the
+    # harness's git too (ISOL-30, SUBTASK-23).
+    assert {:ok, _child_path} = Deploy.ensure_child_worktree(Agent.new_id(), id, tree)
     assert ran(marker) == []
   end
 
@@ -1105,7 +1109,9 @@ defmodule Elia.DeploymentTest do
       if counts(request, "mark_done") > 0 do
         reply([Message.text("Done.")])
       else
-        [%{child_id: child}] = Elia.Tasks.active()
+        # STORE-18: a running child is read from the saved chats — its chat is
+        # saved before its session starts (SUBTASK-5), so it is here.
+        [%{id: child}] = Elia.Store.children(parent)
         child_path = Deploy.worktree_path(child)
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         LiveTree.commit(child_path, "child note")
@@ -1148,7 +1154,9 @@ defmodule Elia.DeploymentTest do
     assert branch(path) == "chat/#{parent}"
     assert head(path) == head(child_path)
 
-    # And its result is reported relative to its own workspace.
+    # And its result is what it said about itself (SUBTASK-9): the id and the
+    # summary, with nothing about its files or its commit — its branch is where
+    # that lives.
     result =
       Agent.snapshot(parent).messages
       |> Enum.find_value(fn
@@ -1158,12 +1166,10 @@ defmodule Elia.DeploymentTest do
 
     assert %{content: content, is_error: false} = result
 
-    assert %{"summary" => "wrote it", "files" => files, "commit" => commit} =
+    assert %{"summary" => "wrote it", "task_id" => ^child} =
              decoded = Jason.decode!(content)
 
-    assert "child-note.txt" in files
-    assert commit == head(child_path)
-    assert Map.keys(decoded) |> Enum.sort() == ["commit", "files", "summary", "task_id"]
+    assert Map.keys(decoded) |> Enum.sort() == ["summary", "task_id"]
     stop_session(child)
   end
 
@@ -1195,7 +1201,8 @@ defmodule Elia.DeploymentTest do
       if after_tools?(request) do
         reply([Message.text("Done.")])
       else
-        [%{child_id: child}] = Elia.Tasks.active()
+        # STORE-18: a running child is read from the saved chats (SUBTASK-34).
+        [%{id: child}] = Elia.Store.children(parent)
         child_path = Deploy.worktree_path(child)
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         File.write!(Path.join(child_path, "wip.txt"), "wip")
@@ -1223,9 +1230,9 @@ defmodule Elia.DeploymentTest do
     assert branch(child_path) == "chat/#{child}"
 
     # SUBTASK-34: the child's turn is over and its task is not, so the parent is
-    # still waiting for it.
+    # still waiting for it. STORE-18: that is read from the child's own chat.
     await_idle(child)
-    assert Elia.Tasks.running?(child)
+    assert [%{id: ^child, done: false}] = Elia.Store.children(parent)
     assert Agent.snapshot(parent).status == :running
 
     # SUBTASK-33: the user marks the child's chat done, and the task ends with
@@ -1233,11 +1240,9 @@ defmodule Elia.DeploymentTest do
     assert {:ok, true} = Agent.set_done(child, true)
     await_status(parent, :idle)
 
-    assert %{"summary" => "Stuck on the name.", "files" => files, "commit" => commit} =
+    assert %{"summary" => "Stuck on the name.", "task_id" => ^child} =
              session_json(parent, "await_task", 0)
 
-    assert files == ["child-note.txt", "wip.txt"]
-    assert commit == head(child_path)
     refute File.exists?(Path.join(path, "child-note.txt"))
     assert head(path) != head(child_path)
 

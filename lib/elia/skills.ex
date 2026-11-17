@@ -69,8 +69,8 @@ defmodule Elia.Skills do
 
   @doc """
   The skills a sub-task chat's session runs with (SUBTASK-1, LOOP-17): the
-  skills of `project` minus the `tasks` skill, so a child has no `spawn_task`,
-  `list_tasks` or `await_task` and can't start a sub-task of its own. `nil`
+  skills of `project` minus the `tasks` skill, so a child has no `spawn_task`
+  or `await_task` and can't start a sub-task of its own. `nil`
   means Elia's own project. Everything else is an ordinary chat's registry
   (PROJ-21), `mark_done` (DONE-6) among it.
   """

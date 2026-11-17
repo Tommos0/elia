@@ -1,18 +1,19 @@
 defmodule EliaWeb.ChatStatus do
   @moduledoc """
   The one status indicator a listed chat shows (UI-46, UI-47, UI-58, UI-59,
-  UI-72): the chat page's sidebar, the dashboard (DASH-3, DASH-5, DASH-7), a
-  sub-task's card in its parent (UI-44) and a task chat's own header (UI-48) all
-  read it, so a chat shows one status however it is drawn. A sub-task chat has
-  no status of its own to add: its status is its chat's (SUBTASK-26, SUBTASK-34),
-  which is why there is nothing here about tasks.
+  UI-72): the chat page's sidebar, the dashboard (DASH-3, DASH-5, DASH-7) and a
+  task chat's own header (UI-48) all read it, so a chat shows one status however
+  it is drawn. A sub-task chat has no status of its own to add: its status is
+  its chat's (SUBTASK-26, SUBTASK-34), which is why there is nothing here about
+  tasks — the parent's card that once read a task status is retired (UI-44,
+  UI-50).
 
   `status/2` answers for a listed chat (`Elia.Store.list/1`) together with what
   the registry says about it (`Elia.Agent.awaiting_approval/0`, `paused/0`,
   `running/0`, SESS-19) and the record a restart left behind (STORE-31). A chat
   marked done (DONE-2, STORE-35) reads `done` in place of `idle`. `for_chat/2`
   is the same answer for a caller that holds the markers a page keeps, which is
-  what the row, the card, the header and `list_tasks` (SUBTASK-26) use.
+  what the row and the header use.
   """
   use EliaWeb, :html
 
@@ -46,8 +47,8 @@ defmodule EliaWeb.ChatStatus do
   booleans `status/2` takes: `marks` is `EliaWeb.ChatList`'s state or a map of
   the same shape, with a list of chat ids under `:awaiting`, `:input`, `:paused`
   and `:running`, and the chats a restart cut short under `:interrupted`
-  (UI-72, STORE-31). The row (UI-46), the parent's card (UI-44) and a task
-  chat's header (UI-48) all read this one.
+  (UI-72, STORE-31). The row (UI-46) and a task chat's header (UI-48) both read
+  this one — the parent's card that did is retired (UI-44).
   """
   @spec for_chat(map(), map()) :: String.t()
   def for_chat(chat, marks) do
@@ -65,7 +66,7 @@ defmodule EliaWeb.ChatStatus do
   attr :id, :string, required: true
   attr :status, :string, required: true
 
-  @doc "UI-44, UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: a chat's status as an icon."
+  @doc "UI-46, UI-47, UI-58, UI-59, UI-72, UI-76: a chat's status as an icon."
   def status_icon(assigns) do
     {icon, class} = icon_spec(assigns.status)
     assigns = assign(assigns, icon: icon, class: class)

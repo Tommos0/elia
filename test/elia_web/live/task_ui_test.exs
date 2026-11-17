@@ -25,32 +25,28 @@ defmodule EliaWeb.TaskUITest do
     ])
   end
 
-  # The child chat's task metadata, as `spawn_task` writes it (STORE-16): it
-  # carries no status of its own — the chat's status is the chat's (UI-46) — and
-  # a file an earlier version wrote is given a `status` key here to be read past.
+  # The child chat's task metadata, as `spawn_task` writes it (STORE-16): the
+  # chat that started it, when, and — once its chat is marked done — the result
+  # it ended with (SUBTASK-9, SUBTASK-13). It carries no status, title or brief
+  # of its own: a chat's status is its own (UI-46), its title is its own
+  # (STORE-32, TITLE-3) and its brief is the first message of its transcript
+  # (SUBTASK-5). A file an earlier version wrote has more keys; they are read
+  # past, and `task_overrides` puts some of them back for a test that says so.
   defp save_child(child, parent, task_overrides \\ %{}, save_opts \\ []) do
     on_exit(fn -> Store.delete(child) end)
 
     task =
       Map.merge(
-        %{
-          parent_id: parent,
-          parent_call_id: "s1",
-          title: "Add the file",
-          brief: "Create child.txt.\nCommit it.",
-          started_at: DateTime.utc_now(),
-          start_commit: "abc",
-          result: %{
-            "task_id" => child,
-            "summary" => "Made child.txt",
-            "commit" => "0123456789abcdef",
-            "files" => ["child.txt"]
-          }
-        },
+        %{parent_id: parent, started_at: ~U[2026-01-02 03:04:05Z]},
         task_overrides
       )
 
-    Store.save(child, [Message.user("preamble")], Keyword.merge([task: task], save_opts))
+    opts =
+      save_opts
+      |> Keyword.put(:task, task)
+      |> Keyword.put_new(:title, "Add the file")
+
+    Store.save(child, [Message.user("preamble")], opts)
   end
 
   defp topic_send(id, event),
@@ -76,21 +72,6 @@ defmodule EliaWeb.TaskUITest do
     end
   end
 
-  # UI-44: the same, for the card of the call that started the child.
-  defp await_card_status(view, call_id, status, tries \\ 100)
-
-  defp await_card_status(_view, call_id, status, 0),
-    do: flunk("#task-status-#{call_id} never showed #{status}")
-
-  defp await_card_status(view, call_id, status, tries) do
-    if has_element?(view, "#task-status-#{call_id}[data-status='#{status}']") do
-      :ok
-    else
-      Process.sleep(50)
-      await_card_status(view, call_id, status, tries - 1)
-    end
-  end
-
   # UI-43
   test "a spawn_task call shows its title and brief instead of raw JSON", %{
     conn: conn,
@@ -103,8 +84,11 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#task-brief-s1", "Create child.txt.")
     refute has_element?(view, "#task-brief-s1[open]")
     refute has_element?(view, "#transcript", "\"brief\"")
-    # No child yet: no card.
-    refute has_element?(view, "#task-card-s1")
+
+    # UI-43, UI-44: nothing else is drawn on the call — no status row and no
+    # link to the child. The child's own row in the chat list is where its status
+    # is shown (UI-46, UI-59).
+    refute has_element?(view, "#transcript", "task-status-s1")
 
     # The brief is open while the call waits for approval.
     topic_send(parent, {:tool_status, "s1", :awaiting_approval})
@@ -112,108 +96,25 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#approve-s1")
   end
 
-  # UI-44
-  test "the card links to the child and shows the status the child's own row does", %{
+  # UI-44 (retired), SUBTASK-2: a child started while the page is open shows up
+  # in the sidebar as soon as its own chat speaks, without a reload.
+  test "a child started after the page opened appears in the sidebar", %{
     conn: conn,
     parent: parent,
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{}, done: true)
-
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+    refute has_element?(view, "#chat-link-#{child}")
 
-    assert has_element?(view, "#task-card-s1")
-    assert has_element?(view, "#task-link-s1[href='/c/#{child}']")
-    # UI-44, UI-46, UI-80: the card shows the child chat's own status — here the
-    # `done` its chat is marked with (DONE-2) — which is the status its row in
-    # the sidebar carries, from the same derivation.
-    assert has_element?(view, "#task-status-s1[data-status='done']")
-    assert has_element?(view, "#chat-status-#{child}[data-status='done']")
-  end
-
-  # UI-44, UI-49, SESS-19, SESS-35
-  test "the card follows the child's own status, live, as its row does", %{
-    conn: conn,
-    parent: parent,
-    child: child
-  } do
-    save_parent(parent)
+    # The child's chat is saved when its session starts (SUBTASK-5, STORE-2),
+    # which is what the list reads: its chat, and the task metadata that names
+    # its parent (STORE-16, STORE-17).
     save_child(child, parent)
-
-    # DONE-1, DONE-4: a session of the child's own, so its chat can be marked
-    # done the way the user or `mark_done` would (DONE-6).
-    {:ok, pid} = Agent.ensure_started(child)
-    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
-
-    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-
-    assert has_element?(view, "#task-status-s1[data-status='idle']")
-    assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
-
-    # SESS-35: the chat's done flag is announced on the activity topic, so the
-    # parent's card learns the child was marked done without waiting for a
-    # reload — and shows what the child's row shows (UI-44, UI-49).
-    assert {:ok, true} = Agent.set_done(child, true)
-    await_status(view, child, "done")
-    await_card_status(view, "s1", "done")
-
-    # DONE-9: a message continues a done chat, which reopens it; the card and
-    # the row follow that too.
-    assert {:ok, false} = Agent.set_done(child, false)
-    await_status(view, child, "idle")
-    await_card_status(view, "s1", "idle")
-  end
-
-  # UI-44, UI-46, UI-47, UI-58
-  test "the card follows the child's status events and flags what needs the user", %{
-    conn: conn,
-    parent: parent,
-    child: child
-  } do
-    save_parent(parent)
-    save_child(child, parent)
-
-    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    assert has_element?(view, "#task-card-s1")
-
     activity_send(child, :running)
-    assert has_element?(view, "#task-status-s1[data-status='working']")
+
+    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}", "Add the file")
     assert has_element?(view, "#chat-status-#{child}[data-status='working']")
-    refute has_element?(view, "#task-awaiting-s1")
-
-    activity_send(child, :awaiting_approval)
-    assert has_element?(view, "#task-awaiting-s1")
-    assert has_element?(view, "#task-status-s1[data-status='awaiting_approval']")
-
-    activity_send(child, :paused)
-    assert has_element?(view, "#task-paused-s1")
-    assert has_element?(view, "#task-status-s1[data-status='paused']")
-
-    activity_send(child, :idle)
-    refute has_element?(view, "#task-awaiting-s1")
-    refute has_element?(view, "#task-paused-s1")
-    assert has_element?(view, "#task-status-s1[data-status='idle']")
-  end
-
-  # UI-44, SUBTASK-2: a child started while the page is open gets its card as
-  # soon as its own chat speaks, without a reload.
-  test "a child started after the page opened gets its card", %{
-    conn: conn,
-    parent: parent,
-    child: child
-  } do
-    save_parent(parent)
-    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    refute has_element?(view, "#task-card-s1")
-
-    # The child's chat is saved when its first turn starts (STORE-2), which is
-    # what its card reads: its chat, and the task metadata that names its parent.
-    save_child(child, parent)
-    activity_send(child, :running)
-
-    assert has_element?(view, "#task-link-s1[href='/c/#{child}']")
-    assert has_element?(view, "#task-status-s1[data-status='working']")
   end
 
   # UI-45, UI-46
@@ -227,9 +128,9 @@ defmodule EliaWeb.TaskUITest do
     on_exit(fn -> Enum.each([orphan, lost], &Store.delete/1) end)
 
     save_parent(parent)
-    save_child(child, parent, %{title: "Nested task"}, done: true)
-    save_child(lost, parent, %{title: "Lost task", parent_call_id: "s2"})
-    save_child(orphan, "parent-not-listed", %{title: "Orphan task"})
+    save_child(child, parent, %{}, title: "Nested task", done: true)
+    save_child(lost, parent, %{}, title: "Lost task")
+    save_child(orphan, "parent-not-listed", %{}, title: "Orphan task")
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
 
@@ -258,6 +159,36 @@ defmodule EliaWeb.TaskUITest do
     # …and it follows its own events the way any chat's row does (SESS-19).
     activity_send(lost, :running)
     assert has_element?(view, "#chat-status-#{lost}[data-status='working']")
+  end
+
+  # UI-46, UI-47, UI-59, DONE-2
+  test "the child's own row follows its status, live, as any chat's row does", %{
+    conn: conn,
+    parent: parent,
+    child: child
+  } do
+    save_parent(parent)
+    save_child(child, parent)
+
+    # DONE-1, DONE-4: a session of the child's own, so its chat can be marked
+    # done the way the user or `mark_done` would (DONE-6).
+    {:ok, pid} = Agent.ensure_started(child)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    assert has_element?(view, "#chat-status-#{child}[data-status='idle']")
+
+    # SESS-35: the chat's done flag is announced on the activity topic, so the
+    # parent's sidebar learns the child was marked done without waiting for a
+    # reload — and shows what the child's own page shows (UI-46, UI-49).
+    assert {:ok, true} = Agent.set_done(child, true)
+    await_status(view, child, "done")
+
+    # DONE-9: a message continues a done chat, which reopens it; the row follows
+    # that too.
+    assert {:ok, false} = Agent.set_done(child, false)
+    await_status(view, child, "idle")
   end
 
   # UI-47, SESS-19
@@ -438,7 +369,7 @@ defmodule EliaWeb.TaskUITest do
   end
 
   # UI-48
-  test "a task chat shows who it belongs to, its brief and its own status", %{
+  test "a task chat shows who it belongs to and its own status", %{
     conn: conn,
     parent: parent,
     child: child
@@ -453,9 +384,14 @@ defmodule EliaWeb.TaskUITest do
     # UI-48, UI-46: the header shows the chat's own status — the `done` this chat
     # is marked with (DONE-2, UI-80) — and not a status of its task's.
     assert has_element?(view, "#task-header-status[data-status='done']")
-    assert has_element?(view, "#task-header-brief", "Create child.txt.")
-    # UI-48: what the task ended with is in its metadata (SUBTASK-9), not in the
-    # header, which shows the chat's own status.
+
+    # UI-48: the child's brief is its own first message (SUBTASK-5), which the
+    # transcript shows like any message; the header does not repeat it.
+    refute has_element?(view, "#task-header-brief")
+    assert has_element?(view, "#transcript", "preamble")
+
+    # What the task finished with is in the chat's own transcript — the message
+    # before `mark_done` — and not in the header (SUBTASK-9).
     refute has_element?(view, "#task-result")
     refute has_element?(view, "#task-header", "Made child.txt")
   end
@@ -467,7 +403,7 @@ defmodule EliaWeb.TaskUITest do
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{child}")
     assert has_element?(view, "#task-header-status[data-status='idle']")
@@ -494,7 +430,7 @@ defmodule EliaWeb.TaskUITest do
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     # The app stopped mid-turn: the chat still carries the turn it was running
     # (STORE-30, STORE-31).
@@ -509,16 +445,31 @@ defmodule EliaWeb.TaskUITest do
   end
 
   # UI-50 (retired), STORE-16, SUBTASK-34
-  test "a saved task status is ignored: the row and the header show the chat's own", %{
+  test "an old task file's extra keys are ignored: the row and the header show the chat's own", %{
     conn: conn,
     parent: parent,
     child: child
   } do
     save_parent(parent)
-    # A file an earlier version wrote: the task metadata carries a `status`, which
-    # `Elia.Store.load_task/1` drops. Its other keys are read as before, so the
-    # chat is still this parent's sub-task (SUBTASK-34).
-    save_child(child, parent, %{status: "cancelled"})
+
+    # A file an earlier version wrote: its task metadata carries a `status`, a
+    # `title`, a `brief`, a `parent_call_id`, a `start_commit` and a result with
+    # `commit` and `files`, none of which this version reads (STORE-16,
+    # SUBTASK-9). What it does read is the `parent_id`, so the chat is still this
+    # parent's sub-task (SUBTASK-34), and its own title is its chat's.
+    save_child(child, parent, %{
+      status: "cancelled",
+      parent_call_id: "s1",
+      title: "An old title",
+      brief: "An old brief",
+      start_commit: "abc",
+      result: %{
+        "task_id" => child,
+        "summary" => "Made child.txt",
+        "commit" => "0123456789abcdef",
+        "files" => ["child.txt"]
+      }
+    })
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
 
@@ -533,34 +484,31 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#task-header-status[data-status='idle']")
   end
 
-  # UI-48, SESS-20
+  # UI-48, SESS-18
   test "the task header shows the chat's own status, not its task's result", %{
     conn: conn,
     parent: parent,
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{child}")
     refute has_element?(view, "#task-result")
     assert has_element?(view, "#task-header-status[data-status='idle']")
 
     # SUBTASK-33, SESS-18: the result a task ends with (SUBTASK-9) is saved into
-    # its metadata and reaches this chat's page. It says nothing about the
-    # header's status, which is the chat's own (UI-48).
+    # its metadata by the chat's own session, with no live event for it (the
+    # retired SESS-20) — the page reads the chat's metadata when it mounts. It
+    # says nothing about the header's status, which is the chat's own (UI-48).
     task = Store.load_task(child)
 
-    result = %{
-      "task_id" => child,
-      "summary" => "Need input",
-      "commit" => nil,
-      "files" => []
-    }
+    Store.save(child, Store.load(child),
+      task: Map.put(task, :result, %{"summary" => "Need input"})
+    )
 
-    topic_send(child, {:task, Map.put(task, :result, result)})
+    {:ok, view, _html} = live(conn, ~p"/c/#{child}")
 
-    assert has_element?(view, "#task-header-brief", "Create child.txt.")
     assert has_element?(view, "#task-header-status[data-status='idle']")
     refute has_element?(view, "#task-header", "Need input")
 
@@ -583,7 +531,7 @@ defmodule EliaWeb.TaskUITest do
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     push_repeating_tool_call(1)
 
@@ -601,10 +549,9 @@ defmodule EliaWeb.TaskUITest do
     :ok = Agent.send_message(child, "go")
     assert_receive {:chat_status, ^child, :paused}, 5000
 
-    # UI-58: the sidebar and the parent's card are flagged on first render.
+    # UI-58: the child's row in the sidebar is flagged on first render.
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
     assert has_element?(view, "#chat-status-#{child}[data-status='paused'][title='Paused']")
-    assert has_element?(view, "#task-card-s1 #task-paused-s1")
 
     # UI-57: the banner is there on first render too, with both decisions.
     {:ok, child_view, _html} = live(conn, ~p"/c/#{child}")
@@ -623,7 +570,7 @@ defmodule EliaWeb.TaskUITest do
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{child}")
     refute has_element?(view, "#pause-banner")
@@ -644,27 +591,24 @@ defmodule EliaWeb.TaskUITest do
   end
 
   # UI-58, SESS-19
-  test "a paused child is flagged in the sidebar and on the parent's card", %{
+  test "a paused child is flagged in the sidebar", %{
     conn: conn,
     parent: parent,
     child: child
   } do
     save_parent(parent)
-    save_child(child, parent, %{result: nil})
+    save_child(child, parent)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
-    refute has_element?(view, "#task-paused-s1")
     refute has_element?(view, "#chat-status-#{child}[data-status='paused']")
 
     # UI-58, SESS-19: the child's own turn paused at a limit, which is a status
-    # of its chat — the card and its row both read it.
+    # of its chat — its row reads it.
     activity_send(child, :paused)
 
-    assert has_element?(view, "#task-card-s1 #task-paused-s1")
     assert has_element?(view, "#chat-status-#{child}[data-status='paused'][title='Paused']")
 
     activity_send(child, :running)
-    refute has_element?(view, "#task-paused-s1")
     refute has_element?(view, "#chat-status-#{child}[data-status='paused']")
   end
 

@@ -425,14 +425,16 @@ skill's section: how a sub-task ends and what it reports).
 
 - `test/elia/tasks_test.exs` (spawning and its refusals, the brief, the child's
   skills and tools, the child's workspace, the end and the result it saves,
-  `await_task` and what it reports while a child is only idle, a child deleted
-  while a parent waits — SUBTASK-1 to SUBTASK-6, SUBTASK-9, SUBTASK-13,
-  SUBTASK-15, SUBTASK-16, SUBTASK-17, SUBTASK-20, SUBTASK-23 to SUBTASK-25,
-  SUBTASK-27, SUBTASK-30, SUBTASK-31, SUBTASK-33 to SUBTASK-35).
-- `test/elia/store_test.exs` (the task metadata saved and loaded, and a file
-  written with a `status` key read without it — STORE-16, STORE-17).
-- `test/elia/agent_test.exs` (stopping a parent's turn and its children's,
-  SESS-22; the done flag's event, SESS-35).
+  `await_task` and what it does with a child that is only idle, a child deleted
+  while a parent waits, a child whose session dies, and stopping a parent's turn
+  and its children's — SUBTASK-1 to SUBTASK-6, SUBTASK-9, SUBTASK-13,
+  SUBTASK-15 to SUBTASK-17, SUBTASK-20, SUBTASK-23 to SUBTASK-25,
+  SUBTASK-27, SUBTASK-30, SUBTASK-31, SUBTASK-33 to SUBTASK-35, SESS-22).
+- `test/elia/store_test.exs` (the task metadata saved and loaded, and a file an
+  earlier version wrote — with a `status`, `title`, `brief`, `parent_call_id` or
+  `start_commit`, and a result carrying `commit` and `files` — read for the keys
+  it has, with nothing rewritten — STORE-16, STORE-17).
+- `test/elia/agent_test.exs` (the done flag's event, SESS-35).
 - `test/elia_web/live/task_ui_test.exs` (the call's card, the nested row, the
   child's header — UI-43, UI-45 to UI-49).
 - `test/elia/auto_resume_test.exs` (a resumed sub-task, RESUME-7).

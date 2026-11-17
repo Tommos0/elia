@@ -36,7 +36,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(ask_user await_task delete_file edit_file list_chats list_files list_tasks mark_done read_chat read_file reload_skills search_chats search_files set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger write_file)
+             ~w(ask_user await_task delete_file edit_file list_chats list_files mark_done read_chat read_file reload_skills search_chats search_files set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger write_file)
   end
 
   # LOOP-9, LOOP-11, SHELL-1, SESS-3: the call is approved before it runs
@@ -1405,14 +1405,16 @@ defmodule Elia.AgentTest do
     :sys.replace_state(pid, &Map.delete(&1, :task_meta))
 
     assert %{messages: []} = Agent.snapshot(id)
-    assert {:error, :not_a_task} = Agent.update_task(id, %{status: "done"})
+    # SESS-18: the session saves the task map it was started with and the result
+    # once; there is no API to merge anything into it.
+    refute function_exported?(Agent, :update_task, 2)
   end
 
   # SESS-17, SESS-18
-  test "task metadata is saved with the chat and can be updated" do
+  test "task metadata is saved with the chat, and is what the session was started with" do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
-    task = %{parent_id: "p", title: "T", brief: "B"}
+    task = %{parent_id: "p", started_at: ~U[2026-01-02 03:04:05Z]}
     selection = %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}
     default = Elia.Settings.get(:model)
 
@@ -1437,11 +1439,10 @@ defmodule Elia.AgentTest do
     assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
     assert Elia.Store.load_auto_approve(id) == ["shell"]
 
-    :ok = Agent.update_task(id, %{title: "Renamed"})
-    assert %{title: "Renamed"} = Elia.Store.load_task(id)
-    # SESS-20, SESS-7
-    assert_receive {:agent, ^id, {:task, %{title: "Renamed"}}}
-    assert %{task: %{title: "Renamed"}} = Agent.snapshot(id)
+    # SESS-18: the chat's task map is the one its session was started with, and
+    # the session saves it as it is — no merge API and no `{:task, …}` event.
+    assert %{task: ^task} = Agent.snapshot(id)
+    refute_receive {:agent, ^id, {:task, _}}, 50
   end
 
   # SESS-7
@@ -1585,12 +1586,12 @@ defmodule Elia.AgentTest do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
 
-    task = %{parent_id: "parent-1", title: "T", brief: "B"}
+    task = %{parent_id: "parent-1", started_at: ~U[2026-01-02 03:04:05Z]}
     turn = %{id: "turn-1", started_at: DateTime.utc_now()}
     :ok = Elia.Store.save(id, [Message.user("do it")], task: task, turn: turn)
 
     # STORE-31: the record the restart left behind is the chat's own, so the
-    # status its parent's card reads (STORE-36, UI-46) is `interrupted`.
+    # status its parent reads from its chat (STORE-18, UI-46) is `interrupted`.
     assert %{interrupted: true} = listed(id)
     refute Map.has_key?(listed(id), :task_status)
 
@@ -1599,7 +1600,7 @@ defmodule Elia.AgentTest do
 
     assert [%Message{role: :user}, %Message{meta: %{interrupted: true}}] = Elia.Store.load(id)
     # Nothing else about the task changes (STORE-16: it carries no status).
-    assert Elia.Store.load_task(id).title == "T"
+    assert Elia.Store.load_task(id) == task
   end
 
   defp listed(id), do: Enum.find(Elia.Store.list(1000), &(&1.id == id)) || %{interrupted: false}
@@ -1623,9 +1624,9 @@ defmodule Elia.AgentTest do
     refute id in Agent.awaiting_approval()
   end
 
-  # SESS-19, SESS-35, UI-44, UI-49: a chat's done flag is announced on the
-  # activity topic as its status, so a page showing other chats — a parent's
-  # task card (UI-44) — learns a child was marked done live.
+  # SESS-19, SESS-35, UI-49: a chat's done flag is announced on the activity
+  # topic as its status, so a page showing other chats — a parent's sidebar —
+  # learns a child was marked done live.
   test "a chat's done flag is announced on the activity topic", %{id: id} do
     Agent.subscribe_activity()
 

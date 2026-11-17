@@ -181,10 +181,9 @@ defmodule Elia.Agent do
 
   On a task chat, marking it done is what ends the task (SUBTASK-33): the
   harness builds the result from the chat's own state (SUBTASK-9) and it is
-  saved with the chat's metadata (SUBTASK-13), the child's entry in `Elia.Tasks`
-  is released (SUBTASK-11) and a parent's `await_task` returns the result
-  (SUBTASK-27). The end is recorded once: a chat marked done again, or reopened
-  and marked done again (DONE-9), keeps the result it has.
+  saved with the chat's metadata (SUBTASK-13), and a parent's `await_task`
+  returns the result (SUBTASK-27). The end is recorded once: a chat marked done
+  again, or reopened and marked done again (DONE-9), keeps the result it has.
   """
   @spec set_done(binary(), boolean()) :: {:ok, boolean()}
   def set_done(id, on?) when is_boolean(on?),
@@ -208,7 +207,8 @@ defmodule Elia.Agent do
   stops its sub-tasks' turns, SESS-22), terminates its session process so no
   stale session can save it again, then removes the saved chat and its worktree
   (STORE-23). A chat with no session is simply removed. `{:error, :invalid_id}`
-  for an invalid id (STORE-4).
+  for an invalid id (STORE-4). A running sub-task's chat deleted is that task
+  over, so a parent waiting on it answers with an error (SUBTASK-35).
   """
   @spec delete(binary()) :: :ok | {:error, :invalid_id}
   def delete(id) do
@@ -216,10 +216,6 @@ defmodule Elia.Agent do
       stop_if_started(id)
       terminate_session(id)
       stop_terminal(id)
-      # SUBTASK-35: a running sub-task's chat deleted is that task over, so its
-      # entry is released — and a parent waiting on it answers with an error,
-      # since the chat it waited for is gone.
-      Elia.Tasks.release(id)
       Elia.Store.delete(id)
     else
       {:error, :invalid_id}
@@ -254,7 +250,7 @@ defmodule Elia.Agent do
   end
 
   # SESS-29: terminate the session process, so a stale session can't save the
-  # chat again. Same shape as the child cleanup in `Elia.Tasks`.
+  # chat again.
   defp terminate_session(id) do
     for {pid, _} <- Registry.lookup(Elia.Agent.Registry, id),
         do: terminate_child(Elia.Agent.Supervisor, pid)
@@ -317,12 +313,4 @@ defmodule Elia.Agent do
   @spec add_ledger(binary(), [binary()]) :: {:ok, [binary()]}
   def add_ledger(id, entries) when is_list(entries),
     do: GenServer.call(Session.via(id), {:add_ledger, entries})
-
-  @doc """
-  Merges `changes` into the task metadata of a sub-task chat and saves it
-  (SESS-18). `{:error, :not_a_task}` for a chat without task metadata.
-  """
-  @spec update_task(binary(), map()) :: :ok | {:error, :not_a_task}
-  def update_task(id, changes) when is_map(changes),
-    do: GenServer.call(Session.via(id), {:update_task, changes})
 end

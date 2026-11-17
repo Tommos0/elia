@@ -45,9 +45,12 @@ defmodule EliaWeb.DashboardTest do
   defp saved_task_chat(parent, done \\ true) do
     id = Agent.new_id()
 
+    # STORE-16, STORE-32: a sub-task chat's own title is its chat's title, and
+    # the metadata a child is a child by is its parent and when it started.
     :ok =
       Store.save(id, [Message.user("preamble")],
-        task: %{parent_id: parent, title: "A task", brief: "Brief"},
+        title: "A task",
+        task: %{parent_id: parent, started_at: DateTime.utc_now()},
         done: done
       )
 

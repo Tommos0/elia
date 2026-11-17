@@ -94,22 +94,24 @@ defmodule Elia.ChatTitlesTest do
     assert Store.chat_title(id) == "Chat titles"
   end
 
-  # STORE-33, STORE-17, TITLE-3: a sub-task is named by its task.
-  test "a task chat is listed under its task title, whatever it has stored" do
+  # STORE-33, STORE-17, STORE-16: a task chat is listed under its own title, the
+  # one its chat carries — a spawn saves the `title` it was given as the chat's
+  # own (TITLE-3, SUBTASK-2). The task metadata holds no title of its own.
+  test "a task chat is listed under its own title, whatever its task metadata says" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
 
     task = %{
       parent_id: Agent.new_id(),
-      title: "Add the file",
-      brief: "b",
-      started_at: DateTime.utc_now()
+      started_at: DateTime.utc_now(),
+      title: "An older version's title"
     }
 
-    :ok = Store.save(child, [Message.user("preamble")], title: "Not this one", task: task)
+    :ok = Store.save(child, [Message.user("preamble")], title: "Add the file", task: task)
 
     assert [entry] = listed(child)
     assert entry.title == "Add the file"
+    assert entry.parent_id == task.parent_id
   end
 
   ## Setting it (TITLE-4, TITLE-6, SESS-33)
@@ -159,28 +161,31 @@ defmodule Elia.ChatTitlesTest do
     assert Store.chat_title(id) == "hi"
   end
 
-  # TITLE-3, TITLE-6: a sub-task is named by its task title (STORE-17), so it
-  # takes no title of its own.
+  # TITLE-3, TITLE-6: a sub-task's own chat is named by the spawn's title
+  # (STORE-17, STORE-32), which its chat carries — not by anything in its task
+  # metadata (STORE-16).
   test "a sub-task chat is refused" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
 
     task = %{
       parent_id: Agent.new_id(),
-      title: "Add the file",
+      title: "An older version's title",
       brief: "b",
       started_at: DateTime.utc_now()
     }
 
-    :ok = Store.save(child, [Message.user("preamble")], task: task)
+    :ok = Store.save(child, [Message.user("preamble")], title: "Add the file", task: task)
     start_session(child)
 
     assert {:error, message} = Agent.set_title(child, "Something else")
     assert message =~ "sub-task"
 
     refute_receive {:agent, ^child, {:title, _}}, 50
-    assert Agent.snapshot(child).title == nil
-    assert Store.load_title(child) == nil
+    # SESS-33: the title the spawn saved is the chat's own, and its session reads
+    # it; what the refusal keeps out is a title set from inside the chat.
+    assert Agent.snapshot(child).title == "Add the file"
+    assert Store.load_title(child) == "Add the file"
     assert [entry] = listed(child)
     assert entry.title == "Add the file"
   end

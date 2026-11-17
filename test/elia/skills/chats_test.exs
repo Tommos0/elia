@@ -176,10 +176,11 @@ defmodule Elia.Skills.ChatsTest do
       )
 
     # STORE-16, STORE-17, UI-46: a sub-task chat has no status of its own — it
-    # reads as the chat it is, and keeps its task's title.
+    # reads as the chat it is, under its own title (STORE-32, TITLE-3).
     task =
       save([Message.user("preamble")],
-        task: %{parent_id: "someone", title: "A task chat", status: "blocked"}
+        title: "A task chat",
+        task: %{parent_id: "someone", started_at: DateTime.utc_now()}
       )
 
     working = save([Message.user("a chat being worked on")], title: "Status working")

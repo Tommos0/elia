@@ -367,7 +367,7 @@ defmodule Elia.StoreTest do
   test "a chat's task metadata is saved with it and defaults to nil" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
-    task = %{parent_id: "p1", title: "Do it", brief: "B", start_commit: "abc"}
+    task = %{parent_id: "p1", started_at: ~U[2026-01-02 03:04:05Z]}
 
     :ok = Store.save(id, [Message.user("hi")])
     assert Store.load_task(id) == nil
@@ -376,57 +376,85 @@ defmodule Elia.StoreTest do
     assert Store.load_task(id) == task
     assert [%Message{}] = Store.load(id)
 
+    # SUBTASK-13: the result joins the metadata when the chat is marked done.
+    result = %{"task_id" => id, "summary" => "Done."}
+    :ok = Store.save(id, [Message.user("hi")], task: Map.put(task, :result, result))
+    assert Store.load_task(id) == Map.put(task, :result, result)
+
     assert Store.load_task("missing-chat") == nil
     assert Store.load_task("../bad") == nil
   end
 
-  # STORE-16: a file an earlier version wrote carries a task `status`; it is read
-  # for its other keys and the status is ignored, nothing is rewritten.
-  test "a saved task status is dropped from the metadata it is read as" do
+  # STORE-16: a file an earlier version wrote carries keys this version doesn't —
+  # a task `status`, `title`, `brief`, `parent_call_id`, `start_commit`, and a
+  # result with `commit` and `files` (SUBTASK-9). It is read for the keys it has
+  # and the rest are ignored, with nothing rewritten: no migration.
+  test "an old task file's other keys are ignored, read-time only" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
 
     :ok =
       Store.save(id, [Message.user("hi")],
-        task: %{parent_id: "p1", title: "Do it", status: "running", start_commit: "abc"}
+        task: %{
+          parent_id: "p1",
+          parent_call_id: "c1",
+          title: "Do it",
+          brief: "B",
+          started_at: ~U[2026-01-02 03:04:05Z],
+          status: "running",
+          start_commit: "abc",
+          result: %{"task_id" => id, "summary" => "S", "commit" => "abc", "files" => ["a"]}
+        }
       )
 
-    refute Map.has_key?(Store.load_task(id), :status)
-    assert Store.load_task(id) == %{parent_id: "p1", title: "Do it", start_commit: "abc"}
+    loaded = Store.load_task(id)
+
+    assert loaded == %{
+             parent_id: "p1",
+             started_at: ~U[2026-01-02 03:04:05Z],
+             result: %{"task_id" => id, "summary" => "S", "commit" => "abc", "files" => ["a"]}
+           }
+
+    refute Map.has_key?(loaded, :status)
+    refute Map.has_key?(loaded, :brief)
     assert entry(Store.list(1000), id).parent_id == "p1"
-    # Read-time only: the file still holds the key it was written with.
+    # Read-time only: the file still holds the keys it was written with.
     saved = :erlang.binary_to_term(File.read!(Path.join(Store.dir(), id <> ".term")))
     assert saved.task.status == "running"
+    assert saved.task.brief == "B"
   end
 
   # STORE-17
-  test "listed task chats carry their parent and task title, and no status" do
+  test "listed task chats carry their parent and their own title, and no status" do
     done = Elia.Agent.new_id()
     lost = Elia.Agent.new_id()
     plain = Elia.Agent.new_id()
     on_exit(fn -> Enum.each([done, lost, plain], &Store.delete/1) end)
 
     Store.save(done, [Message.user("preamble")],
-      task: %{parent_id: "p1", title: "Finished one", result: %{"status" => "done"}}
+      title: "Finished one",
+      task: %{parent_id: "p1", started_at: ~U[2026-01-02 03:04:05Z]}
     )
 
-    Store.save(lost, [Message.user("preamble")], task: %{parent_id: "p1", title: "Lost one"})
+    Store.save(lost, [Message.user("preamble")], task: %{parent_id: "p1"})
 
     Store.save(plain, [Message.user("just a chat")])
 
     list = Store.list(1000)
+
+    # STORE-32, TITLE-3: a task chat's title is its chat's own title, and its
+    # task metadata adds nothing to the row but the parent it belongs to.
     assert %{title: "Finished one", parent_id: "p1"} = entry(list, done)
-    # STORE-17: a listed chat carries no status of its own; a task chat's status
-    # is its chat's (UI-46, UI-59).
     refute Map.has_key?(entry(list, done), :task_status)
-    assert %{title: "Lost one", parent_id: "p1"} = entry(list, lost)
+    assert %{parent_id: "p1"} = entry(list, lost)
+    assert entry(list, lost).title != "p1"
     refute Map.has_key?(entry(list, lost), :task_status)
     plain_entry = entry(list, plain)
     refute Map.has_key?(plain_entry, :parent_id)
     assert plain_entry.title == "just a chat"
   end
 
-  # STORE-17: `latest/0` skips a task chat, whichever status an older file gave
+  # STORE-17: `latest/0` skips a task chat, whichever keys an older file gave
   # it — its `parent_id` is what says it is one.
   test "latest/0 never answers with a task chat" do
     parent = Elia.Agent.new_id()
@@ -441,22 +469,20 @@ defmodule Elia.StoreTest do
   end
 
   # STORE-18
-  test "children/1 lists a chat's task chats oldest first, with their call ids" do
+  test "children/1 lists a chat's task chats oldest first" do
     parent = Elia.Agent.new_id()
     first = Elia.Agent.new_id()
     second = Elia.Agent.new_id()
     other = Elia.Agent.new_id()
     on_exit(fn -> Enum.each([first, second, other], &Store.delete/1) end)
 
-    task = fn parent_id, call_id ->
-      %{parent_id: parent_id, parent_call_id: call_id, title: "T #{call_id}"}
-    end
+    Store.save(first, [Message.user("x")], task: %{parent_id: parent}, title: "T1")
+    Store.save(second, [Message.user("x")], task: %{parent_id: parent}, title: "T2")
+    Store.save(other, [Message.user("x")], task: %{parent_id: "someone-else"}, title: "T3")
 
-    Store.save(first, [Message.user("x")], task: task.(parent, "c1"))
-    Store.save(second, [Message.user("x")], task: task.(parent, "c2"))
-    Store.save(other, [Message.user("x")], task: task.("someone-else", "c3"))
-
-    assert [%{id: ^first, parent_call_id: "c1"}, %{id: ^second, parent_call_id: "c2"}] =
+    # STORE-18, STORE-17: each is the ordinary listed chat it is, with the parent
+    # it belongs to — a parent reads its children's status from their chats.
+    assert [%{id: ^first, parent_id: ^parent, title: "T1"}, %{id: ^second, parent_id: ^parent}] =
              Store.children(parent)
 
     assert Store.children("nobody") == []
@@ -604,7 +630,10 @@ defmodule Elia.StoreTest do
   end
 
   defp save_task_child(child, parent) do
-    Store.save(child, [Message.user("preamble")], task: %{parent_id: parent, title: "Task one"})
+    Store.save(child, [Message.user("preamble")],
+      title: "Task one",
+      task: %{parent_id: parent, started_at: ~U[2026-01-02 03:04:05Z]}
+    )
   end
 
   # STORE-24
@@ -656,7 +685,8 @@ defmodule Elia.StoreTest do
     # not from the chat list's entry point (UI-77).
     :ok =
       Store.save(task, [Message.user("preamble")],
-        task: %{parent_id: parent, title: "A task", brief: "Brief"}
+        title: "A task",
+        task: %{parent_id: parent, started_at: ~U[2026-01-02 03:04:05Z]}
       )
 
     # And a done chat is finished work, not where the user left off (DONE-10).

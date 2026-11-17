@@ -27,17 +27,11 @@ defmodule Elia.Application do
       EliaWeb.Presence,
       Elia.Logs,
       # STORE-45: before anything that reads saved chats — the sessions, the
-      # sub-task registry, the pages.
+      # pages.
       Elia.Store.Cache,
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
-      # SUBTASK-11, RESUME-7: the registry of the running sub-tasks, which owns
-      # each child's entry and its watcher. It starts with the application
-      # rather than on first use: a session resuming a sub-task takes its entry
-      # while it is starting itself, and a child started from inside the
-      # supervisor that is starting it would deadlock.
-      Elia.Tasks,
       # TERM-1: a chat's terminal session is registered by chat id, so a chat
       # has one, and it runs under its own supervisor — a session that dies
       # takes its process tree with it (TERM-3) and leaves the rest alone.

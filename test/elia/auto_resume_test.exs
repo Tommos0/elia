@@ -1,7 +1,7 @@
 defmodule Elia.AutoResumeTest do
   use ExUnit.Case, async: false
 
-  alias Elia.{Agent, FakeLLM, Store, Tasks}
+  alias Elia.{Agent, FakeLLM, Store, Skills.Tasks}
   alias Elia.LLM.Message
 
   @moduletag timeout: 120_000
@@ -11,7 +11,6 @@ defmodule Elia.AutoResumeTest do
     File.write!(Path.join(root, ".gitignore"), "/.elia/\n")
     {_, 0} = git(["add", "-A"])
     {_, 0} = git(["commit", "-q", "--allow-empty", "-m", "start"])
-    {head, 0} = git(["rev-parse", "HEAD"])
 
     # SUITE-10: the boot scan reads a store of this test's own, so it resumes
     # only the chats this test saved and never one another test left behind in
@@ -39,7 +38,7 @@ defmodule Elia.AutoResumeTest do
       File.rm_rf(data)
     end)
 
-    %{start_commit: String.trim(head), shared_root: shared}
+    %{shared_root: shared}
   end
 
   ## Helpers
@@ -111,19 +110,6 @@ defmodule Elia.AutoResumeTest do
       cd: Elia.Workspace.root(),
       stderr_to_stdout: true
     )
-  end
-
-  # Another running child holds the workspace root. A child of an earlier test
-  # may have released it a moment ago, so the entry is taken when it is free.
-  defp occupy_root(parent, other, root, tries \\ 100) do
-    case Tasks.acquire(parent, other, root, %{}) do
-      {:error, _message} when tries > 0 ->
-        Process.sleep(20)
-        occupy_root(parent, other, root, tries - 1)
-
-      result ->
-        result
-    end
   end
 
   # RESUME-1
@@ -355,22 +341,24 @@ defmodule Elia.AutoResumeTest do
     assert Store.load_turn(id) == nil
   end
 
-  # RESUME-7, SUBTASK-11, SUBTASK-33
-  test "a resumed sub-task chat takes its entry again, and its result reaches its parent", %{
-    start_commit: start_commit
-  } do
+  # RESUME-7, SUBTASK-20, SUBTASK-27, SUBTASK-33
+  test "a resumed sub-task chat is still its parent's child, and its result reaches it" do
     resume_on()
 
     parent = Agent.new_id()
     child = Agent.new_id()
     on_exit(fn -> stop_session(child) end)
 
+    # STORE-16: the metadata a child is a child by is its parent and when it
+    # started. The keys an earlier version also wrote — a title, a brief, the
+    # call that started it, the commit it began from — are read past: the chat is
+    # resumed either way (RESUME-7).
     task = %{
       parent_id: parent,
       parent_call_id: "call-1",
       title: "T",
       brief: "B",
-      start_commit: start_commit
+      start_commit: "0000000000000000000000000000000000000000"
     }
 
     :ok = saved_turn(child, [Message.user("do it")], task: task)
@@ -389,59 +377,70 @@ defmodule Elia.AutoResumeTest do
     assert_receive {:agent, ^child, {:message, %Message{meta: %{interrupted: true}}}}
     await_status(child, :awaiting_approval)
 
-    # RESUME-7: the entry was taken again before the turn started, so the child
-    # is a running child (SUBTASK-11), and its own chat's status is `working`
-    # rather than `interrupted` (UI-72, STORE-31).
-    assert Tasks.running?(child)
+    # RESUME-7: nothing had to be taken again — the child is resumed like any
+    # chat because its saved chat says it is one — and its own chat's status is
+    # `working` rather than `interrupted` (UI-72, STORE-31).
+    assert Store.load_task(child).parent_id == parent
     assert %{interrupted: false} = listed(child)
     refute Map.has_key?(listed(child), :task_status)
     assert EliaWeb.ChatStatus.for_chat(listed(child), %{running: [child]}) == "working"
 
     # SUBTASK-33, SUBTASK-13: marking the chat done ends the task, and the result
-    # is saved with it by the child's own session (SESS-18).
+    # is saved with it by the child's own session.
     :ok = Agent.approve(child, "c1")
 
     assert %{"task_id" => ^child, "summary" => "did it"} = await_task_result(child)
-    refute Tasks.running?(child)
 
-    # SUBTASK-27: so the parent's wait gets the result at once, rather than
-    # being left waiting for a chat that ended long ago.
+    # SUBTASK-27: so the parent's wait gets the result at once, rather than being
+    # left waiting for a chat that ended long ago — and the result is the two
+    # keys it is (SUBTASK-9).
     assert {:ok, json} = Tasks.await_task(%{"task_id" => child}, %{session_id: parent})
 
-    assert %{"task_id" => ^child, "summary" => "did it", "files" => _files} =
-             Jason.decode!(json)
-
+    assert %{"task_id" => ^child, "summary" => "did it"} = decoded = Jason.decode!(json)
+    assert Map.keys(decoded) |> Enum.sort() == ["summary", "task_id"]
     assert %{result: %{"summary" => "did it"}} = Store.load_task(child)
   end
 
-  # RESUME-7, SUBTASK-4, SUBTASK-11
-  test "a child whose workspace another child is writing in is not resumed", %{
-    start_commit: start_commit
-  } do
+  # RESUME-7: a child whose chat says it is one is resumed, and nothing is taken
+  # again — there is no writer lock and no registry of running children to hold
+  # one (the retired SUBTASK-4, SUBTASK-11), so two children of the same tree
+  # simply run (SUBTASK-23).
+  test "two resumed children of the same workspace are both resumed" do
     resume_on()
 
     parent = Agent.new_id()
-    other = Agent.new_id()
-    child = Agent.new_id()
-    on_exit(fn -> stop_session(child) end)
+    first = Agent.new_id()
+    second = Agent.new_id()
+    on_exit(fn -> Enum.each([first, second], &stop_session/1) end)
 
-    task = %{parent_id: parent, parent_call_id: "call-1", title: "T", start_commit: start_commit}
-    :ok = saved_turn(child, [Message.user("do it")], task: task)
+    :ok = saved_turn(first, [Message.user("do it")], task: %{parent_id: parent})
+    :ok = saved_turn(second, [Message.user("do it")], task: %{parent_id: parent})
 
-    # SUBTASK-4, SUBTASK-11: the tree has one writer, and it is another child.
-    root = Elia.Deploy.workspace(Elia.Projects.harness(), child)
-    :ok = occupy_root(parent, other, root)
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carried on.")]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carried on.")]))
 
-    Agent.subscribe(child)
-    {:ok, _pid} = Agent.ensure_started(child)
+    refute Agent.live?(first)
+    refute Agent.live?(second)
 
-    # RESUME-7: nothing is resumed, and the chat says the app restarted (INTR-3).
-    assert_receive {:agent, ^child, {:message, %Message{meta: %{interrupted: true}} = notice}}
-    assert Message.text_content(notice) =~ "Send a message to carry on"
-    assert %{status: :idle} = Agent.snapshot(child)
-    assert Store.load_turn(child) == nil
-    refute Tasks.running?(child)
+    assert :ok = Elia.Agent.Resumer.resume_interrupted()
 
-    :ok = Tasks.release(other)
+    assert Agent.live?(first)
+    assert Agent.live?(second)
+
+    # Both carry their turns on, one model call each.
+    for id <- [first, second], do: await_idle(id)
+  end
+
+  defp await_idle(id, tries \\ 1000)
+
+  defp await_idle(_id, 0), do: flunk("the chat never went idle")
+
+  defp await_idle(id, tries) do
+    if Agent.snapshot(id).status == :idle do
+      :ok
+    else
+      Process.sleep(20)
+      await_idle(id, tries - 1)
+    end
   end
 end

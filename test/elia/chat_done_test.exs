@@ -41,11 +41,12 @@ defmodule Elia.ChatDoneTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 5000)
 
+  # STORE-16: the task metadata a child is a child by — the chat that started it
+  # and when. Its title is its chat's own title (STORE-32, TITLE-3) and its brief
+  # the first message of its transcript (SUBTASK-5), so neither is here.
   defp task_meta do
     %{
       parent_id: Agent.new_id(),
-      title: "Add the file",
-      brief: "b",
       started_at: DateTime.utc_now()
     }
   end
@@ -106,7 +107,12 @@ defmodule Elia.ChatDoneTest do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
 
-    :ok = Store.save(child, [Message.user("preamble")], task: task_meta(), done: true)
+    :ok =
+      Store.save(child, [Message.user("preamble")],
+        task: task_meta(),
+        title: "Add the file",
+        done: true
+      )
 
     assert [entry] = listed(child)
     refute Map.has_key?(entry, :task_status)
@@ -202,9 +208,12 @@ defmodule Elia.ChatDoneTest do
     assert_receive {:agent, ^child, {:done, true}}
     assert Agent.snapshot(child).done == true
     assert Store.load_done(child) == true
-    # DONE-3, STORE-16: the task's own metadata is untouched — and it carries no
-    # status for the flag to touch (UI-59).
-    assert Store.load_task(child).title == "Add the file"
+    # DONE-3, STORE-16: the task's own metadata gains nothing from the flag, and
+    # it carries no status for it to touch (UI-59). It does gain the result the
+    # end saves (SUBTASK-9, SUBTASK-13).
+    assert %{parent_id: _, started_at: _, result: %{"task_id" => ^child}} =
+             Store.load_task(child)
+
     refute Map.has_key?(Store.load_task(child), :status)
 
     assert {:ok, false} = Agent.set_done(child, false)
@@ -230,7 +239,7 @@ defmodule Elia.ChatDoneTest do
     await_status(child, :idle)
 
     assert Store.load_done(child) == false
-    assert Store.load_task(child).title == "Add the file"
+    assert %{parent_id: _, result: %{"task_id" => ^child}} = Store.load_task(child)
   end
 
   ## Continuing a done chat (DONE-8, DONE-9, SESS-36)
@@ -308,13 +317,23 @@ defmodule Elia.ChatDoneTest do
     assert_receive {:agent, ^id, {:done, false}}
   end
 
-  # DONE-3, DONE-7, SUBTASK-33: the tool works in a sub-task too, where marking
-  # the chat done is what ends the task — the harness builds the result and its
-  # own session saves it (SUBTASK-9, SUBTASK-13).
+  # DONE-3, DONE-7, SUBTASK-33, SUBTASK-9, SUBTASK-13: the tool works in a
+  # sub-task too, where marking the chat done is what ends the task — the result
+  # is built from the chat's own state and saved by its own session.
   test "the mark_done tool marks a sub-task chat done, which ends its task" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
-    :ok = Store.save(child, [Message.user("preamble")], task: task_meta())
+
+    :ok =
+      Store.save(
+        child,
+        [
+          Message.user("preamble"),
+          %Message{role: :assistant, content: [Message.text("I did it.")]}
+        ],
+        task: task_meta()
+      )
+
     start_session(child)
 
     [tool] = Elia.Skills.Done.tools()
@@ -323,11 +342,12 @@ defmodule Elia.ChatDoneTest do
     assert output =~ "marked done"
     assert Store.load_done(child) == true
 
-    # SUBTASK-33, SUBTASK-11: the task ended with it — no entry is held, and the
-    # result is saved with the chat's own metadata.
-    refute Elia.Tasks.running?(child)
-    assert %{result: %{"task_id" => ^child, "summary" => _summary}} = Store.load_task(child)
-    assert Store.load_task(child).title == "Add the file"
+    # SUBTASK-33: the task ended with it. SUBTASK-9: the result is the id and the
+    # child's last message, and nothing else. SUBTASK-13: it is saved with the
+    # chat's own metadata, by the session that owns the chat — no registry holds
+    # anything (the retired SUBTASK-11).
+    assert %{result: result} = Store.load_task(child)
+    assert result == %{"task_id" => child, "summary" => "I did it."}
 
     # DONE-9: reopening the chat doesn't un-end the task, and marking it done
     # again keeps the result it has (SUBTASK-13).

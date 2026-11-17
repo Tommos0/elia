@@ -19,7 +19,9 @@ defmodule Elia.Agent.Session do
   transcript message is STOP-1's, STOP-4),
   `{:reset, messages}`, `{:settings, settings}` (one of the chat's per-chat
   settings changed, SESS-41), `{:title, title}`, `{:done, on?}`,
-  `{:paused, message}`, `{:task, metadata}`.
+  `{:paused, message}`. A chat's task metadata is not among them: it is set when
+  the chat is created and once when its result is saved with it (SESS-18,
+  SUBTASK-13), and no view draws it live (the retired SESS-20).
   """
 
   use GenServer, restart: :temporary
@@ -29,6 +31,10 @@ defmodule Elia.Agent.Session do
   # SESS-41: the five settings the chat's one map holds, and the only keys a
   # change to it may name (SESS-42).
   @setting_keys [:model, :auto_approve, :jail, :limits, :effort]
+
+  # SUBTASK-9: what a child says about itself when it marked its chat done
+  # without a last message to say it with.
+  @no_summary "The task ended without a summary."
 
   alias Elia.LLM.{Compaction, Context, Message}
 
@@ -324,17 +330,6 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  def handle_call({:update_task, _changes}, _from, %{task_meta: nil} = state) do
-    {:reply, {:error, :not_a_task}, state}
-  end
-
-  def handle_call({:update_task, changes}, _from, state) do
-    # SESS-18, SESS-20
-    state = save(%{state | task_meta: Map.merge(state.task_meta, changes)})
-    broadcast(state, {:task, state.task_meta})
-    {:reply, :ok, state}
-  end
-
   def handle_call({:decide, call_id, decision}, _from, %{approval: {pid, decisions}} = state)
       when is_map_key(decisions, call_id) and decision in [:approve, :deny] do
     decisions = Map.put(decisions, call_id, decision)
@@ -409,10 +404,11 @@ defmodule Elia.Agent.Session do
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:stop, _from, state) do
-    # SESS-22, SUBTASK-17: stopping this chat's turn stops its children's turns
-    # too. A stop ends a turn and nothing more, so nothing is recorded for it:
-    # the child stays a running child holding its entry (SUBTASK-16).
-    Elia.Tasks.stop_children(state.id)
+    # SESS-22, SUBTASK-17: stopping this chat's turn stops the turn of every
+    # child of it whose chat isn't marked done, read from the saved chats
+    # (STORE-18). A stop ends a turn and nothing more, so nothing is recorded
+    # for it: each child goes on as a sub-task (SUBTASK-16).
+    stop_children(state.id)
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])
 
@@ -1295,45 +1291,13 @@ defmodule Elia.Agent.Session do
   end
 
   # RESUME-3, RESUME-7: the turn carries on over the history the chat already
-  # holds, with the notice that says so and, for a sub-task chat, its entry in
-  # the registry of running children taken again first. A child whose entry
-  # can't be taken is not resumed.
+  # holds, with the notice that says so. A sub-task chat is resumed like any
+  # other: nothing has to be put back first, since a child is a child because
+  # its saved chat says so (STORE-16, STORE-17).
   defp resume_turn(state) do
-    case take_entry(state) do
-      :ok ->
-        state
-        |> put_child_skills()
-        |> start_turn(resumed: true, message: resumed_notice())
-
-      {:error, message} ->
-        Logger.error("Could not resume chat #{state.id}: #{message}")
-        note_interrupted_turn(state)
-    end
-  end
-
-  # RESUME-7: the registry of running children lives in memory (SUBTASK-11), so
-  # the restart emptied it and the child's entry is taken again before its
-  # resumed turn starts — there is no watcher to put back (the retired
-  # SUBTASK-28). A child whose workspace another running child already writes in
-  # (SUBTASK-4), and one whose task says nothing about the commit it started
-  # from, which its result needs (SUBTASK-9), is not resumed.
-  defp take_entry(%{task_meta: nil}), do: :ok
-
-  defp take_entry(state) do
-    case Map.get(state.task_meta, :start_commit) do
-      start_commit when is_binary(start_commit) ->
-        Elia.Tasks.acquire(state.task_meta.parent_id, state.id, workspace(state), %{
-          call_id: Map.get(state.task_meta, :parent_call_id),
-          start_commit: start_commit,
-          # RESUME-7: the child's brief went out long ago, so its entry outlives
-          # this session: a child whose session dies stays a running child
-          # (SUBTASK-34).
-          sent: true
-        })
-
-      _none ->
-        {:error, "the sub-task's task has no start commit to report its work against"}
-    end
+    state
+    |> put_child_skills()
+    |> start_turn(resumed: true, message: resumed_notice())
   end
 
   # SUBTASK-1, LOOP-17: a sub-task chat's own skill set — the ordinary registry
@@ -1462,17 +1426,22 @@ defmodule Elia.Agent.Session do
 
   # SUBTASK-33, SUBTASK-13, SESS-18: marking a sub-task chat done is what ends
   # the task — the harness builds the result (SUBTASK-9) and it is saved here,
-  # with this chat's own metadata, by the one session that owns the chat. The
-  # entry is released with it (SUBTASK-11), and a waiting `await_task` returns
-  # the result (SUBTASK-27). A chat whose result is already saved keeps it
-  # (SUBTASK-13), and a chat that isn't a sub-task's is left alone.
-  defp end_task(state) do
-    case Elia.Tasks.end_task(state.id, last_text(state), workspace(state)) do
-      {:ok, result} ->
-        save(%{state | task_meta: Map.put(state.task_meta || %{}, :result, result)})
+  # with this chat's own metadata, by the one session that owns the chat. A
+  # waiting `await_task` returns it (SUBTASK-27). A chat whose result is already
+  # saved keeps it (SUBTASK-13), and a chat that isn't a sub-task's is left
+  # alone.
+  defp end_task(%{task_meta: nil} = state), do: state
 
-      :ok ->
-        state
+  defp end_task(state) do
+    if Map.has_key?(state.task_meta, :result) do
+      state
+    else
+      result = %{
+        "task_id" => state.id,
+        "summary" => last_text(state) || @no_summary
+      }
+
+      save(%{state | task_meta: Map.put(state.task_meta, :result, result)})
     end
   end
 
@@ -1493,9 +1462,27 @@ defmodule Elia.Agent.Session do
     end)
   end
 
+  # SESS-22, SUBTASK-17: stopping this chat's turn stops the turn of every child
+  # of it whose chat isn't marked done, read from the saved chats (STORE-18) —
+  # a running child is a child chat nobody has marked done, so there is nothing
+  # to keep in memory (the retired SUBTASK-11).
+  defp stop_children(parent_id) do
+    for %{id: child_id, done: false} <- Elia.Store.children(parent_id),
+        do: stop_session(child_id)
+
+    :ok
+  end
+
+  defp stop_session(id) do
+    if Elia.Agent.live?(id), do: Elia.Agent.stop(id)
+  catch
+    :exit, _ -> :ok
+  end
+
   # SESS-19, SESS-35: a change to the chat's done flag reaches this chat's own
   # views and, on the activity topic, the pages that show other chats — which is
-  # how a parent's card follows a child being marked done (UI-44, UI-46, UI-49).
+  # how a parent's sidebar follows a child being marked done, and how a waiting
+  # `await_task` is answered (SUBTASK-27, UI-46, UI-49).
   # What is announced is `:done` when the flag is set, and the chat's own status
   # when it is cleared: either way it is the status its row shows, since a chat
   # marked done shows `done` in place of `idle` (UI-59, UI-80).
