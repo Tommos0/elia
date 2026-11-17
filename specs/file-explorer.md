@@ -44,7 +44,8 @@ a file the agent mentions in that chat is opened (FLINK-5).
   wrapping. Truncated files say so. Binary files show a notice instead of
   content.
 - **EXPL-9** A path that is forbidden or missing shows a message, and the
-  listing falls back to the workspace root.
+  listing falls back to the browsed root (EXPL-19 when the root itself is what
+  can't be browsed).
 - **EXPL-10** The app header has a "Files" link to `/files`.
 
 - **EXPL-15** The page browses one project at a time: a `project` query
@@ -72,6 +73,14 @@ a file the agent mentions in that chat is opened (FLINK-5).
   project folder on its own. The project picker (`#project-picker`) switches to that project's
   folder and leaves the chat behind — dropping `chat` from the URL — keeping
   the current path when it exists there (EXPL-16).
+
+- **EXPL-19** When the browsed root itself can't be listed — the folder is
+  missing, unreadable or not a directory — the page shows a message saying so,
+  naming the root, in place of EXPL-9's path message, and the listing is empty:
+  it neither shows another directory's entries nor says the directory is empty.
+  The page stays otherwise usable — the project name, the picker
+  (`#project-picker`) and, with a chat in view, the workspace note (EXPL-18) —
+  so it can be left by switching project, and no other folder is browsed.
 
 ### Syntax highlighting
 
@@ -117,7 +126,7 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 - `test/elia_web/live/files_live_test.exs` (the page, its breadcrumbs, the
   viewer and its refusals, the language attribute, the header link, the project
   and the chat in view — EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to
-  EXPL-18).
+  EXPL-19).
 - `test/elia_web/file_links_test.exs` (the paths a link may name, EXPL-1,
   EXPL-2, EXPL-6, EXPL-9).
 - `test/elia/preview_test.exs` (a path through a symlink refused, EXPL-2).

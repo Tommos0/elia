@@ -129,4 +129,19 @@ defmodule Elia.ProjectsTest do
     assert :ok = Projects.set_default("harness")
     assert Projects.default() == Projects.harness()
   end
+
+  # PROJ-27: a project whose folder is gone stays in the registry and is listed,
+  # so a chat of its own keeps its project_id.
+  test "a project whose folder is gone stays listed" do
+    folder = Path.join(Workspace.root(), "projects_test_gone")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    {:ok, project} = Projects.create("Gone", folder)
+    File.rm_rf!(folder)
+
+    on_exit(fn -> File.rm_rf!(folder) end)
+
+    assert project in Projects.list()
+    assert Projects.get(project.id) == project
+  end
 end

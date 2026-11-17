@@ -246,4 +246,103 @@ defmodule EliaWeb.FilesLiveTest do
       refute has_element?(view, "#workspace-note")
     end
   end
+
+  # EXPL-19: a project whose folder is gone shows its own message — in place of
+  # EXPL-9's path message — and leaves the page usable, instead of crashing on
+  # the listing that couldn't be read.
+  test "a project folder that is gone shows a message and keeps the picker", %{conn: conn} do
+    folder = in_root("#{@project}_gone")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    {:ok, project} = Projects.create("Gone", folder)
+    File.rm_rf!(folder)
+
+    on_exit(fn ->
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+
+    assert has_element?(view, "#root-error", folder)
+    assert has_element?(view, "#project-name", "Gone")
+    assert has_element?(view, "#project-picker")
+    refute has_element?(view, "#file-error")
+    refute has_element?(view, "[data-entry]")
+    refute render(view) =~ "Empty directory"
+
+    # The picker is the way out: a project that is there browses as usual.
+    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    assert_patch(view, "/files")
+    refute has_element?(view, "#root-error")
+    assert has_element?(view, "[data-entry='#{@dir}']")
+  end
+
+  # EXPL-19: a root that is not a directory says so rather than crashing.
+  test "a project folder that isn't a directory shows a message", %{conn: conn} do
+    folder = in_root("#{@project}_file")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    {:ok, project} = Projects.create("A file", folder)
+    File.rm_rf!(folder)
+    File.write!(folder, "not a folder")
+
+    on_exit(fn ->
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    assert has_element?(view, "#root-error", folder)
+    assert has_element?(view, "#project-picker")
+  end
+
+  # EXPL-19, EXPL-17: a chat whose project's folder is gone reports it the same
+  # way, naming the workspace it browsed.
+  test "a chat whose project folder is gone shows the message too", %{conn: conn} do
+    folder = in_root("#{@project}_chat")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    {:ok, project} = Projects.create("Gone chat", folder)
+    chat = Elia.Agent.new_id()
+    :ok = Elia.Store.save(chat, [], project: project.id, title: "No folder")
+    File.rm_rf!(folder)
+
+    on_exit(fn ->
+      Elia.Store.delete(chat)
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat}}")
+    assert has_element?(view, "#root-error", folder)
+    assert has_element?(view, "#workspace-note", "No folder")
+    assert has_element?(view, "#project-name", "Gone chat")
+  end
+
+  # PROJ-27: a project whose folder is gone stays in the picker and is marked,
+  # so it isn't mistaken for a deleted one.
+  test "the picker marks a project whose folder is gone", %{conn: conn} do
+    folder = in_root("#{@project}_marked")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    {:ok, project} = Projects.create("Unmounted", folder)
+    File.rm_rf!(folder)
+
+    on_exit(fn ->
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files")
+
+    assert has_element?(
+             view,
+             "#project-picker option[value='#{project.id}']",
+             "Unmounted (unavailable)"
+           )
+
+    assert has_element?(view, "#project-picker option[value='harness']", "Elia")
+    refute render(element(view, "#project-picker")) =~ "Elia (unavailable)"
+  end
 end

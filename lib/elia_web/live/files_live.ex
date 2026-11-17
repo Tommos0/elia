@@ -14,7 +14,7 @@ defmodule EliaWeb.FilesLive do
     {:ok, assign(socket, page_title: "Files")}
   end
 
-  # EXPL-6, EXPL-9, EXPL-15, EXPL-17
+  # EXPL-6, EXPL-9, EXPL-15, EXPL-17, EXPL-19
   @impl true
   def handle_params(params, _uri, socket) do
     {project, chat} = viewed(params)
@@ -37,12 +37,18 @@ defmodule EliaWeb.FilesLive do
       end
 
     # The listing is read again after the viewer so that a vanished directory
-    # falls back to the project root instead of crashing.
-    {dir, entries} =
+    # falls back to the project root instead of crashing (EXPL-9) — and so that
+    # a root which is itself unavailable reports that, rather than putting an
+    # error atom where the listing belongs (EXPL-19).
+    {dir, entries, root_error} =
       case Explorer.list(dir, root) do
-        {:ok, entries} -> {dir, entries}
-        {:error, _} -> {"", elem(Explorer.list("", root), 1)}
+        {:ok, entries} -> {dir, entries, nil}
+        {:error, _} -> root_listing(root)
       end
+
+    # EXPL-19: an unavailable root is what the page reports, not the path that
+    # couldn't be reached inside it.
+    error = if root_error, do: nil, else: error
 
     {:noreply,
      assign(socket,
@@ -56,8 +62,18 @@ defmodule EliaWeb.FilesLive do
        selected: file,
        viewer: viewer,
        error: error,
+       root_error: root_error,
        crumbs: crumbs(dir)
      )}
+  end
+
+  # EXPL-9, EXPL-19: the fallback is the browsed root's own listing; a root that
+  # can't be listed leaves an empty listing and the error to report.
+  defp root_listing(root) do
+    case Explorer.list("", root) do
+      {:ok, entries} -> {"", entries, nil}
+      {:error, reason} -> {"", [], reason}
+    end
   end
 
   # EXPL-17: with a chat in view its own workspace is browsed, and the project
@@ -175,6 +191,21 @@ defmodule EliaWeb.FilesLive do
   defp error_message(:not_found), do: "That path doesn't exist."
   defp error_message(_), do: "That path couldn't be read."
 
+  # EXPL-19
+  defp root_error_message(:not_found, root),
+    do: "This project's folder is no longer there: #{root}"
+
+  defp root_error_message(:not_a_directory, root),
+    do: "This project's folder isn't a directory: #{root}"
+
+  defp root_error_message(_reason, root), do: "This project's folder can't be read: #{root}"
+
+  # PROJ-27: a project whose folder is gone is marked rather than dropped from
+  # the picker, since the folder may only be temporarily away.
+  defp project_label(project) do
+    if File.dir?(project.folder), do: project.name, else: project.name <> " (unavailable)"
+  end
+
   @impl true
   def render(assigns) do
     assigns =
@@ -228,7 +259,7 @@ defmodule EliaWeb.FilesLive do
                 class="max-w-40 rounded-lg border border-base-300 bg-base-200/50 px-2 py-1 text-xs outline-none transition focus:border-primary focus:bg-base-100"
               >
                 <option :for={p <- @projects} value={p.id} selected={p.id == @project.id}>
-                  {p.name}
+                  {project_label(p)}
                 </option>
               </select>
             </form>
@@ -257,7 +288,10 @@ defmodule EliaWeb.FilesLive do
                 <.icon name="hero-arrow-uturn-left" class="size-4 text-base-content/50" /> ..
               </.link>
             </li>
-            <li :if={@entries == []} class="px-2 py-6 text-center text-base-content/50">
+            <li
+              :if={@entries == [] and is_nil(@root_error)}
+              class="px-2 py-6 text-center text-base-content/50"
+            >
               Empty directory
             </li>
             <li :for={entry <- @entries}>
@@ -299,6 +333,15 @@ defmodule EliaWeb.FilesLive do
 
         <section id="file-viewer" class="flex min-h-0 min-w-0 flex-1 flex-col">
           <%= cond do %>
+            <% @root_error -> %>
+              <div
+                id="root-error"
+                role="alert"
+                class="m-6 flex items-center gap-2 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
+              >
+                <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+                {root_error_message(@root_error, @root)}
+              </div>
             <% @error -> %>
               <div
                 id="file-error"

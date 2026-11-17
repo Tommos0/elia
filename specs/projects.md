@@ -14,7 +14,8 @@ kept apart from the ones that apply in every project.
 
 - **PROJ-1** A project is `%{id, name, folder, harness?}`: an id of 12
   URL-safe characters (STORE-5), a non-blank `name` (trimmed on save), the
-  absolute path of an existing directory `folder`, and `harness?` true only
+  absolute path of a directory `folder` — one that exists when the project is
+  created (PROJ-6) and may be gone later (PROJ-27) — and `harness?` true only
   for Elia's own project.
 - **PROJ-2** Projects are saved as one Erlang term in `.elia/projects.term`
   (Elia's data dir, PROJ-13), written atomically like a session (STORE-2). A
@@ -40,6 +41,9 @@ kept apart from the ones that apply in every project.
   `set_default/1` last stored (in `Elia.Settings`, so it survives a restart),
   else Elia's own project. `set_default/1` with an unknown id leaves the
   default alone.
+- **PROJ-27** A project whose folder is no longer there stays in the registry
+  and is listed, and its chats keep it (PROJ-7, PROJ-9); the Files page's picker
+  (`#project-picker`, EXPL-16) marks it as unavailable.
 
 ### Chats and projects
 
@@ -144,8 +148,8 @@ kept apart from the ones that apply in every project.
 ## Tests
 
 - `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
-  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0` —
-  PROJ-1 to PROJ-9).
+  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`, a
+  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
   PROJ-3, PROJ-13, PROJ-14, PROJ-22).
@@ -162,5 +166,5 @@ kept apart from the ones that apply in every project.
   PROJ-26).
 - `test/elia_web/live/dashboard_test.exs` (the projects card and the default
   project, PROJ-8, PROJ-9, PROJ-24).
-- `test/elia_web/live/files_live_test.exs` (the project a page browses,
-  PROJ-12).
+- `test/elia_web/live/files_live_test.exs` (the project a page browses, and one
+  whose folder is gone marked in the picker — PROJ-12, PROJ-27).
