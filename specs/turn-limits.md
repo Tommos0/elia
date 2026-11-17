@@ -17,7 +17,7 @@ set them: only a sub-task got a budget, and it got it from `spawn_task`
 (SUBTASK-12, SUBTASK-18). A chat can now set its own step limit, time budget and
 token budget, and whether reaching one pauses the turn for the user's decision
 (UI-57) instead of failing it, from its settings page (CSET-5). The defaults are
-the loop's — a step limit of 100, no time budget, no token budget — and a chat
+the loop's — a step limit of 300, no time budget, no token budget — and a chat
 that sets nothing pauses when it reaches that step limit rather than ending with
 an error (LIMIT-9); the pause is written into the transcript (LIMIT-10), so a
 turn that stopped for the user says so however much later the chat is opened.
@@ -26,7 +26,7 @@ turn that stopped for the user says so however much later the chat is opened.
 
 - **LIMIT-1** A chat has four limits, each empty by default:
   - `max_steps`, a positive integer: the turn's step limit (LOOP-16, LOOP-3,
-    whose default is 100);
+    whose default is 300);
   - `max_minutes`, a positive number of minutes: the turn's wall-clock budget
     (LOOP-20, no budget by default);
   - `max_tokens`, a positive integer: the turn's token budget (LIMIT-12,
@@ -88,7 +88,7 @@ turn that stopped for the user says so however much later the chat is opened.
   writes its own stop message as well (STOP-1, STOP-2).
 
 - **LIMIT-9** `pause_on_limit` is on by default: a chat that sets no limits of
-  its own **pauses** when its turn reaches a limit — the loop's 100 steps
+  its own **pauses** when its turn reaches a limit — the loop's 300 steps
   (LOOP-16), or the step limit, time budget or token budget the chat does set
   (LIMIT-1, LOOP-20, LIMIT-12) — instead of ending with an error (LOOP-3), where
   it used to end: the status becomes `:paused` (SESS-4), the chat shows the
@@ -102,7 +102,7 @@ turn that stopped for the user says so however much later the chat is opened.
 - **LIMIT-10** A turn that reaches a limit says so in the transcript, whether or
   not anyone was looking when it did: when the loop pauses (LOOP-19), the
   session appends a harness message (UI-9) that names the limit and what the
-  decision does — "Step limit reached (100 steps). The turn is paused: Continue
+  decision does — "Step limit reached (300 steps). The turn is paused: Continue
   starts the count over, Fail ends it." (and the time budget's own wording,
   LOOP-20, the token budget's, LIMIT-12, and the standing-still limit's,
   LIMIT-13) — marked as the pause it is
@@ -161,7 +161,7 @@ Limits section), `EliaWeb.ChatLive` (the pause's row, UI-81).
 ## Tests
 
 `test/elia/agent_test.exs` (the limits in a turn: a step limit, a budget and a
-token budget pausing a turn, the defaults — a chat with no limits pauses at 100
+token budget pausing a turn, the defaults — a chat with no limits pauses at 300
   steps (LIMIT-9) — the pause's message and what the transcript keeps of it
   (LIMIT-10), the standing-still limit's message (LIMIT-13), and the stop a
   limit ends in (STOP-1, STOP-2), persistence across a

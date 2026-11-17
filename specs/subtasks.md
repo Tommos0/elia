@@ -134,7 +134,7 @@ The feature was built in phases 1 to 3 of `specs/plans/subagents.md`. Phase 4
   means, and a restart empties it (SUBTASK-20, RESUME-7).
 
 - **SUBTASK-12** `spawn_task` takes `max_steps` (a step limit for the child,
-  LOOP-16) and defaults it to 50, capped at the loop's own cap. It is the
+  LOOP-16) and defaults it to 300, capped at 300. It is the
   child's limit, not the parent's: a later change in either chat never affects
   the other.
 

@@ -32,7 +32,7 @@ defmodule Elia.Agent.Loop do
   Options: `:session_id`, `:turn_id`, `:turn_started_at` (the chat's turn as it
   started, STORE-30: both go into a step's timing record, TIME-2), `:skills` (a
   fixed skill list, or a function returning one, instead of the project's),
-  `:max_steps` (default 100),
+  `:max_steps` (default 300),
   `:pause_on_limit` (a limit pauses the turn for the user instead of ending it,
   LOOP-19), `:budget_ms` (a wall-clock budget, LOOP-20), `:token_budget` (a
   token budget for the turn, LOOP-22, LIMIT-12), `:step_retry` (the waits before
@@ -49,7 +49,7 @@ defmodule Elia.Agent.Loop do
   alias Elia.LLM.{Compaction, Context, Message}
   alias Elia.Tool
 
-  @max_steps 100
+  @max_steps 300
 
   # LOOP-25: how many times one repeated call may return the identical result
   # before the turn is standing still.

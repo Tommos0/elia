@@ -202,11 +202,11 @@ defmodule EliaWeb.ChatSettingsLive do
                         id="limit-steps"
                         name="limits[max_steps]"
                         value={@limits_form["max_steps"]}
-                        placeholder="100"
+                        placeholder="300"
                         class="mt-1 w-full rounded-xl border border-base-300 bg-base-200/50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-base-100"
                       />
                       <span class="mt-1 block text-[11px] text-base-content/40">
-                        Empty: the loop's own default, 100 steps.
+                        Empty: the loop's own default, 300 steps.
                       </span>
                     </label>
                     <label class="flex-1 basis-40">
@@ -807,7 +807,7 @@ defmodule EliaWeb.ChatSettingsLive do
   # LIMIT-6, LIMIT-12: the settings as they stand, and what reaching a limit
   # does.
   defp limits_state(limits) do
-    steps = if limits.max_steps, do: "#{limits.max_steps} steps", else: "the default 100 steps"
+    steps = if limits.max_steps, do: "#{limits.max_steps} steps", else: "the default 300 steps"
 
     time =
       if limits.max_minutes,

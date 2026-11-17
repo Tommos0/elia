@@ -22,8 +22,8 @@ defmodule Elia.Tasks do
   alias Elia.{Deploy, Store, Workspace}
   alias EliaWeb.ChatStatus
 
-  @default_steps 100
-  @max_steps 100
+  @default_steps 300
+  @max_steps 300
   @default_minutes 30
   @max_minutes 120
 

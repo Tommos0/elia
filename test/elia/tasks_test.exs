@@ -426,7 +426,7 @@ defmodule Elia.TasksTest do
   end
 
   # SUBTASK-2, SUBTASK-4, SUBTASK-5, SUBTASK-6, SUBTASK-9, SUBTASK-11,
-  # SUBTASK-13, SUBTASK-15, SUBTASK-26, SUBTASK-27, SUBTASK-33
+  # SUBTASK-12, SUBTASK-13, SUBTASK-15, SUBTASK-26, SUBTASK-27, SUBTASK-33
   test "a parent starts a sub-task, goes on, and collects its result", %{parent: parent} do
     test_pid = self()
     default_model = Elia.Settings.get(:model)
@@ -511,6 +511,10 @@ defmodule Elia.TasksTest do
     assert request.model == "other-model"
     assert %{model: "other-model"} = Agent.snapshot(child).settings.model
     assert Elia.Settings.get(:model) == default_model
+
+    # SUBTASK-12: the child's step limit is the spawn's own — the loop's own
+    # default when the call names none, with pausing on (SUBTASK-24).
+    assert %{max_steps: 300, pause_on_limit: true} = Agent.snapshot(child).settings.limits
 
     # SUBTASK-1: a child can't start a child.
     assert_receive {:nested, {:error, "Not started: a sub-task can't start" <> _}}
@@ -1050,6 +1054,19 @@ defmodule Elia.TasksTest do
     assert %{result: %{"summary" => "Reading the chats."}} = Store.load_task(child)
 
     :ok = Agent.stop(child)
+  end
+
+  # SUBTASK-12
+  test "a spawn's max_steps is capped", %{parent: parent} do
+    child = spawn_blocked_child(parent, self(), %{"max_steps" => 5_000})
+
+    assert Agent.snapshot(child).settings.limits.max_steps == 300
+
+    # Cleanup: the task is over when its chat is marked done (SUBTASK-33), so
+    # nothing is left holding the workspace.
+    :ok = Agent.stop(child)
+    assert {:ok, true} = Agent.set_done(child, true)
+    assert :ok = await_released(child)
   end
 
   # SUBTASK-24, SUBTASK-16, SUBTASK-33

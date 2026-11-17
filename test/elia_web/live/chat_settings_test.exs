@@ -254,7 +254,7 @@ defmodule EliaWeb.ChatSettingsTest do
     {:ok, view, _html} = settings(conn, id)
 
     # LIMIT-1, LIMIT-9, LIMIT-12: nothing set yet, so the loop's own default
-    # applies — 100 steps, no time budget, no token budget — and pausing is on.
+    # applies — 300 steps, no time budget, no token budget — and pausing is on.
     assert has_element?(view, "#limit-steps[value='']")
     assert has_element?(view, "#limit-minutes[value='']")
     assert has_element?(view, "#limit-tokens[value='']")
@@ -262,7 +262,7 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#limit-pause-state", "On")
     assert has_element?(view, "#settings-limits", "On (the default)")
     assert has_element?(view, "#settings-limits", "no token budget")
-    assert has_element?(view, "#limits-state", "the default 100 steps")
+    assert has_element?(view, "#limits-state", "the default 300 steps")
     assert has_element?(view, "#limits-state", "no time budget")
     assert has_element?(view, "#limits-state", "no token budget")
     assert has_element?(view, "#limits-state", "pauses the turn")
@@ -310,7 +310,7 @@ defmodule EliaWeb.ChatSettingsTest do
            }
 
     {:ok, view, _html} = settings(conn, id)
-    assert has_element?(view, "#limits-state", "the default 100 steps")
+    assert has_element?(view, "#limits-state", "the default 300 steps")
     assert has_element?(view, "#limits-state", "no token budget")
   end
 

@@ -365,37 +365,37 @@ defmodule Elia.AgentTest do
   end
 
   # LIMIT-9, LIMIT-10, SESS-37, STOP-1, STOP-2
-  test "a chat that sets no limits pauses at the loop's default 100 steps, and says so", %{} do
+  test "a chat that sets no limits pauses at the loop's default 300 steps, and says so", %{} do
     id = start_fake_skill_session([])
-    push_step_tool_calls(100)
+    push_step_tool_calls(300)
 
     :ok = Agent.send_message(id, "go")
 
-    assert_receive {:agent, ^id, {:status, :paused}}, 10_000
-    assert_receive {:agent, ^id, {:paused, "Step limit reached (100 steps)."}}, 10_000
+    assert_receive {:agent, ^id, {:status, :paused}}, 60_000
+    assert_receive {:agent, ^id, {:paused, "Step limit reached (300 steps)."}}, 10_000
     assert id in Agent.paused()
 
     # LIMIT-10, SESS-37: the pause is in the transcript as a harness message,
     # marked with the limit it names and saved — so it is still there however
     # long the chat is left waiting.
     last = List.last(Elia.Store.load(id))
-    assert %Message{role: :user, meta: %{harness: true, limit: {:steps, 100}}} = last
+    assert %Message{role: :user, meta: %{harness: true, limit: {:steps, 300}}} = last
 
     # UI-9: it reads as a harness message, with the pause's own wording.
     assert Message.text_content(last) =~
-             "Step limit reached (100 steps). The turn is paused: Continue starts " <>
+             "Step limit reached (300 steps). The turn is paused: Continue starts " <>
                "the count over, Fail ends it."
 
     # STOP-1, STOP-2: failing the pause ends the turn, and that is written too,
     # under the pause's own message — with the same text the event carries
     # (STOP-4).
     :ok = Agent.fail_task(id)
-    assert_receive {:agent, ^id, {:error, "Stopped after 100 steps without finishing"}}, 10_000
+    assert_receive {:agent, ^id, {:error, "Stopped after 300 steps without finishing"}}, 10_000
     await_status(id, :idle)
 
     stopped = List.last(Elia.Store.load(id))
     assert %Message{role: :user, meta: %{harness: true, stopped: :limit}} = stopped
-    assert Message.text_content(stopped) =~ "Stopped after 100 steps without finishing"
+    assert Message.text_content(stopped) =~ "Stopped after 300 steps without finishing"
   end
 
   # LOOP-16, LIMIT-9, STOP-1, STOP-2

@@ -16,7 +16,7 @@ results back, and repeat until the model answers without calling a tool.
   They are the chat's project's skills and `AGENTS.md` (PROJ-15).
 - **LOOP-2** Text and reasoning deltas and provider notices are forwarded to
   the session as they stream.
-- **LOOP-3** A turn ends after the step limit: 100 steps unless the `:max_steps`
+- **LOOP-3** A turn ends after the step limit: 300 steps unless the `:max_steps`
   option says otherwise (LOOP-16). The loop returns `{:limit, {:steps, n}}`, and
   the session writes why the turn stopped into the transcript (STOP-1, STOP-2).
   With the `:pause_on_limit` option it pauses instead (LOOP-19).

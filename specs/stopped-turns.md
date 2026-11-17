@@ -29,7 +29,7 @@ and saved, so the chat says why it stopped whenever it is opened again.
 - **STOP-2** The message is marked `meta.stopped` with the kind of stop
   (STOP-4's event carries the same text), and says what happened:
   - `:limit` — the limit's own error (LOOP-3, LOOP-20, LOOP-22): "Stopped after
-    100 steps without finishing", or the time budget's or the token budget's
+    300 steps without finishing", or the time budget's or the token budget's
     wording. It is written when the turn *ends* at a limit: the user failed a
     paused turn (LIMIT-4, LOOP-19), or the chat turned pausing off (LIMIT-9). A
     pause before it wrote a message of its own (LIMIT-10), so the transcript
