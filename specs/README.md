@@ -149,6 +149,7 @@ it.
 | [Hot reload](hot-reload.md) | `HOT` | Hot reload: the soft deploy mode, loading tested code into the running server |
 | [Guarded files](guarded-files.md) | `GUARD` | Retired: a chat's own worktree replaced it; the "never reload on request" rule moved to Deployment |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
+| [Socket origin](socket-origin.md) | `SOCK` | A socket handshake is bound to a page this server served: the request's own origin, and a session proof for the terminal |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |

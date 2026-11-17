@@ -298,7 +298,11 @@ config :elia, Elia.Terminal,
   session layer.
 - **Access control.** Like Logs and Sessions, anyone who can reach the app can
   open a terminal in any chat's workspace. The jail (TERM-7) bounds what it can
-  reach, not who may open it.
+  reach, not who may open it. What the transport does bound is the page it comes
+  from: the handshake must name this server's own origin and carry a session
+  proof ([SOCK](socket-origin.md)), so a page the browser loaded from somewhere
+  else cannot open a terminal — which binds a page to this server, not a person
+  to a terminal.
 - **A shell in the live tree rather than a chat's workspace.** A chat's
   terminal is its workspace's (TERM-2); the deploy and the live tree have no
   page of their own.

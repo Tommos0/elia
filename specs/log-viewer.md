@@ -55,7 +55,9 @@ deploy.
   deploys.
 - Aggregating logs across nodes: the buffer is per running server.
 - Structured search, highlighting, or downloading.
-- Access control: like Sessions, anyone who can reach the app sees it.
+- Access control: like Sessions, anyone who can reach the app sees it. Its
+  socket is bound to this server's own origin ([SOCK](socket-origin.md)), which
+  bounds the page, not the person.
 
 ## Implementation
 

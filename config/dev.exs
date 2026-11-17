@@ -3,6 +3,9 @@ import Config
 # For development, we disable any cache and enable
 # debugging. Code reloading comes from config/config.exs (HOT-7).
 #
+# The socket origin policy is config/runtime.exs's, so dev is bound like every
+# other environment (SOCK-1) — this file must not turn `check_origin` off.
+#
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
@@ -10,7 +13,6 @@ config :elia, EliaWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}],
-  check_origin: false,
   debug_errors: true,
   secret_key_base: "TjNHX1oA4sHFe7HML89vygaJhopjHvWXrINreGS9GYwd81wLymhknNzWEncoQRHP",
   watchers: [

@@ -29,6 +29,14 @@ end
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
 config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
 
+# SOCK-1, SOCK-4: the origin a socket handshake is judged by, in every
+# environment (specs/socket-origin.md). It is `:conn` — the host binding: the
+# handshake's Origin must name the same host, scheme and port the handshake
+# itself arrived at — unless ELIA_ALLOWED_ORIGINS names the origins the app is
+# reached at, which is what an install behind a proxy that terminates TLS or
+# rewrites the hostname needs.
+config :elia, EliaWeb.Endpoint, check_origin: EliaWeb.SocketOrigin.check_origin()
+
 # PUSH-18: the contact a push service can reach the operator at, which some of
 # them insist on in the VAPID JWT. `mailto:` by default.
 config :elia, Elia.Push, subject: System.get_env("PUSH_SUBJECT")

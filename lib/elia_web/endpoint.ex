@@ -17,6 +17,9 @@ defmodule EliaWeb.Endpoint do
   # x_headers exposes X-Forwarded-For from reverse proxies like Cloudflare.
   @connect_info [:peer_data, :x_headers, :user_agent, session: @session_options]
 
+  # SOCK-1: both sockets are bound to a page this server served, in every
+  # environment. `EliaWeb.SocketOrigin.check_origin/0` is the host binding
+  # unless the install names its own origins (SOCK-4).
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: @connect_info, code_reloader: false],
     longpoll: [connect_info: @connect_info, code_reloader: false]
@@ -25,9 +28,14 @@ defmodule EliaWeb.Endpoint do
   # bytes, not markup, so it does not go through a LiveView's diffing. Same
   # connect_info as the LiveView socket, and the same rule: a socket connect
   # never reloads code.
+  #
+  # SOCK-3: `check_csrf: true` (the transport's own default, said here because
+  # it is a requirement) makes the session in `connect_info` nil for a
+  # handshake that does not present this server's session proof, and the socket
+  # refuses a nil session rather than answering it.
   socket "/terminal", EliaWeb.TerminalSocket,
-    websocket: [connect_info: @connect_info, code_reloader: false],
-    longpoll: [connect_info: @connect_info, code_reloader: false]
+    websocket: [connect_info: @connect_info, check_csrf: true, code_reloader: false],
+    longpoll: [connect_info: @connect_info, check_csrf: true, code_reloader: false]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

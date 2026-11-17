@@ -64,7 +64,9 @@ sessions ([Agent sessions](agent-sessions.md)), which are conversations.
   app can see this page and the IP addresses on it. Proxy headers are trusted
   as-is (Elia doesn't run behind an untrusted proxy); a client that can
   connect directly could spoof `X-Forwarded-For`, so the shown IP is
-  best-effort.
+  best-effort. What this page's socket does bound is the page it comes from:
+  the handshake must name this server's own origin ([SOCK](socket-origin.md)),
+  which says a page came from here, not who is using it.
 
 ## Implementation
 

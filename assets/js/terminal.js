@@ -65,6 +65,10 @@ export const TerminalHook = {
 
     this.fit.fit()
 
+    // SOCK-3, SOCK-5: the handshake carries the page's session proof — the
+    // CSRF token of the session this server issued — and the socket refuses a
+    // connection without one. It says the page came from this server, not who
+    // is using it.
     this.socket = new Socket("/terminal", {params: {_csrf_token: csrfToken()}})
     this.socket.connect()
     this.join()

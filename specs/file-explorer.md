@@ -108,7 +108,8 @@ always sends the plain text, so the socket payload doesn't grow.
 - Search, images and Markdown rendering. Highlighting covers a fixed set of
   languages only.
 - Access control: like Sessions and System, anyone who can reach the app can
-  read the (non-protected) workspace.
+  read the (non-protected) workspace. Its socket is bound to this server's own
+  origin ([SOCK](socket-origin.md)), which bounds the page, not the person.
 
 ## Implementation
 

@@ -54,7 +54,9 @@ now?" without opening a terminal.
 
 - Non-Linux hosts (sections show "Unavailable").
 - History beyond the page's own 60 readings, alerts, or per-process lists.
-- Access control: like Sessions, anyone who can reach the app sees it.
+- Access control: like Sessions, anyone who can reach the app sees it. Its
+  socket is bound to this server's own origin ([SOCK](socket-origin.md)), which
+  bounds the page, not the person.
 
 ## Implementation
 
