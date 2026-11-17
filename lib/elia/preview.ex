@@ -266,6 +266,21 @@ defmodule Elia.Preview do
             id: "call-preview-2",
             name: "shell",
             input: %{"command" => "git push"}
+          },
+          # UI-43: a `spawn_task` call is an ordinary tool call whose input is
+          # mostly a brief, so its picture shows the brief under it and no
+          # status of its own (the retired UI-44).
+          %{
+            type: :tool_call,
+            id: "call-preview-5",
+            name: "spawn_task",
+            input: %{
+              "title" => "Docs: the store's shapes",
+              "brief" =>
+                "Read `specs/persistence.md`, then write `docs/store-shapes.md`: " <>
+                  "one section per saved key, with what reads it. Commit on your own " <>
+                  "branch and say in your last message what you changed."
+            }
           }
         ]
       },
@@ -283,6 +298,12 @@ defmodule Elia.Preview do
             "call-preview-2",
             "fatal: no upstream branch to push to\n[exit: 128]",
             true
+          ),
+          # SUBTASK-2: what a spawn returns at once — the child's id, its title
+          # and the status its chat has, `working` (UI-59).
+          Message.tool_result(
+            "call-preview-5",
+            ~s({"task_id":"preview-child","title":"Docs: the store's shapes","status":"working"})
           )
         ]
       },

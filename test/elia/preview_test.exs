@@ -167,12 +167,21 @@ defmodule Elia.PreviewTest do
       assert Enum.any?(assistant.content, &(&1.type == :reasoning))
 
       # TITLE-5, UI-74: the set_title call is one of them; FLINK-4: a read_file
-      # call for a file of the workspace is another, so its card links it.
-      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 4
+      # call for a file of the workspace is another, so its card links it;
+      # UI-43: a spawn_task call is a third, with its brief under it.
+      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 5
 
       assert Enum.any?(
                assistant.content,
                &(&1.type == :tool_call and Map.get(&1, :name) == "read_file")
+             )
+
+      # UI-43, SUBTASK-2: a spawn is a call like any other, with a briefing
+      # input and the result a spawn returns.
+      assert Enum.any?(
+               assistant.content,
+               &(&1.type == :tool_call and Map.get(&1, :name) == "spawn_task" and
+                   is_binary(&1.input["brief"]))
              )
 
       text = Enum.find_value(assistant.content, &(&1.type == :text && &1.text))
@@ -184,7 +193,7 @@ defmodule Elia.PreviewTest do
 
       results = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.flat_map(& &1.content)
       assert Enum.count(results, & &1.is_error) == 1
-      assert Enum.count(results, &(not &1.is_error)) == 3
+      assert Enum.count(results, &(not &1.is_error)) == 4
     end
 
     # MSGAT-9: each message carries the moment it arrived, oldest first, so a
