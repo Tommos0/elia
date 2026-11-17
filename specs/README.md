@@ -151,7 +151,7 @@ it.
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
-| [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `list_tasks`/`await_task` report it and bring back a short result |
+| [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `await_task` waits for it and brings back what it said |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
 | [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
 | [Worktree build cache](worktree-build-cache.md) | `BUILD` | A chat's worktree is seeded with a private copy of the live tree's build output, so its first compile reuses the dependencies' artifacts instead of building them from source |

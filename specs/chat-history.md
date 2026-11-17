@@ -10,9 +10,9 @@ either asks the user again or starts from nothing. Unjailed the file tools
 could open `.elia/sessions` (FILE-4), but those files are Erlang terms, not
 text (STORE-1), so what an unjailed chat can do is awkward; and with the jail on
 (ISOL-16) they are out of reach entirely (FILE-12, ISOL-6). These tools read the
-saved chats through the harness instead — the way `list_tasks` reads a sub-task
-(SUBTASK-26) — so a chat can consult the earlier ones whether or not it is
-jailed, and without a command or an approval prompt.
+saved chats through the harness instead — the way a parent reads a child chat's
+result with `await_task` (SUBTASK-27) — so a chat can consult the earlier ones
+whether or not it is jailed, and without a command or an approval prompt.
 
 ## Requirements
 
@@ -28,21 +28,32 @@ jailed, and without a command or an approval prompt.
   terms rather than text anyway (STORE-1) — and that what they read is the chat
   as it was last saved (STORE-1), so a chat that is running now may not have its
   current turn in its file yet.
-- **HIST-2** `list_chats` takes `query`, `project` and `limit`, all optional,
-  and returns the matching chats newest first (STORE-12) as a JSON array of
-  objects with `id`, `title` (STORE-33), `created_at` and `updated_at` (ISO 8601
-  UTC, STORE-11), `project` (the chat's project id or `null`, STORE-20),
-  `status` (HIST-3) and `messages` (how many messages the chat holds). `query`
-  keeps a chat whose title or description (STORE-10) contains it, ignoring
-  case; `project` keeps a chat of that project (STORE-19); `limit` is how many
-  are returned, 20 by default and at most 100. Nothing matching is not an error:
-  the result is `[]`.
+- **HIST-2** `list_chats` takes `query`, `project`, `limit` and `children`, all
+  optional, and returns the matching chats newest first (STORE-12) as a JSON
+  array of objects with `id`, `title` (STORE-33), `created_at` and `updated_at`
+  (ISO 8601 UTC, STORE-11), `project` (the chat's project id or `null`,
+  STORE-20), `parent` (the id of the chat that spawned it, or `null` for a chat
+  nothing spawned, STORE-17), `status` (HIST-3) and `messages` (how many
+  messages the chat holds). `query` keeps a chat whose title or description
+  (STORE-10) contains it, ignoring case; `project` keeps a chat of that project
+  (STORE-19); `limit` is how many are returned, 20 by default and at most 100.
+  `children` keeps this chat's own sub-tasks (STORE-18) and nothing else:
+  `true` lists the chats this one started, and `"all"` lists those together with
+  their own children — without it (or with `false`) nothing is filtered by
+  parent. An entry's `parent` says whose child it is, so a chat that is itself a
+  sub-task — it has no children of its own — lists the siblings of its job with
+  `"all"`, and its own chat is in the list like any other chat (SUBTASK-1,
+  SUBTASK-31). The skill's instructions say so. Nothing matching is not an
+  error: the result is `[]`.
 - **HIST-3** A listed chat's `status` is what its saved chat says, in this
   order: `"working"` while a session for it is running a turn in this app
-  instance (SESS-4); a task chat's own status (STORE-17, DONE-3); `"done"` when
-  it is marked done (STORE-35, DONE-1); `"interrupted"` when a restart cut its
-  turn short (STORE-31); otherwise `"open"`. It is the status the chat as a
-  whole is in, not the progress of a turn that isn't running.
+  instance (SESS-4); `"done"` when it is marked done (STORE-35, DONE-1);
+  `"interrupted"` when a restart cut its turn short (STORE-31); otherwise
+  `"open"`. It is the status the chat as a whole is in, not the progress of a
+  turn that isn't running. A sub-task's status is its chat's own like this
+  (SUBTASK-34, UI-59). *Changed:* a task chat used to be listed under its task's
+  own status (STORE-17); that vocabulary went with the task status itself
+  (SUBTASK-33).
 - **HIST-4** `read_chat` takes `id` (a chat id, STORE-4) and returns that
   chat's saved transcript (STORE-1), or, instead of `id`, `query`: a non-blank
   string that must match exactly one saved chat's title, ignoring case, as a
@@ -89,7 +100,7 @@ jailed, and without a command or an approval prompt.
   is none at all.
 - **HIST-10** The three tools never write: no saved chat is changed, no session
   is started for a chat they read — reading a chat is not a way to resume it
-  (SESS-14) — and no approval is asked, as for `list_tasks` (SUBTASK-26, APPR-1).
+  (SESS-14) — and no approval is asked, as for `await_task` (SUBTASK-27, APPR-1).
 
 ## Out of scope
 
@@ -116,14 +127,17 @@ from the same file. No migration is needed.
 ## Implementation
 
 `Elia.Skills.Chats` (the three tools — the skill's own module, like
-`Elia.Skills.Tasks`), `Elia.Store` (`list/1`, `load/1` and `entry/1`, STORE-36),
+`Elia.Skills.Tasks` — and `list_chats`'s `children` filter, HIST-2),
+`Elia.Store` (`list/1`, `load/1`, `entry/1` and `children/1`, STORE-18,
+STORE-36),
 `Elia.Agent` (`running/0` for HIST-3's `working`),
 `config/config.exs` (the skill in `builtin`).
 
 ## Tests
 
 - `test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
-  filtering and statuses, reading a chat with paging and truncation, reading by
-  query and the errors, searching and the cap — HIST-2 to HIST-10).
+  filtering — the `children` filter among it, HIST-2, SUBTASK-26 — and statuses,
+  reading a chat with paging and truncation, reading by query and the errors,
+  searching and the cap — HIST-2 to HIST-10).
 - `test/elia/store_test.exs` (`entry/1`, STORE-36) and `test/elia/agent_test.exs`
   (a session's tool list names the three, HIST-1).

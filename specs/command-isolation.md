@@ -219,11 +219,14 @@ is harmless.
   out and fast-forwards `master` (DEPLOY-13).
 
 - **ISOL-30** Every git command the harness runs itself — `Elia.Deploy`'s, in
-  the live tree and for a worktree's administration (ISOL-22), and
-  `Elia.Tasks`'s in a child's worktree — runs with hooks off and no filesystem
+  the live tree and for a worktree's administration (ISOL-22) — runs with hooks
+  off and no filesystem
   monitor (`-c core.hooksPath=/dev/null -c core.fsmonitor=false`), so none of
   them runs code the repository's files name, whatever they hold. A chat's own
   git commands, which it runs through the `shell` tool, are unaffected.
+  *Changed:* the harness used to run git in a child's worktree too, for the
+  result of a task (the retired SUBTASK-9); the result is what the child said
+  now, and no harness git command reads a child's branch.
 
 ### The per-chat setting
 
@@ -372,11 +375,11 @@ session's jail takes the same lock and gives it back at its first output),
 and `Elia.Harness` (pass the chat's setting from the tool context),
 `Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
-(`save/3`'s `jail:`, `load_jail/1`), `Elia.Tasks` and `Elia.Deploy` (spawn `git`
+(`save/3`'s `jail:`, `load_jail/1`), `Elia.Deploy` (spawns `git`
 through `Elia.Shell.run/2`, and the deploy's own fetch of the trunk's
 dependencies, DEPLOY-18), `Elia.Deps` (a worktree's dependency layer: where it
 lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
-`Elia.Tasks` (copy the parent's setting to the child, SUBTASK-30),
+`Elia.Skills.Tasks` (copy the parent's setting to the child, SUBTASK-30),
 `EliaWeb.ChatLive` (the switch).
 
 ## Tests

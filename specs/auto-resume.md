@@ -20,13 +20,11 @@ had already written stay, and the tool calls the restart cut off are closed with
 an error result exactly as INTR-3 closes them (SESS-21), so the model is told
 what happened and nothing is handed back to it as if it had finished.
 
-A sub-task chat is resumed like any other (RESUME-7), which means more than
-starting its turn again: the registry of running children is in memory
-(SUBTASK-11), so the restart emptied it, and the child's entry is taken again
-before its turn starts — the tree it works in has one writer again
-(SUBTASK-4), and the child is a running child again, which is what a parent's
-`await_task` waits on (SUBTASK-27) and what ends when the chat is marked done
-(SUBTASK-20, SUBTASK-33).
+A sub-task chat is resumed like any other (RESUME-7), and nothing has to be put
+back first: a child is a child because its saved chat says so (STORE-16,
+STORE-17), not because anything in memory holds it, so the parent's
+`await_task` on it still waits (SUBTASK-27) and its chat being marked done is
+still what ends its task (SUBTASK-20, SUBTASK-33).
 
 Resuming runs a model and its tools with nobody watching, which bounds the
 feature. One automatic resume follows a turn's interruption and never a second
@@ -34,9 +32,7 @@ one (RESUME-5): a resume whose own work takes the server down therefore ends as
 a note in the transcript rather than as a restart loop (RESTART-1, RESTART-4),
 and the user's next message — the recovery interrupted turns always had — is
 still how such a chat carries on. A chat that was waiting for the user is not
-resumed either: one paused at a limit (RESUME-8) was asking them to decide, and
-a child whose workspace another child is writing in (RESUME-7) has no entry free
-to take.
+resumed either: one paused at a limit (RESUME-8) was asking them to decide.
 
 ## Requirements
 
@@ -94,18 +90,19 @@ to take.
   (RESUME-2, RESUME-3): a chat a restart cut short is then exactly what INTR-2
   and INTR-3 describe.
 
-- **RESUME-7** A sub-task chat (SUBTASK-1) is resumed like any other, and its
-  entry in the registry of running children (SUBTASK-11) is taken again before
-  its resumed turn starts, so the tree it works in has one writer again
-  (SUBTASK-4) and the child is a running child again: it holds an entry, so a
-  parent's `await_task` on it waits (SUBTASK-27) until its chat is marked done
-  (SUBTASK-33) — the end that computes and saves the result (SUBTASK-9,
-  SUBTASK-13) and releases the entry. There is no watcher to put back (the
-  retired SUBTASK-28): what waits for a child is the parent's own `await_task`
-  call. A child whose entry cannot be taken — another running child already
-  writes in that workspace (SUBTASK-4, SUBTASK-11) — or whose task says nothing
-  about the commit it started from, which the result needs (SUBTASK-9), is not
-  resumed: its session writes INTR-3's notice and leaves its task as it is.
+- **RESUME-7** A sub-task chat (SUBTASK-1) is resumed like any other, and
+  nothing has to be put back first: a child is a child because its saved chat
+  says so (STORE-16, STORE-17), not because anything in memory holds it. A
+  parent's `await_task` on it still waits (SUBTASK-27) until its chat is marked
+  done (SUBTASK-33) — the end that computes and saves the result (SUBTASK-9,
+  SUBTASK-13). There is no watcher to put back (the retired SUBTASK-28) and no
+  entry to take again (the retired SUBTASK-11): what waits for a child is the
+  parent's own `await_task` call, and what makes it a child is its chat.
+  *Changed:* a resumed child used to take its entry in the registry of running
+  children again before its turn ran, so the tree it worked in had one writer
+  again (the retired SUBTASK-4), and a child whose entry couldn't be taken, or
+  whose task said nothing about the commit it started from, was not resumed at
+  all; both went with the registry and the start commit.
 
 - **RESUME-8** A chat whose turn had paused at a limit when the restart came
   (SESS-27, LOOP-19) is not resumed: it was waiting for the user's decision, and
@@ -152,9 +149,7 @@ is dropped with the record as soon as the turn ends (INTR-1).
 ## Implementation
 
 `Elia.Agent.Resumer` (the boot scan), `Elia.Agent.Session` (the record it
-reads, the resume and the notice), `Elia.Application.children/0` (the resumer,
-and `Elia.Tasks` as a child, so a session's own start never has to start the
-registry — SUBTASK-11), `Elia.Tasks` (the entry taken again, RESUME-7),
+reads, the resume and the notice), `Elia.Application.children/0` (the resumer),
 `Elia.Store` (`interrupted/0`, STORE-39).
 
 ## Tests
@@ -162,9 +157,10 @@ registry — SUBTASK-11), `Elia.Tasks` (the entry taken again, RESUME-7),
 `test/elia/auto_resume_test.exs` (the boot scan and what it leaves alone,
 RESUME-1, RESUME-6; a resumed turn, its notice and its record, RESUME-2 to
 RESUME-5; a chat whose turn was paused at a limit, RESUME-8; a sub-task chat
-resumed, its entry taken again, and its result collected by a parent's
+resumed, and its result collected by a parent's
 `await_task` after its chat is marked done, RESUME-7),
 `test/elia/agent_test.exs` (the notice for a turn whose last message was a tool
 call, INTR-3, SESS-21), `test/elia/store_test.exs` (STORE-39, and the `resumed`
-key a resumed turn's record carries, STORE-30), `test/elia/tasks_test.exs` (the
-entry taken again: what it takes and what it leaves alone, RESUME-7).
+key a resumed turn's record carries, STORE-30), `test/elia/tasks_test.exs` (a
+child resumed after a restart is still its parent's child and a parent's
+`await_task` on it still waits, RESUME-7).

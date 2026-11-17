@@ -45,8 +45,8 @@ on its own branch rather than landed on the trunk (SUBTASK-23, DONE-6).
   task's status, with `done` standing in for the ones that meant the task was
   over.
 - **DONE-3** A task chat's flag is the end of its task (SUBTASK-33): marking
-  one done ends it — the result is built and saved (SUBTASK-9, SUBTASK-13), its
-  entry released (SUBTASK-11) and a parent's `await_task` returns it
+  one done ends it — the result is built and saved (SUBTASK-9, SUBTASK-13) and a
+  parent's `await_task` returns it
   (SUBTASK-27) — and the child is finished. Reopening it (DONE-9) doesn't
   un-end the task: the end happened and the result stays (SUBTASK-13). Both the
   page's control (DONE-4) and the tool (DONE-6) work on a task chat, which is

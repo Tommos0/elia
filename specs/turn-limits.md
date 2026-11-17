@@ -13,8 +13,9 @@ token budget sits beside them (LIMIT-12), counting what the provider reports for
 the turn's steps, with none set by default (LIMIT-1), so a chat's token spend is
 unlimited until the user gives it a budget. The loop has known the other two
 limits since LOOP-3, LOOP-16, LOOP-19 and LOOP-20, but nothing in the UI ever
-set them: only a sub-task got a budget, and it got it from `spawn_task`
-(SUBTASK-12, SUBTASK-18). A chat can now set its own step limit, time budget and
+set them: the only budget a chat had was a sub-task's, set at its spawn
+(`spawn_task`'s `max_steps` and `max_minutes`, the retired SUBTASK-12,
+SUBTASK-18). A chat can now set its own step limit, time budget and
 token budget, and whether reaching one pauses the turn for the user's decision
 (UI-57) instead of failing it, from its settings page (CSET-5). The defaults are
 the loop's — a step limit of 300, no time budget, no token budget — and a chat
@@ -55,16 +56,16 @@ turn that stopped for the user says so however much later the chat is opened.
   SESS-27) and the user continues it — starting the step count, the clock and
   the token count over (LOOP-19) — or fails it, which ends the turn with the
   limit's error.
-- **LIMIT-5** A sub-task's limits are set at its spawn instead of in its file:
-  `spawn_task`'s `max_steps` (SUBTASK-12) and `max_minutes` (SUBTASK-18) become
-  the child chat's limits (LIMIT-2), with `pause_on_limit` on (SUBTASK-24), so
-  the child's settings page shows the budget it actually runs with and the child
-  can be given more of it while it is paused. The spawn sets no token budget, so
-  a sub-task's token use is unlimited (LIMIT-1, LIMIT-12) until the user sets
-  one in the child's own settings page. The child's limits are its own
-  from then on, like its jail setting and auto-approvals (ISOL-18, APPR-12): a
-  later change in either chat never affects the other, and the parent's own
-  limits are not inherited.
+- **LIMIT-5** A sub-task's limits are its own chat's, like any chat's (LIMIT-1,
+  LIMIT-2, SUBTASK-24): the child starts with none — the loop's step limit of
+  300 steps and no time or token budget — and the user sets them in the child's
+  settings page (LIMIT-6) exactly as for any chat, so the page shows the budget
+  the child actually runs with and the child can be given more of it while it is
+  paused. The child's limits are its own from then on, like its jail setting and
+  auto-approvals (ISOL-18, APPR-12): a later change in either chat never affects
+  the other, and the parent's own limits are not inherited. *Changed:* a child's
+  limits used to be set at its spawn, from `spawn_task`'s `max_steps`
+  (SUBTASK-12) and `max_minutes` (SUBTASK-18), which went with them.
 - **LIMIT-6** The chat settings page's **Limits** section (CSET-5) shows the
   four settings — the three numbers in the page's single form (`#limit-steps`,
   `#limit-minutes`, `#limit-tokens`, CSET-7) and `pause_on_limit` as a switch
@@ -155,7 +156,8 @@ turn that stopped for the user says so however much later the chat is opened.
 `Elia.Agent.Loop` (the turn's token total, LIMIT-12),
 `Elia.Agent.Session` (the limits, the event, the pause's message, the save, the
 turn's options), `Elia.Store` (`save/3`'s `limits:`, `load_limits/1`),
-`Elia.Tasks` (a spawn sets the child's limits), `EliaWeb.ChatSettingsLive` (the
+`Elia.Skills.Tasks` (a spawn sets a child no limits of its own, LIMIT-5),
+`EliaWeb.ChatSettingsLive` (the
 Limits section), `EliaWeb.ChatLive` (the pause's row, UI-81).
 
 ## Tests
@@ -167,7 +169,7 @@ token budget pausing a turn, the defaults — a chat with no limits pauses at 30
   limit ends in (STOP-1, STOP-2), persistence across a
   restart, LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10, LIMIT-12, LIMIT-13),
 `test/elia/store_test.exs` (STORE-27, STORE-28),
-`test/elia/tasks_test.exs` (a child's limits come from its spawn,
-LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
+`test/elia/tasks_test.exs` (a spawn sets the child no limits of its own, and a
+child's settings page sets them like any chat's, LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
 LIMIT-6, LIMIT-7), `test/elia_web/live/chat_live_test.exs` (the pause's row,
 UI-81).

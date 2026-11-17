@@ -35,9 +35,15 @@ expensive because of this feature.
   multi-line or padded one can't break a sidebar row or a page title. A title
   that is blank after trimming is no title at all: it is refused (TITLE-6) and
   never stored (STORE-32), so no chat is ever listed under an empty title.
-- **TITLE-3** A task chat is named after its task (STORE-17) and ignores any
-  stored title: setting one is refused in a sub-task chat (TITLE-6), and a
-  title stored on a chat that then became a sub-task is never shown.
+- **TITLE-3** A sub-task chat is named by its spawn (SUBTASK-2, SUBTASK-5): the
+  `title` the spawn gave it is saved as the chat's own title when the chat is
+  created (STORE-32), so it is the chat's title wherever a title is shown or
+  listed, and its row in the chat list reads it (UI-45). The child may set a
+  title of its own afterwards, like any chat (TITLE-4, TITLE-5): the spawn's
+  title is its first name, not a rule it is held to. *Changed:* a task chat used
+  to ignore any stored title and be listed under its task's title (STORE-17),
+  with `set_title` refused in it (TITLE-6); both went with the task-only title
+  rule.
 
 ### Setting it
 
@@ -53,9 +59,10 @@ expensive because of this feature.
   in its first turn — alongside the first real tool call, in the same step, so it
   costs no extra round trip — and that it should set one again only if the chat
   turns to something else.
-- **TITLE-6** `set_title` refuses a blank title (TITLE-2) and refuses a chat
-  whose session has task metadata (TITLE-3), both as an error result to the
-  model, naming the reason; nothing is saved and nothing is broadcast.
+- **TITLE-6** `set_title` refuses a blank title (TITLE-2), as an error result
+  to the model naming the reason; nothing is saved and nothing is broadcast. It
+  refuses nothing else. *Changed:* it used to refuse a chat whose session has
+  task metadata (TITLE-3); a sub-task may name itself like any chat.
 
 ### The trigger
 
@@ -86,6 +93,6 @@ sidebar row, the tool card), `config/config.exs` (the built-in skill list).
 ## Tests
 
 `test/elia/chat_titles_test.exs` (the shape and the fallback, saving and
-loading, the listing's precedence, `set_title` end to end with its two
-refusals, TITLE-1 - TITLE-7), `test/elia_web/live/chat_title_test.exs` (the page
+loading, the listing's precedence, and a spawn's title becoming the child's own
+with `set_title` working in the child, and its blank refusal, TITLE-1 - TITLE-7), `test/elia_web/live/chat_title_test.exs` (the page
 title and the row, `{:title, title}` mid-turn, the card's summary, UI-74).

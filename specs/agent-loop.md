@@ -52,7 +52,8 @@ results back, and repeat until the model answers without calling a tool.
   (used in tests).~~ Retired: there is no verification step to disable.
 
 - **LOOP-16** The `max_steps` option sets the step limit of LOOP-3 for the
-  turn. Sessions pass it from their loop options (used by sub-tasks, SUBTASK-12).
+  turn. Sessions pass it from their loop options (a chat's own step limit,
+  LIMIT-1, LIMIT-3).
 - **LOOP-17** The `skills` option is resolved against the chat's project
   (`Elia.Skills.resolve/2`, PROJ-21): a list of skills, a function of no
   arguments returning one, or `nil` meaning the project's own skills. A function

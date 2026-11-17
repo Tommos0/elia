@@ -36,13 +36,14 @@ every view.
   `{:title, title}` (the chat's own title changed, SESS-33, TITLE-1),
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
-  `{:retry, info}` (a failed model call is being retried, SESS-39, RETRY-3),
-  `{:task, metadata}` (the chat's task metadata changed, SESS-20; it carries
-  the result once the chat is marked done, SUBTASK-13).
+  `{:retry, info}` (a failed model call is being retried, SESS-39, RETRY-3).
   *Changed:* a `{:subtask, call_id, child_id, status}` event, sent by
   `Elia.Tasks` when a child started or ended, went with the per-task status
   (the retired SUBTASK-7): a child's status is its chat's own and reaches every
-  view through SESS-19 and SESS-35.
+  view through SESS-19 and SESS-35. A `{:task, metadata}` event went with the
+  card and the header brief that read it (the retired SESS-20, UI-44): a chat's
+  task metadata is set when its chat is created and once when a result is saved
+  with it (SESS-18), and no view draws it live.
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's per-chat settings as one map (`settings`, SESS-41) whose
   `model` is its selection (`nil` if none yet, MODEL-1), whose `auto_approve` is
@@ -120,9 +121,14 @@ every view.
   default model (MODEL-15). The session
   saves its task metadata with the history (STORE-16), and a session whose state
   predates the `task` field is upgraded as in SESS-15.
-- **SESS-18** `Elia.Agent.update_task/2` (chat id, map of changes) merges the
-  changes into the chat's task metadata and saves it. It returns
-  `{:error, :not_a_task}` for a chat that has none.
+- **SESS-18** The session saves a child's task metadata with its chat: the
+  `task` map it was started with (SESS-17) — for a child, the chat that spawned
+  it (STORE-16, STORE-17) — and, once the task ends, the result built then
+  (SUBTASK-9, SUBTASK-13). A session whose state predates the `task` field is
+  upgraded as in SESS-15, and a chat that isn't a sub-task's has none.
+  *Changed:* `Elia.Agent.update_task/2`, which merged changes into that map and
+  saved them, and the `{:task, metadata}` broadcast (SESS-20) went with the card
+  and header brief that read them (the retired UI-44).
 - **SESS-19** Every status change (SESS-4) is also broadcast on
   `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
   follow every chat without subscribing to each: `status` is the session status
@@ -138,21 +144,28 @@ every view.
   is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
   status is `:awaiting_input`, and `Elia.Agent.paused/0` those whose status is
   `:paused`, without calling them.
-- **SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
-  merged metadata on the chat's topic.
+- ~~**SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
+  merged metadata on the chat's topic.~~ Retired: there is no `update_task/2`
+  (SESS-18) and no view that draws a chat's task metadata live. A chat's task
+  metadata is set when its chat is created and once when its result is saved
+  (SESS-18, SUBTASK-13), and a child's own page reads its status from SESS-19
+  like any chat's (UI-48).
 
 - **SESS-21** When a session starts and the last message of its saved history
   is an assistant message whose tool calls have no results (the app stopped
   while they ran), the calls are closed with an error result ("The app
   restarted while this tool was running.") and the history is saved, as in
   SESS-12, so the chat can go on (SUBTASK-20).
-- **SESS-22** Stopping a running turn (SESS-8) first tells `Elia.Tasks`
-  (SUBTASK-17): if this chat is the parent of running sub-tasks, each of their
-  turns is stopped too (SUBTASK-16), and each of those children goes on as a
-  sub-task afterwards. *Changed:* a child's own stop used to be recorded as the
-  stop of that turn, so its watcher wouldn't read the turn's end as the task's
-  end; no turn's end is the task's end now (SUBTASK-33), so there is nothing to
-  record.
+- **SESS-22** Stopping a running turn (SESS-8) first stops the turns of this
+  chat's own running sub-tasks (SUBTASK-17): every child of this chat whose chat
+  isn't marked done (`Elia.Store.children/1`, STORE-18, SUBTASK-34) that is
+  running a turn is stopped too, and each of those children goes on as a
+  sub-task afterwards. Stopping a child's own turn ends that turn and nothing
+  more (SUBTASK-16). *Changed:* a child's own stop used to be recorded as the
+  stop of that turn, so the process watching it wouldn't read the turn's end as
+  the task's end; no turn's end is the task's end now (SUBTASK-33), so there is
+  nothing to record, and a parent's children are read from its own chat rows
+  rather than from a registry of running children (the retired SUBTASK-11).
 
 - **SESS-23** A turn runs in the chat's project and in the workspace its session
   resolved when it started: the `workspace` its caller passed in the loop
@@ -328,8 +341,8 @@ every view.
   chat has messages (as SESS-14, STORE-34), broadcasts `{:done, on?}` (SESS-6)
   and returns `{:ok, on?}`, so every view of the chat agrees. It works on every
   chat, a task chat included, where marking the chat done is what ends its task
-  (DONE-3, SUBTASK-33): the harness builds and saves the result and releases
-  the child's entry with it (SUBTASK-13). It is allowed mid-turn, like the
+  (DONE-3, SUBTASK-33): the harness builds and saves the result with it
+  (SUBTASK-9, SUBTASK-13). It is allowed mid-turn, like the
   chat's other settings (SESS-16, SESS-30): marking a chat done changes nothing
   about the turn it is running. The session loads the saved flag on start (STORE-34), upgrading
   a state that predates the field as in SESS-15.

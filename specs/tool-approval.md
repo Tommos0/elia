@@ -31,9 +31,8 @@ refused.
   | `search_files` | path read (FILE-29) | both |
   | `write_file`, `edit_file` | path write (FILE-5) | both |
   | `delete_file` | path write (FILE-21) | both |
-  | `spawn_task` | always (SUBTASK-2) | parent |
-  | `list_tasks` | never (SUBTASK-26) | parent |
-  | `await_task` | never (SUBTASK-27) | parent |
+| `spawn_task` | always (SUBTASK-2) | parent |
+| `await_task` | never (SUBTASK-27) | parent |
   | `terminal_start` | always (TERM-10, TERM-25) | both |
   | `terminal_send` | always (TERM-32) | both |
   | `terminal_read` | never (TERM-26) | both |

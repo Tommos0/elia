@@ -67,8 +67,8 @@ crash takes the VM down instead of leaving it empty.
 - Restoring in-memory state as it was: chats are on disk (`Elia.Store`), and a
   turn that was running when the VM died is carried on from what the chat holds
   ([auto resume](auto-resume.md), RESUME-3) — a pending approval, a question and
-  a pause are not restored, while a sub-task's entry in the registry of running
-  children is taken again (RESUME-7).
+  a pause are not restored, while a sub-task chat carries on as the sub-task it
+  is (RESUME-7).
 
 ## Implementation
 

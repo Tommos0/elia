@@ -81,7 +81,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | Field | What it holds | Which chats carry it | The requirement it comes from |
   | --- | --- | --- | --- |
   | `id` | the chat's id: the name of its file without `.term` | any | STORE-4, STORE-5 |
-  | `title` | the chat's own title (STORE-32) when it has one, else its first user message cut to 60 characters (STORE-7), else "New chat"; a task chat's task title instead (STORE-17) | any | STORE-7, STORE-17, STORE-33 |
+  | `title` | the chat's own title (STORE-32) when it has one, else its first user message cut to 60 characters (STORE-7), else "New chat" | any | STORE-7, STORE-32, STORE-33 |
   | `description` | the same source text as the title, cut to 1000 characters instead of 60, or "New chat" (STORE-10) | any | STORE-10 |
   | `created_at` | when the chat was started (STORE-11) | any | STORE-11, STORE-12 |
   | `updated_at` | when the chat was last saved (STORE-1) | any | STORE-1, STORE-12 |
@@ -89,7 +89,6 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `interrupted` | whether a restart cut the chat's turn short (STORE-31) | any | STORE-31 |
   | `done` | whether the chat is marked done (STORE-35) | any | STORE-35 |
   | `parent_id` | the id of the chat that spawned it (STORE-17) | task only | STORE-17 |
-  | `parent_call_id` | the id of the parent's `spawn_task` call (STORE-18) | task only | STORE-18 |
 
 - **STORE-7** A chat's title is its first user message that isn't a harness
   message, cut to 60 characters, or "New chat" if there is none.
@@ -99,18 +98,20 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-12** Each listed chat carries `created_at`, and listing orders
   chats by it, newest first (`updated_at` is still returned; the order was a
   chat's file modification time before this change).
-- **STORE-17** A listed chat that has task metadata also carries `parent_id`,
-  and its `title` is the task's title (STORE-7 doesn't apply). It carries no
-  `task_status`: a task chat is listed with the status any chat is (STORE-31,
-  UI-59), so a child whose session a restart lost is `interrupted` like any
-  other chat whose turn was cut short. *Changed:* the field, and the derivation
-  a listing needed to work out whether a running task still ran, went with the
-  task status itself (SUBTASK-33).
-- **STORE-18** Task metadata also holds `parent_call_id`, the id of the parent's
-  `spawn_task` call (SUBTASK-15), and a listed task chat carries it too.
-  `Elia.Store.children/1` (parent chat id) returns the listed entries
+- **STORE-17** A listed chat that has task metadata also carries `parent_id`, the
+  id of the chat that spawned it (STORE-16). Its `title` is its own (STORE-33,
+  TITLE-3) and its status the status any chat's is (STORE-31, UI-59), so a
+  sub-task is listed as the ordinary chat it is. *Changed:* the task status a
+  task chat used to be listed under, and the derivation a listing needed to work
+  out whether a running task still ran, went with the task status itself
+  (SUBTASK-33), and the task's own title it was listed under went with the
+  task-only title rule (TITLE-3).
+- **STORE-18** `Elia.Store.children/1` (parent chat id) returns the listed entries
   (STORE-17) of the task chats whose `parent_id` it is, oldest first, with no
-  limit, so the parent's page can link each `spawn_task` call to its child.
+  limit: what `list_chats`'s `children` filter reads (HIST-2), and what a parent
+  stopped ends the turns of (SESS-22). *Changed:* the task metadata's
+  `parent_call_id`, which no longer exists (STORE-16), went with the task card it
+  existed for (SUBTASK-15).
 - **STORE-20** Each listed chat carries `project_id`, or `nil` when it has none.
 - **STORE-29** `latest/0` returns the most recently started listed chat
   (STORE-12) that isn't a task chat (STORE-17) and isn't done (STORE-35,
@@ -129,7 +130,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   has one and the STORE-7 derivation otherwise, so a title that isn't a prefix
   of the first user message is listed like any other and a chat that never got
   one is unchanged; its `description` is still the derivation (STORE-10), and a
-  task chat is still listed under its task title (STORE-17).
+  sub-task's title is its own like any chat's (STORE-32, TITLE-3).
   `Elia.Store.chat_title/1` (chat id) answers the same way for a view that has
   an id and not a listing: the stored title, else the derivation from its saved
   history, else "New chat".
@@ -194,11 +195,15 @@ values a save can carry, deleting a chat, and the two tables themselves.
   unreadable, corrupt or has none (PROJ-9).
 - **STORE-16** `save/3` takes `task:` (a map) and stores it as `task` with the
   chat. It holds the metadata of a chat started by `spawn_task`: `parent_id`,
-  `title`, `brief`, `started_at`, `start_commit` and, once the chat is marked
-  done, `result` (SUBTASK-9, SUBTASK-13). It holds no status: a chat's status is
+  `started_at` and, once the chat is marked done, the task's `result`
+  (SUBTASK-9, SUBTASK-13, SUBTASK-15). It holds no status: a chat's status is
   derived from the chat itself and never saved (UI-59, STORE-31), and a
   `status` key an earlier version wrote is ignored when the metadata is read
-  (SUBTASK-34).
+  (SUBTASK-34). It holds no title and no brief either: a child's title is its
+  chat's own (STORE-32, TITLE-3) and its brief is the first message of its
+  transcript (SUBTASK-5). *Changed:* `title`, `brief` and `start_commit` went,
+  as the result's `commit` and `files` did (SUBTASK-9, SUBTASK-21); a file
+  written with them is read for the keys it has, the extra ones ignored.
   `load_task/1` returns it, or `nil` when the chat is missing, unreadable,
   corrupt or has none.
 - **STORE-21** `save/3` takes `compaction:` (the chat's compaction state, a map,

@@ -505,18 +505,28 @@ A child is an ordinary saved chat (SUBTASK-5) with task metadata (STORE-16),
 so it opens at `/c/<child id>` like any chat and carries the status any chat
 does (UI-59, UI-72). What a task finished with is in the chat's own transcript,
 as the `mark_done` call at the end of it and the message before it that says
-what it did — the commit and the changed files are in the parent's `await_task`
-result (SUBTASK-9) — so the header does not repeat it.
+what it did — that message is the summary the parent gets (SUBTASK-9) — so the
+header does not repeat it. A `spawn_task` call is a tool call like any other
+(UI-43), and nothing on the parent's page draws a child's status a second time:
+its own row in the chat list shows it (UI-46), and the parent lists it there or
+with `list_chats` (HIST-2).
 
 - ~~**UI-55** A `{:subtask, …}` agent event is accepted and ignored by the chat
   page.~~ Removed: replaced by UI-43 and UI-44. Renumbered from UI-31, which
   the active "New chat" button requirement also used (the phase 1 spec reused
   the ID), so `UI-31` now names one thing only.
-- **UI-43** A `spawn_task` call renders as a task card: the tool card's summary
-  is the task `title` instead of the raw JSON input (UI-15), and a "Brief"
-  section (`#task-brief-<call_id>`) shows the `brief`, expanded while the call
-  awaits approval. The usual badge (UI-16) and approval buttons (UI-18) stay.
-- **UI-44** Once the child exists, the card shows its status
+- **UI-43** A `spawn_task` call renders as a tool call (UI-15): its summary is the
+  task `title` from the call's input, since a spawn's input is mostly the
+  `brief`, and its input is shown under it as a collapsible "Brief"
+  (`#task-brief-<call_id>`, expanded while the call awaits approval) — the same
+  kind of per-tool input view `write_file` shows for its content. It carries the
+  usual badge (UI-16) and approval buttons (UI-18) while it awaits approval.
+  Nothing else is drawn on it: the child's status and a link to the child chat
+  are the retired UI-44, so the call never shows a status the child's own row
+  doesn't (UI-46, UI-59). *Changed:* the card's status row, its "waiting for
+  approval" line and its link to the child went with UI-44; the brief section
+  stays, and the brief is also the child's first message (SUBTASK-5).
+- ~~**UI-44** Once the child exists, the card shows its status
   (`#task-status-<call_id>`) and a link to the child chat
   (`#task-link-<call_id>`). The status is the child chat's own — the same
   `data-status` its sidebar row carries (UI-46, UI-59, UI-72): `working` while
@@ -530,12 +540,20 @@ result (SUBTASK-9) — so the header does not repeat it.
   so (`#task-awaiting-<call_id>`), and so does a child waiting for an answer to
   a question (ASK-9, `#task-input-<call_id>`). *Changed:* the status used to be
   the task's own, from a `{:subtask, …}` event (the retired SUBTASK-7), and the
-  card no longer shows a status the child's own chat doesn't have (SUBTASK-33).
-- **UI-45** The sidebar nests a task chat under its parent chat, indented and
-  ordered by start time (oldest first). A task chat whose parent isn't in the
-  list is shown on its own at the top level. The row (`#chat-link-<id>`) uses
-  the task's title (STORE-17).
-- **UI-46** A task chat in the sidebar shows its status the way any chat's row
+  card no longer shows a status the child's own chat doesn't have (SUBTASK-33).~~
+  Retired: there is no task card (UI-43). A child's status is the status its own
+  chat has and is drawn in its own row (UI-46, UI-59), a parent that wants it in
+  text lists its children with `list_chats` (HIST-2, HIST-3), and its chat is
+  opened from the sidebar like any chat (UI-45). The events the card followed
+  (SESS-19, SESS-35) still refresh the sidebar (UI-49).
+- **UI-45** The sidebar nests a sub-task chat under the chat that spawned it
+  (STORE-17), indented and ordered by start time (oldest first). A sub-task
+  whose parent isn't in the list is shown on its own at the top level. The row
+  (`#chat-link-<id>`) uses the chat's own title (STORE-33, TITLE-3) and carries
+  the status indicator any chat's row has (UI-46). *Changed:* the task's own
+  title was what the row showed (STORE-17); a sub-task is named by its own title
+  now (TITLE-3).
+- **UI-46** A sub-task chat in the sidebar shows its status the way any chat's row
   does (UI-59, UI-72): the same indicator (`#chat-status-<id>`), the same
   `data-status` values and the same `title`, derived by the same code, so a
   child chat is never shown a status its own page doesn't have. *Changed:* a
@@ -550,13 +568,15 @@ result (SUBTASK-9) — so the header does not repeat it.
   approval"), so a pending prompt in a child chat is not missed from the parent
   or any other chat. It follows status changes of every chat live (SESS-19) and
   is right on first render.
-- **UI-48** A task chat shows a header (`#task-header`) above the transcript
-  with "Task of" and a link to the parent chat (`#task-parent-link`, labelled
-  with the parent's title), the chat's own status (UI-59, UI-72, on
-  `#task-header-status`, with UI-46's `data-status` values), and a collapsible
-  "Brief" (`#task-header-brief`), but not the result the task finished with,
-  which is in the transcript itself (SUBTASK-9). The header follows the chat's
-  own status events (SESS-19) and `{:task, metadata}` for its brief (SESS-20).
+- **UI-48** A sub-task chat shows a header (`#task-header`) above the transcript
+  with "Task of" and a link to the chat that spawned it (`#task-parent-link`,
+  labelled with that chat's title, STORE-17) and the chat's own status (UI-59,
+  UI-72, on `#task-header-status`, with UI-46's `data-status` values). It shows
+  neither the brief — that is the child's first message, in the transcript
+  (SUBTASK-5, UI-9) — nor the result the task finished with (SUBTASK-9). The
+  header follows the chat's own status events (SESS-19). *Changed:* the
+  collapsible "Brief" (`#task-header-brief`) and the `{:task, metadata}` event
+  it followed (SESS-20) went with the second copy of the brief.
 - **UI-49** The sidebar refreshes when a chat's status changes (SESS-19) or its
   done flag does (SESS-35), so a new task chat and its status show without
   waiting for the turn to end (UI-6). *Changed:* it used to follow a

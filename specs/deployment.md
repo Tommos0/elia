@@ -287,7 +287,7 @@ DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23),
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop`, `Elia.Harness` (running the tests in that
 workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}`,
-`Elia.Tasks` (the sub-task's worktree, the repository it runs git in),
+`Elia.Deploy` (a child's worktree, and the repository a chat's git runs in),
 `Elia.Store.delete/1` (removes the worktree), `EliaWeb.SettingsLive` (the
 deployment section: the steps, the record, going back), `EliaWeb.Endpoint`
 (inert request reloader, the recovery plug, RECOVER-10), `bin/serve`.

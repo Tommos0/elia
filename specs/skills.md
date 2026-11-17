@@ -26,7 +26,7 @@ system prompt from them. It can be reloaded while the app runs.
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
   `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
-  `update_ledger`), `tasks` (`spawn_task`, `list_tasks`,
+  `update_ledger`), `tasks` (`spawn_task`,
   `await_task`, [Sub-tasks](subtasks.md)), `terminal` (`terminal_start`,
   `terminal_send`, `terminal_read`, `terminal_stop`, [Terminal](terminal.md)),
   `titles` (`set_title`,
