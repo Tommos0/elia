@@ -12,6 +12,9 @@ defmodule Elia.Push.Subscriptions do
   the push service no longer knows is dropped by endpoint (PUSH-16). Anything
   that is not a usable subscription — a key of the wrong size, an endpoint that
   is not HTTPS — is refused rather than stored.
+
+  A change reads the stored list and writes it back as one update (CONF-29,
+  PUSH-26), so two changes at the same time both take effect.
   """
 
   alias Elia.Settings
@@ -20,43 +23,52 @@ defmodule Elia.Push.Subscriptions do
   @p256dh_size 65
   @auth_size 16
 
-  @doc "PUSH-3: the stored subscriptions."
+  @doc "PUSH-3, PUSH-26: the stored subscriptions."
   @spec list() :: [map()]
-  def list do
-    case Settings.get(@key, []) do
-      subscriptions when is_list(subscriptions) -> Enum.filter(subscriptions, &valid?/1)
-      _other -> []
-    end
-  end
+  def list, do: stored(Settings.get(@key, []))
 
   @doc "PUSH-7: how many subscriptions are stored."
   @spec count() :: non_neg_integer()
   def count, do: length(list())
 
   @doc """
-  PUSH-3: store a browser's subscription, as `PushSubscription.toJSON/0` gives
-  it. An endpoint that is already stored is replaced.
+  PUSH-3, PUSH-26: store a browser's subscription, as
+  `PushSubscription.toJSON/0` gives it. An endpoint that is already stored is
+  replaced.
   """
   @spec save(map()) :: :ok | {:error, :invalid_subscription}
   def save(params) do
     case subscription(params) do
       {:ok, subscription} ->
-        put(Enum.reject(list(), &(&1.endpoint == subscription.endpoint)) ++ [subscription])
+        Settings.update(@key, [], fn stored ->
+          stored(stored)
+          |> Enum.reject(&(&1.endpoint == subscription.endpoint))
+          |> Kernel.++([subscription])
+        end)
+
+        :ok
 
       :error ->
         {:error, :invalid_subscription}
     end
   end
 
-  @doc "PUSH-4, PUSH-16: forget one endpoint. An endpoint that isn't stored is fine."
+  @doc "PUSH-4, PUSH-16, PUSH-26: forget one endpoint. An endpoint that isn't stored is fine."
   @spec remove(binary()) :: :ok
   def remove(endpoint) when is_binary(endpoint) do
-    put(Enum.reject(list(), &(&1.endpoint == endpoint)))
+    Settings.update(@key, [], fn stored ->
+      Enum.reject(stored(stored), &(&1.endpoint == endpoint))
+    end)
+
+    :ok
   end
 
-  @doc "PUSH-7: forget every subscription."
+  @doc "PUSH-7, PUSH-26: forget every subscription."
   @spec clear() :: :ok
-  def clear, do: put([])
+  def clear do
+    Settings.update(@key, [], fn _stored -> [] end)
+    :ok
+  end
 
   @doc """
   Whether this is a subscription Elia can send to: an HTTPS endpoint and keys of
@@ -72,12 +84,14 @@ defmodule Elia.Push.Subscriptions do
 
   # ── internals ──────────────────────────────────────────────────────────────
 
-  defp put(subscriptions) do
-    case Settings.put(@key, subscriptions) do
-      :ok -> :ok
-      error -> error
-    end
+  # The stored value is a list; anything else — a value an older version wrote,
+  # a hand-edited database — reads as none, and an entry that is not a usable
+  # subscription is dropped rather than handed out.
+  defp stored(subscriptions) when is_list(subscriptions) do
+    Enum.filter(subscriptions, &valid?/1)
   end
+
+  defp stored(_other), do: []
 
   # The browser reports a subscription as {"endpoint": ..., "keys": {...}}.
   defp subscription(%{"endpoint" => endpoint, "keys" => %{"p256dh" => p256dh, "auth" => auth}}) do

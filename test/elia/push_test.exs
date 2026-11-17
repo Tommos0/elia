@@ -28,6 +28,23 @@ defmodule Elia.PushTest do
     assert Elia.Push.Crypto.public_key(keys.private) == keys.public
   end
 
+  # PUSH-25
+  test "callers that ask for the key pair at the same time are given one pair" do
+    assert Elia.Settings.get("push_vapid_keys") == nil
+
+    suspend_settings()
+    callers = for _ <- 1..16, do: Task.async(fn -> Push.keys() end)
+
+    # All sixteen are asking before the settings process is let go.
+    assert wait_queued(16) == :ok
+    resume_settings()
+
+    pairs = Enum.map(callers, &Task.await/1)
+    assert [pair] = Enum.uniq(pairs)
+    assert Elia.Settings.get("push_vapid_keys") == pair
+    assert Elia.Push.Crypto.public_key(pair.private) == pair.public
+  end
+
   # PUSH-18
   test "the VAPID contact defaults to a mailto: URL and is configurable" do
     assert Push.subject() == "mailto:elia@localhost"

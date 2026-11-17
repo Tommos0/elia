@@ -125,6 +125,16 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   event, so it is not detected — and a page left focused on one device keeps the
   chat suppressed on every device, as PUSH-13 says.
 
+- **PUSH-25** Callers that ask for the VAPID key pair at the same time are all
+  given the same pair, and it is the pair in the settings database (PUSH-1), so
+  a subscription a browser makes is always for the key the store holds.
+- **PUSH-26** Subscription changes that overlap take effect one after another
+  and none is lost: the stored subscriptions are as applying the same changes in
+  that order would leave them, so two subscriptions saved at the same time are
+  both stored, a save that comes after a removal of the same endpoint stores it
+  again (PUSH-3), and a clear leaves none (PUSH-7). Nothing is prioritised: the
+  change carried out last is the one the store holds.
+
 ## Configuration
 
 - `PUSH_SUBJECT` — the contact put in the VAPID JWT (PUSH-18), e.g.
@@ -147,13 +157,14 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 
 ## Implementation
 
-- `Elia.Push` — the VAPID key pair (PUSH-1, generated with `:crypto` and kept in
-  `Elia.Settings`), sending a payload to a subscription (PUSH-15, PUSH-16,
-  PUSH-17), and the test notification (PUSH-8). Encryption and the VAPID JWT
-  come from the `web_push` hex package (RFC 8291/8292); its Finch pool is the
-  one `Req` already brings.
+- `Elia.Push` — the VAPID key pair (PUSH-1, PUSH-25, generated with `:crypto`
+  and kept in `Elia.Settings`), sending a payload to a subscription (PUSH-15,
+  PUSH-16, PUSH-17), and the test notification (PUSH-8). Encryption and the
+  VAPID JWT come from the `web_push` hex package (RFC 8291/8292); its Finch
+  pool is the one `Req` already brings.
 - `Elia.Push.Subscriptions` — the stored subscriptions: add/replace-by-endpoint
-  (PUSH-3), remove (PUSH-4, PUSH-7), remove-gone (PUSH-16), count (PUSH-7).
+  (PUSH-3), remove (PUSH-4, PUSH-7), remove-gone (PUSH-16), count (PUSH-7),
+  each change applied as one update of the stored list (PUSH-26).
 - `Elia.Push.Notifier` — subscribes to the activity topic
   (`Elia.Agent.subscribe_activity/0`, the `{:chat_status, id, status}` of
   SESS-19) and sends on the transitions of PUSH-11 and PUSH-12, unless a page
@@ -179,6 +190,7 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   section 5 vector for the encrypted body, the VAPID JWT verified through its
   own signature, and a subscription that is not usable (PUSH-15).
 - `test/elia/push_test.exs` — the key pair generated once and kept (PUSH-1),
+  the pair callers asking for it at the same time are all given (PUSH-25),
   the payload a chat's notification carries (PUSH-9), the request's headers and
   the payload a browser decrypts out of the body (PUSH-15), 404/410 removing a
   subscription (PUSH-16), a failure being counted and logged rather than raised
@@ -186,7 +198,9 @@ next receives it. Registration rides on the existing service worker (PWA-4).
   notification (PUSH-8), with the VAPID contact it sends (PUSH-18).
 - `test/elia/push_subscriptions_test.exs` — storing a subscription, replacing
   one by endpoint, refusing an unusable one (PUSH-3), removing one (PUSH-4,
-  PUSH-16), counting and clearing them (PUSH-7).
+  PUSH-16), counting and clearing them (PUSH-7), and subscriptions saved,
+  removed and cleared at the same time all taking effect in one order
+  (PUSH-26).
 - `test/elia/push_notifier_test.exs` — the status changes that notify and the
   ones that don't (PUSH-11, PUSH-12), suppression by a page in front of the user
   (PUSH-13), and a send from a status broadcast all the way to the decrypted

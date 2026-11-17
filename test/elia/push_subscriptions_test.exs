@@ -96,4 +96,67 @@ defmodule Elia.Push.SubscriptionsTest do
     assert Subscriptions.list() == []
     assert Subscriptions.count() == 0
   end
+
+  # PUSH-26
+  test "subscriptions saved at the same time are all stored" do
+    endpoints = for n <- 1..16, do: "https://push.example.net/sub/#{n}"
+    receivers = for _ <- endpoints, do: receiver()
+
+    suspend_settings()
+
+    savers =
+      for {receiver, endpoint} <- Enum.zip(receivers, endpoints) do
+        Task.async(fn -> Subscriptions.save(subscription(receiver, endpoint)) end)
+      end
+
+    assert wait_queued(16) == :ok
+    resume_settings()
+
+    assert Enum.all?(savers, &(Task.await(&1) == :ok))
+    assert Enum.sort(Enum.map(Subscriptions.list(), & &1.endpoint)) == Enum.sort(endpoints)
+  end
+
+  # PUSH-26
+  test "changes carried out in an order leave what that order leaves" do
+    first = receiver()
+    second = receiver()
+    one = "https://push.example.net/sub/1"
+    two = "https://push.example.net/sub/2"
+
+    changes = [
+      fn -> Subscriptions.save(subscription(first, one)) end,
+      fn -> Subscriptions.save(subscription(second, two)) end,
+      fn -> Subscriptions.remove(one) end,
+      fn -> Subscriptions.save(subscription(first, one)) end
+    ]
+
+    suspend_settings()
+
+    # Each change is let go once the one before it is waiting in the settings
+    # process, so this is the order they are carried out in: one saved, two
+    # saved, one removed, one saved again.
+    changers =
+      changes
+      |> Enum.map(fn change ->
+        Task.async(fn ->
+          receive do
+            :go -> change.()
+          end
+        end)
+      end)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {changer, position} ->
+        send(changer.pid, :go)
+        assert wait_queued(position) == :ok
+        changer
+      end)
+
+    resume_settings()
+
+    assert Enum.all?(changers, &(Task.await(&1) == :ok))
+
+    # A save that came after the removal stored it again, and the store is what
+    # that order leaves rather than what any one racer read.
+    assert Enum.map(Subscriptions.list(), & &1.endpoint) == [two, one]
+  end
 end

@@ -24,6 +24,15 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
 - **CONF-3** Every write is synced to disk before it returns, so settings
   survive a crash or restart.
 - **CONF-4** Settings are outside the workspace, so they are never committed.
+- **CONF-28** Every settings operation — a read, a write, a delete and an
+  update — is carried out by the settings process, so the operations on the
+  database are applied one at a time, in one order.
+- **CONF-29** An update of a key is one operation: the settings process reads
+  the key, applies the caller's function to what it read and stores the result,
+  and no other settings operation is applied in between. It returns the value it
+  stored, so a caller that has to build on the stored value — a key generated
+  when there is none, a value computed from the one in the store — uses an
+  update rather than a read followed by a write.
 
 ### API keys
 
@@ -175,7 +184,24 @@ Tests use a scratch file under the system temp directory.
 - Encrypting keys at rest; the file mode keeps other users out.
 - Multiple keys per provider.
 
+## Stored data
+
+The database is a DETS set from a key to a value (CONF-1): the API keys and
+base URLs (`{:api_key, provider}`, `{:base_url, provider}`, CONF-5), the
+selected model (`:model`, MODEL-15) and, for push, the subscriptions
+(`push_subscriptions`, PUSH-3) and the VAPID key pair (`push_vapid_keys`,
+PUSH-1). Carrying the operations out in one process (CONF-28) and updating a
+key as one operation (CONF-29) adds no key and changes no value's shape, so a
+table an older version wrote is read and written as it is: backward compatible,
+with no migration.
+
 ## Implementation
+
+`Elia.Settings` carries every operation out in its own process and owns the
+read-modify-write of `update/3` (CONF-28, CONF-29); the writers that build on
+what is stored use it rather than a read followed by a write — `Elia.Push.keys/0`
+(PUSH-25), `Elia.Push.Subscriptions` (PUSH-26) and the context length
+`Elia.LLM.context_window/1` adds to a stored selection (CTX-7).
 
 `Elia.Settings`, `Elia.LLM` (`api_key/1`, `check_key/2`, `save_key/2`,
 `delete_key/1`, `balance/1`), `Elia.Deploy` (the deploy, DEPLOY-5; its steps,
@@ -188,7 +214,8 @@ the browser's own `open` state out of a patch, `JS.ignore_attributes/1`),
 
 - `test/elia/settings_test.exs` (the database and its file, the directory mode,
   a write that is synced, the stored and configured keys, checking one, removing
-  one — CONF-1 to CONF-8).
+  one, and the one order every operation is carried out in, an update applied
+  with the value it read — CONF-1 to CONF-8, CONF-28, CONF-29).
 - `test/elia_web/live/settings_live_test.exs` (the page, a card per provider,
   checking, saving and removing a key, the credits line and its refresh,
   appearance, the Deployment section and its steps, the elapsed time, the

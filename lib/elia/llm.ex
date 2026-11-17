@@ -272,10 +272,14 @@ defmodule Elia.LLM do
     cached = cached_context_length(provider, model)
 
     # Only a stored selection is updated; the configured default stays unstored.
+    # The length goes with the selection the store holds as one update (CONF-29),
+    # so a model chosen at the same moment is not overwritten with an older one.
     with length when is_integer(length) <- cached,
-         true <- length != selection[:context_length],
-         %{provider: ^provider, model: ^model} <- Settings.get(:model) do
-      Settings.put(:model, put_context_length(selection, length))
+         true <- length != selection[:context_length] do
+      Settings.update(:model, nil, fn
+        %{provider: ^provider, model: ^model} -> put_context_length(selection, length)
+        other -> other
+      end)
     end
 
     context_length =

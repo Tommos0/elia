@@ -23,6 +23,65 @@ defmodule Elia.LLMCase do
     :ok
   end
 
+  @doc """
+  CONF-28: hold the settings process, so that the settings operations a test
+  starts are in flight and not yet applied. That is the barrier a race needs to
+  be deterministic: with the process held, every racer's read-modify-write is
+  waiting in it before any of them runs. Let it go with `resume_settings/0`; a
+  test that ends still holding it is let go for it.
+
+  Nothing may call `Elia.Settings` from the test process while it is held.
+  """
+  def suspend_settings do
+    :sys.suspend(Elia.Settings)
+
+    on_exit(fn ->
+      if Process.whereis(Elia.Settings), do: :sys.resume(Elia.Settings)
+    end)
+
+    :ok
+  end
+
+  @doc "CONF-28: let a suspended settings process go (`suspend_settings/0`)."
+  def resume_settings, do: :sys.resume(Elia.Settings)
+
+  @doc """
+  CONF-28: wait (briefly) until `count` operations are waiting in the suspended
+  settings process, so a test knows they are all in flight before letting it go.
+  Returns `:timeout` when they never get there, which is what a settings
+  operation that never reaches the process looks like.
+  """
+  def wait_queued(count, timeout \\ 500) do
+    wait_for_queue(count, System.monotonic_time(:millisecond) + timeout)
+  end
+
+  defp wait_for_queue(count, deadline) do
+    cond do
+      queue_length() >= count ->
+        :ok
+
+      System.monotonic_time(:millisecond) < deadline ->
+        Process.sleep(5)
+        wait_for_queue(count, deadline)
+
+      true ->
+        :timeout
+    end
+  end
+
+  defp queue_length do
+    case Process.whereis(Elia.Settings) do
+      pid when is_pid(pid) ->
+        case Process.info(pid, :message_queue_len) do
+          {:message_queue_len, length} -> length
+          _ -> 0
+        end
+
+      _ ->
+        0
+    end
+  end
+
   def configure(module, opts \\ []) do
     previous = Application.get_env(:elia, module)
 

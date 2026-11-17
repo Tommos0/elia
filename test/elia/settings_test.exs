@@ -133,4 +133,48 @@ defmodule Elia.SettingsTest do
     assert :ok = LLM.delete_key("openrouter")
     assert LLM.api_key("openrouter") == {:env, "from-env"}
   end
+
+  # CONF-28
+  test "every operation is carried out by the settings process" do
+    :ok = Settings.put(:model, %{provider: "anthropic", model: "claude"})
+    parent = self()
+
+    suspend_settings()
+
+    # The read is in the settings process's hands, not the caller's: it has not
+    # happened while the process is held, and nothing else can be applied beside
+    # it.
+    reader =
+      Task.async(fn ->
+        send(parent, :started)
+        value = Settings.get(:model)
+        send(parent, :returned)
+        value
+      end)
+
+    assert_receive :started
+    refute_receive :returned, 100
+
+    resume_settings()
+
+    assert_receive :returned
+    assert Task.await(reader) == %{provider: "anthropic", model: "claude"}
+  end
+
+  # CONF-29
+  test "an update builds on what it read, so overlapping updates all take effect" do
+    assert Settings.update(:counter, 0, &(&1 + 1)) == 1
+
+    suspend_settings()
+    updaters = for _ <- 1..10, do: Task.async(fn -> Settings.update(:counter, 0, &(&1 + 1)) end)
+
+    # Every update is waiting in the settings process before it is let go, so
+    # each reads what the one before it wrote.
+    assert wait_queued(10) == :ok
+    resume_settings()
+
+    # Each returned what it stored, and all ten are on top of the first.
+    assert updaters |> Enum.map(&Task.await/1) |> Enum.sort() == Enum.to_list(2..11)
+    assert Settings.get(:counter) == 11
+  end
 end

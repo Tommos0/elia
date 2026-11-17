@@ -37,18 +37,20 @@ defmodule Elia.Push do
   @topic_format ~r/\A[A-Za-z0-9_-]{1,32}\z/
 
   @doc """
-  PUSH-1: the VAPID key pair, generated on first use and kept in the settings
-  database so that subscriptions made before a restart keep working.
+  PUSH-1, PUSH-25: the VAPID key pair, generated on first use and kept in the
+  settings database so that subscriptions made before a restart keep working.
+  Asking for it is one update of the stored pair (CONF-29), so callers that ask
+  at the same time are all given the pair that is stored.
   """
   @spec keys() :: %{public: binary(), private: binary()}
   def keys do
-    case Elia.Settings.get(@vapid_key) do
+    Elia.Settings.update(@vapid_key, nil, fn
       %{public: public, private: private} = keys when is_binary(public) and is_binary(private) ->
         keys
 
       _other ->
-        generate_keys()
-    end
+        Crypto.keypair()
+    end)
   end
 
   @doc "PUSH-2: the public key a browser subscribes with."
@@ -151,12 +153,6 @@ defmodule Elia.Push do
   end
 
   # ── internals ──────────────────────────────────────────────────────────────
-
-  defp generate_keys do
-    keys = Crypto.keypair()
-    :ok = Elia.Settings.put(@vapid_key, keys)
-    keys
-  end
 
   defp config, do: Keyword.merge(@defaults, Application.get_env(:elia, __MODULE__, []))
 
