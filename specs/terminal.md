@@ -93,6 +93,28 @@ guardrails: it is the same confinement as a command, held open.
   — the transcript keeps the tool call and its result (the session's page and
   status), and the output belongs on the page, which is the point of it.
 
+### The jail the page says
+
+The jail is a per-chat setting the user can change at any moment, from the
+chat's own settings page or another tab, and a session is a process tree that
+was started with one particular jail. Those two facts are different facts, and
+the page says both: the confinement of the terminal it is showing, and the
+setting the next one will use.
+
+- **TERM-37** A session starts with the chat's jail setting as it is at that
+  moment (ISOL-16), not the one the page read when it opened: a change made in
+  another tab, or on the chat's settings page, reaches a Start on a page that
+  was already open.
+- **TERM-38** The page's account of the jail follows the chat's setting as it
+  changes — from the chat's own `{:settings, settings}` event (SESS-41,
+  CSET-3), the one the chat page follows — so a change made elsewhere reaches
+  this page without a reload.
+- **TERM-39** With a session on the page the jail line is about that session's
+  own confinement — the one it was started with, which the session's status
+  reports — and the chat's setting is said separately, as what the next
+  terminal will use, because turning the jail off or on reaches only sessions
+  started afterwards (ISOL-19).
+
 ### Streaming
 
 - **TERM-12** Output reaches the browser as bytes over a Phoenix Channel and is
@@ -333,8 +355,9 @@ pane's own mode — TERM-1 to TERM-11; a stop whose command exits under it,
 TERM-35; an unjailed session's server and socket gone however it ended, and
 nothing of another session's touched, TERM-36), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
-`test/elia_web/live/terminal_live_test.exs` (the page's states,
-TERM-19..TERM-23), `test/elia_web/terminal_channel_test.exs` (join,
+`test/elia_web/live/terminal_live_test.exs` (the page's states, and the jail it
+says and starts with — TERM-19..TERM-23, TERM-37..TERM-39),
+`test/elia_web/terminal_channel_test.exs` (join,
 keystrokes to the command's stdin, output to the client, resize, a join for an
 ended session, TERM-12..TERM-18), `test/elia/skills/terminal_test.exs` (the
 tools, TERM-24 to TERM-28 and TERM-30 to TERM-34), and

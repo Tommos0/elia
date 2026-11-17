@@ -1,8 +1,8 @@
 defmodule EliaWeb.TerminalLiveTest do
   @moduledoc """
   A chat's terminal page (TERM-19 - TERM-23, TERM-29): how it is reached, what
-  it offers a chat without a terminal, what it shows for one, and how it reads
-  when that terminal ends.
+  it offers a chat without a terminal, what it shows for one, how it reads when
+  that terminal ends, and the jail it says and starts with (TERM-37 - TERM-39).
   """
   use EliaWeb.ConnCase, async: false
 
@@ -122,6 +122,114 @@ defmodule EliaWeb.TerminalLiveTest do
       # A size the page does not offer is the default, not whatever arrived.
       view |> element("#terminal-font-form") |> render_change(%{"font_size" => "99"})
       assert_push_event(view, "font_size", %{size: 9})
+    end
+
+    # TERM-37, TERM-38: the jail is the chat's setting as it is, not the one
+    # this page read when it opened. A change made elsewhere — here through the
+    # session the chat page uses (CSET-4, SESS-30) — reaches both the line and a
+    # Start on a page that was already open.
+    test "the jail a page says and starts with follows the chat's setting", %{
+      conn: conn,
+      id: id
+    } do
+      with_host_jail(fn ->
+        {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
+        refute has_element?(view, "#terminal-jail-warning")
+
+        # Turned off with this page open.
+        :ok = Agent.set_jail(id, false)
+
+        # TERM-38: the page follows it, without a reload.
+        render(view)
+        assert has_element?(view, "#terminal-jail-warning", "credentials")
+
+        view
+        |> form("#terminal-form", terminal: %{command: "sleep 60"})
+        |> render_submit()
+
+        # TERM-37: the session started with the setting as it is now, not the
+        # one the page read when it opened.
+        assert {:ok, status} = Terminal.status(id)
+        assert status.jail == false
+        refute status.jailed
+      end)
+    end
+
+    # TERM-39: the line is about the terminal the page is showing — the
+    # confinement it was actually started with — and the chat's setting is said
+    # separately, as what the next one will use (ISOL-19).
+    test "the page says a session's own confinement, and the setting separately", %{
+      conn: conn,
+      id: id
+    } do
+      with_host_jail(fn ->
+        {:ok, _session} = Agent.ensure_started(id)
+
+        {:ok, _pid} =
+          Terminal.start(id, command: "sleep 60", workspace: workspace(id), jail: false)
+
+        {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
+
+        # The chat's setting is on; the terminal on the page is not jailed, and
+        # the page says that rather than the setting — and says what the next
+        # one will use, because the setting has moved since it started.
+        assert has_element?(view, "#terminal-jail-warning", "credentials")
+        assert has_element?(view, "#terminal-jail-next", "will be jailed")
+      end)
+    end
+
+    # TERM-39, ISOL-19: the other way round — a session that did start jailed
+    # keeps the confinement it was started with while the chat's setting goes
+    # off, and the page says the setting as the next terminal's.
+    test "a jailed session stays jailed while the chat's setting goes off", %{
+      conn: conn,
+      id: id
+    } do
+      with_host_jail(fn ->
+        {:ok, _session} = Agent.ensure_started(id)
+
+        {:ok, _pid} =
+          Terminal.start(id, command: "sleep 60", workspace: workspace(id), jail: true)
+
+        assert {:ok, %{jailed: true}} = Terminal.status(id)
+
+        {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
+        refute has_element?(view, "#terminal-jail-warning")
+        refute has_element?(view, "#terminal-jail-next")
+
+        :ok = Agent.set_jail(id, false)
+        render(view)
+
+        refute has_element?(view, "#terminal-jail-warning")
+        assert has_element?(view, "#terminal-jail-next", "will run unjailed")
+      end)
+    end
+
+    # TERM-9, ISOL-12, ISOL-20: a host with no jail at all is a different
+    # sentence from a chat that turned it off, and no chat's setting can turn
+    # one on there.
+    test "a host with no jail says so, whatever the chat's setting", %{conn: conn, id: id} do
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true, bwrap: "/nonexistent/bwrap")
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
+
+      assert has_element?(view, "#terminal-no-jail")
+      refute has_element?(view, "#terminal-jail-warning")
+      refute has_element?(view, "#terminal-jail-next")
+    end
+  end
+
+  # TERM-37 to TERM-39: a page that says whether the jail is on needs a host
+  # that has one — the suite's own config turns it off (ISOL-20) — and needs
+  # bubblewrap to build it (ISOL-12), which is what these tests skip without.
+  defp with_host_jail(fun) do
+    if Elia.Shell.available?() do
+      previous = Application.get_env(:elia, Elia.Shell)
+      Application.put_env(:elia, Elia.Shell, jail: true)
+      on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+      fun.()
     end
   end
 

@@ -804,6 +804,10 @@ defmodule Elia.Terminal.Session do
       command: state.command,
       workspace: state.workspace,
       jail: state.jail,
+      # TERM-39: the confinement the session actually has — the chat's setting
+      # at its start, the host's and bubblewrap's presence together (ISOL-12,
+      # ISOL-20) — where `jail` is only what was asked for.
+      jailed: state.jailed,
       cols: state.cols,
       rows: state.rows,
       ended: state.ended,

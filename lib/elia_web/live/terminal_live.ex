@@ -29,7 +29,14 @@ defmodule EliaWeb.TerminalLive do
     # The same session the chat page uses, so the chat's jail setting and
     # workspace are the ones this page starts a terminal with (TERM-7, TERM-2).
     {:ok, _pid} = Agent.ensure_started(id)
-    if connected?(socket), do: Terminal.subscribe_status(id)
+
+    if connected?(socket) do
+      Terminal.subscribe_status(id)
+      # TERM-38: the chat's jail setting can change under this page — another
+      # tab, or the chat's settings page — so the page follows the event the
+      # chat page follows, and says what the setting is now.
+      Agent.subscribe(id)
+    end
 
     snapshot = Agent.snapshot(id)
 
@@ -58,18 +65,20 @@ defmodule EliaWeb.TerminalLive do
     {:ok, refresh(socket)}
   end
 
-  # TERM-20, TERM-25: start a terminal — the default command (TERM-5) or the one
-  # the user typed.
+  # TERM-20, TERM-25, TERM-37: start a terminal — the default command (TERM-5) or
+  # the one the user typed, in the jail the chat has *now* rather than the one
+  # this page read when it opened (another tab may have changed it since).
   @impl true
   def handle_event("start", %{"terminal" => %{"command" => command}}, socket) do
     command = String.trim(command || "")
+    jail = Agent.snapshot(socket.assigns.session_id).settings.jail
 
     case Terminal.start(socket.assigns.session_id,
            command: if(command == "", do: nil, else: command),
            workspace: socket.assigns.project.folder,
-           jail: socket.assigns.jail
+           jail: jail
          ) do
-      {:ok, _pid} -> {:noreply, refresh(socket, command)}
+      {:ok, _pid} -> {:noreply, socket |> assign(jail: jail) |> refresh(command)}
       {:error, message} -> {:noreply, assign(socket, error: message)}
     end
   end
@@ -100,6 +109,15 @@ defmodule EliaWeb.TerminalLive do
     {:noreply, assign(socket, status: status)}
   end
 
+  # TERM-38: the chat's setting as it changes. The jail line is about the
+  # terminal the page is showing, or about the next one (TERM-39), so the page
+  # follows the chat's own event (SESS-41, CSET-3) like the chat page does. The
+  # chat's other events are not this page's business and the catch-all drops
+  # them.
+  def handle_info({:agent, id, {:settings, settings}}, %{assigns: %{session_id: id}} = socket) do
+    {:noreply, assign(socket, jail: settings.jail)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp refresh(socket, command_field \\ nil) do
@@ -125,6 +143,30 @@ defmodule EliaWeb.TerminalLive do
       _ -> @default_font_size
     end
   end
+
+  # TERM-39: the confinement the terminal the page is showing actually has —
+  # the one it was started with (TERM-37, ISOL-19) — or, with no session on the
+  # page at all, the one the next Start would use: the chat's setting now
+  # (TERM-38).
+  defp shown_jailed(%{status: %{jailed: jailed}}), do: jailed
+  defp shown_jailed(%{jail: jail}), do: jail
+
+  # TERM-9, TERM-39: what being unjailed means, said about the terminal the
+  # page is showing when there is one, and about the one a Start would make
+  # otherwise.
+  defp unjailed_warning(nil),
+    do: "Not jailed: the terminal you start can read the settings database and your credentials."
+
+  defp unjailed_warning(_status),
+    do: "Not jailed: this terminal can read the settings database and your credentials."
+
+  # TERM-39, ISOL-19: the chat's setting is no longer the one the session on
+  # the page was started with, so the page says what the next one will use.
+  defp next_jail_warning(false),
+    do:
+      "The next terminal will run unjailed: it can read the settings database and your credentials."
+
+  defp next_jail_warning(true), do: "The next terminal will be jailed."
 
   @impl true
   def render(assigns) do
@@ -171,12 +213,25 @@ defmodule EliaWeb.TerminalLive do
           >
             This host has no jail, so the terminal runs unjailed (ISOL-12).
           </span>
+          <%!-- TERM-9, TERM-38, TERM-39, ISOL-17: this says what is unjailed —
+          the terminal the page is showing when there is one, and the one a
+          Start would make otherwise — from the setting as it is now (TERM-38)
+          or from the session's own confinement (TERM-39). --%>
           <span
-            :if={@tmux and @jail_available and !@jail}
+            :if={@tmux and @jail_available and !shown_jailed(assigns)}
             id="terminal-jail-warning"
             class="text-xs text-warning"
           >
-            Not jailed: this terminal can read the settings database and your credentials.
+            {unjailed_warning(@status)}
+          </span>
+          <%!-- TERM-39, ISOL-19: the chat's setting has moved since this session
+          started, and it reaches only the terminal started after it. --%>
+          <span
+            :if={(@tmux and @jail_available and @status) && @status.jailed != @jail}
+            id="terminal-jail-next"
+            class="text-xs text-warning"
+          >
+            {next_jail_warning(@jail)}
           </span>
 
           <.form
