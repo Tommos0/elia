@@ -16,8 +16,8 @@ index are in `specs/README.md`. The topic notes for editing the code are in
   (`elixir --version`; `erl` must be on `PATH` too). A distribution's `elixir`
   package is often older than 1.17, so `asdf` or `mise`, with the `erlang` and
   `elixir` plugins, is the reliable way to install both.
-- **`git`** — a chat in Elia's own project works in its own git worktree, and a
-  deploy fast-forwards a branch (DEPLOY-1, DEPLOY-5).
+- **`git`** — a chat in Elia's own project makes itself a git worktree for a
+  code change, and a deploy fast-forwards a branch (DEPLOY-28, DEPLOY-5).
 - **`bubblewrap`** (`bwrap`) — optional. Every OS command Elia runs is jailed;
   without bubblewrap, or where user namespaces or their mounts are unavailable,
   commands run unjailed instead, which the chat's settings page says (ISOL-12).
@@ -45,8 +45,9 @@ selects the model. Keys are user settings, not workspace data: they live in
 Setting `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in the environment works
 too, and a key saved in Settings wins over one from there (CONF-5).
 
-For chats to work in their own worktrees and for the Settings page to be able
-to deploy, the tree the server runs from must be *set up for deployment*: on the
+For the Settings page to be able to deploy, and for a chat in Elia's own
+project to be able to make itself a worktree and merge it back, the tree the
+server runs from must be *set up for deployment*: on the
 branch `live`, with a `master` at or ahead of it (DEPLOY-14). In a fresh clone,
 from the trunk:
 
@@ -55,8 +56,9 @@ git checkout -b live         # the tree the server runs from; a deploy fast-forw
 ```
 
 (`git branch master` once, at `live`, if the trunk has another name.) Until the
-tree is set up, the Settings page says what is missing and a chat here edits the
-live tree itself rather than a worktree (DEPLOY-1).
+tree is set up, the Settings page says what is missing; a chat here still works
+in the live tree, but it can't push its worktree's branch to a `master` that is
+checked out there, so it says so and asks (DEPLOY-1, DEPLOY-30).
 
 ### Keep it running
 
@@ -160,9 +162,8 @@ page (PREVIEW-9, `specs/ui-preview.md`).
 | `Elia.Skills.{Shell,Files,Harness,Tasks,Titles,Done,UserInput,SelfModification}` | The built-in skills |
 | `Elia.Skills.Folder` | Folder skills: `SKILL.md` and script-backed tools |
 | `Elia.Harness` | Running the test suite (`Elia.Harness.run_tests/3`, the deploy's gate; a chat runs it with the `shell` tool) |
-| `Elia.Deploy` | Chat worktrees, the trunk `master` and `live`, deploying (hot reload or restart) |
-| `Elia.Deps` | The dependency layer a chat's worktree compiles against |
-| `Elia.Projects` | Project folders; every chat belongs to one and works in it (its worktree for Elia's own project) |
+| `Elia.Deploy` | The trunk `master` and `live`, deploying (hot reload or restart), and the tree a chat's workspace resolves to |
+| `Elia.Projects` | Project folders; every chat belongs to one and works in it (the live tree for Elia's own project) |
 | `Elia.Workspace` | The workspace root and the path classes of the policy (WS) |
 | `Elia.Shell` / `Elia.Priority` | Running OS commands, jailed and below the server's own priority |
 | `Elia.Limits` | Per-chat turn limits: steps, wall-clock time and tokens |
@@ -202,8 +203,9 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   live tree before
   loading anything.
 - **Deploying**: the server runs from the *live tree*; a chat in Elia's own
-  project works in its own git worktree (branch `chat/<chat id>`, forked from
-  the trunk `master`), so an in-progress edit can't reach the running app. When a
+  project does the work for a change in a git worktree it makes inside that tree
+  (branch `chat/<chat id>`, forked from the trunk `master`, DEPLOY-28), so an
+  in-progress edit needn't reach the running app. When a
   change is done the agent merges its branch into `master` itself (fast-forward
   only); the user then deploys from the Settings page, which brings `master` to
   `live` and loads it — by "Hot reload" (the test suite first, then a recompile
