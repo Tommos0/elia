@@ -45,6 +45,11 @@ defmodule Elia.Agent.Session do
     # The workspace root of this chat (PROJ-12): for a chat in Elia's own
     # project its own git worktree (DEPLOY-1), else the project's folder.
     :workspace,
+    # The chat's working directory (WD-1): an absolute path inside `workspace`
+    # that its file tool calls and its `shell` call resolve relative paths
+    # against, or `nil` while it is the workspace root itself (WD-7). It is
+    # saved with the chat (STORE-46), so it outlives the process (WD-2).
+    :cwd,
     :task,
     # The turn this session is running: `%{id, started_at}` while one is in
     # flight, `nil` otherwise. It is saved with the chat so that a later session
@@ -111,12 +116,17 @@ defmodule Elia.Agent.Session do
     loop_opts = Keyword.get(opts, :loop_opts, [])
     project = opts[:project] || load_project(opts[:id], persist)
 
+    workspace =
+      opts[:workspace] || Keyword.get(loop_opts, :workspace) ||
+        Elia.Deploy.workspace(project, opts[:id])
+
     state = %__MODULE__{
       id: opts[:id],
       project: project,
-      workspace:
-        opts[:workspace] || Keyword.get(loop_opts, :workspace) ||
-          Elia.Deploy.workspace(project, opts[:id]),
+      workspace: workspace,
+      # WD-2, WD-7: the chat's own working directory, saved with it, read back
+      # only while it is still a directory inside the workspace.
+      cwd: if(persist, do: load_cwd(opts[:id], workspace)),
       loop_opts: loop_opts,
       persist: persist,
       messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
@@ -160,11 +170,11 @@ defmodule Elia.Agent.Session do
   @impl true
   # SESS-15: upgrade state from before `:settings` (SESS-41), `:task_meta`,
   # `:project`, `:workspace`, `:compaction`, `:pause`, `:turn` (INTR-1),
-  # `:title`, `:input` (ASK) or `:done` (DONE-1) existed (a session that
-  # outlived a hot reload). Fields it already has are kept — including the five
-  # values a state from before the one map holds as fields of its own — and
-  # `:turn` is not loaded from disk, since it belongs to the process that is
-  # running the turn.
+  # `:title`, `:input` (ASK), `:done` (DONE-1) or `:cwd` (WD-1) existed (a
+  # session that outlived a hot reload). Fields it already has are kept —
+  # including the five values a state from before the one map holds as fields of
+  # its own — and `:turn` is not loaded from disk, since it belongs to the
+  # process that is running the turn.
   def handle_call(msg, from, state)
       when not is_map_key(state, :settings) or
              not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
@@ -172,7 +182,7 @@ defmodule Elia.Agent.Session do
              not is_map_key(state, :pause) or
              not is_map_key(state, :turn) or
              not is_map_key(state, :title) or not is_map_key(state, :input) or
-             not is_map_key(state, :done) do
+             not is_map_key(state, :done) or not is_map_key(state, :cwd) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
     upgraded =
@@ -223,7 +233,40 @@ defmodule Elia.Agent.Session do
           | done: if(upgraded.persist, do: Elia.Store.load_done(upgraded.id), else: false)
         }
 
+    upgraded =
+      if is_map_key(state, :cwd),
+        do: upgraded,
+        else: %{
+          upgraded
+          | cwd: if(upgraded.persist, do: load_cwd(upgraded.id, upgraded.workspace))
+        }
+
     handle_call(msg, from, upgraded)
+  end
+
+  # WD-1, WD-10: the chat's working directory, which the loop reads at the start
+  # of every step, so a `cd` applies from the next one.
+  def handle_call(:cwd, _from, state), do: {:reply, cwd(state), state}
+
+  # WD-3, WD-4: `cd` sets the chat's working directory — or reports it, when it
+  # names no path. WD-5 is the refusal, which changes nothing.
+  def handle_call({:set_cwd, path}, _from, state) when path in [nil, ""] do
+    {:reply, {:ok, label(state)}, state}
+  end
+
+  def handle_call({:set_cwd, path}, _from, state) when is_binary(path) do
+    case Elia.Workdir.resolve(path, cwd(state), workspace(state)) do
+      {:ok, dir} ->
+        state = %{state | cwd: stored_cwd(dir, state)}
+        # WD-2: the new directory is saved with the chat. As with its other
+        # settings, an empty chat is saved with its first message (SESS-14,
+        # CSET-6).
+        state = if state.messages == [], do: state, else: save(state)
+        {:reply, {:ok, label(state)}, state}
+
+      {:error, message} ->
+        {:reply, {:error, message}, state}
+    end
   end
 
   def handle_call(:snapshot, _from, state) do
@@ -1067,6 +1110,37 @@ defmodule Elia.Agent.Session do
   defp workspace(state),
     do: Map.get(state, :workspace) || Elia.Deploy.workspace(project(state), state.id)
 
+  # WD-1, WD-7: the chat's working directory — the one it has, or its workspace
+  # root while it works there.
+  defp cwd(state), do: Map.get(state, :cwd) || Elia.Workdir.real_root(workspace(state))
+
+  # WD-3: the directory named relative to the workspace root, `.` for the root.
+  defp label(state), do: Elia.Workdir.label(cwd(state), workspace(state))
+
+  # WD-7, STORE-46: a chat working in its workspace root carries no entry of its
+  # own, so moving back to the root drops the key from the file.
+  defp stored_cwd(nil, _state), do: nil
+
+  defp stored_cwd(dir, state) do
+    if dir == Elia.Workdir.real_root(workspace(state)), do: nil, else: dir
+  end
+
+  # WD-2, WD-7: the working directory saved with the chat, used only while it is
+  # still a directory inside the workspace: one a workspace that has moved left
+  # behind reads as the workspace root, which is where the chat's tools then run.
+  defp load_cwd(id, workspace) do
+    case Elia.Store.load_cwd(id) do
+      nil ->
+        nil
+
+      saved ->
+        case Elia.Workdir.resolve(saved, workspace, workspace) do
+          {:ok, dir} -> if dir == Elia.Workdir.real_root(workspace), do: nil, else: dir
+          {:error, _message} -> nil
+        end
+    end
+  end
+
   # `when` is `:now` for a message that is a boundary of the turn — what starts
   # it, a stop, a pause, the results that close dangling calls — and `:later`
   # for the loop's own (SESS-44).
@@ -1146,7 +1220,10 @@ defmodule Elia.Agent.Session do
              # none (which takes the entry off the file).
              turn: Map.get(state, :turn),
              title: Map.get(state, :title),
-             done: Map.get(state, :done, false)
+             done: Map.get(state, :done, false),
+             # STORE-46, WD-2: the chat's working directory, saved so it
+             # outlives this process.
+             cwd: stored_cwd(Map.get(state, :cwd), state)
            ) do
       Logger.error("Could not save session #{state.id}: #{inspect(reason)}")
     end
@@ -1221,6 +1298,9 @@ defmodule Elia.Agent.Session do
         llm: llm,
         project: project(state),
         workspace: workspace(state),
+        # WD-10: the loop reads the chat's working directory at the start of each
+        # step, through `{:cwd}` — this is where it stands as the turn begins.
+        cwd: cwd(state),
         # ISOL-15: the tool context carries this chat's jail setting, so the
         # shell tools follow it.
         jail: settings(state).jail,

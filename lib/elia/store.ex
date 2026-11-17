@@ -30,9 +30,12 @@ defmodule Elia.Store do
   default (LIMIT-1) are stored, `opts[:title]` the chat's own title
   (STORE-32), which is stored only when it isn't blank (TITLE-2),
   `opts[:done]` (a boolean) whether the chat is marked done (STORE-34), which is
-  stored only when it is `true`, and `opts[:effort]` the chat's own reasoning
+  stored only when it is `true`, `opts[:effort]` the chat's own reasoning
   effort (`"low"`, `"medium"` or `"high"`, LLM-39, STORE-37), which is stored
-  only when the chat has one of its own.
+  only when the chat has one of its own, and `opts[:cwd]` the chat's working
+  directory as an absolute path (STORE-46, WD-1), which is stored only when the
+  chat has one of its own — a chat working in its workspace root carries no
+  entry (WD-7).
   """
   @spec save(binary(), [Message.t()], keyword()) :: :ok | {:error, term()}
   def save(id, messages, opts \\ []) do
@@ -78,6 +81,11 @@ defmodule Elia.Store do
     # that keeps the configured default (LLM-38) carries no entry and giving the
     # chat no effort again drops the key from the file.
     chat = if opts[:effort] in @efforts, do: Map.put(chat, :effort, opts[:effort]), else: chat
+
+    # STORE-46, WD-7: the chat's working directory, written only when it is not
+    # its workspace root, so a chat that never changed directory carries no
+    # entry and moving back to the root drops the key from the file.
+    chat = if cwd = opts[:cwd], do: Map.put(chat, :cwd, cwd), else: chat
 
     # STORE-27: only the limits that aren't the default (LIMIT-1) are written,
     # so a chat that sets none carries no entry at all.
@@ -248,6 +256,19 @@ defmodule Elia.Store do
       names
     else
       _ -> []
+    end
+  end
+
+  @doc """
+  The chat's saved working directory (STORE-46, WD-1), or `nil` when it has
+  none — a chat working in its workspace root, and a chat saved before the key
+  existed (WD-7) — and when the chat is missing, unreadable or corrupt.
+  """
+  @spec load_cwd(binary()) :: binary() | nil
+  def load_cwd(id) do
+    case load_meta(id) do
+      %{cwd: cwd} when is_binary(cwd) -> cwd
+      _none -> nil
     end
   end
 

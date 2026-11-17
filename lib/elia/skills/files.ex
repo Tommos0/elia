@@ -42,8 +42,10 @@ defmodule Elia.Skills.Files do
     """
     Always use these tools, never shell commands (`cat`, `sed`, `echo >`, \
     scripts), to read, create and edit files: they apply the workspace policy. \
-    Paths are relative to the workspace root, which is the chat's project folder \
-    (PROJ-12). Read a file \
+    A relative path resolves against the chat's working directory, which is the \
+    chat's project folder (PROJ-12) until the `cd` tool moves it (WD-1, WD-3), \
+    while a result names a path relative to that folder, wherever the chat \
+    stands (WD-8). Read a file \
     before editing it. `edit_file` tries the exact string first — include enough \
     surrounding lines to make it unique — and if it is not there it retries \
     ignoring indentation, trailing whitespace and line endings, using that match \
@@ -144,7 +146,7 @@ defmodule Elia.Skills.Files do
       %Elia.Tool{
         name: "list_files",
         description:
-          "List one level of a directory (the workspace root by default): directories first, " <>
+          "List one level of a directory (the working directory by default): directories first, " <>
             "a file with its size in bytes, a symlink with its target. At most " <>
             "#{@max_list_entries} entries.",
         input_schema: %{
@@ -152,7 +154,7 @@ defmodule Elia.Skills.Files do
           "properties" => %{
             "path" => %{
               "type" => "string",
-              "description" => "Directory (default the workspace root)"
+              "description" => "Directory (default the chat's working directory)"
             },
             "limit" => %{
               "type" => "integer",
@@ -181,7 +183,7 @@ defmodule Elia.Skills.Files do
             "pattern" => %{"type" => "string", "description" => "Literal text to find"},
             "path" => %{
               "type" => "string",
-              "description" => "File or directory (default the workspace root)"
+              "description" => "File or directory (default the chat's working directory)"
             },
             "glob" => %{
               "type" => "string",
@@ -229,7 +231,9 @@ defmodule Elia.Skills.Files do
   # (WS-6): it has no class, and no location to operate on.
   defp referent(path, ctx) do
     root = root(ctx)
-    abs = Path.expand(path, root)
+    # WD-8, FILE-1: a relative path resolves against the chat's working
+    # directory; the class is still decided against the workspace root.
+    abs = Path.expand(path, dir(ctx))
 
     case Workspace.real_location(abs) do
       :unresolvable -> {abs, :unresolvable, :unresolvable}
@@ -238,7 +242,8 @@ defmodule Elia.Skills.Files do
   end
 
   # FILE-4, FILE-18, WS-8, WS-9: approval for a read (`list_files` with no path
-  # means the workspace root, which is inside the workspace like any other).
+  # means the chat's working directory, which is inside the workspace like any
+  # other).
   # Under the jail, reaching the path is the whole answer, and that is
   # deliberate: `deps` and `.git` in a worktree are symlinks into the live tree,
   # which the jail's profile binds (ISOL-7, ISOL-25), so their real location
@@ -288,7 +293,9 @@ defmodule Elia.Skills.Files do
   # never its target — and the link is what goes (FILE-20).
   defp delete_referent(path, ctx) do
     root = root(ctx)
-    abs = Path.expand(path, root)
+    # WD-8, FILE-1: as `referent/2`, the write target of a `delete_file` resolves
+    # against the chat's working directory.
+    abs = Path.expand(path, dir(ctx))
 
     case Workspace.real_location(Path.dirname(abs)) do
       :unresolvable ->
@@ -955,8 +962,13 @@ defmodule Elia.Skills.Files do
   end
 
   # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
-  # in Elia's own project (DEPLOY-1), Elia's own root when unset.
+  # in Elia's own project (DEPLOY-1), Elia's own root when unset. What a result
+  # names is relative to this, wherever the chat stands (WD-8).
   defp root(ctx), do: ctx[:workspace] || Workspace.root()
+
+  # The directory a relative path resolves against (FILE-1, WD-1): the chat's
+  # working directory, which is its workspace root until `cd` changes it (WD-3).
+  defp dir(ctx), do: Elia.Workdir.of(ctx)
 
   defp file_error({:error, reason}, path) when is_atom(reason),
     do: {:error, "#{path}: #{:file.format_error(reason)}"}

@@ -11,7 +11,8 @@ tools reach no further than a jailed command does (ISOL-25).
 
 ## Requirements
 
-- **FILE-1** Paths are resolved relative to the workspace root.
+- **FILE-1** A relative path is resolved against the chat's working directory
+  (WD-1), which is its workspace root until `cd` changes it (WD-3).
 - **FILE-2** `read_file` returns up to 2,000 lines, starting at `offset`
   (1-based, default 1). `limit` can lower the count but never raise it above
   2,000.
@@ -65,7 +66,7 @@ tools reach no further than a jailed command does (ISOL-25).
   the user's approval (FILE-12), and that a symlink is followed no further than
   the workspace (FILE-13).
 - **FILE-15** `list_files` lists one level of the directory at `path`, which
-  defaults to the workspace root (FILE-1). The result's first line is
+  defaults to the working directory (FILE-1). The result's first line is
   `[<dir> (<n> entries)]`, with `<dir>` the directory's path relative to the
   workspace root (`.` for the root itself) and `<n>` the number of entries in
   it; then one line per entry, named by its path relative to the workspace
@@ -118,7 +119,7 @@ tools reach no further than a jailed command does (ISOL-25).
   to `grep -n` (SHELL-8).
 - **FILE-25** `search_files` takes `pattern` (required) — the text to find,
   matched literally and case-sensitively, not as a regular expression — `path`
-  (default the workspace root, FILE-1), a file or a directory — `glob`
+  (default the working directory, FILE-1), a file or a directory — `glob`
   (optional), a filter on a file's path relative to the search root, where `*`
   and `?` don't match `/`, `**` does and `**/` also matches no directory at
   all, and a glob with no `/` in it is matched against the file's name —

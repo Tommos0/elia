@@ -17,7 +17,8 @@ call takes.
 
 - **SHELL-1** Every `shell` call needs approval.
 - **SHELL-2** The command runs with `bash -c` where bash is installed,
-  otherwise with POSIX `sh -c` (`Elia.Shell.shell/1`), in the workspace root,
+  otherwise with POSIX `sh -c` (`Elia.Shell.shell/1`), in the chat's working
+  directory (WD-9), which is its workspace root until `cd` changes it,
   with stdin connected to `/dev/null`, so it can never wait for input. The
   shell can be overridden per call with the `:shell` option.
 - **SHELL-3** The command runs in its own process group where `setsid` is

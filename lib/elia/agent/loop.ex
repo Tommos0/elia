@@ -114,6 +114,10 @@ defmodule Elia.Agent.Loop do
         session_id: opts[:session_id],
         turn_id: opts[:turn_id],
         workspace: workspace,
+        # WD-1: the chat's working directory, refreshed at the start of every
+        # step (WD-10), so every call of one step resolves a relative path
+        # against the same directory.
+        cwd: Keyword.get(opts, :cwd),
         project: project,
         # ISOL-15: the chat's jail setting, so a tool jails its call according
         # to the chat it runs in; nil (no chat) means the default, which is on.
@@ -226,6 +230,12 @@ defmodule Elia.Agent.Loop do
     skills = Elia.Skills.resolve(ctx.skills, ctx.project)
     tools = Map.new(Elia.Skills.tools(skills), &{&1.name, &1})
 
+    # WD-10: the chat's working directory is read here, once per step, so a `cd`
+    # applies from the next step and every call of this one — they run at the
+    # same time (LOOP-10) — resolves against the same directory. No session to
+    # ask (a test driving the loop) leaves the context's own `cwd` as it is.
+    ctx = %{ctx | tool_ctx: Map.put(ctx.tool_ctx, :cwd, step_cwd(ctx))}
+
     # COMPACT-29: the request view is derived fresh every step, from the full
     # history and the chat's compaction state (COMPACT-2, COMPACT-3), and the
     # ladder may run deeper mid-turn.
@@ -241,6 +251,12 @@ defmodule Elia.Agent.Loop do
 
     ask(ctx, request, history, step, tools, 0, 0)
   end
+
+  # WD-10: the working directory every call of this step resolves against, read
+  # from the chat. Without a chat (a test driving the loop) the context's own
+  # `cwd` stays as it is.
+  defp step_cwd(%{tool_ctx: %{session_id: nil}} = ctx), do: Map.get(ctx.tool_ctx, :cwd)
+  defp step_cwd(ctx), do: Elia.Agent.cwd(ctx.tool_ctx.session_id)
 
   # RETRY-1, LOOP-23, TIME-1 to TIME-3: the step's model call, measured. A
   # failure the provider marked transient (RETRY-6) is asked again after a wait,

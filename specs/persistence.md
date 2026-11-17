@@ -36,6 +36,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `title` | a string | when the chat's own title isn't blank (STORE-32, TITLE-1) | yes — a blank or missing title is not written (STORE-32) |
   | `turn` | a map: the turn's `id` and `started_at`, and `resumed: true` for a turn an automatic resume started (STORE-30, RESUME-5) | while a turn is in flight | yes — the turn's end takes the entry off the file (STORE-30) |
   | `done` | `true` | only when the chat is marked done (STORE-34) | yes — a chat is open by default (STORE-34) |
+  | `cwd` | an absolute path (a string) | when the chat's working directory isn't its workspace root (STORE-46, WD-7) | yes — a chat working in its workspace root carries no entry (STORE-46) |
 
 - **STORE-2** Writes are atomic: the data goes to a temporary file of that
   write's own, which is flushed to disk and then renamed into place. Saves of
@@ -249,6 +250,11 @@ values a save can carry, deleting a chat, and the two tables themselves.
   only when it is `true`, so reopening a chat drops the entry from the file
   (DONE-1, DONE-9); `load_done/1` returns `false` when the chat is missing,
   unreadable, corrupt or has no value, since a chat is open by default.
+- **STORE-46** `save/3` takes `cwd:` (the chat's working directory as an
+  absolute path, WD-1) and stores it as `cwd` only when it is given, so a chat
+  working in its workspace root carries no entry; `load_cwd/1` returns the
+  saved path, or `nil` when the chat is missing, unreadable, corrupt or has
+  none, which is what a chat saved before this key existed gives (WD-7).
 
 ### Deleting a chat
 
@@ -326,6 +332,8 @@ an older version wrote. STORE-2 and STORE-43 are unchanged.
 - `test/elia/agent_test.exs` (history survives a restart, STORE-4).
 - `test/elia/chat_done_test.exs` (the saved flag and the listing, STORE-34,
   STORE-35).
+- `test/elia/working_directory_test.exs` (the saved working directory and its
+  loader, STORE-46).
 - `test/elia/chat_titles_test.exs` (the stored title and the listing's
   precedence, STORE-32, STORE-33).
 - `test/elia/auto_approve_test.exs` (the auto-approved set saved and loaded,

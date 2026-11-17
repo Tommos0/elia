@@ -141,6 +141,7 @@ config :elia, Elia.Skills,
   builtin: [
     Elia.Skills.Shell,
     Elia.Skills.Files,
+    Elia.Skills.Workdir,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
     Elia.Skills.Terminal,

@@ -123,6 +123,7 @@ defmodule Elia.StoreShapeTest do
   defp option("title"), do: [title: "A title of its own"]
   defp option("turn"), do: [turn: %{id: "turn-1", started_at: @turn}]
   defp option("done"), do: [done: true]
+  defp option("cwd"), do: [cwd: "/tmp/a-chat-of-its-own"]
   # The keys every save writes carry no option.
   defp option(_key), do: []
 

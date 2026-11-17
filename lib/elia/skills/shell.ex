@@ -31,7 +31,9 @@ defmodule Elia.Skills.Shell do
     user approves each command before it runs, so prefer one clear command over \
     many small ones. Commands run non-interactively (stdin is empty) with \
     `bash -c` where bash is installed, and POSIX `sh -c` otherwise, in the \
-    workspace root. Prefer POSIX constructs so a command works under either: \
+    chat's working directory — the chat's project folder (PROJ-12) until the \
+    `cd` tool moves it (WD-1, WD-9), which changes what a relative path in a \
+    command names. Prefer POSIX constructs so a command works under either: \
     bash-only syntax such as `${PIPESTATUS[0]}`, `[[ ... ]]`, arrays and \
     `set -o pipefail` fails where the shell is `sh`. After a pipeline, `$?` is \
     the status of its last command only, so a failing `mix test | tail` can look \
@@ -77,7 +79,10 @@ defmodule Elia.Skills.Shell do
             "that can't find them is expected, not broken. In a chat whose jail " <>
             "the user turned off, commands run unjailed. " <>
             "The command runs at a lower CPU and I/O priority than the server, " <>
-            "so a heavy one takes longer on a busy machine than on an idle one.",
+            "so a heavy one takes longer on a busy machine than on an idle one. " <>
+            "It runs in the chat's working directory (WD-9), which is the chat's " <>
+            "project folder until the `cd` tool moves it (WD-1), so a relative " <>
+            "path in it reaches there.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -113,7 +118,9 @@ defmodule Elia.Skills.Shell do
 
         result(
           Elia.Shell.run(input["command"],
-            cd: root(ctx),
+            # SHELL-2, WD-9: the command runs in the chat's working directory,
+            # which is its workspace root until `cd` changes it (WD-3).
+            cd: dir(ctx),
             timeout: timeout,
             jail: ctx[:jail],
             max_output: max_output()
@@ -130,9 +137,10 @@ defmodule Elia.Skills.Shell do
     end
   end
 
-  # The workspace root of the turn (PROJ-12): the chat's own worktree for a chat
-  # in Elia's own project (DEPLOY-1), Elia's own root when unset.
-  defp root(ctx), do: ctx[:workspace] || Elia.Workspace.root()
+  # SHELL-2, WD-9: the command runs in the chat's working directory — its
+  # workspace root until `cd` changes it (PROJ-12: the chat's own worktree in
+  # Elia's own project, DEPLOY-1) — else Elia's own root.
+  defp dir(ctx), do: Elia.Workdir.of(ctx)
 
   @doc """
   The tool result for a run: the combined output and its exit status (SHELL-4).

@@ -175,6 +175,26 @@ defmodule Elia.Agent do
   def set_title(id, text), do: GenServer.call(Session.via(id), {:set_title, text})
 
   @doc """
+  The chat's working directory (WD-1): an absolute path inside the chat's
+  workspace (PROJ-12) that its file tool calls (FILE-1) and its `shell` call
+  (SHELL-2) resolve a relative path against. It is the workspace root until the
+  `cd` tool changes it (WD-3).
+  """
+  @spec cwd(binary()) :: binary()
+  def cwd(id), do: GenServer.call(Session.via(id), :cwd)
+
+  @doc """
+  Changes the chat's working directory to the directory `path` names, absolute
+  or relative to the current one, and returns it named relative to the workspace
+  root — `.` for the root itself (WD-3). `nil` changes nothing and returns where
+  the chat is (WD-4). A path that is missing, is not a directory, has no real
+  location (WS-6) or leads outside the workspace (WD-5) returns `{:error,
+  message}` and changes nothing. The change is saved with the chat (WD-2).
+  """
+  @spec set_cwd(binary(), binary() | nil) :: {:ok, binary()} | {:error, binary()}
+  def set_cwd(id, path), do: GenServer.call(Session.via(id), {:set_cwd, path})
+
+  @doc """
   Marks the chat done (`true`) or reopens it (`false`) (SESS-35, DONE-1). A done
   chat is shown as done wherever its status is (DONE-2) and can still be
   continued: a message reopens it (DONE-9).
