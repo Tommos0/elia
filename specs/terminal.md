@@ -38,8 +38,8 @@ guardrails: it is the same confinement as a command, held open.
   decision (TERM-3). A session whose command has exited is not running, so a
   new one starts normally.
 - **TERM-2** A session runs in the chat's workspace root: the chat's project
-  folder (PROJ-12), which for a chat in Elia's own project is that chat's own
-  worktree (DEPLOY-1). It gets the environment a jailed command gets (ISOL-8)
+  folder (PROJ-12), which for a chat in Elia's own project is the live tree
+  (DEPLOY-1). It gets the environment a jailed command gets (ISOL-8)
   and a terminal of its own (TERM-7).
 - **TERM-3** A session stops when the user presses Stop, when the chat is
   deleted, or when its command exits on its own. Stopping kills the whole
@@ -65,16 +65,17 @@ guardrails: it is the same confinement as a command, held open.
   (ISOL-2, ISOL-13), built by `Elia.Shell` rather than by a second copy of it:
   one definition of the jail, so a change to it reaches the terminal too, and a
   host with no bubblewrap (ISOL-12) behaves as it does for a command. The
-  profile follows the workspace as it does for a command (ISOL-13), so a chat
-  worktree gets the worktree's binds and its dependency overlay.
+  profile follows the workspace as it does for a command (ISOL-13): what the
+  jail holds is the workspace the session belongs to, not the directory it
+  starts in.
 - **TERM-8** The session runs at the lower CPU and I/O priority a command runs
   at (PRIO-1, PRIO-3, PRIO-4) through `Elia.Priority`, and the whole tree under
   it inherits it. A watch-mode test run or a TUI in a terminal therefore
   doesn't take the machine from the UI and the agent loops — the reason the
   wrapper exists (PRIO), and the case it was written for.
 - **TERM-9** What a terminal can reach is what a jailed command in that
-  workspace can reach (ISOL-25), because it is the same jail: the workspace,
-  plus for a worktree the trees its profile binds, and never the masked
+  workspace can reach (ISOL-25), because it is the same jail: the workspace, and
+  never the masked
   `.elia` (ISOL-6). A chat whose jail the user turned off (ISOL-16) gets an
   unjailed terminal — the user's own machine, on purpose — and both the page
   and the tool's result say so (ISOL-17), at the moment it matters.

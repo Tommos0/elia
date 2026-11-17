@@ -27,15 +27,35 @@ defmodule Elia.Skills.SelfModification do
     than the shell's default: a first run in a fresh worktree compiles deps and \
     app before its first test.
 
-    A chat in this project works in its own git worktree, not in the tree the \
-    server runs from (DEPLOY-1). Running code therefore never changes while you \
-    edit: an Elixir change reaches the running app only through a deploy, which \
+    A chat in this project works in the project's folder — the live tree the \
+    server runs from (DEPLOY-1) — so don't change code in it. Make yourself a \
+    worktree first and work there, on your own branch:
+
+    ```sh
+    mkdir -p tmp/worktrees
+    git worktree add -b "chat/$ELIA_CHAT_ID" "tmp/worktrees/$ELIA_CHAT_ID" master
+    cp -a deps _build "tmp/worktrees/$ELIA_CHAT_ID/"
+    [ -d assets/node_modules ] && cp -a assets/node_modules "tmp/worktrees/$ELIA_CHAT_ID/assets/"
+    cd "tmp/worktrees/$ELIA_CHAT_ID"
+    ```
+
+    `$ELIA_CHAT_ID` is your chat's id, which every `shell` call is given \
+    (SHELL-14). The two copies are what makes the first command in that worktree \
+    quick: without them every dependency is fetched and compiled from source and \
+    the browser bundle is built from nothing — minutes, every time; with them \
+    the first compile is warm. A sub-task forks the branch its brief names (its \
+    parent's), and stops at its own branch for its parent to merge.
+
+    Running code never changes while you edit in there: an Elixir change reaches \
+    the running app only through a deploy, which \
     the user runs from Settings — it brings the trunk `master` to `live` and \
     then hot reloads or restarts the server (DEPLOY-5–DEPLOY-7). So make all the \
-    edits for a change first, run the tests, then commit your work and merge \
-    your branch into the trunk yourself: rebase on `master` if it has moved, \
-    then `git push . HEAD:master`, which is fast-forward only (DEPLOY-13). That \
-    is where your part ends — tell the user the change is ready and let them \
+    edits for a change first, run the tests in the worktree, then commit your \
+    work and merge your branch into the trunk yourself: rebase on `master` if it \
+    has moved, then `git push . HEAD:master`, which is fast-forward only \
+    (DEPLOY-13). Then remove the worktree (`git worktree remove \
+    tmp/worktrees/$ELIA_CHAT_ID`, from the live tree, then `git branch -d \
+    chat/$ELIA_CHAT_ID`) and tell the user the change is ready and let them \
     deploy it. Never edit \
     `lib/elia/harness.ex` or `lib/elia/workspace.ex` \
     to weaken the guardrails.

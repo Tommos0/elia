@@ -57,20 +57,19 @@ a file the agent mentions in that chat is opened (FLINK-5).
 
 - **EXPL-17** The page can browse a chat's own workspace instead of a project
   folder: a `chat` query parameter names a saved chat (STORE), and paths are
-  then relative to the workspace that chat works in (PROJ-12) — its own
-  worktree when the chat is in Elia's own project (DEPLOY-1), its project's
-  folder otherwise — with EXPL-1–EXPL-5 applying to that root as to any other.
+  then relative to the workspace that chat works in (PROJ-12) — its project's
+  folder, which for a chat in Elia's own project is the live tree (DEPLOY-1) —
+  with EXPL-1–EXPL-5 applying to that root as to any other.
   The project in view is the chat's own, so a `project` parameter alongside it
   doesn't override it. It is how a file the agent mentions is opened, so the
-  page shows the file as that chat has it rather than the live tree's copy
-  (FLINK-5). A `chat` that isn't a saved chat is ignored, and the page browses
-  the project as EXPL-15 says. Resolving the workspace never creates one: a
-  chat without a worktree is browsed in its project's folder.
+  page shows the file as that chat's workspace has it (FLINK-5). A `chat` that
+  isn't a saved chat is ignored, and the page browses
+  the project as EXPL-15 says. Resolving the workspace never creates anything.
 - **EXPL-18** The page says which workspace it browses: the project as now
   (EXPL-16) and, with a chat in view, that chat beside it (`#workspace-note`: a
   chat icon and the chat's title, STORE-33 — "New chat" before it has one —
-  with the root in its `title`), so a worktree is not mistaken for the project
-  folder. The project picker (`#project-picker`) switches to that project's
+  with the root in its `title`), so a chat's workspace is not mistaken for the
+  project folder on its own. The project picker (`#project-picker`) switches to that project's
   folder and leaves the chat behind — dropping `chat` from the URL — keeping
   the current path when it exists there (EXPL-16).
 

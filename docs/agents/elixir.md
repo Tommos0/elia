@@ -33,7 +33,7 @@ Read this before writing or changing Elixir code.
 - There's no database or Ecto. Saved conversations are files in `.elia/sessions/` (`Elia.Store`). Don't add a database without asking.
 - LLM calls go through `Elia.LLM` and the `Elia.LLM.Provider` behaviour. The adapters are `lib/elia/llm/anthropic.ex`, `lib/elia/llm/open_router.ex`, `lib/elia/llm/openai.ex` (any OpenAI-compatible endpoint) and `lib/elia/llm/llama_cpp.ex` (the local one, `specs/llamacpp-provider.md`).
 - Tools are `Elia.Tool` structs (`run`, `approval`). Skills are registered in `Elia.Skills`.
-- A chat in Elia's own project works in its own git worktree, never in the live tree the server runs from (`Elia.Deploy`), and its code reaches the running app only through a deploy. See `docs/agents/harness.md`.
+- A chat in Elia's own project works in the live tree the server runs from, and makes its own git worktree inside it before it changes code, merging that branch into the trunk itself; its code reaches the running app only through a deploy (`Elia.Deploy`). See `docs/agents/harness.md`.
 
 ## Mix
 

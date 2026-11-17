@@ -55,9 +55,8 @@ tools reach no further than a jailed command does (ISOL-25).
   (WS-5), so a path inside the workspace that resolves through a symlink to a
   location outside it — a link to a credential, or to the settings database the
   jail hides (ISOL-5) — is refused too. Inside means what a jailed command in
-  this workspace can reach besides the toolchain (ISOL-25): the workspace, and,
-  for a chat worktree, the trees the jail's profile also binds there — the
-  repository's git directory and the shared `deps` (ISOL-4, ISOL-13) — with
+  this workspace can reach besides the toolchain (ISOL-25): the workspace itself,
+  since a jail binds one tree and nothing around it, with
   `.elia` left out where the live tree is masked (ISOL-6). A path that doesn't
   exist yet is judged by its deepest existing ancestor, so `write_file` can
   still create a file and its parent directories (FILE-6).

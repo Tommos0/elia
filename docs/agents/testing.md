@@ -56,16 +56,18 @@ Playwright.
 
 - They speak HTTP to the **test env server**, which is the same BEAM node, so
   `Elia.FakeLLM` and the scratch workspace still apply: no deploy, no dev
-  server, no API keys. They see the worktree's own code.
+  server, no API keys. They see the workspace's own code — the worktree a chat
+  made for itself, when its code is there (DEPLOY-28).
 - They are excluded from a plain `mix test`, so `mix test` and `mix precommit`
   stay fast and need no Node. Run them explicitly:
 
       mix assets.build                                 # esbuild/tailwind run in dev only
       ELIA_BROWSER_TESTS=1 mix test --only real_browser
 
-- `assets/node_modules` is gitignored, so a fresh worktree has none: install it
-  once with `npm install` in `assets/` for the packages the bundle imports
-  (`@xterm/*`). The Playwright CLI is not one of them — it is user-wide, not a
+- `assets/node_modules` is gitignored, so a worktree a chat made for itself
+  (DEPLOY-28) should have the live tree's copied in (DEPLOY-29); without it,
+  install the packages the bundle imports (`@xterm/*`) once with `npm install`
+  in `assets/`. The Playwright CLI is not one of them — it is user-wide, not a
   workspace dependency: install it once for the user with `npm install -g
   --prefix ~/.local playwright@1.64.1`, which puts the CLI in
   `~/.local/lib/node_modules/playwright` and `playwright` on your `PATH` (so
@@ -114,7 +116,7 @@ a browser during `mix test`.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8).
 - **Never run two test runs at once** — no `mix test`, `bin/test` or
-  `mix precommit` while another is running, in this worktree or any other. Every
+  `mix precommit` while another is running, in this tree or any other. Every
   worktree's partitions use the same `/tmp/elia-test-pN` scratch directories, so
   concurrent runs corrupt each other's `settings.dets` and fail with phantom
   `bad_object` errors. Wait for one run to end before starting the next, and
@@ -122,8 +124,9 @@ a browser during `mix test`.
 - A suite run through the `shell` tool needs a longer timeout than the shell's
   default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four
-  partitions. A chat's first run in a fresh worktree compiles deps and app before
-  its first test, so give it `timeout_seconds` rather than letting it be killed
+   partitions. A chat's first run in a worktree it made for itself compiles deps
+   and app before
+   its first test, so give it `timeout_seconds` rather than letting it be killed
   halfway through the compile. A run the harness itself makes — the deploy's
   suite (DEPLOY-5) — is `Elia.Harness.run_tests/3`: it hands `mix test` a
   per-test `--timeout` and runs under `config :elia, Elia.Harness, timeout: 600`

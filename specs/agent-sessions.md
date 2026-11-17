@@ -170,8 +170,8 @@ every view.
 - **SESS-23** A turn runs in the chat's project and in the workspace its session
   resolved when it started: the `workspace` its caller passed in the loop
   options — what `spawn_task` gives a sub-task, so the child works where its
-  parent does (SUBTASK-23) — else the chat's own worktree when it is in Elia's
-  own project (DEPLOY-1), else its project's folder (PROJ-9, PROJ-12). The
+  parent does (SUBTASK-23) — else its project's folder (PROJ-9, PROJ-12), which
+  for a chat in Elia's own project is the live tree (DEPLOY-1). The
   session keeps that workspace, so every turn of it, and the tool context each
   turn's loop carries (LOOP-18), run there; a session started later for the same
   chat (a resume, a restart) resolves it the same way when its caller passes

@@ -8,7 +8,8 @@ own edits undoable *while it edited the tree the server ran from*: the first
 change of a turn snapshotted the workspace, so a bad turn could be rolled back
 by the agent (the `rollback` tool), by the end-of-turn verification (VERIFY-4),
 or by `/recover` when the app no longer compiled (RECOVER). A chat in Elia's own
-project now edits its own git worktree on its own branch (DEPLOY-1), so a bad
+project now does its own work in a git worktree of its own, on its own branch
+(DEPLOY-28), so a bad
 turn cannot reach the running tree, and ordinary git is the undo: the chat's own
 branch, the trunk `master`, and the deploy gate, which refuses to load a tree
 whose suite or compile fails (DEPLOY-5, HOT-4). Nothing snapshots the workspace

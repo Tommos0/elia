@@ -26,43 +26,44 @@ genuinely needs the rest of the machine (ISOL-16).
 - **ISOL-1** Every process Elia runs for a tool call is jailed by default: the
   `shell` tool (SHELL-1), the suite a deploy runs (VERIFY-1, ISOL-14), a folder
   skill's script tools (FOLDER), and the `git` calls the harness itself makes in
-  a chat's workspace
-  (DEPLOY-9, SUBTASK). All of them go through `Elia.Shell.run/2`; the
+  the live tree (DEPLOY-13, DEPLOY-18). All of them go through `Elia.Shell.run/2`; the
   `System.cmd("git", …)` calls in `Elia.Tasks` and `Elia.Deploy` move behind it,
   since they bypass it today. A git call that times out counts as a failure,
   like one that exits non-zero (ISOL-10).
 - **ISOL-2** The jail is bubblewrap, run as the same user with no privileges:
   `--die-with-parent`, `--unshare-pid`, `--unshare-uts`, `--unshare-ipc`,
   `--unshare-cgroup-try`, `--proc /proc`, `--dev /dev`, `--tmpfs /tmp`, and
-  `--chdir` to the workspace. The hostname is the host's, which bubblewrap
+  `--chdir` to the directory the call runs in (WD-1), which is inside the
+  workspace the jail holds (ISOL-13). The hostname is the host's, which bubblewrap
   inherits, so a process that derives a name from it behaves as it does outside
   — this host's commits use exactly that fallback (git's author identity is
   `user@host`, with no `user.name` configured anywhere).
 - **ISOL-3** A bind is made at the same absolute path as its source, since
-  bubblewrap doesn't rewrite paths: an absolute symlink inside the workspace —
-  a chat worktree's `deps` (DEPLOY-5) — resolves inside the jail as it does
-  outside.
+  bubblewrap doesn't rewrite paths: a symlink inside the workspace resolves
+  inside the jail as it does outside, whether it is one the toolchain has
+  (`/bin` on a merged-`/usr` host) or one a chat's own command made.
 - **ISOL-4** The jail holds exactly what ISOL-13's profile lists, and, next to
   the workspace, only the read-only toolchain (`/usr`, `/lib`, `/lib64`, `/bin`,
   `/sbin`, `/etc`), `$HOME/.mix` read-write (mix archives live there), the
   browser cache the real-browser tests drive (`$HOME/.cache/ms-playwright`,
   read-only, when it exists) — browsers, not secrets — and the user-wide
-  Playwright CLI (read-only, when it exists, ISOL-26). For a
-  chat worktree it also holds the repository's git directory read-write, which
-  commits need: the worktree's `.git` is a pointer file into
-  `<live>/.git/worktrees/<id>`, whose common dir is `<live>/.git` (ISOL-3) —
-  except its `config`, `hooks` and `info`, which are read-only (ISOL-29).
+  Playwright CLI (read-only, when it exists, ISOL-26). A workspace that is
+  itself a linked git worktree — one a chat made inside its project's folder
+  (DEPLOY-28) — comes with the repository's git directory behind its `.git`
+  pointer file, which commits need (ISOL-3).
 - **ISOL-5** Nothing else is bound, so nothing else exists inside. In
   particular the settings database (CONF-1) and everything under `$HOME` but
   what ISOL-4 lists — `~/.mix`, the browser cache and the Playwright CLI — are
   never bound, so a credential store is absent whatever path it has, and no
   command can reach it by a path of its own choosing.
-- **ISOL-6** A workspace's *parent* isn't bound either: a chat's worktree is
-  bound on its own, so `.elia/sessions` and the other chats' worktrees aren't in
-  the jail. When the workspace is the live tree itself (DEPLOY-14) the tree is
-  bound read-write and `.elia` is masked with an empty tmpfs *after* that bind:
-  bubblewrap applies its mounts in argument order, so the later mask wins.
-- **ISOL-7** The dependency tree a chat's commands compile against stays the
+- **ISOL-6** Only the workspace is bound, never its *parent*: a chat's own
+  worktree — a directory inside the project's folder (DEPLOY-28) — is bound on
+  its own, so the live tree around it, `.elia/sessions` and the other chats'
+  worktrees aren't in the jail. When the workspace is the live tree itself
+  (DEPLOY-1) the tree is bound read-write and `.elia` is masked with an empty
+  tmpfs *after* that bind: bubblewrap applies its mounts in argument order, so
+  the later mask wins.
+- ~~**ISOL-7** The dependency tree a chat's commands compile against stays the
   live tree's: a chat worktree holds no dependency of its own — its `deps` is a
   symlink to the live tree's (DEPLOY-1) — so every worktree and the
   live tree compile the same sources. A compile can need to write inside that
@@ -75,24 +76,36 @@ genuinely needs the rest of the machine (ISOL-16).
   the live tree and every other chat compile against is unchanged by any
   command, and two worktrees never write the same file. The layer sits under
   the masked `.elia` (ISOL-6), so nothing inside the jail can reach it, and it
-  goes when the worktree goes (DEPLOY-10).
+  goes when the worktree goes (DEPLOY-10).~~ Retired: a chat's worktree holds
+  its own copies of `deps` and `_build`, made by the chat itself when it makes
+  the worktree (DEPLOY-29), so what it compiles is nobody else's and what it
+  writes reaches no tree but its own. The overlay existed to keep a worktree's
+  writes out of a tree it shared with every other chat and with the running
+  server, and nothing is shared now. A dependency a chat adds is fetched into
+  its own worktree (`mix deps.get` there), which is why a deploy fetches the
+  trunk's dependencies in the live tree before its suite (DEPLOY-18) and
+  installs the Node packages a chat added there before it builds the front end
+  (DEPLOY-19). With the jail off (ISOL-16) there is no mount namespace at all,
+  which for a tree a chat holds itself changes nothing.
 
-  Nothing compiles ahead of a command: there is no pre-compile and no `mix.lock`
-  bookkeeping, nothing compiles when a chat opens, and a chat that runs no
-  command in its worktree compiles nothing at all. (Creating a worktree does
-  copy the live tree's build output into it — a copy, not a compile, and the
-  worktree's own: BUILD-1, BUILD-2.) The first command that compiles the
-  dependencies pays for it, as part of that command: it is a tool call the chat
-  already shows as running (FEED), it needs no approval of its own, and it
-  answers to the command's own timeout (SHELL-3) — ten minutes for the deploy's
-  suite run (VERIFY-1, ISOL-14), and whatever the model asks for with the
-  `shell` tool.
+  What the requirement's other two paragraphs said, as they stood:
 
-  A dependency the chat adds is fetched into its own layer, so it stays that
-  chat's until the change is deployed: the live tree gets it when the deploy
-  fetches it there (DEPLOY-18). With the jail off (ISOL-16) there is no mount
-  namespace to overlay in and commands in the worktree write the shared tree
-  directly, as before.
+  > Nothing compiles ahead of a command: there is no pre-compile and no `mix.lock`
+  > bookkeeping, nothing compiles when a chat opens, and a chat that runs no
+  > command in its worktree compiles nothing at all. (Creating a worktree does
+  > copy the live tree's build output into it — a copy, not a compile, and the
+  > worktree's own: BUILD-1, BUILD-2.) The first command that compiles the
+  > dependencies pays for it, as part of that command: it is a tool call the chat
+  > already shows as running (FEED), it needs no approval of its own, and it
+  > answers to the command's own timeout (SHELL-3) — ten minutes for the deploy's
+  > suite run (VERIFY-1, ISOL-14), and whatever the model asks for with the
+  > `shell` tool.
+
+  > A dependency the chat adds is fetched into its own layer, so it stays that
+  > chat's until the change is deployed: the live tree gets it when the deploy
+  > fetches it there (DEPLOY-18). With the jail off (ISOL-16) there is no mount
+  > namespace to overlay in and commands in the worktree write the shared tree
+  > directly, as before.
 - **ISOL-8** The environment is cleared and rebuilt from an allowlist: `PATH`,
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
   them. Nothing is inherited, so a key in the server's own environment (CONF-5)
@@ -135,9 +148,9 @@ genuinely needs the rest of the machine (ISOL-16).
   FILE-13): the trees a chat's commands can reach are the trees its file tools
   can read. What that is stays a property of the jail's profile (ISOL-13) and is
   asked for rather than reimplemented — `Elia.Shell.reachable?/2` says whether a
-  jailed command in a given workspace can reach a path: the workspace, plus, for
-  a chat worktree, the trees the profile also binds, and never a masked `.elia`
-  (ISOL-6). The file tools run no process, so their confinement follows the jail
+  jailed command in a given workspace can reach a path: the workspace, since a
+  jail binds one tree and nothing around it (ISOL-13), and never a masked
+  `.elia` (ISOL-6). The file tools run no process, so their confinement follows the jail
   decision (`Elia.Shell.wanted/1`: the chat's setting, ISOL-16, and the host's,
   ISOL-20) and not whether bubblewrap can build one (ISOL-12): a host that can't
   build the jail is still confined, and the chat's own setting is what turns the
@@ -156,13 +169,24 @@ genuinely needs the rest of the machine (ISOL-16).
 
 ### Profiles
 
-- **ISOL-13** The jail has three bind profiles:
+- **ISOL-13** The jail holds one **workspace** — the tree a call belongs to, not
+  the directory it happens to start in — bound read-write, and never that tree's
+  parent (ISOL-6). What the jail also holds follows the workspace:
 
-  | Profile | For | Workspace | Shared `deps` | Repo git dir | `.elia` |
-  | --- | --- | --- | --- | --- | --- |
-  | `:worktree` | a chat's tool calls, when it works in its own worktree (DEPLOY-1) | rw | overlay: read-only lower, the worktree's own upper (ISOL-7) | rw, but `config`, `hooks` and `info` read-only (ISOL-29) | not bound |
-  | `:deps_sync` | the harness's own steps in the live tree: the `git worktree` commands that create, remove or prune a worktree (ISOL-22). The name is historical — nothing syncs dependencies any more (ISOL-7) | rw | rw | rw | not bound |
-  | `:live_tree` | a chat that works in the live tree (DEPLOY-14), the deploy's fetch (DEPLOY-18) and its suite run (ISOL-14) | rw | rw, inside the tree | inside the tree | masked empty |
+  | The call's workspace | Workspace | Repo git dir | `.elia` |
+  | --- | --- | --- | --- |
+  | the live tree: a chat's command or terminal (DEPLOY-1, TERM-2), the deploy's fetch and suite run (DEPLOY-18, ISOL-14) | rw | inside the tree | masked empty |
+  | a worktree a chat made inside the live tree (DEPLOY-28): its own commands and its terminal | rw | in the tree that holds it, through the worktree's `.git` pointer file (ISOL-3, ISOL-4) | not bound |
+  | another project's folder (PROJ-12) | rw | inside the folder | not bound |
+
+  A chat's commands are therefore confined to one tree: the live tree it works
+  in, or the worktree it made for itself inside that tree. The directory a call
+  runs in (`--chdir`, the chat's working directory, WD) is not what the jail
+  holds: a call that `cd`s into a subdirectory, and a folder skill's script that
+  runs in its own folder (FOLDER-6), are still confined to the workspace they
+  belong to, which is what lets such a script read the project it belongs to and
+  nothing else. Elia's data is in no jail at all (ISOL-5, ISOL-6), and nothing a
+  call can reach outside that one tree is bound.
 
 - **ISOL-14** The deploy's fetch (`mix deps.get` in the live tree, DEPLOY-18)
   and its test run (`Elia.Deploy`, DEPLOY-5) are jailed with `:live_tree`, and no
@@ -175,7 +199,13 @@ genuinely needs the rest of the machine (ISOL-16).
 
 ### One mount at a time
 
-ISOL-7 has every command mount the worktree's dependency layer itself, and two
+Retired as a live concern: these requirements covered mounting a shared `deps`
+tree as an overlay (ISOL-7). Nothing is mounted now — a worktree holds its own
+copies of `deps` and `_build` (DEPLOY-29) — so no two jails can collide over a
+mount. The measurements below are why the lock existed while one could, and the
+requirements are kept as the record they were.
+
+ISOL-7 had every command mount the worktree's dependency layer itself, and two
 jails that mount the same layer at the same instant collide: one of them fails
 with `Can't make overlay mount … No such file or directory` before its command
 runs. 35 commands across 11 chats failed that way, every one of them in a step
@@ -186,7 +216,7 @@ not the problem: a mount started a moment after another succeeds while the first
 is still up (measured on this host), so a terminal's session-long mount (TERM-7)
 is harmless.
 
-- **ISOL-28** No two jails mount a worktree's dependency layer at the same
+- ~~**ISOL-28** No two jails mount a worktree's dependency layer at the same
   instant. A jail that mounts one — a command's (ISOL-7) and a terminal
   session's (TERM-7) — takes a lock for that worktree before it starts and
   releases it as soon as the jail says it is up: bubblewrap's own `--info-fd`
@@ -195,18 +225,22 @@ is harmless.
   doesn't keep another jail from starting. A holder that dies without releasing
   is released with it, so a crashed command can't wedge the worktree. A caller
   that can't get the lock within its own timeout runs anyway, as it did before
-  this requirement: a rare collision is better than a command that never runs.
+  this requirement: a rare collision is better than a command that never runs.~~
+  Retired: there is no layer to mount, so there is nothing to collide over and
+  no lock to take (ISOL-7).
 
-- **ISOL-27** A jail that can't mount the layer is tried once more, and then
+- ~~**ISOL-27** A jail that can't mount the layer is tried once more, and then
   runs with the shared `deps` bound read-only — the fallback ISOL-7 already takes
   when the layer can't be made — with its result saying the shared tree was
   read-only, as a skipped jail says it wasn't jailed (ISOL-12). A command that
   could not be run at all is never reported as one that ran and failed: the
   jail's own report of why it failed goes to the server's log, and the command
   runs, failing on its own write if it needed one, exactly as it does where the
-  layer can't be made at all.
+  layer can't be made at all.~~ Retired: there is no layer and no read-only
+  shared `deps` to fall back to (ISOL-7); a jail that can't be made at all is
+  what ISOL-12 and ISOL-20 describe.
 
-- **ISOL-29** In a chat worktree's jail (`:worktree`, ISOL-13) the parts of the
+- ~~**ISOL-29** In a chat worktree's jail (`:worktree`, ISOL-13) the parts of the
   repository's git directory that decide what git runs are read-only: its
   `config`, its `hooks` directory and its `info` directory. Bound read-only over
   the read-write git directory (ISOL-4), each one that exists can be read and
@@ -216,11 +250,13 @@ is harmless.
   says, because the chat's own git work needs it: objects, refs and logs,
   `packed-refs`, and the worktree's own `worktrees/<id>` (its `HEAD`, index and
   in-progress rebase or merge state), so a chat still commits, rebases, checks
-  out and fast-forwards `master` (DEPLOY-13).
+  out and fast-forwards `master` (DEPLOY-13).~~ Retired: the profile it belonged
+  to is gone (ISOL-13). A chat's commands run in the tree it works in, bound
+  read-write, and a worktree it made inside that tree is part of it; what a git
+  command inside the jail may write is ISOL-4's list and nothing narrower.
 
 - **ISOL-30** Every git command the harness runs itself — `Elia.Deploy`'s, in
-  the live tree and for a worktree's administration (ISOL-22) — runs with hooks
-  off and no filesystem
+  the live tree — runs with hooks off and no filesystem
   monitor (`-c core.hooksPath=/dev/null -c core.fsmonitor=false`), so none of
   them runs code the repository's files name, whatever they hold. A chat's own
   git commands, which it runs through the `shell` tool, are unaffected.
@@ -263,7 +299,7 @@ is harmless.
 
 ### The harness's own steps
 
-- **ISOL-22** The harness's worktree administration — `git worktree add`,
+- ~~**ISOL-22** The harness's worktree administration — `git worktree add`,
   `remove` and `prune` — runs as a harness step under a profile that leaves
   `.elia` reachable (ISOL-13), because a chat's
   worktree is created *inside* `.elia/worktrees`. Under `:live_tree` the mask
@@ -271,7 +307,12 @@ is harmless.
   written nowhere the harness can see. Nothing the model wrote goes into these
   steps and their arguments are the harness's, fixed at the call site. This is
   the one place a jailed process has `.elia` in reach, and it is a deliberate
-  trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).
+  trade: while such a step runs, the saved conversations are (ISOL-5, ISOL-6).~~
+  Retired: the harness administers no worktree (DEPLOY-1). A chat makes its own
+  with `git worktree add` through the `shell` tool, at a path inside its
+  project's folder that its `.gitignore` covers (DEPLOY-28) — a path the jail it
+  runs in already reaches (ISOL-13) — so no harness step ever needs `.elia` in
+  reach, and the mask holds for every jailed process there is (ISOL-6).
 - ~~**ISOL-23** While a worktree's sync (ISOL-7) is in flight the chat says so
   (UI-70), covering a sync a chat started in the background and one a command is
   waiting for; for the latter it doubles as the command's "what am I waiting
@@ -316,10 +357,14 @@ bubblewrap is missing (ISOL-12).
   that follows it (DEPLOY-5), not who may write the ref. Taking `master` out of
   a jail's reach needs the merge to move into a harness tool the chat calls,
   which changes DEPLOY-13, and is a change of its own.
-- **A chat that works in the live tree itself** (DEPLOY-14, before the tree is
-  set up for deployment). Its jail is the live tree, `.git` and all, with
-  nothing between its writes and the harness's; ISOL-30 still keeps the
-  harness's own git from running a hook or monitor it left behind.
+- **A chat's commands and the tree that runs.** Every chat works in the live
+  tree itself (DEPLOY-1), written read-write, `.git` and all, so what stands
+  between a chat's half-done edit and the running app is the worktree the chat
+  makes for the work (DEPLOY-28) and the suite a deploy runs before it loads
+  (DEPLOY-5, DEPLOY-24). The jail confines where a command may write, not
+  whether the tree that runs is a good one; the mask over `.elia` (ISOL-6) is
+  what keeps Elia's own data out of its reach. ISOL-30 still keeps the
+  harness's own git from running a hook or monitor a command left behind.
 - **Hex's own store (future work).** A jailed command gets no Hex store to keep.
   `$HOME` inside the jail is a fresh empty directory holding only the binds
   (ISOL-4), so the store Hex makes — `~/.hex/cache.bin`, the registry, and
@@ -327,88 +372,73 @@ bubblewrap is missing (ISOL-12).
   with its mount namespace. Fetching still works (the network is reachable,
   ISOL-11: a jailed `mix hex.package fetch jason 1.4.4` downloads into that
   store), at the cost of fetching the registry and the packages again in every
-  command that fetches — including a chat that adds a dependency (ISOL-7), which
-  fetches it afresh in each command that builds it. A future fix gives a chat's
-  commands somewhere to keep one: bind the shared `~/.hex` read-write for the
-  `:worktree` profile, or keep a store per worktree under the data dir (DEPLOY-2)
-  and remove it with the worktree (DEPLOY-10). Hex 2.6.0 names no variable that
+  command that fetches — including a chat that adds a dependency (DEPLOY-29),
+  which fetches it afresh in each command that builds it. A future fix gives a
+  chat's commands somewhere to keep one: bind the shared `~/.hex` read-write for
+  the live tree's profile, or keep a store beside the worktree a chat made
+  itself (DEPLOY-28) and remove it with it. Hex 2.6.0 names no variable that
   would move its store — its `HEX_*` variables are cooldown, HTTP timeout,
   repo-origin verification, offline, lock policy and registry verification — so
   a store of our own would have to be bound at that path. Mix's path variables
   are a separate matter: `MIX_DEPS_PATH` moves the deps directory and
   `MIX_BUILD_PATH` the build directory (both verified on Elixir 1.18.3), which
-  is what a per-worktree deps directory would use instead of the overlay
-  (ISOL-7).
-- **Sanitising the shared dependency tree**, and `mix deps.get` for a project
+  the copies a chat makes for its own worktree make unnecessary (DEPLOY-29).
+- **Sanitising a worktree's dependencies**, and `mix deps.get` for a project
   other than Elia's own — that project's `deps` is inside its workspace and
   writable there (ISOL-4).
-- **A host whose kernel can't mount an overlay in a user namespace.** The
-  overlay is the mechanism ISOL-7 rests on: without it a jailed compile has
-  nowhere to write inside the shared `deps`, and such a host would need the
-  pre-compile back, or a deps directory of the worktree's own (`MIX_DEPS_PATH`
-  puts one there, at the cost of fetching into every worktree). Not built: the
-  overlay mounts here (bubblewrap 0.12 on kernel 6.12, verified by mounting one
-  in a namespace), and a host where it doesn't deserves a deliberate answer
-  rather than a silent fallback.
+- **A host whose kernel can't mount an overlay in a user namespace.** Retired
+  with the overlay (ISOL-7): nothing mounts one now. Such a host's cost is what
+  it always was — a worktree the chat copied `deps` and `_build` into itself
+  (DEPLOY-29), which it could not have done if the copy had to be a mount.
 - **One jail per chat, shared with its terminal.** One bubblewrap process for a
-  chat's whole life would mount the layer once and cover the terminal session
-  too (TERM-7), and save a bubblewrap start and mount per command. It needs
-  supervision (a jail that dies is the whole chat's commands failing), a
-  lifecycle tied to the worktree (DEPLOY-10), a way to end one command without
-  ending the jail, and a decision about what a chat's commands may see of each
-  other across steps — which one jail per command keeps out of reach. ISOL-28
-  makes the collision that would motivate it impossible, so it is not needed for
-  correctness.
+  chat's whole life would save a bubblewrap start per command and cover the
+  terminal session too (TERM-7). Retired with ISOL-28's lock: there is no mount
+  left to amortise, and a jail per command keeps one step's commands out of
+  reach of another's, which one long-lived jail would give up.
 - Seccomp filters, cgroup limits, and capping what a jailed command may write
   inside its own workspace.
 
 ## Implementation
 
-`Elia.Shell` (the bubblewrap argv, the profiles, the environment allowlist, and
-what a jailed command can reach — ISOL-25; `run/2` takes `:jail` and
-`:profile`; the readiness report that ends the mount lock and the read-only
-fallback — ISOL-28, ISOL-27), `Elia.Shell.Lock` (the per-worktree lock around
-mounting the layer, and releasing a dead holder), `Elia.Terminal.Session` (the
-session's jail takes the same lock and gives it back at its first output),
-`Elia.Skills.Shell`,
+`Elia.Shell` (the bubblewrap argv, the one profile and what it holds, the
+environment allowlist, and
+what a jailed command can reach — ISOL-25; `run/2` takes `:jail`),
+`Elia.Terminal.Session` (a session's jail is the same argv),
+`Elia.Skills.Shell` (the chat id a command is given, `ELIA_CHAT_ID`, SHELL-14),
 `Elia.Skills.Folder`
 and `Elia.Harness` (pass the chat's setting from the tool context),
 `Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
 (`save/3`'s `jail:`, `load_jail/1`), `Elia.Deploy` (spawns `git`
 through `Elia.Shell.run/2`, and the deploy's own fetch of the trunk's
-dependencies, DEPLOY-18), `Elia.Deps` (a worktree's dependency layer: where it
-lives, and its removal with the worktree, ISOL-7, DEPLOY-10),
+dependencies, DEPLOY-18),
 `Elia.Skills.Tasks` (copy the parent's setting to the child, SUBTASK-30),
 `EliaWeb.ChatLive` (the switch).
+
+Removed with the worktree plumbing: `Elia.Deps` (a worktree's dependency layer —
+nothing layers dependencies any more, DEPLOY-29), `Elia.Shell.Lock` (the
+per-worktree mount lock — no two jails mount anything now, ISOL-28),
+`Elia.Shell`'s `:worktree` and `:deps_sync` profiles and its read-only `deps`
+fallback (ISOL-13, ISOL-22, ISOL-27), `Elia.Terminal.Session`'s side of the
+lock, and `Elia.Deploy`'s worktree administration.
 
 ## Tests
 
 - `test/elia/shell_test.exs` (the bubblewrap argv and the mounting of the jail,
-  the profiles and what each one holds, the environment allowlist, what a jailed
-  command can reach, the fallback when bubblewrap is missing, the readiness
-  report that ends the mount lock, and the read-only fallback of ISOL-27 —
+  the profile and what it holds, the environment allowlist, what a jailed
+  command can reach, the fallback when bubblewrap is missing —
   ISOL-1 to ISOL-3, ISOL-5, ISOL-6, ISOL-8 to ISOL-10, ISOL-12 to ISOL-14,
-  ISOL-20, ISOL-22, ISOL-24, ISOL-25).
-- `test/elia/shell_lock_test.exs` (the per-worktree lock: one holder at
-  a time, the next waiter granted in order, a dead holder released — ISOL-28).
+  ISOL-20, ISOL-24, ISOL-25).
 - `test/elia/command_isolation_test.exs`
   (the settings path and `$HOME` absent, the browser cache and the user-wide
   Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
-  workspace writable, a command writing inside the shared `deps` and leaving it
-  unchanged, a timeout still cleaning up, a command waiting for the mount lock
-  before it runs, two commands started at once in one worktree both running, and
-  `Elia.Harness.run_tests/3` jailed, a worktree jail that can't write the git
-  directory's `config`, `hooks` or `info` but still commits and fast-forwards
-  `master` — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to ISOL-10, ISOL-15, ISOL-28,
-  ISOL-29).
-- `test/elia/deps_test.exs` (a worktree's dependency layer: its path, its creation
-  and its removal, ISOL-7, DEPLOY-10).
-- `test/elia/deployment_test.exs` (the worktree
-  administration and the deploy's fetch, DEPLOY-18; the jail the deploy's own
-  commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an fsmonitor the
-  repository names not run by the harness's own git, in the live tree or in a
-  child's worktree, ISOL-30).
+  workspace writable, a command writing inside its workspace's `deps` and
+  leaving the live tree's unchanged (DEPLOY-29), a timeout still cleaning up, and
+  `Elia.Harness.run_tests/3` jailed — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to
+  ISOL-10, ISOL-15).
+- `test/elia/deployment_test.exs` (the deploy's fetch, DEPLOY-18; the jail the
+  deploy's own commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an
+  fsmonitor the repository names not run by the harness's own git, ISOL-30).
 - `test/elia/self_modification_test.exs` (the file
   tools' confinement, FILE-12, FILE-13; the classes it is confined by, ISOL-13,
   ISOL-15, ISOL-16, ISOL-20, ISOL-25).

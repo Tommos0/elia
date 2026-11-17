@@ -138,24 +138,24 @@ it.
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
 | [Process priority](process-priority.md) | `PRIO` | Every process Elia spawns runs below the server's own CPU and I/O priority, so the UI and the agent loops stay responsive while a compile or a test suite runs |
-| [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: the settings database, saved chats and credentials aren't reachable; per-chat switch |
+| [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: a chat's commands are confined to the project folder it works in, and the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [Terminal](terminal.md) | `TERM` | A chat's own terminal: a pty (tmux in control mode) with xterm.js in the browser, jailed and niced like a command, on `/c/:id/terminal` |
 | [File tools](file-tools.md) | `FILE` | `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `delete_file` |
 | [Working directory](working-directory.md) | `WD` | A chat's working directory: what a relative path in the file tools and the `shell` call resolves against, changed with `cd` and saved with the chat |
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
-| [Checkpoints](checkpoints.md) | `CKPT` | Retired: per-chat worktrees replaced snapshots and rollback |
+| [Checkpoints](checkpoints.md) | `CKPT` | Retired: a chat does its work in a worktree of its own, so a snapshot and rollback protect nothing git doesn't |
 | [Test runs](verification.md) | `VERIFY` | Running `mix test` in the workspace: the deploy's gate calls `Elia.Harness.run_tests/3`, a chat runs the suite through the shell |
 | [Parallel test suite](test-suite.md) | `SUITE` | `bin/test` runs the suite as concurrent partitions with their own scratch state; `mix precommit` uses it |
 | [Hot reload](hot-reload.md) | `HOT` | Hot reload: the soft deploy mode, loading tested code into the running server |
-| [Guarded files](guarded-files.md) | `GUARD` | Retired: per-chat worktrees replaced it; the "never reload on request" rule moved to Deployment |
+| [Guarded files](guarded-files.md) | `GUARD` | Retired: a chat's own worktree replaced it; the "never reload on request" rule moved to Deployment |
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `await_task` waits for it and brings back what it said |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
-| [Deployment](deployment.md) | `DEPLOY` | Per-chat worktrees forked from the trunk `master`; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
-| [Worktree build cache](worktree-build-cache.md) | `BUILD` | A chat's worktree is seeded with a private copy of the live tree's build output, so its first compile reuses the dependencies' artifacts instead of building them from source |
+| [Deployment](deployment.md) | `DEPLOY` | A chat in Elia's own project works in the live tree and makes its own worktree, with `deps` and `_build` copied in, for a change it merges into the trunk; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
+| [Worktree build cache](worktree-build-cache.md) | `BUILD` | Retired: the harness seeded each chat worktree it created with a copy of the live tree's build output; the chat copies `deps` and `_build` into its own worktree now (DEPLOY-29) |
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |

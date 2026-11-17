@@ -13,7 +13,8 @@ to the Python `ui_run` skill: same browser, but written as `mix test` files.
 They run against the **test env server in the same BEAM node**, so
 `Elia.FakeLLM` and the scratch workspace from `config/test.exs` still apply and
 no deploy is involved — unlike `ui_run`, which checks the deployed live tree.
-A browser test therefore sees the chat's own worktree code.
+A browser test therefore sees the workspace's own code, which for a chat that
+made itself a worktree (DEPLOY-28) is that worktree's.
 
 ## Requirements
 
@@ -79,10 +80,11 @@ committed.
   existing suite for JS, websocket and layout questions only.
 - The Python `skills/browser/` folder skill (`ui_run`) is **retired**: it was
   never merged, `skills/` stays out of the trunk, and the `BROWSER` tests above
-  replace it. Its chat was kept but its worktree, `chat/A76mx6ao-DVo`, had been
-  removed and the branch deleted, so reopening that chat forks a fresh worktree
-  from the trunk. Retired for checking the deployed tree (no deploy, no
-  `FakeLLM`, no worktree code) and for a Python toolchain in a repo that
+  replace it. Its chat was kept, but its worktree and branch were made and
+  removed by the harness then and are gone: reopening that chat starts wherever
+  its own instruction puts it (DEPLOY-28), forking from the trunk. Retired for
+  checking the deployed tree (no deploy, no
+  `FakeLLM`, no workspace's own code) and for a Python toolchain in a repo that
   already has Elixir tests.
 
 ## Implementation

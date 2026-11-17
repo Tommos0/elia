@@ -73,8 +73,8 @@ the file changes shape, and no other stored data is read or written.
 - A folder skill's script tool (FOLDER), `Elia.Harness.run_tests/3` and the
   deploy's own commands: each keeps running in the tree it is given, not in the
   chat's working directory.
-- `spawn_task`: a child still starts in the parent's workspace (its own worktree
-  in Elia's own project), not in the parent's working directory, and a child's
+- `spawn_task`: a child still starts in the parent's workspace (the live tree in
+  Elia's own project), not in the parent's working directory, and a child's
   working directory is its own (SUBTASK).
 - Nothing of the UI: the chat's page and its settings page don't show the
   working directory, a `cd` card keeps the default icon and reads `Using cd`
@@ -83,9 +83,9 @@ the file changes shape, and no other stored data is read or written.
 - `cd` is not a shell: there is no `~`, no globbing, no `-` for the previous
   directory and no environment. It names one directory, and a chat that wants a
   shell's own `cd` has the terminal for it.
-- The `deps` and `.git` of a chat worktree are links out of the worktree, so
-  `cd` into them is refused as an outside path (WD-5) even though a jailed
-  command may reach them (ISOL-25); a command can still name such a path
+- The `deps` and `.git` of the live tree are `:protected` paths (WS-1), so `cd`
+  into them is refused even though a jailed command may reach them (ISOL-25); a
+  command can still name such a path
   absolutely.
 
 ## Implementation

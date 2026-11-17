@@ -5,8 +5,9 @@ Status: Draft
 A page that reaches the app when its own UI cannot. It existed once for a world
 where the agent edited the tree the server ran from, so a bad change could leave
 every request showing Phoenix's compilation-error page — including the chat UI,
-the only way to ask the agent for a fix. That world is gone: a chat works in its
-own worktree (DEPLOY-1), the only thing that loads code is a deploy, and a
+the only way to ask the agent for a fix. That world is gone: a chat works in the
+tree the server runs from (DEPLOY-1) and does a change in a worktree of its own
+(DEPLOY-28), the only thing that loads code is a deploy, and a
 deploy runs the full suite and a compile first and refuses to load a tree that
 fails either (DEPLOY-5, HOT-4, HOT-6), so the app cannot be left uncompilable.
 The page's own work then was hollow — it rolled *files* back, and a deploy

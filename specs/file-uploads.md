@@ -4,8 +4,8 @@ Status: Draft
 
 A chat can take files from the browser. The composer's attach control uploads
 them, and sending the message writes them into the chat's own workspace — its
-own worktree when the chat is in Elia's own project (DEPLOY-1), its project's
-folder otherwise (PROJ-12) — so the agent reaches them with its own file tools
+project's folder, which for a chat in Elia's own project is the live tree
+(DEPLOY-1) — so the agent reaches them with its own file tools
 (FILE), and the message names them. A chat's uploads are ordinary files in its
 workspace and nothing else: they are not Elia's data, and no other chat sees
 them. A file is kept as the user handed it over — no conversion, no inspection —
@@ -42,8 +42,8 @@ its work.
 ### Where the files go
 
 - **UPLOAD-6** Sending a message with attachments writes each file into
-  `uploads/` under the chat's workspace root (PROJ-12): the chat's own worktree
-  in Elia's own project (DEPLOY-1), its project's folder otherwise. The
+  `uploads/` under the chat's workspace root (PROJ-12): its project's folder,
+  which for a chat in Elia's own project is the live tree (DEPLOY-1). The
   directory is created when it isn't there.
 - **UPLOAD-7** A file keeps the name the browser gave it, reduced to its base
   name — any directory part dropped, and a path separator or a control character

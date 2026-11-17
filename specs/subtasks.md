@@ -239,12 +239,15 @@ built.
   (SUBTASK-23) and by deleting its chat (SUBTASK-35); a tool that rewrites a
   tree in place is a second way to do it, and a dangerous one.
 
-- **SUBTASK-23** A child's workspace is its parent's (PROJ-12) unless the
-  parent is in Elia's own project, where the child gets a git worktree of its
-  own, on branch `chat/<child id>` forked from the parent's branch's last
-  commit (DEPLOY-1), so the child never writes its parent's tree. Its committed
-  work stays on that branch and is not merged for it: the parent merges
-  (`git merge --ff-only chat/<child id>`) when it wants the work.
+- **SUBTASK-23** A child's workspace is its parent's (PROJ-12), in Elia's own
+  project as in any other: the child works in the folder its parent works in
+  (DEPLOY-1). Nothing is forked and no branch is made for it — the harness
+  creates no worktree (DEPLOY-1) — so the worktree a child makes for its own
+  code change is its own, on branch `chat/<its own id>` (DEPLOY-28), forked from
+  the branch its brief names — its parent's, so it sees what its parent has
+  committed (DEPLOY-28). It commits there and stops; its work is not merged for
+  it, and its parent brings it in when it wants it, with `git merge --ff-only
+  chat/<child id>`.
 
 - **SUBTASK-24** A child's limits are its own chat's, like any chat's (LIMIT-1,
   LIMIT-2, LIMIT-5), and reaching one pauses its turn as any chat's does
@@ -314,8 +317,8 @@ built.
 
 - **SUBTASK-30** A child's workspace is the one its spawn resolved
   (SUBTASK-23), and the jail setting it runs with is the parent's at the time
-  of the spawn (ISOL-2, ISOL-9): a child in a worktree of Elia's own project is
-  jailed like its parent, and one sharing its parent's workspace has the
+  of the spawn (ISOL-2, ISOL-9): a child in Elia's own project works in the live
+  tree, jailed like its parent (DEPLOY-1), and one in another project has the
   parent's jail setting, on or off. The child's own jail setting is its own
   from then on (ISOL-18).
 

@@ -258,11 +258,12 @@ values a save can carry, deleting a chat, and the two tables themselves.
 
 ### Deleting a chat
 
-- **STORE-23** `Elia.Store.delete/1` removes a valid chat's saved file and its
-  worktree (`Elia.Deploy.remove_worktree/1`, DEPLOY-10) and returns `:ok`,
+- **STORE-23** `Elia.Store.delete/1` removes a valid chat's saved file and
+  returns `:ok`,
   whether or not a file exists yet; an invalid id (STORE-4) removes nothing and
   returns `{:error, :invalid_id}`. Deleting a chat never deletes other chats: a
-  parent's task chats and a task chat's parent are left saved (UI-66).
+  parent's task chats and a task chat's parent are left saved (UI-66), and a
+  worktree such a chat made for itself (DEPLOY-28) is left too (DEPLOY-10).
 - **STORE-24** `Elia.Store.exists?/1` reports whether a valid id has a saved
   chat file, without decoding it; it is `false` for an invalid id and for an id
   with no file.

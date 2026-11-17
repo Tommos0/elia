@@ -29,7 +29,8 @@ low I/O class are what an unprivileged process may set for itself.
   harness step goes through (ISOL-1) — the `shell` tool, the suite a deploy
   runs (`Elia.Harness.run_tests/3`, VERIFY-1, ISOL-14), a folder skill's script
   tools (FOLDER), the harness's own git
-  calls (DEPLOY-9), the worktree dependency compile (ISOL-7) and a preview the
+  calls (DEPLOY-13, DEPLOY-18), a compile a chat's own command runs (ISOL-7) and
+  a preview the
   chat runs by command (PREVIEW).
 - **PRIO-3** The whole process tree gets it, jailed or not: `nice` (and
   `ionice`) set the priority on themselves and then `exec` the command, so the

@@ -3,7 +3,8 @@
 Status: Retired
 
 Retired: the filesystem isolation of per-chat worktrees (DEPLOY) replaced this
-feature. The tree a chat edits is never the tree that runs, so holding edits
+feature. A chat that does its work in a worktree of its own (DEPLOY-28) edits a
+tree that isn't the one that runs, so holding edits
 "pending" until a reload protects nothing, and the guarded-file list was only a
 nudge in the approval UI. The one behaviour worth keeping — the running app
 never reloads code on a request — moved to DEPLOY-8. See `specs/deployment.md`.

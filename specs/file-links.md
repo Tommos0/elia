@@ -9,10 +9,11 @@ link to that file's own page, making a file the agent read, wrote or changed one
 click away instead of something to find by hand.
 
 The page it opens is the file **as that chat has it**: a chat in Elia's own
-project works in its own worktree, not in the live tree (PROJ-12, DEPLOY-1), so
-the link asks the Files page for that chat's workspace (EXPL-17) rather than for
-the project folder — otherwise the user would read the deployed copy, or a
-path that isn't there yet. A mention the Files page could not show (a command, a
+project works in the live tree and one in another project in that project's
+folder (PROJ-12, DEPLOY-1), so the link asks the Files page for that chat's
+workspace (EXPL-17) rather than for the project folder the page happens to
+browse — otherwise the user would read a tree other than the one the chat was
+working in. A mention the Files page could not show (a command, a
 path outside the chat's workspace, a protected one, one that doesn't exist)
 stays exactly as it was: plain text.
 
@@ -42,8 +43,9 @@ stays exactly as it was: plain text.
 ### When a mention becomes a link
 
 - **FLINK-5** A mention is linked only when the Files page could show it: the
-  path must be inside the workspace the chat works in (PROJ-12 — its own
-  worktree in Elia's own project, its project's folder otherwise), not into a
+  path must be inside the workspace the chat works in (PROJ-12 — its project's
+  folder, the live tree for a chat in Elia's own project, and so the worktree
+  such a chat made inside it too), not into a
   protected path (WS-1: `.git`, `_build`, `deps`, `.elia`) or through a symlink
   (EXPL-1, EXPL-2), and exist there as a file or a directory. The link is that
   path's Files page for that chat — `/files?chat=<the chat's id>&path=<relative

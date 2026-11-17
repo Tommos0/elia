@@ -24,7 +24,7 @@ kept apart from the ones that apply in every project.
   `harness?` true, and folder `Elia.Workspace.root/0` (the live tree, DEPLOY-3).
   It is always first in a listing, and its folder follows
   `Elia.Workspace.root/0` even if the file holds another one. Each of its chats
-  works in its own worktree (DEPLOY-1).
+  works in that folder, as a chat in any project does (PROJ-12, DEPLOY-1).
 - **PROJ-4** `list/0` returns Elia's project first, then the others by name
   (case-insensitive, then by id).
 - **PROJ-5** `get/1` returns the project with that id, or `nil`. `harness/0` is
@@ -54,16 +54,19 @@ kept apart from the ones that apply in every project.
 
 - **PROJ-12** The folder of a chat's project is the workspace root for that
   chat's tools: `read_file`, `write_file` and `edit_file` resolve and classify
-  paths against it (WS-1–WS-3), `shell` runs there, and folder-skill scripts
-  get it in `ELIA_WORKSPACE` (FOLDER-7). A chat in Elia's own project is the
-  exception: its workspace root is its own worktree, not the project folder
-  (DEPLOY-1).
+  paths against it (WS-1–WS-3), `shell` runs there and its jail holds it
+  (ISOL-13), and folder-skill scripts get it in `ELIA_WORKSPACE` (FOLDER-7).
+  There is no exception for Elia's own project: a chat in it works in that
+  folder, which is the live tree (DEPLOY-1). A chat may `cd` into a directory
+  inside it (WD-1), and it may make a git worktree of its own inside it
+  (DEPLOY-28) — neither changes what its tools call the workspace root.
 - **PROJ-13** Elia's own data — `.elia/projects.term` and `.elia/sessions/` —
   lives in Elia's root (the live tree, DEPLOY-2) whatever project a chat
   belongs to, so a project folder is never written to by the harness itself.
 - **PROJ-14** The deploy workflow is bound to Elia's own project: only it has
-  the `self-modification` skill (PROJ-17), and only a chat in it works in a
-  worktree forked from the trunk (DEPLOY-1).
+  the `self-modification` skill (PROJ-17), and only a chat in it carries the
+  instruction to make its own worktree and merge into the trunk (DEPLOY-28,
+  DEPLOY-13).
 
 ### Instructions and skills
 
@@ -124,7 +127,9 @@ kept apart from the ones that apply in every project.
 ## Out of scope
 
 - The deploy workflow applies to Elia's own project only (PROJ-14): a chat in
-  another project works directly in the project's folder, with no worktree.
+  another project works directly in the project's folder, with no worktree —
+  and so does a chat in Elia's own project, unless it makes one for itself
+  (DEPLOY-1, DEPLOY-28).
 - Projects have no per-project model, provider or settings.
 
 ## Implementation

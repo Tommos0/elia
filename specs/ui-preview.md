@@ -20,8 +20,10 @@ have something to render.
 
 ### Running a preview (`bin/preview`)
 
-- **PREVIEW-1** `bin/preview [path …]` runs from the chat's workspace (the
-  worktree of a chat in Elia's own project, DEPLOY-1) and previews `/` and
+- **PREVIEW-1** `bin/preview [path …]` runs from the chat's workspace — the
+  folder of the project the chat belongs to, which for a chat in Elia's own
+  project is the live tree (DEPLOY-1), or the worktree such a chat made for
+  itself when its code is there (DEPLOY-28) — and previews `/` and
   `@chat` when no path is given. It builds the assets first — a preview must
   never show a stale CSS or JS bundle (BROWSER-6) — and then boots the
   workspace's own code as the test env app: the endpoint listens on
@@ -49,11 +51,12 @@ have something to render.
   later run of the same path replaces the picture the chat already links to.
 - **PREVIEW-5** It prints a report for the agent to use: one line per path with
   the file path and its Markdown image link
-  (`![<path>](/preview/<chat id>/<file>)`), the chat id taken from the workspace
-  it runs in (`Elia.Preview.worktree_chat/1`, the worktree's own name), then the
+  (`![<path>](/preview/<chat id>/<file>)`), the chat id the command was given
+  (`$ELIA_CHAT_ID`, SHELL-14), then the
   console messages and uncaught page errors the page logged, which are reported
-  and never fail the run — a preview is not a test. Outside a chat's worktree
-  there is no such chat to link through, and the report says so instead of a URL
+  and never fail the run — a preview is not a test. Where there is no chat to
+  link through — a preview run by hand, with no `$ELIA_CHAT_ID` — the report
+  says so instead of a URL
   the running app couldn't serve (PREVIEW-7).
 - **PREVIEW-6** A preview is excluded from the default test run like the
   browser tests (BROWSER-5): `bin/preview` runs it through the browser layer's
@@ -66,7 +69,8 @@ have something to render.
   asset says to build it (BROWSER-6).
 - **PREVIEW-14** `bin/preview` installs the workspace's own packages before it
   builds the assets: when the workspace's `assets/node_modules` lacks what the
-  bundle imports — which a fresh chat worktree always does, since
+  bundle imports — which a worktree a chat made for itself has only if the chat
+  copied the live tree's `assets/node_modules` in (DEPLOY-29), since
   `assets/node_modules` is gitignored (BROWSER-2) — it runs the package install
   for *that* workspace's own `assets/package.json` (`npm install`, Node ≥ 20),
   so a new chat previews with no separate setup step. Playwright is not part of
@@ -133,8 +137,11 @@ live tree's saved chats are never touched.
 ### Showing a preview in the chat
 
 - **PREVIEW-7** The running app serves an image a preview wrote:
-  `GET /preview/<chat id>/<file>` returns the file from that chat's worktree
-  `tmp/preview/`, and nothing else is reachable. The chat id must be valid
+  `GET /preview/<chat id>/<file>` returns the file from the `tmp/preview/` of
+  the tree that chat's previews go in — the worktree it made for itself, at
+  `<its project's folder>/tmp/worktrees/<chat id>/tmp/preview/` (DEPLOY-28), or
+  its workspace's own `<its project's folder>/tmp/preview/` when it has none —
+  and nothing else is reachable. The chat id must be valid
   (`Elia.Store.valid_id?/1`), the file a single path segment with an image
   extension (`.png`, `.jpg`, `.jpeg`, `.webp`), and the resolved path must stay
   inside that `tmp/preview/` directory: any other id, path, extension or a
@@ -180,8 +187,9 @@ ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 | `ELIA_PREVIEW_THEME` | *(browser default)* | colour scheme to emulate: `dark` or `light` |
 
 `tmp/preview/` is gitignored, so a preview is never committed and never reaches
-a deploy. `assets/node_modules` is gitignored too, so a fresh chat worktree has
-none: `bin/preview` installs the workspace's own packages on the first run
+a deploy. `assets/node_modules` is gitignored too, so a worktree a chat made
+for itself has none until the chat copies the live tree's in (DEPLOY-29);
+without it `bin/preview` installs the workspace's own packages on the first run
 (PREVIEW-14), which needs the network and takes a second or two. The Playwright
 CLI is not among them — it is user-wide, installed once for the user
 (BROWSER-2) — so a preview in a new worktree installs no browser and no CLI.
@@ -202,7 +210,8 @@ CLI is not among them — it is user-wide, installed once for the user
 
 ## Implementation
 
-- `Elia.Preview` (naming, path safety, the URLs, the sample chat and the paused
+- `Elia.Preview` (naming, path safety, the URLs, the chat id a preview is given
+  for its links, PREVIEW-5, the sample chat and the paused
   question of PREVIEW-15, no browser), `EliaWeb.PreviewController` + a router
   entry (PREVIEW-7), `test/elia_web/browser/preview_test.exs` with
   `use EliaWeb.BrowserCase` (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12,
@@ -220,7 +229,8 @@ CLI is not among them — it is user-wide, installed once for the user
   saved chat, its own tag — PREVIEW-1 to PREVIEW-3, PREVIEW-5, PREVIEW-6,
   PREVIEW-12, PREVIEW-13).
 - `test/elia_web/controllers/preview_controller_test.exs` (PREVIEW-7), against a
-  throwaway live tree with a chat worktree (`Elia.LiveTree.create/0`).
+  throwaway live tree (`Elia.LiveTree.create/0`) with a chat's worktree under
+  `tmp/worktrees/` and with none.
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).
 - `test/elia/skills_test.exs` (the preview instruction the agent follows names
   the dark, mobile default, in the `self-modification` skill and `AGENTS.md`,

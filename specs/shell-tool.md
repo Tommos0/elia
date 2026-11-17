@@ -80,6 +80,12 @@ call takes.
   multi-byte characters it may count more than were really removed, never
   fewer. Output that fits within SHELL-5's cap is returned whole, as before.
 
+- **SHELL-14** A command is told which chat it belongs to: the harness passes
+  the chat's id to it as `ELIA_CHAT_ID`, so a chat can name the worktree and
+  branch it makes for itself (DEPLOY-28) without being told its own id. The
+  variable is absent when a command belongs to no chat, which is what the
+  harness's own steps are (DEPLOY-18).
+
 ## Configuration
 
 ```elixir
@@ -106,13 +112,15 @@ config :elia, Elia.Skills.Shell,
 
 ## Implementation
 
-`Elia.Skills.Shell` (the call's timeout and its clamp, SHELL-10),
+`Elia.Skills.Shell` (the call's timeout and its clamp, SHELL-10; the chat id it
+passes to a command, SHELL-14),
 `Elia.Shell` (the deadline of a run, SHELL-11).
 
 ## Tests
 
 - `test/elia/skills/shell_test.exs` (the clamped timeout and the rejected value,
-  SHELL-10; the instructions and the tool description — SHELL-8, SHELL-9).
+  SHELL-10; the chat id the command is given, SHELL-14; the instructions and the
+  tool description — SHELL-8, SHELL-9).
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
   ending at its deadline, a command whose waiting process exits being killed

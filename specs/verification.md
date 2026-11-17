@@ -10,9 +10,10 @@ gate is what calls it in the app (DEPLOY-5), and a chat runs the suite itself
 through the `shell` tool (VERIFY-11). There used to be an
 end-of-turn verification as well: when a turn had changed Elixir files the
 harness ran the full suite and rolled the turn back when it failed (VERIFY-3 to
-VERIFY-7, LOOP-13 to LOOP-15). It is retired. A chat in Elia's own project edits
-its own worktree, so a turn that breaks the suite cannot reach the running tree
-(DEPLOY-1), and the deploy gate already runs the full suite, then a compile,
+VERIFY-7, LOOP-13 to LOOP-15). It is retired. A chat in Elia's own project does
+its own work in a worktree of its own (DEPLOY-28), so a turn that breaks the
+suite cannot reach the running tree, and the deploy gate already runs the full
+suite, then a compile,
 before loading anything (DEPLOY-5, HOT-4, HOT-6). Running the tests is the
 agent's own step — `AGENTS.md` and the `self-modification` skill tell it to run
 plain `mix precommit` before finishing a change (a command never inherits the
@@ -23,8 +24,9 @@ A test run has two clocks. The per-test one comes from `mix test --timeout`
 (VERIFY-8), so a test that hangs fails the run instead of holding it; the run's
 own was a hard-coded 10 minutes and is now a setting a call can raise within
 its ceiling (VERIFY-9). A run stopped by its own timeout says so, and says
-which way to give it more (VERIFY-10): a chat's first run in a fresh worktree
-compiles deps and app before its first test, and such a run has to be given the
+which way to give it more (VERIFY-10): a chat's first run in a worktree it made
+for itself (DEPLOY-29) compiles deps and app before its first test, and such a
+run has to be given the
 time rather than killed halfway through the compile and started again.
 
 ## Requirements
@@ -81,7 +83,8 @@ time rather than killed halfway through the compile and started again.
   a setting) with `max_timeout: 1_800`. `Elia.Harness.run_tests/3` takes
   `timeout_seconds` — a positive integer, clamped to the maximum like the shell
   tool's (SHELL-10) — so a caller can give a run longer than the default on
-  purpose: a first run in a fresh worktree compiles deps and app before it tests
+  purpose: a first run in a worktree the chat made for itself compiles deps and
+  app before it tests
   anything, and a run killed halfway through that wastes the compile. A value
   below 1 is an error result and nothing runs. The deploy's own suite run
   (DEPLOY-5, ISOL-14) passes none, so it runs with the configured default: no
