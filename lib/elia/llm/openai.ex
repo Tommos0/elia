@@ -386,16 +386,26 @@ defmodule Elia.LLM.OpenAI do
 
   defp generated_id(index), do: "call_#{System.unique_integer([:positive])}_#{index}"
 
-  # An error object's code is a status number, or the same number as a string.
+  # LLM-36: the code is a status number, or that number written as a string; a
+  # code that names a condition instead, is empty or only partly numeric, is
+  # null, absent or of another type names no status the retry list holds.
   defp error_code(error) when is_map(error) do
     case error["code"] do
       code when is_integer(code) -> code
-      code when is_binary(code) -> elem(Integer.parse(code), 0)
+      code when is_binary(code) -> whole_number(code)
       _ -> nil
     end
   end
 
   defp error_code(_error), do: nil
+
+  # LLM-36: a string is a code only when the whole of it is the number.
+  defp whole_number(code) do
+    case Integer.parse(code) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
 
   defp finish(%{error: error} = state, opts) when is_binary(error) do
     message = "#{label(opts)} stream error: #{error}"

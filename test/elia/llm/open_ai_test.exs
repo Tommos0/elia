@@ -83,4 +83,20 @@ defmodule Elia.LLM.OpenAITest do
     assert [%{"reasoning_details" => [%{"index" => 0}]}] = OpenRouter.encode_messages(history)
     assert [%{"role" => "assistant", "content" => "Listing."}] = LlamaCpp.encode_messages(history)
   end
+
+  # LLM-36, LOCAL-10: one decoder too, so an error code that names no status is
+  # read the same way for both — the service's sentence as a plain error.
+  test "both read a code that is not a status the same way" do
+    chunks = [%{"error" => %{"code" => "model_loading", "message" => "Model unavailable"}}]
+
+    stub_openai_stream(LlamaCpp, self(), chunks)
+
+    assert {:error, "llama.cpp server stream error: Model unavailable"} =
+             LlamaCpp.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    stub_openai_stream(OpenRouter, self(), chunks)
+
+    assert {:error, "OpenRouter stream error: Model unavailable"} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+  end
 end

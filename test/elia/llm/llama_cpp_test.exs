@@ -279,6 +279,15 @@ defmodule Elia.LLM.LlamaCppTest do
     assert {:error,
             %Error{transient: true, message: "llama.cpp server stream error: model is loading"}} =
              LlamaCpp.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    # LLM-36: a code that names a condition is no status, so the server's
+    # message survives as a plain error.
+    stub_openai_stream(LlamaCpp, self(), [
+      %{"error" => %{"message" => "Model unavailable", "code" => "model_loading"}}
+    ])
+
+    assert {:error, "llama.cpp server stream error: Model unavailable"} =
+             LlamaCpp.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
 
   defp stub_props do

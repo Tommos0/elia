@@ -363,6 +363,39 @@ defmodule Elia.LLM.OpenRouterTest do
              OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
   end
 
+  # LLM-36: the code decides whether a retry may help, and one that names a
+  # condition instead of a status — or is empty, only partly numeric, null,
+  # absent or of another type — names none of them, so the call returns the
+  # service's own sentence as a plain error rather than failing while it reads
+  # the code.
+  test "an error code that is not a status returns the provider's message" do
+    stub_openrouter_stream(self(), [
+      %{"error" => %{"code" => "502", "message" => "Provider disconnected"}}
+    ])
+
+    assert {:error,
+            %Error{transient: true, message: "OpenRouter stream error: Provider disconnected"}} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+    for code <- ["model_loading", "", "503junk", " 503", nil, true, [503], %{"a" => 1}] do
+      stub_openrouter_stream(self(), [
+        %{"error" => %{"code" => code, "message" => "Model unavailable"}}
+      ])
+
+      # A plain message, not an Error: unknown is not transient.
+      assert {:error, message} =
+               OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+
+      assert message == "OpenRouter stream error: Model unavailable"
+    end
+
+    # No code at all is unknown too.
+    stub_openrouter_stream(self(), [%{"error" => %{"message" => "Model unavailable"}}])
+
+    assert {:error, "OpenRouter stream error: Model unavailable"} =
+             OpenRouter.stream(%{messages: [Message.user("hi")]}, fn _ -> :ok end)
+  end
+
   # LLM-23, LLM-36
   test "retries transient statuses and reports API errors" do
     {:ok, attempts} = Agent.start_link(fn -> 0 end)

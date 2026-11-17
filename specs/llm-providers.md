@@ -197,9 +197,14 @@ provider, with no key and no network at all (LOCAL).
   provider's own retry list once those retries are spent (LLM-10, LLM-23), and
   an in-stream `error` event the service reports as its own trouble — Anthropic's
   `overloaded_error`, `api_error` and `rate_limit_error`, OpenRouter's `error`
-  object with a code in its retry list. Every other failure stays a plain
-  message, including the one a stream error names as the request's fault. The
-  `GET` calls (LLM-31) keep their messages as they are.
+  object with a code in its retry list. A code is in that list only when it is
+  an integer equal to one of those statuses, or a string that is exactly those
+  digits; every other code — a name such as `"model_loading"`, an empty or
+  partly numeric string, `null`, no code at all, a value of another type — is
+  not in it, so the error stays the plain message carrying what the service said
+  (LLM-22, LLM-23), and the call never fails while reading the code. Every other
+  failure stays a plain message, including the one a stream error names as the
+  request's fault. The `GET` calls (LLM-31) keep their messages as they are.
 
 ### Credits
 
@@ -282,11 +287,11 @@ OpenAI-compatible encoding that both of them share, LOCAL-10),
   setting, a connection closed before data arrived, the key that is missing —
   LLM-7 to LLM-12, LLM-14, LLM-28 to LLM-31, LLM-38, LLM-39).
 - `test/elia/llm/open_router_test.exs` (the OpenAI-compatible call, its
-  streamed deltas, finish reasons and retries, the model family it routes
-  around, the balance endpoint, the key that is missing — LLM-6, LLM-17 to
-  LLM-27, LLM-31, LLM-37 to LLM-39).
-- `test/elia/llm/open_ai_test.exs` (the shared encoding, LLM-21, LLM-37,
-  LOCAL-10).
+  streamed deltas, finish reasons and retries, an error code that names no
+  status, the model family it routes around, the balance endpoint, the key that
+  is missing — LLM-6, LLM-17 to LLM-27, LLM-31, LLM-36 to LLM-39).
+- `test/elia/llm/open_ai_test.exs` (the shared encoding, and the error code both
+  providers read the same way — LLM-21, LLM-36, LLM-37, LOCAL-10).
 - `test/elia/llm/retry_test.exs` (the retry schedule, LLM-31).
 - `test/elia/llm/catalog_test.exs` (the providers it lists, LLM-15).
 - `test/elia/settings_test.exs` (a provider's own key check, LLM-16).
