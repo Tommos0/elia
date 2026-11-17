@@ -98,6 +98,16 @@ A change to `lib/`, `config/` or `mix.exs` reaches the running app only through
 a *deploy*, from the Settings page — a request recompiles and loads nothing
 (DEPLOY-8). See Guardrails below.
 
+A deploy runs the full suite first, but that suite is LiveView-level (the
+browser tests are excluded, BROWSER-6), so a broken layout, a hook that raises
+on mount or a new class with no rule can pass it and still leave the UI
+unusable — the Settings page included. `/recover` is the way back from that:
+plain, server-rendered HTML that needs none of the tree's front end (no
+stylesheet, no JavaScript, no LiveView socket), served by a plug before the
+router, saying what the app is on and which revisions it has run, and putting it
+back on one of them (RECOVER-10 to RECOVER-15, DEPLOY-25, DEPLOY-26). The
+deployment section of the Settings page names its address too (RECOVER-15).
+
 ## Pages
 
 | Route | Page |
@@ -110,6 +120,7 @@ a *deploy*, from the Settings page — a request recompiles and loads nothing
 | `/system` | CPU, memory, disks, network, load and VM stats |
 | `/sessions` | Open tabs, with IP, browser and page |
 | `/settings` | API keys, the selected model, and the deploy buttons |
+| `/recover` | Plain HTML that reaches the app when its own UI is broken: what it is on, the revisions it has run, and a button that sends it back to one |
 
 ## Screenshots
 
@@ -211,9 +222,13 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
   `live` and loads it — by "Hot reload" (the test suite first, then a recompile
   and reload, keeping running state) or by "Restart", which restarts the server
   in a clean process. A request never reloads code (`Elia.Deploy`).
-- **Recovery**: there is no recovery page or checkpoint to roll back to; a chat's
-  work is on its own branch, and a deploy refuses to load a tree whose suite or
-  compile fails (DEPLOY-5, HOT-4).
+- **Recovery**: a chat's work is on its own branch, and a deploy refuses to load
+  a tree whose suite or compile fails (DEPLOY-5, HOT-4), so a bad change can't
+  reach the running app. There is no checkpoint to roll back to, but `/recover`
+  covers the failure that gate does not catch — a deploy that passes its suite
+  and still leaves the UI unusable: plain HTML with no bundle and no JavaScript,
+  putting the app back on a revision it has run before (RECOVER-10 to
+  RECOVER-15, `specs/recovery.md`).
 
 The shell tool can do anything you approve, including bypassing these
 policies, so read commands before approving them.
