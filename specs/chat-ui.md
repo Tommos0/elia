@@ -31,7 +31,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-77** `/chats` is the chat list's entry point and resumes work rather than
   starting over: it opens the most recently started chat (STORE-12 order, the
   first one the sidebar lists) that isn't a task chat (STORE-17, UI-45), since a
-  sub-task chat is reached from its parent's card (UI-44) and not where the user
+  sub-task chat is reached from its own row in the chat list (UI-45) and not
+  where the user
   left off. Only when there is no such chat does it start a fresh one in the
   default project (PROJ-8), saved at once (STORE-22) — so browsing to it never
   leaves another empty "New chat" behind while a chat exists, and resuming

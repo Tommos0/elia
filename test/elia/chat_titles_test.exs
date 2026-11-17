@@ -162,9 +162,10 @@ defmodule Elia.ChatTitlesTest do
   end
 
   # TITLE-3, TITLE-6: a sub-task's own chat is named by the spawn's title
-  # (STORE-17, STORE-32), which its chat carries — not by anything in its task
-  # metadata (STORE-16).
-  test "a sub-task chat is refused" do
+  # (STORE-32), which its chat carries — not by anything in its task metadata
+  # (STORE-16) — and it may rename itself like any chat: the spawn's title is
+  # its first name, not a rule it is held to.
+  test "a sub-task chat may name itself" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
 
@@ -178,16 +179,15 @@ defmodule Elia.ChatTitlesTest do
     :ok = Store.save(child, [Message.user("preamble")], title: "Add the file", task: task)
     start_session(child)
 
-    assert {:error, message} = Agent.set_title(child, "Something else")
-    assert message =~ "sub-task"
-
-    refute_receive {:agent, ^child, {:title, _}}, 50
-    # SESS-33: the title the spawn saved is the chat's own, and its session reads
-    # it; what the refusal keeps out is a title set from inside the chat.
     assert Agent.snapshot(child).title == "Add the file"
     assert Store.load_title(child) == "Add the file"
+
+    assert {:ok, "Something else"} = Agent.set_title(child, "Something else")
+    assert_receive {:agent, ^child, {:title, "Something else"}}, 500
+    assert Agent.snapshot(child).title == "Something else"
+    assert Store.load_title(child) == "Something else"
     assert [entry] = listed(child)
-    assert entry.title == "Add the file"
+    assert entry.title == "Something else"
   end
 
   ## The skill and its tool (TITLE-5, SKILL-7)
@@ -219,17 +219,15 @@ defmodule Elia.ChatTitlesTest do
 
   # TITLE-6: the tool reports a refusal to the model as an error result.
   test "the set_title tool reports a refusal" do
-    child = Agent.new_id()
-    on_exit(fn -> Store.delete(child) end)
-
-    task = %{parent_id: Agent.new_id(), title: "T", brief: "b", started_at: DateTime.utc_now()}
-    :ok = Store.save(child, [Message.user("preamble")], task: task)
-    start_session(child)
+    id = Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    :ok = Store.save(id, [Message.user("hi")])
+    start_session(id)
 
     [tool] = Elia.Skills.Titles.tools()
 
-    assert {:error, message} = Elia.Tool.call(tool, %{"title" => "x"}, %{session_id: child})
-    assert message =~ "sub-task"
+    assert {:error, message} = Elia.Tool.call(tool, %{"title" => "   "}, %{session_id: id})
+    assert message =~ "blank"
   end
 
   ## The trigger (TITLE-7)

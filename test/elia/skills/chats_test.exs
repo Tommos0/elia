@@ -129,10 +129,10 @@ defmodule Elia.Skills.ChatsTest do
     # A chat with no children of its own keeps nothing with `true` ...
     assert group_of(unrelated, true) == []
 
-    # ... while a chat that is itself a sub-task lists with `"all"` the job it
-    # is one of — its own chat among its siblings, like any other chat
-    # (SUBTASK-1, SUBTASK-31) — and `true` still keeps only its own children.
-    assert group_of(first, "all") == Enum.sort([first, second, grandchild])
+    # ... while a chat that is itself a sub-task has no children of its own, so
+    # `true` keeps what it started and `"all"` the same, with nothing below it
+    # (SUBTASK-1: depth is one).
+    assert group_of(first, "all") == [grandchild]
     assert group_of(first, true) == [grandchild]
 
     # A tool context that names no chat has no sub-tasks to keep, so the filter

@@ -167,9 +167,9 @@ defmodule Elia.Agent do
   Gives the chat its own title (SESS-33, TITLE-4), the name its chat list row,
   its page title and the chat settings header show in place of the first user
   message (TITLE-1). The text is trimmed, its whitespace collapsed and cut to 60
-  characters (TITLE-2), and the accepted title is returned. A blank title, and a
-  sub-task chat (which is named by its task, TITLE-3), return
-  `{:error, message}`, as the `set_title` tool reports to the model (TITLE-6).
+  characters (TITLE-2), and the accepted title is returned. A blank title returns
+  `{:error, message}`, as the `set_title` tool reports to the model (TITLE-6); a
+  sub-task chat may name itself like any chat (TITLE-3).
   """
   @spec set_title(binary(), term()) :: {:ok, binary()} | {:error, binary()}
   def set_title(id, text), do: GenServer.call(Session.via(id), {:set_title, text})

@@ -22,8 +22,8 @@ defmodule Elia.Skills.Titles do
     it. Call `set_title` with a few words naming the chat, early in your first \
     turn — alongside the first real tool call, in the same step, so it costs no \
     extra round trip — and call it again only if the chat turns to something \
-    else. Don't ask the user about it. A sub-task is named by its parent's \
-    `spawn_task` title, so `set_title` refuses in one.
+    else. Don't ask the user about it. A sub-task starts with the title its \
+    spawn gave it and may rename itself like any chat.
     """
   end
 
@@ -55,8 +55,9 @@ defmodule Elia.Skills.Titles do
     ]
   end
 
-  # TITLE-4, TITLE-6: the session shapes the title and refuses a blank one and a
-  # sub-task chat (TITLE-3); each refusal is an error result for the model.
+  # TITLE-4, TITLE-6: the session shapes the title and refuses a blank one
+  # (TITLE-2); a sub-task may name itself like any chat (TITLE-3). A refusal is
+  # an error result for the model.
   defp set_title(input, ctx) do
     case Elia.Agent.set_title(ctx[:session_id], input["title"]) do
       {:ok, title} -> {:ok, "This chat is now titled \"#{title}\"."}

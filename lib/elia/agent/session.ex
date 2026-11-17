@@ -364,13 +364,9 @@ defmodule Elia.Agent.Session do
   end
 
   # SESS-33, TITLE-4: the chat's own title, set by the model's `set_title` tool
-  # (TITLE-5). A sub-task is named by its parent's `spawn_task` title (TITLE-3),
-  # and a blank title is no title at all (TITLE-2, TITLE-6).
-  def handle_call({:set_title, _text}, _from, %{task_meta: task_meta} = state)
-      when task_meta != nil do
-    {:reply, {:error, "This chat is a sub-task: it is named by its task title."}, state}
-  end
-
+  # (TITLE-5). A blank title is no title at all (TITLE-2, TITLE-6). A sub-task
+  # may name itself like any chat (TITLE-3): its spawn's title is its first
+  # name, saved as its own when the chat was created (STORE-32), not a rule.
   def handle_call({:set_title, text}, _from, state) do
     case Elia.Store.shape_title(text) do
       nil ->

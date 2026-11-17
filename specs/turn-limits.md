@@ -169,7 +169,8 @@ token budget pausing a turn, the defaults — a chat with no limits pauses at 30
   limit ends in (STOP-1, STOP-2), persistence across a
   restart, LIMIT-1 to LIMIT-4, LIMIT-9, LIMIT-10, LIMIT-12, LIMIT-13),
 `test/elia/store_test.exs` (STORE-27, STORE-28),
-`test/elia/tasks_test.exs` (a spawn sets the child no limits of its own, and a
-child's settings page sets them like any chat's, LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
+`test/elia/tasks_test.exs` (a spawn sets the child no limits of its own — it
+starts with the loop's own default and the child's limits are its chat's, set
+from the child's own settings page like any chat's, LIMIT-5), `test/elia_web/live/chat_settings_test.exs` (the Limits section,
 LIMIT-6, LIMIT-7), `test/elia_web/live/chat_live_test.exs` (the pause's row,
 UI-81).

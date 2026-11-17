@@ -19,8 +19,9 @@ defmodule Elia.Limits do
   # budget, and pausing.
   @defaults %{max_steps: nil, max_minutes: nil, max_tokens: nil, pause_on_limit: true}
 
-  # LIMIT-7: what the chat settings page may set. A sub-task's own budget comes
-  # from `spawn_task` instead (SUBTASK-12, SUBTASK-18) and is capped there.
+  # LIMIT-7: what the chat settings page may set, for any chat. A sub-task's
+  # budget is its own chat's like every other chat's (LIMIT-5), so a spawn sets
+  # no limit of its own and there is no child-only cap here.
   @max_steps 1_000
   @max_minutes 1_440
 

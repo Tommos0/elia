@@ -28,8 +28,8 @@ defmodule Elia.Agent.Resumer do
   Starts a session for every chat a restart cut a turn short in (RESUME-1): the
   scan the application's own start does, and nothing at all while automatic
   resume is switched off (RESUME-6). Sub-task chats are started before the chats
-  that started them, so a parent that is resumed finds its children's entries
-  held again (SUBTASK-11, RESUME-7). A chat whose session already runs is left
+  that started them, so a parent that is resumed finds its children saved and
+  unfinished rather than gone (SUBTASK-20, RESUME-7). A chat whose session already runs is left
   to it, and one whose session fails to start is logged and left out of the rest
   of the scan.
   """

@@ -4,7 +4,7 @@ defmodule EliaWeb.ChatStatus do
   UI-72): the chat page's sidebar, the dashboard (DASH-3, DASH-5, DASH-7) and a
   task chat's own header (UI-48) all read it, so a chat shows one status however
   it is drawn. A sub-task chat has no status of its own to add: its status is
-  its chat's (SUBTASK-26, SUBTASK-34), which is why there is nothing here about
+  its chat's (STORE-17, SUBTASK-34), which is why there is nothing here about
   tasks — the parent's card that once read a task status is retired (UI-44,
   UI-50).
 
@@ -42,7 +42,7 @@ defmodule EliaWeb.ChatStatus do
   end
 
   @doc """
-  UI-44, UI-46, UI-48, SUBTASK-26: the status of one chat, where the caller
+  UI-46, UI-48, SUBTASK-34: the status of one chat, where the caller
   holds the markers a page keeps about every chat with a session rather than the
   booleans `status/2` takes: `marks` is `EliaWeb.ChatList`'s state or a map of
   the same shape, with a list of chat ids under `:awaiting`, `:input`, `:paused`

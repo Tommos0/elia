@@ -131,7 +131,7 @@ defmodule Elia.ToolApprovalTest do
   defp parent_names, do: Enum.map(builtin(), & &1.name)
 
   # SUBTASK-1: a sub-task chat runs the ordinary registry minus the `tasks`
-  # skill, so it has every tool a chat has except `spawn_task`, `list_tasks` and
+  # skill, so it has every tool a chat has except `spawn_task` and
   # `await_task` — and no child-only tool at all.
   defp child_names do
     spawned = Enum.map(Elia.Skills.Tasks.tools(), & &1.name)

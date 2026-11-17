@@ -40,10 +40,11 @@ whether or not it is jailed, and without a command or an approval prompt.
   `children` keeps this chat's own sub-tasks (STORE-18) and nothing else:
   `true` lists the chats this one started, and `"all"` lists those together with
   their own children — without it (or with `false`) nothing is filtered by
-  parent. An entry's `parent` says whose child it is, so a chat that is itself a
-  sub-task — it has no children of its own — lists the siblings of its job with
-  `"all"`, and its own chat is in the list like any other chat (SUBTASK-1,
-  SUBTASK-31). The skill's instructions say so. Nothing matching is not an
+  parent. It is the chat the call runs in that is the parent: a chat that is
+  itself a sub-task has no children of its own (SUBTASK-1, depth is one), so
+  both values keep nothing for it, and a call whose tool context names no chat
+  keeps nothing either. An entry's `parent` says whose child it is (STORE-17),
+  so a child can be told from a chat nothing spawned. Nothing matching is not an
   error: the result is `[]`.
 - **HIST-3** A listed chat's `status` is what its saved chat says, in this
   order: `"working"` while a session for it is running a turn in this app

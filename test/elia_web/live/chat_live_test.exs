@@ -1136,8 +1136,20 @@ defmodule EliaWeb.ChatLiveTest do
 
   # UI-77: a store of its own — a throwaway runtime root, where Elia's data and
   # so the saved chats live (DEPLOY-2) — so what `/` resumes doesn't depend on
-  # the chats other tests leave behind.
+  # the chats other tests leave behind. A session left running by an earlier
+  # test is stopped first, so nothing writes into the throwaway store while this
+  # test reads it: a chat that landed there from elsewhere would be the one
+  # `/chats` resumes, and the assertions below are about this test's own chats.
   defp with_empty_store(fun) do
+    # A session that dies in between is nothing to stop.
+    for id <- Elia.Agent.running() do
+      try do
+        Elia.Agent.stop(id)
+      catch
+        :exit, _reason -> :ok
+      end
+    end
+
     root = Path.join(Workspace.root(), "resume-#{Agent.new_id()}")
     File.mkdir_p!(root)
     previous = Application.get_env(:elia, :runtime_root)
