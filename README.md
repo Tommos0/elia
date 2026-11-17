@@ -159,7 +159,7 @@ page (PREVIEW-9, `specs/ui-preview.md`).
 | `Elia.Skills` | Registry of built-in and folder skills, reloadable at runtime |
 | `Elia.Skills.{Shell,Files,Harness,Tasks,Titles,Done,UserInput,SelfModification}` | The built-in skills |
 | `Elia.Skills.Folder` | Folder skills: `SKILL.md` and script-backed tools |
-| `Elia.Tasks` | Lock and spawn/await for sub-task chats (`spawn_task`, `finish_task`) |
+| `Elia.Tasks` | Registry and spawn/await for sub-task chats (`spawn_task`, `list_tasks`, `await_task`) |
 | `Elia.Harness` | Running the test suite (`Elia.Harness.run_tests/3`, the deploy's gate; a chat runs it with the `shell` tool) |
 | `Elia.Deploy` | Chat worktrees, the trunk `master` and `live`, deploying (hot reload or restart) |
 | `Elia.Deps` | The dependency layer a chat's worktree compiles against |

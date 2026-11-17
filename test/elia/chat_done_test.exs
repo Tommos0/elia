@@ -281,9 +281,10 @@ defmodule Elia.ChatDoneTest do
     assert Elia.Tool.approval(tool, %{"done" => true}, %{}) == :never
     assert Elia.Skills.Done.instructions() =~ "mark_done"
     # DONE-6: the model is told to do it after the merge, that it is not a
-    # stop, and that in a sub-task the task still ends with `finish_task`.
+    # stop, and that in a sub-task it is the task's own end (SUBTASK-33).
     assert Elia.Skills.Done.instructions() =~ "master"
-    assert Elia.Skills.Done.instructions() =~ "finish_task"
+    assert Elia.Skills.Done.instructions() =~ "sub-task"
+    assert Elia.Skills.Done.instructions() =~ "committed on your own branch"
   end
 
   # DONE-6, DONE-7: the tool marks the chat done, reads a missing `done` as
@@ -307,9 +308,10 @@ defmodule Elia.ChatDoneTest do
     assert_receive {:agent, ^id, {:done, false}}
   end
 
-  # DONE-3, DONE-7: the tool works in a sub-task too, where the flag is the
-  # chat's own and the task keeps ending with `finish_task` (SUBTASK-3).
-  test "the mark_done tool marks a sub-task chat done" do
+  # DONE-3, DONE-7, SUBTASK-33: the tool works in a sub-task too, where marking
+  # the chat done is what ends the task — the harness builds the result and its
+  # own session saves it (SUBTASK-9, SUBTASK-13).
+  test "the mark_done tool marks a sub-task chat done, which ends its task" do
     child = Agent.new_id()
     on_exit(fn -> Store.delete(child) end)
     :ok = Store.save(child, [Message.user("preamble")], task: task_meta())
@@ -320,11 +322,20 @@ defmodule Elia.ChatDoneTest do
     assert {:ok, output} = Elia.Tool.call(tool, %{}, %{session_id: child})
     assert output =~ "marked done"
     assert Store.load_done(child) == true
-    # DONE-3: the task's own metadata is untouched — the flag is the chat's.
+
+    # SUBTASK-33, SUBTASK-11: the task ended with it — no entry is held, and the
+    # result is saved with the chat's own metadata.
+    refute Elia.Tasks.running?(child)
+    assert %{result: %{"task_id" => ^child, "summary" => _summary}} = Store.load_task(child)
     assert Store.load_task(child).title == "Add the file"
+
+    # DONE-9: reopening the chat doesn't un-end the task, and marking it done
+    # again keeps the result it has (SUBTASK-13).
+    saved = Store.load_task(child).result
 
     assert {:ok, output} = Elia.Tool.call(tool, %{"done" => false}, %{session_id: child})
     assert output =~ "open again"
     assert Store.load_done(child) == false
+    assert Store.load_task(child).result == saved
   end
 end

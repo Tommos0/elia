@@ -177,10 +177,14 @@ defmodule Elia.Agent do
   @doc """
   Marks the chat done (`true`) or reopens it (`false`) (SESS-35, DONE-1). A done
   chat is shown as done wherever its status is (DONE-2) and can still be
-  continued: a message reopens it (DONE-9). A task chat takes the flag too, as
-  bookkeeping beside its task's status: marking one done changes nothing about
-  the task, so `list_tasks` and `await_task` report what they always did
-  (DONE-3).
+  continued: a message reopens it (DONE-9).
+
+  On a task chat, marking it done is what ends the task (SUBTASK-33): the
+  harness builds the result from the chat's own state (SUBTASK-9) and it is
+  saved with the chat's metadata (SUBTASK-13), the child's entry in `Elia.Tasks`
+  is released (SUBTASK-11) and a parent's `await_task` returns the result
+  (SUBTASK-27). The end is recorded once: a chat marked done again, or reopened
+  and marked done again (DONE-9), keeps the result it has.
   """
   @spec set_done(binary(), boolean()) :: {:ok, boolean()}
   def set_done(id, on?) when is_boolean(on?),
@@ -212,6 +216,10 @@ defmodule Elia.Agent do
       stop_if_started(id)
       terminate_session(id)
       stop_terminal(id)
+      # SUBTASK-35: a running sub-task's chat deleted is that task over, so its
+      # entry is released — and a parent waiting on it answers with an error,
+      # since the chat it waited for is gone.
+      Elia.Tasks.release(id)
       Elia.Store.delete(id)
     else
       {:error, :invalid_id}
@@ -269,8 +277,10 @@ defmodule Elia.Agent do
   def resume(id), do: GenServer.call(Session.via(id), :resume)
 
   @doc """
-  Fails a turn paused at a limit (SESS-27), ending the sub-task with the limit's
-  error (SUBTASK-24). `{:error, :not_paused}` when the chat isn't paused.
+  Fails a turn paused at a limit (SESS-27), ending that turn with the limit's
+  error (LIMIT-4). The sub-task goes on: a task ends only when its chat is
+  marked done (SUBTASK-24, SUBTASK-33). `{:error, :not_paused}` when the chat
+  isn't paused.
   """
   @spec fail_task(binary()) :: :ok | {:error, :not_paused}
   def fail_task(id), do: GenServer.call(Session.via(id), :fail_task)

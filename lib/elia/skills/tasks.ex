@@ -1,9 +1,9 @@
 defmodule Elia.Skills.Tasks do
   @moduledoc """
   Sub-tasks (spec: `specs/subtasks.md`). The built-in skill `tasks` gives a
-  chat `spawn_task`, `list_tasks` and `await_task`; sessions
-  started by it get `child_skills/0` instead, which swaps `tasks` for the skill
-  `task` with `finish_task` (SUBTASK-1).
+  chat `spawn_task`, `list_tasks` and `await_task`; a sub-task's session is the
+  ordinary registry minus this skill (SUBTASK-1, `Elia.Skills.for_child/1`), so
+  a child can't start a sub-task of its own.
   """
 
   @behaviour Elia.Skill
@@ -18,34 +18,40 @@ defmodule Elia.Skills.Tasks do
   def instructions do
     """
     `spawn_task` starts a separate chat (a sub-task) with a fresh context and \
-    returns as soon as it has started, as `{"task_id", "title", "status": \
-    "working"}` — the status of the sub-task's own chat, as the chat list \
-    shows it. Use it for a self-contained step of a long job (for example: \
-    implement one spec, then test it) so this chat's context isn't filled with \
-    the details. The sub-task does not see this chat, so the `brief` is its \
-    whole input: give the goal, the files and specs to read first, the \
-    constraints, and what "done" means (including that it should commit). \
-    Commit your own work before spawning: in Elia's own project the sub-task \
-    forks from your branch's last commit, so it never sees uncommitted changes. \
-    A sub-task can't start sub-tasks of its own. The user approves each spawn, \
-    and approves the sub-task's own tool calls in its chat.
+    returns as soon as it has started, as `{"task_id", "title", "status"}` — \
+    the status of the sub-task's own chat, as the chat list shows it (`working` \
+    while its first turn runs). Use it for a self-contained step of a long job \
+    (for example: implement one spec, then test it) so this chat's context \
+    isn't filled with the details. The sub-task does not see this chat, so the \
+    `brief` is its whole input: give the goal, the files and specs to read \
+    first, the constraints, and what "done" means (including that it should \
+    commit). Commit your own work before spawning: in Elia's own project the \
+    sub-task forks from your branch's last commit, so it never sees uncommitted \
+    changes. A sub-task can't start sub-tasks of its own. The user approves \
+    each spawn, and approves the sub-task's own tool calls in its chat.
+
+    A sub-task ends when its own chat is marked done: its preamble tells it to \
+    call `mark_done` as its last act, and the user can mark its chat done from \
+    its own chat too. Nothing else ends one: not the end of a turn, not a turn \
+    the user stops, not a limit it hits, not a session that dies — all of those \
+    leave it running and your wait going.
 
     The sub-task runs on its own, so carry on with your own work: `list_tasks` \
-    shows the sub-tasks this chat started and how each is doing, and \
-    `await_task` with a `task_id` waits for one to finish and returns its \
-    result (and returns it at once for one that has already finished). The user \
-    can stop a sub-task's turn from its own chat: that ends that turn, not the \
-    task, so the sub-task stays running and the wait goes on until a later turn \
-    of it ends. Waiting for two sub-tasks in the order that suits means one \
-    `await_task` per spawn. Sub-tasks that share a workspace (outside Elia's \
-    own project, where they have no worktree) run one at a time.
+    shows the sub-tasks this chat started, each with its own chat's status \
+    (`working`, `awaiting_approval`, `awaiting_input`, `paused`, `interrupted`, \
+    `done`, `idle`), and `await_task` with a `task_id` waits until that chat is \
+    marked done and returns its result — at once for one already marked done. \
+    Waiting for two sub-tasks in the order that suits means one `await_task` \
+    per spawn. Sub-tasks that share a workspace (outside Elia's own project, \
+    where they have no worktree) run one at a time. A child that is only idle — \
+    its turn ended without it marking the chat done — needs the user: open its \
+    chat, or tell them about it.
 
-    The result is JSON: `status` (`done`, `blocked`, `failed` or `unfinished`), \
-    `reason` (`budget`, `cancelled`, `crashed`, `error` or null — `cancelled` \
-    only on a task saved before an older version of Elia stopped meaning the \
-    same thing), `summary`, `task_id`, `commit` (new HEAD, or null), `files` \
-    (changed paths) and `questions`. Check it before relying on it, for example \
-    by reading the changed files, and tell the user what happened.
+    The result is JSON: `task_id`, `summary` (the sub-task's last message before \
+    it marked its chat done), `commit` (its new HEAD, or null when it committed \
+    nothing), `files` (the paths it changed since the spawn, untracked included) \
+    and nothing else — no status. Check it before relying on it, for example by \
+    reading the changed files, and tell the user what happened.
 
     A sub-task in Elia's own project works in its own worktree, so its \
     committed work stays on branch `chat/<task_id>` and is NOT merged into this \
@@ -55,12 +61,11 @@ defmodule Elia.Skills.Tasks do
     be merged in whatever order suits. In another project the sub-task commits \
     in this chat's workspace, so there is nothing to merge.
 
-    A sub-task that isn't `done` also reports `start_commit` and `tree_clean` \
-    (false when it left uncommitted changes). The harness never undoes its work \
-    by itself. To discard it, don't merge its branch; when the user wants the \
-    worktree and branch gone as well, deleting the sub-task's chat removes them. \
-    Offer that rather than doing it by default, since the sub-task's partial work \
-    may be worth keeping or finishing.
+    The harness never undoes a sub-task's work by itself. To discard it, don't \
+    merge its branch; when the user wants the worktree and branch gone as well, \
+    deleting the sub-task's chat removes them. Offer that rather than doing it \
+    by default, since the sub-task's partial work may be worth keeping or \
+    finishing.
     """
   end
 
@@ -71,11 +76,11 @@ defmodule Elia.Skills.Tasks do
         name: "spawn_task",
         description:
           "Start a sub-task in a new chat and return as soon as it has started " <>
-            "(`{\"task_id\", \"title\", \"status\": \"working\"}` — the sub-task's own " <>
-            "chat status). The brief must be " <>
-            "self-contained. Collect the result later with `await_task` (or check on it " <>
-            "with `list_tasks`). In Elia's own project the sub-task's work is left on " <>
-            "branch `chat/<task_id>` for you to merge yourself; it is not merged for you.",
+            "(`{\"task_id\", \"title\", \"status\"}` — the sub-task's own chat status). " <>
+            "The brief must be self-contained. Collect the result later with `await_task` " <>
+            "(or check on it with `list_tasks`). In Elia's own project the sub-task's work " <>
+            "is left on branch `chat/<task_id>` for you to merge yourself; it is not " <>
+            "merged for you.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -105,9 +110,8 @@ defmodule Elia.Skills.Tasks do
         description:
           "List the sub-tasks this chat started, newest first, with the status each one's " <>
             "own chat has now (`working`, `awaiting_approval`, `awaiting_input`, `paused`, " <>
-            "`interrupted`, `done` or `idle` — what the chat list shows) and, for a " <>
-            "finished one, its reason. With `task_id`, list just that one and include its " <>
-            "result.",
+            "`interrupted`, `done` or `idle` — what the chat list shows). With `task_id`, " <>
+            "list just that one and include its saved result once its chat is marked done.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -124,8 +128,11 @@ defmodule Elia.Skills.Tasks do
       %Elia.Tool{
         name: "await_task",
         description:
-          "Wait until a sub-task this chat started is no longer running and return its " <>
-            "result as JSON. A sub-task that has already finished returns at once.",
+          "Wait until a sub-task this chat started has its chat marked done and return its " <>
+            "result as JSON (`{\"task_id\", \"summary\", \"commit\", \"files\"}`). A " <>
+            "sub-task whose chat is already marked done returns at once. The wait goes on " <>
+            "through a turn ending, a turn the user stops, a pause at a limit and a session " <>
+            "that dies; it is an error for a chat deleted while waiting.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -140,65 +147,5 @@ defmodule Elia.Skills.Tasks do
         run: fn input, ctx -> Elia.Tasks.await_task(input, ctx) end
       }
     ]
-  end
-
-  @doc """
-  The skills of a sub-task session in `project` (PROJ-10): the project's skills
-  without `tasks`, plus the `task` skill (SUBTASK-1). `nil` means Elia's own
-  project.
-  """
-  @spec child_skills(Elia.Projects.t() | nil) :: [Elia.Skill.t()]
-  def child_skills(project \\ nil) do
-    {skills, _errors} = Elia.Skills.for_project(project)
-    Enum.reject(skills, &(&1.name == name())) ++ [child_skill()]
-  end
-
-  @doc "The skill with `finish_task`, only for sub-task sessions."
-  @spec child_skill() :: Elia.Skill.t()
-  def child_skill do
-    %Elia.Skill{
-      name: "task",
-      description: "You are a sub-task agent: work from your brief and report with finish_task.",
-      instructions: """
-      You were started as a sub-task by another chat; your first message is the \
-      brief. Work only from it, don't wait for the user, and commit your work \
-      with git when it is done. When you are finished, or can't continue, call \
-      `finish_task` with a `status` (`done`, `blocked` or `failed`) and a short \
-      `summary` of what you did and found, and list unresolved questions in \
-      `questions`. Then end your turn with no further tool calls. The harness \
-      adds the commit and the changed files to the result itself.
-      """,
-      source: {:module, __MODULE__},
-      tools: [
-        %Elia.Tool{
-          name: "finish_task",
-          description:
-            "Report the result of this sub-task to the chat that started it, then end your turn.",
-          input_schema: %{
-            "type" => "object",
-            "properties" => %{
-              "status" => %{
-                "type" => "string",
-                "description" => "done, blocked or failed"
-              },
-              "summary" => %{"type" => "string"},
-              "questions" => %{"type" => "array", "items" => %{"type" => "string"}}
-            },
-            "required" => ["status", "summary"]
-          },
-          run: fn input, ctx ->
-            case Elia.Tasks.finish(ctx[:session_id], input) do
-              :ok ->
-                {:ok,
-                 "Result recorded. End your turn now with a short closing message and no " <>
-                   "more tool calls."}
-
-              {:error, _} = error ->
-                error
-            end
-          end
-        }
-      ]
-    }
   end
 end

@@ -41,11 +41,10 @@ defmodule EliaWeb.TaskUITest do
           started_at: DateTime.utc_now(),
           start_commit: "abc",
           result: %{
-            "status" => "done",
+            "task_id" => child,
             "summary" => "Made child.txt",
             "commit" => "0123456789abcdef",
-            "files" => ["child.txt"],
-            "questions" => ["Rename it?"]
+            "files" => ["child.txt"]
           }
         },
         task_overrides
@@ -455,8 +454,8 @@ defmodule EliaWeb.TaskUITest do
     # is marked with (DONE-2, UI-80) — and not a status of its task's.
     assert has_element?(view, "#task-header-status[data-status='done']")
     assert has_element?(view, "#task-header-brief", "Create child.txt.")
-    # UI-48: what the task finished with is its own `finish_task` call, in its
-    # transcript, not the header's.
+    # UI-48: what the task ended with is in its metadata (SUBTASK-9), not in the
+    # header, which shows the chat's own status.
     refute has_element?(view, "#task-result")
     refute has_element?(view, "#task-header", "Made child.txt")
   end
@@ -547,11 +546,18 @@ defmodule EliaWeb.TaskUITest do
     refute has_element?(view, "#task-result")
     assert has_element?(view, "#task-header-status[data-status='idle']")
 
-    # SESS-20: the result a task ends with (SUBTASK-9) is saved into its metadata
-    # and reaches this chat's page. It says nothing about the header's status,
-    # which is the chat's own (UI-48).
+    # SUBTASK-33, SESS-18: the result a task ends with (SUBTASK-9) is saved into
+    # its metadata and reaches this chat's page. It says nothing about the
+    # header's status, which is the chat's own (UI-48).
     task = Store.load_task(child)
-    result = %{"status" => "blocked", "summary" => "Need input", "files" => [], "questions" => []}
+
+    result = %{
+      "task_id" => child,
+      "summary" => "Need input",
+      "commit" => nil,
+      "files" => []
+    }
+
     topic_send(child, {:task, Map.put(task, :result, result)})
 
     assert has_element?(view, "#task-header-brief", "Create child.txt.")

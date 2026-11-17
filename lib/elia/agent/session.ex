@@ -393,12 +393,15 @@ defmodule Elia.Agent.Session do
 
   # SESS-35, DONE-1, DONE-6: the chat's done flag, set by the model's
   # `mark_done` tool (DONE-6) or the page's control (DONE-4). It is the chat's
-  # own flag on every chat, a task chat included, where marking it done is what
-  # ends the task (DONE-3, SUBTASK-33): there is no task status beside it.
+  # own flag on every chat, and on a task chat it is what ends the task
+  # (SUBTASK-33): the harness builds the result (SUBTASK-9) and this chat's own
+  # session saves it with its metadata (SESS-18, SUBTASK-13). There is no task
+  # status beside the flag.
   def handle_call({:set_done, on?}, _from, state) do
     state = %{state | done: on?}
     # As with the model selection, an empty chat is saved with its first message.
     state = if state.messages == [], do: state, else: save(state)
+    state = if on?, do: end_task(state), else: state
     announce_done(state, on?)
     {:reply, {:ok, on?}, state}
   end
@@ -406,10 +409,10 @@ defmodule Elia.Agent.Session do
   def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:stop, _from, state) do
-    # SESS-22, SUBTASK-16, SUBTASK-17: a stopped turn is recorded for the
-    # sub-task machinery — the child's own task goes on, and stopping a parent
-    # stops its children's turns — before this session goes idle.
-    Elia.Tasks.note_stop(state.id)
+    # SESS-22, SUBTASK-17: stopping this chat's turn stops its children's turns
+    # too. A stop ends a turn and nothing more, so nothing is recorded for it:
+    # the child stays a running child holding its entry (SUBTASK-16).
+    Elia.Tasks.stop_children(state.id)
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])
 
@@ -1292,10 +1295,11 @@ defmodule Elia.Agent.Session do
   end
 
   # RESUME-3, RESUME-7: the turn carries on over the history the chat already
-  # holds, with the notice that says so and, for a sub-task chat, its watcher put
-  # back first. A child whose watcher can't be put back is not resumed.
+  # holds, with the notice that says so and, for a sub-task chat, its entry in
+  # the registry of running children taken again first. A child whose entry
+  # can't be taken is not resumed.
   defp resume_turn(state) do
-    case watch_again(state) do
+    case take_entry(state) do
       :ok ->
         state
         |> put_child_skills()
@@ -1307,15 +1311,34 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  # RESUME-7: the wait for a sub-task chat lived in a watcher process, which the
-  # restart killed, so its entry is taken again and the wait set up before the
-  # resumed turn starts (SUBTASK-11, SUBTASK-28).
-  defp watch_again(%{task_meta: nil}), do: :ok
+  # RESUME-7: the registry of running children lives in memory (SUBTASK-11), so
+  # the restart emptied it and the child's entry is taken again before its
+  # resumed turn starts — there is no watcher to put back (the retired
+  # SUBTASK-28). A child whose workspace another running child already writes in
+  # (SUBTASK-4), and one whose task says nothing about the commit it started
+  # from, which its result needs (SUBTASK-9), is not resumed.
+  defp take_entry(%{task_meta: nil}), do: :ok
 
-  defp watch_again(state), do: Elia.Tasks.rewatch(state.id, self(), workspace(state))
+  defp take_entry(state) do
+    case Map.get(state.task_meta, :start_commit) do
+      start_commit when is_binary(start_commit) ->
+        Elia.Tasks.acquire(state.task_meta.parent_id, state.id, workspace(state), %{
+          call_id: Map.get(state.task_meta, :parent_call_id),
+          start_commit: start_commit,
+          # RESUME-7: the child's brief went out long ago, so its entry outlives
+          # this session: a child whose session dies stays a running child
+          # (SUBTASK-34).
+          sent: true
+        })
 
-  # SUBTASK-1: a sub-task chat's own skill set — the spawn handed it to the
-  # child's session (SUBTASK-6), and a session started again has none of its own.
+      _none ->
+        {:error, "the sub-task's task has no start commit to report its work against"}
+    end
+  end
+
+  # SUBTASK-1, LOOP-17: a sub-task chat's own skill set — the ordinary registry
+  # minus the `tasks` skill, so a child can't start a sub-task (SUBTASK-6). A
+  # session started again has no skill set of its own to inherit.
   defp put_child_skills(%{task_meta: nil} = state), do: state
 
   defp put_child_skills(state) do
@@ -1324,9 +1347,7 @@ defmodule Elia.Agent.Session do
     %{
       state
       | loop_opts:
-          Keyword.put_new(state.loop_opts, :skills, fn ->
-            Elia.Skills.Tasks.child_skills(project)
-          end)
+          Keyword.put_new(state.loop_opts, :skills, fn -> Elia.Skills.for_child(project) end)
     }
   end
 
@@ -1384,7 +1405,7 @@ defmodule Elia.Agent.Session do
 
   # STOP-4: the transcript gets the message and the watchers that read a chat's
   # events get the same text, which is how a sub-task's parent reads a child's
-  # failure (SUBTASK-13). The page renders the message, not the event (UI-82).
+  # failure. The page renders the message, not the event (UI-82).
   defp stop(state, kind, text) do
     state = append(state, stop_notice(kind, text))
     broadcast(state, {:error, text})
@@ -1437,6 +1458,39 @@ defmodule Elia.Agent.Session do
     announce_status(state.id, status)
 
     %{state | status: status}
+  end
+
+  # SUBTASK-33, SUBTASK-13, SESS-18: marking a sub-task chat done is what ends
+  # the task — the harness builds the result (SUBTASK-9) and it is saved here,
+  # with this chat's own metadata, by the one session that owns the chat. The
+  # entry is released with it (SUBTASK-11), and a waiting `await_task` returns
+  # the result (SUBTASK-27). A chat whose result is already saved keeps it
+  # (SUBTASK-13), and a chat that isn't a sub-task's is left alone.
+  defp end_task(state) do
+    case Elia.Tasks.end_task(state.id, last_text(state), workspace(state)) do
+      {:ok, result} ->
+        save(%{state | task_meta: Map.put(state.task_meta || %{}, :result, result)})
+
+      :ok ->
+        state
+    end
+  end
+
+  # SUBTASK-9: the child's last assistant message — its report of what it did,
+  # which is the summary of the result — or nil when it said nothing.
+  defp last_text(state) do
+    state.messages
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      %Message{role: :assistant} = message ->
+        case String.trim(Message.text_content(message)) do
+          "" -> nil
+          text -> text
+        end
+
+      _message ->
+        nil
+    end)
   end
 
   # SESS-19, SESS-35: a change to the chat's done flag reaches this chat's own

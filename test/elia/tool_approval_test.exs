@@ -115,13 +115,10 @@ defmodule Elia.ToolApprovalTest do
 
   ## The tools (APPR-15, APPR-17)
 
-  # The tools the harness offers: the built-in skills' own, and the `task`
-  # skill's `finish_task`, which only a sub-task chat gets (SUBTASK-1). A
-  # folder skill's script tools are the project's own and have no fixed name;
-  # they always need approval (FOLDER-8, APPR-15).
-  defp tools do
-    builtin() ++ Elia.Skills.Tasks.child_skill().tools()
-  end
+  # The tools the harness offers (APPR-15, APPR-17). A folder skill's script
+  # tools are the project's own and have no fixed name; they always need
+  # approval (FOLDER-8, APPR-15).
+  defp tools, do: builtin()
 
   defp builtin, do: Enum.flat_map(Elia.Skills.builtin(), & &1.tools())
 
@@ -133,10 +130,12 @@ defmodule Elia.ToolApprovalTest do
 
   defp parent_names, do: Enum.map(builtin(), & &1.name)
 
+  # SUBTASK-1: a sub-task chat runs the ordinary registry minus the `tasks`
+  # skill, so it has every tool a chat has except `spawn_task`, `list_tasks` and
+  # `await_task` — and no child-only tool at all.
   defp child_names do
     spawned = Enum.map(Elia.Skills.Tasks.tools(), & &1.name)
-    finish = Enum.map(Elia.Skills.Tasks.child_skill().tools(), & &1.name)
-    Enum.uniq(parent_names() -- spawned) ++ finish
+    parent_names() -- spawned
   end
 
   defp role_of(name) do

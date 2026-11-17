@@ -26,8 +26,9 @@ defmodule Elia.Skills.Done do
     abandoned. Call `mark_done` and don't ask the user about it. Done is \
     bookkeeping, not a stop: the chat can still be continued, and the user's \
     next message reopens it by itself, so never hold anything back for it. In a \
-    sub-task this is bookkeeping only: the task still ends with your \
-    `finish_task` result, so report there as usual.
+    sub-task this is your last act: your work is committed on your own branch \
+    rather than landed on `master`, and marking this chat done is what ends the \
+    task and reports your result to the chat that started it.
     """
   end
 
@@ -41,8 +42,8 @@ defmodule Elia.Skills.Done do
             "chat's work is finished and has landed — after merging your branch into " <>
             "the trunk `master` — so the chat list shows it as done instead of as one " <>
             "that was abandoned. The chat can still be continued: the user's next " <>
-            "message reopens it. In a sub-task this is bookkeeping only: the task " <>
-            "still ends with `finish_task`.",
+            "message reopens it. In a sub-task, use it as your last act: it ends the " <>
+            "task and reports your result to the chat that started it.",
         input_schema: %{
           "type" => "object",
           "properties" => %{

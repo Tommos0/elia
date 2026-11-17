@@ -155,6 +155,21 @@ defmodule Elia.DeploymentTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 30_000)
 
+  # Waits until the chat is idle, for a test that subscribes after its turn may
+  # already have ended.
+  defp await_idle(id, tries \\ 1000)
+
+  defp await_idle(_id, 0), do: flunk("the chat never went idle")
+
+  defp await_idle(id, tries) do
+    if Agent.snapshot(id).status == :idle do
+      :ok
+    else
+      Process.sleep(20)
+      await_idle(id, tries - 1)
+    end
+  end
+
   # Scripted turns for a parent and its children: they run at the same time and
   # share FakeLLM's single queue, so each turn decides from the request which
   # chat it answers (SUBTASK-28).
@@ -1084,19 +1099,21 @@ defmodule Elia.DeploymentTest do
       end
     end
 
-    # The child writes its note and commits it in its own worktree.
+    # The child writes its note and commits it in its own worktree, then marks
+    # its chat done, which is what ends its task (SUBTASK-33).
     child_turn = fn request ->
-      if after_tools?(request) do
+      if counts(request, "mark_done") > 0 do
         reply([Message.text("Done.")])
       else
         [%{child_id: child}] = Elia.Tasks.active()
-        send(test_pid, {:child, child})
         child_path = Deploy.worktree_path(child)
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         LiveTree.commit(child_path, "child note")
+        send(test_pid, {:child, child})
 
         reply([
-          FakeLLM.tool_call("f1", "finish_task", %{"status" => "done", "summary" => "wrote it"})
+          Message.text("wrote it"),
+          FakeLLM.tool_call("d1", "mark_done", %{})
         ])
       end
     end
@@ -1140,13 +1157,18 @@ defmodule Elia.DeploymentTest do
       end)
 
     assert %{content: content, is_error: false} = result
-    assert %{"status" => "done", "files" => files} = Jason.decode!(content)
+
+    assert %{"summary" => "wrote it", "files" => files, "commit" => commit} =
+             decoded = Jason.decode!(content)
+
     assert "child-note.txt" in files
+    assert commit == head(child_path)
+    assert Map.keys(decoded) |> Enum.sort() == ["commit", "files", "summary", "task_id"]
     stop_session(child)
   end
 
-  # DEPLOY-9, SUBTASK-25
-  test "a sub-task that doesn't finish as done keeps its work on its own branch" do
+  # DEPLOY-9, SUBTASK-25, SUBTASK-33
+  test "a sub-task that ends its turn without marking its chat done keeps its work on its own branch" do
     parent = chat()
     path = Deploy.worktree_path(parent)
     test_pid = self()
@@ -1166,20 +1188,21 @@ defmodule Elia.DeploymentTest do
       end
     end
 
+    # The child writes its note, commits it, and ends its turn without marking
+    # its chat done — so its task is not over (SUBTASK-34) and the parent's wait
+    # goes on (SUBTASK-27).
     child_turn = fn request ->
       if after_tools?(request) do
         reply([Message.text("Done.")])
       else
         [%{child_id: child}] = Elia.Tasks.active()
-        send(test_pid, {:child, child})
         child_path = Deploy.worktree_path(child)
         File.write!(Path.join(child_path, "child-note.txt"), "child")
         File.write!(Path.join(child_path, "wip.txt"), "wip")
         LiveTree.commit(child_path, "child note")
+        send(test_pid, {:child, child})
 
-        reply([
-          FakeLLM.tool_call("f1", "finish_task", %{"status" => "blocked", "summary" => "stuck"})
-        ])
+        reply([Message.text("Stuck on the name.")])
       end
     end
 
@@ -1188,19 +1211,45 @@ defmodule Elia.DeploymentTest do
     :ok = Agent.send_message(parent, "go")
     await_status(parent, :awaiting_approval)
     :ok = Agent.approve(parent, "s1")
-    await_status(parent, :idle)
 
     assert_receive {:child, child}
     child_path = Deploy.worktree_path(child)
 
-    # SUBTASK-25: a blocked sub-task is not merged, so the parent's worktree is
-    # untouched and the work stays on the child's branch.
+    # SUBTASK-25: nothing is merged — the parent's worktree is untouched and the
+    # work stays on the child's branch.
     assert File.read!(Path.join(child_path, "child-note.txt")) == "child"
     refute File.exists?(Path.join(path, "child-note.txt"))
     assert head(path) != head(child_path)
     assert branch(child_path) == "chat/#{child}"
 
+    # SUBTASK-34: the child's turn is over and its task is not, so the parent is
+    # still waiting for it.
+    await_idle(child)
+    assert Elia.Tasks.running?(child)
+    assert Agent.snapshot(parent).status == :running
+
+    # SUBTASK-33: the user marks the child's chat done, and the task ends with
+    # what the child said last — still unmerged.
+    assert {:ok, true} = Agent.set_done(child, true)
+    await_status(parent, :idle)
+
+    assert %{"summary" => "Stuck on the name.", "files" => files, "commit" => commit} =
+             session_json(parent, "await_task", 0)
+
+    assert files == ["child-note.txt", "wip.txt"]
+    assert commit == head(child_path)
+    refute File.exists?(Path.join(path, "child-note.txt"))
+    assert head(path) != head(child_path)
+
     stop_session(child)
+  end
+
+  defp session_json(id, name, index) do
+    %{messages: Agent.snapshot(id).messages}
+    |> results()
+    |> Enum.filter(fn {tool, _content, _error} -> tool == name end)
+    |> Enum.at(index)
+    |> then(&Jason.decode!(&1 |> elem(1)))
   end
 
   # DEPLOY-4, PROJ-22

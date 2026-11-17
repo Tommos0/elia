@@ -59,6 +59,21 @@ defmodule Elia.TasksConcurrencyTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 30_000)
 
+  # Waits until the chat is idle, for a test that subscribes after the turn may
+  # already have ended.
+  defp await_idle(id, tries \\ 1000)
+
+  defp await_idle(_id, 0), do: flunk("the chat never went idle")
+
+  defp await_idle(id, tries) do
+    if Agent.snapshot(id).status == :idle do
+      :ok
+    else
+      Process.sleep(20)
+      await_idle(id, tries - 1)
+    end
+  end
+
   # Waits until the task's entry is released, which is what its end means
   # (SUBTASK-11, SUBTASK-13).
   defp await_released(child, tries \\ 1500)
@@ -109,8 +124,15 @@ defmodule Elia.TasksConcurrencyTest do
   defp spawn_call(call_id, title, brief),
     do: FakeLLM.tool_call(call_id, "spawn_task", %{"title" => title, "brief" => brief})
 
-  defp finish_call(summary) do
-    FakeLLM.tool_call("f1", "finish_task", %{"status" => "done", "summary" => summary})
+  # SUBTASK-33, DONE-6: a child's last act, and the end of its task.
+  defp done_call(summary, id),
+    do: [Message.text(summary), FakeLLM.tool_call(id, "mark_done", %{})]
+
+  # SUBTASK-26: `list_tasks` called now, rather than read out of a recorded tool
+  # result.
+  defp fresh_list(parent) do
+    {:ok, json} = Tasks.list_tasks(%{}, %{session_id: parent})
+    Jason.decode!(json)
   end
 
   defp session_results(id), do: results(%{messages: Agent.snapshot(id).messages})
@@ -151,7 +173,7 @@ defmodule Elia.TasksConcurrencyTest do
     end)
   end
 
-  ## SUBTASK-2, 11, 13, 26, 27
+  ## SUBTASK-2, 9, 11, 13, 26, 27, 33
 
   test "two children run at once and their results are collected in either order", %{
     parent: parent
@@ -197,7 +219,8 @@ defmodule Elia.TasksConcurrencyTest do
         File.write!(Path.join(path, "#{task.title}.txt"), "child")
         LiveTree.commit(path, "child work")
 
-        reply([finish_call("Wrote #{task.title}.txt")])
+        # SUBTASK-33: and its own `mark_done` is what ends its task.
+        reply(done_call("Wrote #{task.title}.txt", "d-#{task.title}"))
       end
     end
 
@@ -230,23 +253,45 @@ defmodule Elia.TasksConcurrencyTest do
       assert id in [alpha, beta]
     end
 
-    # SUBTASK-27: both results came back, in the order asked for (Beta first).
-    assert %{"task_id" => ^beta, "status" => "done", "files" => ["Beta.txt"]} =
-             session_json(parent, "await_task", 0)
+    # SUBTASK-9, SUBTASK-27: both results came back, in the order asked for (Beta
+    # first), each with the summary the child ended with, its commit and its
+    # files — and no status.
+    for {index, id, name} <- [{0, beta, "Beta"}, {1, alpha, "Alpha"}] do
+      assert %{
+               "task_id" => ^id,
+               "summary" => summary,
+               "commit" => commit,
+               "files" => [file]
+             } = result = session_json(parent, "await_task", index)
 
-    assert %{"task_id" => ^alpha, "status" => "done", "files" => ["Alpha.txt"]} =
-             session_json(parent, "await_task", 1)
+      assert summary == "Wrote #{name}.txt"
+      assert file == "#{name}.txt"
+      assert is_binary(commit)
+      assert Map.keys(result) |> Enum.sort() == ["commit", "files", "summary", "task_id"]
+    end
 
-    # SUBTASK-26, UI-59: the list reports each child's own status — neither chat
-    # is marked done, so both are `idle`, with the result each ended with.
-    listing = session_json(parent, "list_tasks", 0)
-    assert Enum.map(listing, & &1["status"]) == ["idle", "idle"]
+    # SUBTASK-26, UI-59: the status each child's row shows is its own chat's. The
+    # list the parent's turn recorded was taken while the children's turns ran on
+    # after they marked their chats done (SUBTASK-33), so each is `working` or
+    # `done` there...
+    assert Enum.all?(
+             session_json(parent, "list_tasks", 0),
+             &(&1["status"] in ["working", "done"])
+           )
+
+    # ...and once both turns have ended, both are `done`: their chats are marked
+    # done and idle, and done stands in place of idle (DONE-2).
+    await_idle(alpha)
+    await_idle(beta)
+
+    listing = fresh_list(parent)
+    assert Enum.map(listing, & &1["status"]) == ["done", "done"]
 
     assert listing |> Enum.map(& &1["task_id"]) |> Enum.sort() ==
              Enum.sort([alpha, beta])
 
-    # SUBTASK-13, SUBTASK-21, STORE-16: each result names its own commit, and
-    # the task's metadata carries no status of its own.
+    # SUBTASK-13, STORE-16: each result names its own commit, and the task's
+    # metadata carries no status of its own.
     for id <- [alpha, beta] do
       assert %{result: %{"task_id" => ^id, "commit" => commit}} = Store.load_task(id)
       assert is_binary(commit)
@@ -254,9 +299,10 @@ defmodule Elia.TasksConcurrencyTest do
     end
   end
 
-  ## SUBTASK-16, 17
+  ## SUBTASK-16, 17, 33
 
-  test "stopping the parent stops every child it has running", %{parent: parent} do
+  test "stopping the parent stops every child it has running, and none of their tasks",
+       %{parent: parent} do
     test_pid = self()
 
     parent_turn = fn request ->
@@ -327,15 +373,21 @@ defmodule Elia.TasksConcurrencyTest do
 
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
 
-    # SUBTASK-16, SUBTASK-31: each child ends when a turn of it ends. Its
-    # status is its own chat's (SUBTASK-26), so nothing per task is announced;
-    # the result is what the watcher saved (SUBTASK-13).
+    # SUBTASK-33: the user marks each child's chat done (DONE-4), and that is
+    # what ends its task — with the placeholder summary, since a child that never
+    # said anything has none to report (SUBTASK-9).
     for child <- [alpha, beta] do
-      :ok = Agent.send_message(child, "carry on")
-      assert_receive {:child_running, ^child, loop}, 30_000
-      send(loop, :never)
-      await_released(child)
-      assert %{result: %{"status" => "unfinished"}} = Store.load_task(child)
+      assert {:ok, true} = Agent.set_done(child, true)
+      assert :ok = await_released(child)
+
+      assert %{
+               result: %{
+                 "task_id" => ^child,
+                 "summary" => "The task ended without a summary.",
+                 "commit" => nil,
+                 "files" => []
+               }
+             } = Store.load_task(child)
     end
 
     assert Tasks.active() == []

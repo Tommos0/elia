@@ -15,6 +15,11 @@ defmodule Elia.TasksTest do
     parent = new_session()
 
     on_exit(fn ->
+      # The registry is this node's, not this test's (SUBTASK-11): whatever a
+      # failing test left held is released, so one test's failure isn't the next
+      # one's.
+      for %{child_id: id} <- Tasks.active(), do: Tasks.release(id)
+
       for entry <- Store.list(1000), Map.get(entry, :parent_id) == parent do
         stop_session(entry.id)
         Store.delete(entry.id)
@@ -133,6 +138,21 @@ defmodule Elia.TasksTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 20_000)
 
+  # Waits until the chat is idle, for a test that subscribes after the turn may
+  # already have ended.
+  defp await_idle(id, tries \\ 1000)
+
+  defp await_idle(_id, 0), do: flunk("the chat never went idle")
+
+  defp await_idle(id, tries) do
+    if Agent.snapshot(id).status == :idle do
+      :ok
+    else
+      Process.sleep(20)
+      await_idle(id, tries - 1)
+    end
+  end
+
   # Waits until the task's entry is released, which is what its end means
   # (SUBTASK-11, SUBTASK-13).
   defp await_released(child, tries \\ 500)
@@ -148,8 +168,7 @@ defmodule Elia.TasksTest do
     end
   end
 
-  # The child whose entry is held (SUBTASK-11) — pinned, so a status event of
-  # another chat can't stand in for it.
+  # The child whose entry is held (SUBTASK-11).
   defp await_child_started(tries \\ 500)
 
   defp await_child_started(0), do: flunk("no child started")
@@ -176,19 +195,13 @@ defmodule Elia.TasksTest do
 
   defp spawn_call(input, id \\ "s1"), do: FakeLLM.tool_call(id, "spawn_task", input)
 
-  defp finish_call(status, summary, questions \\ []) do
-    FakeLLM.tool_call("f1", "finish_task", %{
-      "status" => status,
-      "summary" => summary,
-      "questions" => questions
-    })
-  end
+  # SUBTASK-33, DONE-6: the child's last act. The turn runs on after it, so the
+  # result's summary is the text the child said with it.
+  defp done_call(id \\ "d1"), do: FakeLLM.tool_call(id, "mark_done", %{})
 
   defp tool_names(request), do: Enum.map(request.tools, & &1.name)
 
   defp parent?(request), do: "spawn_task" in tool_names(request)
-
-  defp after_tools?(request), do: match?(%Message{role: :tool}, List.last(request.messages))
 
   # The tool results a history holds, oldest first, as {tool name, content, is_error}.
   defp results(%{messages: messages}) do
@@ -244,6 +257,13 @@ defmodule Elia.TasksTest do
     child
   end
 
+  # SUBTASK-26: `list_tasks` for one task, called now rather than read out of a
+  # recorded tool result.
+  defp fresh_list(parent, child) do
+    {:ok, json} = Tasks.list_tasks(%{"task_id" => child}, %{session_id: parent})
+    Jason.decode!(json)
+  end
+
   defp children_of(parent),
     do: Enum.filter(Store.list(1000), &(Map.get(&1, :parent_id) == parent))
 
@@ -264,7 +284,7 @@ defmodule Elia.TasksTest do
       counts(request, "spawn_task") == 0 ->
         reply([spawn_call(input)])
 
-      spawned(request) != [] and results(request, "await_task") == [] ->
+      spawned(request) != [] and counts(request, "await_task") == 0 ->
         reply([
           FakeLLM.tool_call("a1", "await_task", %{"task_id" => List.first(spawned(request))})
         ])
@@ -274,15 +294,15 @@ defmodule Elia.TasksTest do
     end
   end
 
-  # A child that reports `done` at once.
+  # A child that says what it did and marks its chat done (SUBTASK-33).
   defp reporting_child(request) do
-    if after_tools?(request),
-      do: reply([Message.text("Done.")]),
-      else: reply([finish_call("done", "Did it")])
+    if results(request, "mark_done") == [],
+      do: reply([Message.text("Did it"), done_call()]),
+      else: reply([Message.text("Done.")])
   end
 
-  # A child that writes a file in its own workspace, reports `done`, and ends its
-  # turn.
+  # A child that writes a file in its own workspace, says so and marks its chat
+  # done.
   defp writing_child(request) do
     cond do
       results(request, "write_file") == [] ->
@@ -290,12 +310,20 @@ defmodule Elia.TasksTest do
           FakeLLM.tool_call("w1", "write_file", %{"path" => "child_note.txt", "content" => "x\n"})
         ])
 
-      results(request, "finish_task") == [] ->
-        reply([finish_call("done", "Wrote it")])
+      results(request, "mark_done") == [] ->
+        reply([Message.text("Wrote it"), done_call()])
 
       true ->
         reply([Message.text("Done.")])
     end
+  end
+
+  # A child that spends its one step on a tool that needs no approval, so its
+  # next step meets its step limit and it pauses (SUBTASK-24).
+  defp pausing_child(request) do
+    if results(request, "list_chats") == [],
+      do: reply([FakeLLM.tool_call("r1", "list_chats", %{})]),
+      else: reply([Message.text("Reading the chats."), done_call()])
   end
 
   # A child that blocks in its first model call until the test kills or stops it.
@@ -317,21 +345,22 @@ defmodule Elia.TasksTest do
     :ok = Agent.approve(parent, "s1")
     assert_receive {:child_blocked, child, _loop}, 20_000
 
-    # The parent is now inside its `await_task` call (SUBTASK-27), which can only
-    # end when the child does — so the tool call is running and nothing the
-    # parent does moves it (SUBTASK-7 retired: no per-task event is sent).
+    # The parent is now inside its `await_task` call (SUBTASK-27), which waits
+    # for the child's chat to be marked done, so nothing the child's turn does
+    # moves it.
     assert_receive {:agent, ^parent, {:tool_status, "a1", :running}}, 20_000
     child
   end
 
   # SUBTASK-16: a turn the user stopped is not a child's end, so a child whose
-  # turn was stopped ends when its next turn does. This runs that turn — the
-  # child's model call blocks again (blocked_child/1) — and lets it through, so
-  # the turn ends with its text and the task with that (SUBTASK-10).
+  # turn was stopped ends when the user settles it. This runs another turn in it,
+  # which says what it did without marking the chat done (SUBTASK-34).
   defp carry_on(child) do
+    Agent.subscribe(child)
     :ok = Agent.send_message(child, "carry on")
     assert_receive {:child_blocked, ^child, loop}, 20_000
     send(loop, :never)
+    await_status(child, :idle)
   end
 
   # Runs the parent through one turn, approving each call id in turn.
@@ -361,20 +390,30 @@ defmodule Elia.TasksTest do
   ## Tools
 
   # SUBTASK-1
-  test "a parent has the sub-task tools and a child has finish_task, never both" do
-    parent = Enum.flat_map(Elia.Skills.current(), & &1.tools) |> Enum.map(& &1.name)
-    child = Elia.Skills.Tasks.child_skills() |> Enum.flat_map(& &1.tools) |> Enum.map(& &1.name)
+  test "a parent has the sub-task tools and a child has exactly an ordinary chat's tools" do
+    parent_skills = Elia.Skills.current()
+    parent = parent_skills |> Enum.flat_map(& &1.tools) |> Enum.map(& &1.name)
+    child_skills = Elia.Skills.for_child()
+    child = child_skills |> Enum.flat_map(& &1.tools) |> Enum.map(& &1.name)
 
+    assert "tasks" in Enum.map(parent_skills, & &1.name)
     assert "spawn_task" in parent
     assert "list_tasks" in parent
     assert "await_task" in parent
-    refute "finish_task" in parent
 
-    assert "finish_task" in child
+    # SUBTASK-1: a child's session is the ordinary registry minus the `tasks`
+    # skill, so it has the tools any chat has — `mark_done` among them — and
+    # none of the sub-task ones.
+    refute "tasks" in Enum.map(child_skills, & &1.name)
     refute "spawn_task" in child
     refute "list_tasks" in child
     refute "await_task" in child
+    assert "mark_done" in child
     assert "shell" in child
+
+    # SUBTASK-1: and there is no child-only tool and no child-only skill.
+    refute "finish_task" in (parent ++ child)
+    refute Enum.any?(child_skills, &(&1.name in ["task", "tasks"]))
   end
 
   # SUBTASK-2, 26, 27
@@ -386,7 +425,8 @@ defmodule Elia.TasksTest do
            ] = Elia.Skills.Tasks.tools()
   end
 
-  # SUBTASK-2, 4, 5, 6, 7, 8, 9, 11, 13, 15, 26, 27
+  # SUBTASK-2, SUBTASK-4, SUBTASK-5, SUBTASK-6, SUBTASK-9, SUBTASK-11,
+  # SUBTASK-13, SUBTASK-15, SUBTASK-26, SUBTASK-27, SUBTASK-33
   test "a parent starts a sub-task, goes on, and collects its result", %{parent: parent} do
     test_pid = self()
     default_model = Elia.Settings.get(:model)
@@ -405,17 +445,17 @@ defmodule Elia.TasksTest do
             })
           ])
 
-        results(request, "list_tasks") == [] ->
+        counts(request, "list_tasks") == 0 ->
           reply([FakeLLM.tool_call("l1", "list_tasks", %{})])
 
-        results(request, "await_task") == [] ->
+        counts(request, "await_task") == 0 ->
           reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => task_id(request)})])
 
-        length(results(request, "await_task")) == 1 ->
-          # SUBTASK-27: the task has finished, so this returns at once.
+        counts(request, "await_task") == 1 ->
+          # SUBTASK-27: the child's chat is marked done, so this returns at once.
           reply([FakeLLM.tool_call("a2", "await_task", %{"task_id" => task_id(request)})])
 
-        length(results(request, "list_tasks")) == 1 ->
+        counts(request, "list_tasks") == 1 ->
           reply([FakeLLM.tool_call("l2", "list_tasks", %{"task_id" => task_id(request)})])
 
         true ->
@@ -424,21 +464,21 @@ defmodule Elia.TasksTest do
     end
 
     child_turn = fn request ->
-      if after_tools?(request) do
-        reply([Message.text("Done.")])
+      if results(request, "mark_done") != [] do
+        reply([Message.text("Marked done.")])
       else
         child = active_child()
         send(test_pid, {:child_started, child, request, self()})
         commit_file("child.txt")
 
-        # SUBTASK-4: a child can't start a child.
+        # SUBTASK-1: a child can't start a child.
         send(
           test_pid,
           {:nested, Tasks.spawn_task(%{"title" => "t", "brief" => "b"}, %{session_id: child})}
         )
 
         receive do
-          :finish -> reply([finish_call("done", "Made child.txt", ["Rename it?"])])
+          :finish -> reply([Message.text("Made child.txt"), done_call()])
         end
       end
     end
@@ -453,22 +493,29 @@ defmodule Elia.TasksTest do
     # parent goes on and asks how the child is doing.
     assert_receive {:child_started, child, request, loop}, 20_000
 
-    # SUBTASK-5: the child's first message is the preamble and the brief.
+    # SUBTASK-5: the child's first message is the preamble and the brief, and the
+    # preamble says how the task ends.
     assert [%Message{role: :user} = brief | _] = request.messages
     assert Message.text_content(brief) =~ "sub-task agent"
     assert Message.text_content(brief) =~ "Create child.txt and commit it."
+    assert Message.text_content(brief) =~ "mark_done"
+    assert Message.text_content(brief) =~ "commit"
 
-    # SUBTASK-1, 6: the child's own tools, and the model that was asked for.
-    assert "finish_task" in tool_names(request)
+    # SUBTASK-1, SUBTASK-6: the child's own tools, and the model that was asked
+    # for. It has `mark_done` and no sub-task tool, and no `tasks` skill.
+    assert "mark_done" in tool_names(request)
     refute "spawn_task" in tool_names(request)
-    assert request.system =~ "## Skill: task\n"
+    refute "finish_task" in tool_names(request)
+    assert request.system =~ "## Skill: done\n"
+    refute request.system =~ "## Skill: tasks\n"
     assert request.model == "other-model"
     assert %{model: "other-model"} = Agent.snapshot(child).settings.model
     assert Elia.Settings.get(:model) == default_model
 
-    # SUBTASK-4: a child can't start a child.
+    # SUBTASK-1: a child can't start a child.
     assert_receive {:nested, {:error, "Not started: a sub-task can't start" <> _}}
 
+    # SUBTASK-33: the child's own `mark_done` is the end.
     send(loop, :finish)
     await_status(parent, :idle)
 
@@ -479,66 +526,78 @@ defmodule Elia.TasksTest do
                "task_id" => ^child,
                "title" => "Add file",
                "status" => "working",
-               "reason" => nil,
                "started_at" => started_at
-             }
+             } = listed
            ] = session_json(parent, "list_tasks", 0)
 
     assert is_binary(started_at)
+    # SUBTASK-9, SUBTASK-21 retired: no status, no reason.
+    refute Map.has_key?(listed, "reason")
 
     {head, 0} = git(["rev-parse", "HEAD"])
 
-    # SUBTASK-9: the harness fills in the commit and the changed files.
+    # SUBTASK-9: the harness fills in the commit and the changed files, and the
+    # summary is the child's last words before it marked its chat done.
     assert %{
-             "status" => "done",
-             "summary" => "Made child.txt",
-             "questions" => ["Rename it?"],
-             "files" => ["child.txt"],
-             "commit" => commit,
              "task_id" => ^child,
-             "reason" => nil
+             "summary" => "Made child.txt",
+             "commit" => commit,
+             "files" => ["child.txt"]
            } = result = session_json(parent, "await_task", 0)
 
-    # SUBTASK-21: a done task has no start commit or tree state.
-    refute Map.has_key?(result, "tree_clean")
-    refute Map.has_key?(result, "start_commit")
-
+    assert Map.keys(result) |> Enum.sort() == ["commit", "files", "summary", "task_id"]
     assert commit == String.trim(head)
 
-    # SUBTASK-27: a task that already finished returns at once, from its metadata.
-    # LOOP-24: the second `await_task` is the identical call for the identical
-    # result, so the loop appended its own notice to it; the JSON is the same.
+    # SUBTASK-27: a task whose chat is already marked done returns at once, from
+    # its metadata. LOOP-24: the second `await_task` is the identical call for
+    # the identical result, so the loop appended its own notice to it.
     assert session_json(parent, "await_task", 1) == result
 
-    # SUBTASK-26, STORE-17: the single-task form adds the result once it has
-    # finished, and the status it reports is the child chat's own (UI-59).
+    # SUBTASK-26: the single-task form adds the result once the chat is marked
+    # done, and the status it reports is the child chat's own (UI-59, DONE-2).
+    # The child's turn ran on after it marked the chat done (SUBTASK-33), so at
+    # that moment its chat was `working` — its own status, as its row would show
+    # — and it is `done` once the turn has ended.
     assert %{
              "task_id" => ^child,
              "title" => "Add file",
-             "status" => "idle",
-             "reason" => nil,
-             "result" => %{"status" => "done"}
-           } = session_json(parent, "list_tasks", 1)
+             "status" => status,
+             "result" => %{"summary" => "Made child.txt"}
+           } = _recorded = session_json(parent, "list_tasks", 1)
+
+    assert status in ["working", "done"]
+
+    await_idle(child)
+
+    # Now that the child's turn has ended, the same call reports `done`: its chat
+    # was marked done and it is idle, so done stands in place of idle (DONE-2).
+    assert %{
+             "task_id" => ^child,
+             "status" => "done",
+             "result" => %{"summary" => "Made child.txt"}
+           } =
+             fresh_list(parent, child)
 
     # SUBTASK-15, STORE-18: the parent's call is recorded for the UI.
     assert %{parent_call_id: "s1"} = Store.load_task(child)
     assert [%{id: ^child, parent_call_id: "s1"}] = Store.children(parent)
 
-    # SUBTASK-5, 13: saved metadata and the result it ended with (STORE-16: no
-    # status of its own).
+    # SUBTASK-5, SUBTASK-13: saved metadata and the result it ended with
+    # (STORE-16: no status of its own).
     assert %{
              parent_id: ^parent,
              title: "Add file",
              brief: "Create child.txt and commit it.",
              start_commit: start_commit,
-             result: %{"status" => "done"}
-           } = Store.load_task(child)
+             result: %{"summary" => "Made child.txt"}
+           } = task = Store.load_task(child)
 
+    refute Map.has_key?(task, :status)
     assert byte_size(start_commit) == 40
 
-    # STORE-17, UI-46: listed like a chat, under the task title, with the
+    # STORE-17, UI-46, DONE-2: listed like a chat, under the task title, with the
     # status any chat has — its own.
-    assert %{title: "Add file", parent_id: ^parent} =
+    assert %{title: "Add file", parent_id: ^parent, done: true} =
              Enum.find(Store.list(1000), &(&1.id == child))
 
     refute Map.has_key?(Enum.find(Store.list(1000), &(&1.id == child)), :task_status)
@@ -555,7 +614,7 @@ defmodule Elia.TasksTest do
     assert Tasks.active() == []
   end
 
-  # SUBTASK-2, 7, 28
+  # SUBTASK-2, SUBTASK-11, SUBTASK-16, SUBTASK-26, SUBTASK-33, SUBTASK-34
   test "spawn_task returns while the child is still running", %{parent: parent} do
     push_turns(
       router(
@@ -575,35 +634,42 @@ defmodule Elia.TasksTest do
     # spawn call returned the start, not a result.
     {content, false} = session_result(parent)
 
-    # SUBTASK-7 retired: a child's status is its own chat's (SUBTASK-26), so the
-    # spawn's JSON says `working` and no per-task event carries it.
     assert %{"task_id" => ^child, "title" => "T", "status" => "working"} =
              Jason.decode!(content)
 
     assert Tasks.running?(child)
     assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
 
-    # SUBTASK-16: stopping the child's own turn doesn't end its task either, so
-    # what ends it is a turn of it that ends.
+    # SUBTASK-16: stopping the child's own turn doesn't end its task, so its chat
+    # is left idle and the entry is still held.
     :ok = Agent.stop(child)
     assert Agent.snapshot(child).status == :idle
     assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
 
+    # SUBTASK-34: nor does a later turn that ends without marking the chat done.
     carry_on(child)
+    assert Tasks.running?(child)
+    refute Map.has_key?(Store.load_task(child), :result)
+
+    # SUBTASK-26: from outside, that child is an idle chat (UI-59), with no
+    # result to report yet.
+    assert {:ok, json} = Tasks.list_tasks(%{"task_id" => child}, %{session_id: parent})
+    assert %{"task_id" => ^child, "status" => "idle"} = listed = Jason.decode!(json)
+    refute Map.has_key?(listed, "result")
+
+    # SUBTASK-33: the user marking the child's chat done is what ends it, with
+    # the last thing the child said as its summary.
+    assert {:ok, true} = Agent.set_done(child, true)
     assert :ok = await_released(child)
 
-    # The task ends (SUBTASK-13) and its chat is left with the status its own
-    # row shows (SUBTASK-26).
-    assert %{result: %{"status" => "unfinished"}} = Store.load_task(child)
+    assert %{result: %{"summary" => "Never.", "commit" => nil, "files" => []}} =
+             Store.load_task(child)
 
-    assert {:ok, json} = Tasks.list_tasks(%{"task_id" => child}, %{session_id: parent})
-    assert %{"status" => "idle"} = Jason.decode!(json)
     assert Tasks.active() == []
   end
 
   # SUBTASK-30, ISOL-18
-  test "a sub-task chat carries its parent's jail setting" do
-    parent = new_session()
+  test "a sub-task chat carries its parent's jail setting", %{parent: parent} do
     # The parent's jail is off, so the child must start with its own copy of that.
     :ok = Agent.set_jail(parent, false)
 
@@ -685,7 +751,7 @@ defmodule Elia.TasksTest do
     stop_session(child)
   end
 
-  # SUBTASK-23, PROJ-12
+  # SUBTASK-9, SUBTASK-23, PROJ-12
   test "a sub-task of another project writes there, not in Elia's tree" do
     dir = external_repo()
     external_head = head_of(dir)
@@ -713,13 +779,13 @@ defmodule Elia.TasksTest do
     # Its work is reported against that repository's own baseline (SUBTASK-9).
     assert %{start_commit: ^external_head} = Store.load_task(child)
 
-    assert %{"status" => "done", "commit" => nil, "files" => ["child_note.txt"]} =
+    assert %{"summary" => "Wrote it", "commit" => nil, "files" => ["child_note.txt"]} =
              session_json(parent, "await_task", 0)
 
     stop_session(child)
   end
 
-  # SUBTASK-23, SUBTASK-11
+  # SUBTASK-23, SUBTASK-11, SUBTASK-35
   test "a child of another project is not a second writer in this one" do
     dir = external_repo()
     {parent, _project} = external_parent(dir)
@@ -728,258 +794,30 @@ defmodule Elia.TasksTest do
     # the project's tree.
     child = spawn_blocked_child(parent, self())
 
-    # The task's workspace is its parent's project folder (SUBTASK-23)...
+    # The workspace its entry names is its parent's project folder (SUBTASK-23)...
     assert :sys.get_state(Tasks).active[child].root == dir
 
-    # ...so a chat in another project is not writing in the same tree, and its
-    # spawn starts instead of being refused (SUBTASK-11).
-    {other, other_project} = external_parent(external_repo())
+    # ...so another project's folder is a different tree, and a chat whose child
+    # writes in it is not a second writer here (SUBTASK-11).
+    other_root = Path.join(System.tmp_dir!(), "elia-tree-#{System.unique_integer([:positive])}")
+    assert :ok = Tasks.acquire("p9", "c9", other_root, %{})
+    assert :ok = Tasks.release("c9")
 
-    assert {:ok, json} =
-             Tasks.spawn_task(%{"title" => "T", "brief" => "B"}, %{
-               session_id: other,
-               call_id: "s2",
-               workspace: other_project.folder,
-               project: other_project,
-               loop_opts: [llm: %{provider: FakeLLM}]
-             })
+    # The same tree would be refused (SUBTASK-4).
+    assert {:error, message} = Tasks.acquire("p9", "c9", dir, %{})
+    assert message =~ "is already writing in that workspace"
 
-    assert %{"task_id" => other_child} = Jason.decode!(json)
-
-    # Its own turn ends when the test takes its chat away, the way the user's
-    # delete does (SESS-29), and its entry is released (SUBTASK-7 retired: no
-    # per-task event says so).
-    :ok = Agent.delete(other_child)
-    assert :ok = await_released(other_child)
-
-    # A stop only ends a child's turn, so the test ends its task the way the user
-    # does: deleting the child's chat (SESS-29).
-    :ok = Agent.delete(child)
+    # SUBTASK-35: deleting the child's chat releases its entry, and its parent's
+    # wait answers with an error because the chat it waited for is gone.
+    assert :ok = Agent.delete(child)
     await_status(parent, :idle)
     assert Tasks.active() == []
+
+    {content, true} = session_result(parent)
+    assert content =~ "was deleted"
   end
 
-  # SUBTASK-10
-  test "a child that ends without finish_task is unfinished", %{parent: parent} do
-    push_turns(
-      router(
-        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
-        fn _request -> reply([Message.text("I looked around but never reported.")]) end
-      )
-    )
-
-    run_parent(parent, ["s1"])
-
-    assert %{
-             "status" => "unfinished",
-             "summary" => "I looked around but never reported.",
-             "commit" => nil,
-             "files" => [],
-             "questions" => [],
-             "reason" => nil,
-             "tree_clean" => true,
-             "start_commit" => start
-           } = session_json(parent, "await_task", 0)
-
-    # SUBTASK-21
-    assert byte_size(start) == 40
-
-    assert [%{parent_id: ^parent} = entry] = children_of(parent)
-    assert %{result: %{"status" => "unfinished"}} = Store.load_task(entry.id)
-  end
-
-  # SUBTASK-12, SUBTASK-24, SESS-27
-  test "a child that hits its step limit pauses, and a resume starts the count over", %{
-    parent: parent
-  } do
-    Agent.subscribe_activity()
-
-    push_turns(
-      router(
-        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
-        fn request ->
-          # Step 1 records a result; step 2 is over the limit, so it pauses.
-          if after_tools?(request),
-            do: reply([Message.text("Carrying on.")]),
-            else: reply([finish_call("done", "All good")])
-        end
-      )
-    )
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-
-    # SUBTASK-26: the child's own status is `paused` — the status its row shows
-    # (UI-46, UI-58) — not a task status of its own.
-    assert_receive {:chat_status, child, :paused}, 20_000
-
-    assert Agent.snapshot(child).pause == "Step limit reached (1 steps)."
-
-    # LIMIT-5, LIMIT-12: a sub-task's limits come from its spawn, which sets no
-    # token budget — so the child's token spend is unlimited until the user sets
-    # one on its own settings page.
-    assert %{max_steps: 1, max_tokens: nil, pause_on_limit: true} =
-             Agent.snapshot(child).settings.limits
-
-    # SUBTASK-24: the entry is still held and the parent is still waiting, with
-    # no deadline of its own.
-    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
-    assert Agent.snapshot(parent).status == :running
-
-    :ok = Agent.resume(child)
-    await_status(parent, :idle)
-
-    assert %{
-             "status" => "done",
-             "summary" => "All good",
-             "reason" => nil,
-             "task_id" => ^child
-           } = session_json(parent, "await_task", 0)
-
-    assert Tasks.active() == []
-    assert [%{parent_id: ^parent} = entry] = children_of(parent)
-    assert %{result: %{"status" => "done"}} = Store.load_task(entry.id)
-  end
-
-  # SUBTASK-24, SUBTASK-16, SUBTASK-31
-  test "stopping a paused child's turn leaves its task running", %{parent: parent} do
-    Agent.subscribe_activity()
-
-    push_turns(
-      router(
-        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
-        fn _request -> reply([finish_call("done", "Fine")]) end
-      )
-    )
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-
-    child = await_child_started()
-    await_chat_status(child, :paused)
-
-    # SUBTASK-16: stopping the paused turn ends that turn, not the task — no
-    # result is recorded, the child keeps its entry and the parent waits on.
-    :ok = Agent.stop(child)
-    assert Agent.snapshot(child).status == :idle
-    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
-    refute Map.has_key?(Store.load_task(child), :result)
-    assert Agent.snapshot(parent).status == :running
-
-    # SUBTASK-24: its limits are unchanged, so the next turn it runs pauses at
-    # the step limit again — and failing that turn ends the task (SUBTASK-31).
-    :ok = Agent.send_message(child, "carry on")
-    assert_receive {:chat_status, ^child, :paused}, 20_000
-    :ok = Agent.fail_task(child)
-    await_status(parent, :idle)
-
-    assert %{"status" => "failed", "reason" => "budget", "task_id" => ^child} =
-             session_json(parent, "await_task", 0)
-
-    assert Tasks.active() == []
-  end
-
-  # SUBTASK-8, 13
-  test "a child whose session dies has failed", %{parent: parent} do
-    test_pid = self()
-
-    push_turns(
-      router(
-        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
-        fn request ->
-          if after_tools?(request) do
-            reply([Message.text("Hm.")])
-          else
-            send(test_pid, {:child_blocked, self(), active_child()})
-            receive do: (:never -> :ok)
-          end
-        end
-      )
-    )
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-
-    assert_receive {:child_blocked, loop, child}, 20_000
-    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, child)
-    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
-    Process.exit(loop, :kill)
-    await_status(parent, :idle)
-
-    assert %{
-             "status" => "failed",
-             "reason" => "crashed",
-             "summary" => "The sub-task session stopped" <> _
-           } = session_json(parent, "await_task", 0)
-
-    assert Tasks.active() == []
-    assert %{result: %{"status" => "failed"}} = Store.load_task(child)
-  end
-
-  # SUBTASK-32, SUBTASK-29: with the child's session gone, the watcher saves the
-  # final metadata straight to disk, and changes nothing else in the file.
-  test "the straight-to-disk save keeps the rest of the child's chat", %{parent: parent} do
-    test_pid = self()
-
-    push_turns(
-      router(
-        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
-        fn request ->
-          if after_tools?(request) do
-            reply([Message.text("Hm.")])
-          else
-            send(test_pid, {:child_blocked, self(), active_child()})
-            receive do: (:never -> :ok)
-          end
-        end
-      )
-    )
-
-    :ok = Agent.send_message(parent, "go")
-    await_status(parent, :awaiting_approval)
-    :ok = Agent.approve(parent, "s1")
-    assert_receive {:child_blocked, loop, child}, 20_000
-
-    # What the child's own session would have saved over its life: the session
-    # writes nothing while its turn waits on the model, nor when it is killed.
-    compaction = %{level: 1, covered: 1, summary: "so far", pins: [], ledger: ["x"]}
-
-    :ok =
-      Store.update(child, fn chat ->
-        Map.merge(chat, %{
-          title: "The child's title",
-          compaction: compaction,
-          limits: %{max_steps: 7},
-          effort: "high",
-          done: true
-        })
-      end)
-
-    file = Path.join(Store.dir(), child <> ".term")
-    before = :erlang.binary_to_term(File.read!(file))
-
-    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, child)
-    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
-    Process.exit(loop, :kill)
-    await_status(parent, :idle)
-
-    later = :erlang.binary_to_term(File.read!(file))
-    # SUBTASK-13, STORE-16: the result the watcher built is saved into the
-    # child's metadata, which carries no status of its own.
-    assert %{"status" => "failed"} = later.task.result
-    refute Map.has_key?(later.task, :status)
-    assert Map.drop(later, [:task, :updated_at]) == Map.drop(before, [:task, :updated_at])
-    assert later.title == "The child's title"
-    assert later.compaction == compaction
-    assert later.limits == %{max_steps: 7}
-    assert later.effort == "high"
-    assert later.done == true
-  end
-
-  # SUBTASK-4, 11
+  # SUBTASK-4, SUBTASK-11, SUBTASK-33
   test "a second child in the same workspace is refused", %{parent: parent} do
     other = new_session()
     child = spawn_blocked_child(parent, self())
@@ -1000,12 +838,17 @@ defmodule Elia.TasksTest do
     assert children_of(other) == []
     assert [%{child_id: ^child, parent_id: ^parent}] = Tasks.active()
 
-    # A stop only ends the child's turn now (SUBTASK-16), so the test ends its
-    # task the way the user does: deleting the child's chat (SESS-29) takes its
-    # session away, which is what its watcher reports (SUBTASK-8).
-    :ok = Agent.delete(child)
-    await_status(parent, :idle)
+    # SUBTASK-33: marking the child's chat done mid-turn ends the task while the
+    # turn runs on, so the entry is released and the result saved.
+    assert {:ok, true} = Agent.set_done(child, true)
+    assert :ok = await_released(child)
+    assert %{result: %{"task_id" => ^child}} = Store.load_task(child)
     assert Tasks.active() == []
+
+    # The turn is still the one it was.
+    assert Agent.snapshot(child).status == :running
+    :ok = Agent.stop(child)
+    await_status(parent, :idle)
   end
 
   # SUBTASK-4
@@ -1021,9 +864,17 @@ defmodule Elia.TasksTest do
 
     run_parent(parent, ["s1"])
 
-    assert %{"status" => "done"} = session_json(parent, "await_task", 0)
+    # SUBTASK-9: what the child changed includes what was already uncommitted in
+    # its tree when it started, and a child that committed nothing reports no
+    # commit.
+    assert %{"summary" => "Did it", "commit" => nil, "files" => files} =
+             session_json(parent, "await_task", 0)
+
+    assert "dirty.txt" in files
+    assert "lib/broken.ex" in files
+
     assert [%{parent_id: ^parent} = entry] = children_of(parent)
-    assert %{result: %{"status" => "done"}} = Store.load_task(entry.id)
+    assert %{result: %{"summary" => "Did it"}} = Store.load_task(entry.id)
   end
 
   # SUBTASK-2, 4
@@ -1038,7 +889,54 @@ defmodule Elia.TasksTest do
     assert Tasks.active() == []
   end
 
-  # SUBTASK-16, SUBTASK-31, STOP-1
+  ## The entry's life
+
+  # SUBTASK-34, SUBTASK-26, SUBTASK-27
+  test "a child that ends a turn without marking its chat done keeps running", %{
+    parent: parent
+  } do
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
+        fn _request -> reply([Message.text("I looked around but never reported.")]) end
+      )
+    )
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    child = await_child_started()
+    await_idle(child)
+
+    # SUBTASK-34: the child's turn is over and its task is not, so its entry is
+    # held, nothing is saved as a result, and its parent's wait goes on.
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    refute Map.has_key?(Store.load_task(child), :result)
+    assert Agent.snapshot(parent).status == :running
+
+    # SUBTASK-26: its chat's own status is what the parent is told.
+    assert {:ok, json} = Tasks.list_tasks(%{"task_id" => child}, %{session_id: parent})
+    assert %{"task_id" => ^child, "status" => "idle"} = Jason.decode!(json)
+    refute Map.has_key?(Jason.decode!(json), "result")
+
+    # SUBTASK-33: the user settles it by marking the child's chat done (DONE-4),
+    # and the task ends with the child's last words.
+    assert {:ok, true} = Agent.set_done(child, true)
+    await_status(parent, :idle)
+    assert :ok = await_released(child)
+
+    assert %{
+             "summary" => "I looked around but never reported.",
+             "commit" => nil,
+             "files" => [],
+             "task_id" => ^child
+           } = session_json(parent, "await_task", 0)
+
+    assert Tasks.active() == []
+  end
+
+  # SUBTASK-11, SUBTASK-16, SUBTASK-31, SUBTASK-33
   test "stopping the child's turn leaves its task running", %{parent: parent} do
     child = spawn_blocked_child(parent, self())
 
@@ -1054,18 +952,21 @@ defmodule Elia.TasksTest do
     assert %Message{role: :user, meta: %{stopped: :stopped}} =
              List.last(Agent.snapshot(child).messages)
 
-    # SUBTASK-31: the wait goes on, and the child's next turn is what ends it and
-    # gives the parent its result.
+    # SUBTASK-31: the wait goes on, and the child's chat being marked done is
+    # what ends it and gives the parent its result.
     carry_on(child)
+    assert Tasks.running?(child)
+
+    assert {:ok, true} = Agent.set_done(child, true)
     await_status(parent, :idle)
 
     {content, false} = session_result(parent)
 
-    assert %{"status" => "unfinished", "summary" => "Never.", "task_id" => ^child} =
+    assert %{"summary" => "Never.", "task_id" => ^child, "commit" => nil, "files" => []} =
              Jason.decode!(content)
 
     assert Tasks.active() == []
-    assert %{result: %{"status" => "unfinished"}} = Store.load_task(child)
+    assert %{result: %{"summary" => "Never."}} = Store.load_task(child)
   end
 
   # SUBTASK-17, SESS-22, SUBTASK-16
@@ -1090,52 +991,110 @@ defmodule Elia.TasksTest do
 
     assert %Message{role: :user, meta: %{stopped: :stopped}} = List.last(messages)
 
-    # SUBTASK-31: the child ends when a turn of it ends, and reports that.
+    # SUBTASK-33: the task ends when the child's chat is marked done, and not
+    # before.
     carry_on(child)
+    assert Tasks.running?(child)
+
+    assert {:ok, true} = Agent.set_done(child, true)
     await_released(child)
 
     assert Tasks.active() == []
-    assert %{result: %{"status" => "unfinished"}} = Store.load_task(child)
+    assert %{result: %{"summary" => "Never."}} = Store.load_task(child)
   end
 
-  # SUBTASK-29, SESS-29
-  test "a running sub-task chat the user deletes stays deleted", %{parent: parent} do
-    child = spawn_blocked_child(parent, self())
+  # SUBTASK-12, SUBTASK-24, SUBTASK-33, SESS-27
+  test "a child that hits its step limit pauses, and a resume starts the count over", %{
+    parent: parent
+  } do
+    Agent.subscribe_activity()
 
-    assert Store.exists?(child)
-    assert [%{id: ^child}] = children_of(parent)
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
+        &pausing_child/1
+      )
+    )
 
-    # SESS-29, UI-65: deleting the running child stops its turn, kills its
-    # session and removes its file.
-    :ok = Agent.delete(child)
-    refute Store.exists?(child)
-    assert children_of(parent) == []
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
 
-    # Its watcher still ends the task and saves the final metadata (SUBTASK-13).
-    # SUBTASK-29: with the file gone, that save must not write the chat back.
+    # SUBTASK-26: the child's own status is `paused` — the status its row shows
+    # (UI-46, UI-58) — not a task status of its own.
+    assert_receive {:chat_status, child, :paused}, 20_000
+
+    assert Agent.snapshot(child).pause == "Step limit reached (1 steps)."
+
+    # LIMIT-5, LIMIT-12: a sub-task's limits come from its spawn, which sets no
+    # token budget — so the child's token spend is unlimited until the user sets
+    # one on its own settings page.
+    assert %{max_steps: 1, max_tokens: nil, pause_on_limit: true} =
+             Agent.snapshot(child).settings.limits
+
+    # SUBTASK-24: the entry is still held and the parent is still waiting, with
+    # no deadline of its own.
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    assert Agent.snapshot(parent).status == :running
+
+    # Continue resumes the turn, the count starts over, and the child marks its
+    # chat done in that step — which is the end (SUBTASK-33).
+    :ok = Agent.resume(child)
     await_status(parent, :idle)
+    assert :ok = await_released(child)
+
+    assert %{"summary" => "Reading the chats.", "task_id" => ^child} =
+             session_json(parent, "await_task", 0)
 
     assert Tasks.active() == []
-    refute Store.exists?(child)
-    assert children_of(parent) == []
+    assert %{result: %{"summary" => "Reading the chats."}} = Store.load_task(child)
+
+    :ok = Agent.stop(child)
   end
 
-  # SUBTASK-19, SUBTASK-28
-  test "when a child's watcher dies, the registry finishes the job", %{parent: parent} do
-    child = spawn_blocked_child(parent, self())
+  # SUBTASK-24, SUBTASK-16, SUBTASK-33
+  test "stopping a paused child's turn leaves its task running", %{parent: parent} do
+    Agent.subscribe_activity()
 
-    watcher = :sys.get_state(Tasks).active[child].owner
-    Process.exit(watcher, :kill)
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B", "max_steps" => 1}),
+        fn _request -> reply([FakeLLM.tool_call("r1", "list_chats", %{})]) end
+      )
+    )
 
-    await_status(parent, :idle)
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
 
-    assert Tasks.active() == []
+    child = await_child_started()
+    await_chat_status(child, :paused)
+
+    # SUBTASK-16: stopping the paused turn ends that turn, not the task — no
+    # result is recorded, the child keeps its entry and the parent waits on.
+    :ok = Agent.stop(child)
     assert Agent.snapshot(child).status == :idle
-    assert %{result: %{"reason" => "crashed"}} = Store.load_task(child)
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    refute Map.has_key?(Store.load_task(child), :result)
+    assert Agent.snapshot(parent).status == :running
+
+    # SUBTASK-33: only marking its chat done ends it, and a child that said
+    # nothing in a message of its own gets the placeholder summary (SUBTASK-9).
+    assert {:ok, true} = Agent.set_done(child, true)
+    await_status(parent, :idle)
+
+    assert %{
+             "summary" => "The task ended without a summary.",
+             "commit" => nil,
+             "files" => [],
+             "task_id" => ^child
+           } = session_json(parent, "await_task", 0)
+
+    assert Tasks.active() == []
   end
 
-  # SUBTASK-18, SUBTASK-24, SESS-27
-  test "a child that runs out of time pauses, and failing it reports the limit", %{
+  # SUBTASK-18, SUBTASK-24, SUBTASK-33, SESS-27
+  test "a child that runs out of time pauses, and failing it leaves the task running", %{
     parent: parent
   } do
     Agent.subscribe_activity()
@@ -1146,7 +1105,7 @@ defmodule Elia.TasksTest do
         fn _request ->
           # Longer than the whole budget (600 ms), so the next step pauses.
           Process.sleep(700)
-          reply([finish_call("done", "fine")])
+          reply([Message.text("Spent it all."), FakeLLM.tool_call("r1", "list_chats", %{})])
         end
       )
     )
@@ -1159,30 +1118,34 @@ defmodule Elia.TasksTest do
     await_chat_status(child, :paused)
     assert Tasks.running?(child)
 
-    # Fail: the turn ends with the limit's error, so the result is failed/budget.
+    # SUBTASK-24: Fail ends the turn with the limit's error, and the task goes on
+    # — its chat isn't marked done.
+    Agent.subscribe(child)
     :ok = Agent.fail_task(child)
+    await_status(child, :idle)
+
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    refute Map.has_key?(Store.load_task(child), :result)
+    assert Agent.snapshot(parent).status == :running
+
+    # SUBTASK-33: the user marks the child's chat done, and that is the end.
+    assert {:ok, true} = Agent.set_done(child, true)
     await_status(parent, :idle)
 
-    assert %{
-             "status" => "failed",
-             "reason" => "budget",
-             "summary" => "Stopped after " <> _,
-             "task_id" => ^child
-           } = session_json(parent, "await_task", 0)
+    assert %{"task_id" => ^child, "commit" => nil, "summary" => "Spent it all."} =
+             session_json(parent, "await_task", 0)
 
     assert Tasks.active() == []
-    assert Agent.snapshot(child).status == :idle
-    assert %{result: %{"status" => "failed"}} = Store.load_task(child)
   end
 
-  # SUBTASK-18
+  # SUBTASK-18, SUBTASK-33
   test "time spent waiting for approval doesn't count against the budget", %{parent: parent} do
     Agent.subscribe_activity()
 
     child_turn = fn request ->
       case results(request) do
         [] -> reply([FakeLLM.tool_call("c1", "shell", %{"command" => "true"})])
-        [{"shell", _, _}] -> reply([finish_call("done", "Fine")])
+        [{"shell", _, _}] -> reply([Message.text("Fine"), done_call()])
         _ -> reply([Message.text("Done.")])
       end
     end
@@ -1209,20 +1172,158 @@ defmodule Elia.TasksTest do
     :ok = Agent.approve(child, "c1")
     await_status(parent, :idle)
 
-    assert %{"status" => "done", "reason" => nil} = session_json(parent, "await_task", 0)
+    assert %{"summary" => "Fine", "task_id" => ^child} =
+             session_json(parent, "await_task", 0)
   end
 
-  # SUBTASK-21
-  test "a blocked child reports the tree state", %{parent: parent} do
-    {start, 0} = git(["rev-parse", "HEAD"])
-    start = String.trim(start)
+  # SUBTASK-34, SUBTASK-27, SUBTASK-33
+  test "a child whose session dies keeps running, and its wait goes on", %{parent: parent} do
+    test_pid = self()
 
+    push_turns(
+      router(
+        &spawn_and_await(&1, %{"title" => "T", "brief" => "B"}),
+        fn _request ->
+          send(test_pid, {:child_blocked, self(), active_child()})
+          receive do: (:never -> :ok)
+        end
+      )
+    )
+
+    :ok = Agent.send_message(parent, "go")
+    await_status(parent, :awaiting_approval)
+    :ok = Agent.approve(parent, "s1")
+
+    assert_receive {:child_blocked, loop, child}, 20_000
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, child)
+    :ok = DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    Process.exit(loop, :kill)
+
+    # SUBTASK-34: a session that dies is not a task's end — the entry is held and
+    # the parent's wait goes on.
+    Process.sleep(200)
+    assert Tasks.active() == [%{child_id: child, parent_id: parent}]
+    refute Map.has_key?(Store.load_task(child), :result)
+    assert Agent.snapshot(parent).status == :running
+
+    # SUBTASK-33: the user settles it in the child's chat, and that ends it.
+    {:ok, _pid} = Agent.ensure_started(child)
+    assert {:ok, true} = Agent.set_done(child, true)
+    await_status(parent, :idle)
+    assert :ok = await_released(child)
+
+    assert %{
+             "summary" => "The task ended without a summary.",
+             "commit" => nil,
+             "task_id" => ^child
+           } = session_json(parent, "await_task", 0)
+  end
+
+  # SUBTASK-35, SESS-29
+  test "a running sub-task chat the user deletes stays deleted", %{parent: parent} do
+    child = spawn_blocked_child(parent, self())
+
+    assert Store.exists?(child)
+    assert [%{id: ^child}] = children_of(parent)
+
+    # SUBTASK-35: the wait is running — the parent is inside `await_task` for
+    # this child's chat, which has read the child's metadata and is waiting for
+    # its chat to be marked done.
+    Process.sleep(200)
+
+    # SESS-29, UI-65: deleting the running child stops its turn, kills its
+    # session and removes its file.
+    :ok = Agent.delete(child)
+    refute Store.exists?(child)
+    assert children_of(parent) == []
+
+    # SUBTASK-35: its entry is released, and the parent's wait answers with an
+    # error rather than waiting for a chat that no longer exists.
+    assert Tasks.active() == []
+
+    await_status(parent, :idle)
+    {content, true} = session_result(parent)
+    assert content =~ "was deleted"
+
+    # SUBTASK-35: and nothing writes the chat back.
+    refute Store.exists?(child)
+    assert children_of(parent) == []
+  end
+
+  # SUBTASK-36, SUBTASK-11
+  test "a child whose brief never went out is not a running child" do
+    test_pid = self()
+    parent = Agent.new_id()
+    child = Agent.new_id()
+    root = Path.join(System.tmp_dir!(), "elia-brief-#{System.unique_integer([:positive])}")
+
+    task = %{
+      parent_id: parent,
+      parent_call_id: "s1",
+      title: "T",
+      brief: "B",
+      started_at: DateTime.utc_now(),
+      start_commit: "abc"
+    }
+
+    # SUBTASK-36: the child's chat is saved with the metadata of a child before
+    # its brief goes out.
+    :ok = Store.save(child, [], task: task)
+    on_exit(fn -> Store.delete(child) end)
+
+    # The spawner — the process running `spawn_task` — takes the entry and dies
+    # before it sends the brief (SUBTASK-17: a stopped parent's turn kills it).
+    spawner =
+      spawn(fn ->
+        :ok = Tasks.acquire(parent, child, root, %{call_id: "s1"})
+        send(test_pid, :acquired)
+        receive do: (:never -> :ok)
+      end)
+
+    assert_receive :acquired, 20_000
+    assert Tasks.running?(child)
+
+    Process.exit(spawner, :kill)
+
+    # SUBTASK-36: its entry is released, nothing is announced for it, and its
+    # chat is left saved and unmarked for the user to open, use or delete.
+    assert :ok = await_released(child)
+    assert Tasks.active() == []
+    assert Store.load(child) == []
+    assert %{parent_id: ^parent} = Store.load_task(child)
+    refute Map.get(Store.entry(child) || %{}, :done, false)
+
+    # SUBTASK-11, SUBTASK-34: an entry whose brief did go out is a running child
+    # however its spawner goes.
+    other = Agent.new_id()
+    sent = spawn(fn -> acquire_and_send(parent, other, root <> "-sent", test_pid) end)
+    assert_receive {:sent, ^other}, 20_000
+
+    Process.exit(sent, :kill)
+    Process.sleep(100)
+
+    assert Tasks.running?(other)
+    assert :ok = Tasks.release(other)
+    refute Tasks.running?(other)
+  end
+
+  defp acquire_and_send(parent, child, root, test_pid) do
+    :ok = Tasks.acquire(parent, child, root, %{call_id: "s2"})
+    :ok = Tasks.brief_sent(child)
+    send(test_pid, {:sent, child})
+    receive do: (:never -> :ok)
+  end
+
+  # SUBTASK-9
+  test "the result's files are the child's changes, committed and uncommitted", %{
+    parent: parent
+  } do
     parent_turn = fn request ->
       cond do
         counts(request, "spawn_task") == 0 ->
           reply([spawn_call(%{"title" => "T", "brief" => "B"})])
 
-        results(request, "await_task") == [] ->
+        counts(request, "await_task") == 0 ->
           reply([FakeLLM.tool_call("a1", "await_task", %{"task_id" => task_id(request)})])
 
         true ->
@@ -1231,12 +1332,12 @@ defmodule Elia.TasksTest do
     end
 
     child_turn = fn request ->
-      if after_tools?(request) do
+      if results(request, "mark_done") != [] do
         reply([Message.text("Done.")])
       else
         commit_file("child.txt")
         File.write!(Path.join(Elia.Workspace.root(), "dirty.txt"), "wip")
-        reply([finish_call("blocked", "Stuck", ["Which one?"])])
+        reply([Message.text("Stuck on the name."), done_call()])
       end
     end
 
@@ -1247,23 +1348,31 @@ defmodule Elia.TasksTest do
     :ok = Agent.approve(parent, "s1")
     await_status(parent, :idle)
 
-    assert %{
-             "status" => "blocked",
-             "reason" => nil,
-             "tree_clean" => false,
-             "start_commit" => ^start,
-             "files" => files
-           } = session_json(parent, "await_task", 0)
+    {head, 0} = git(["rev-parse", "HEAD"])
 
+    # SUBTASK-9: a child that says nothing about status still has one to report —
+    # the end of its chat. Its last words are the summary, and the harness fills
+    # in the commit and the files.
+    assert %{
+             "task_id" => _child,
+             "summary" => "Stuck on the name.",
+             "commit" => commit,
+             "files" => files
+           } = result = session_json(parent, "await_task", 0)
+
+    assert commit == String.trim(head)
     assert files == ["child.txt", "dirty.txt"]
+    assert Map.keys(result) |> Enum.sort() == ["commit", "files", "summary", "task_id"]
   end
 
-  # SUBTASK-11
+  # SUBTASK-4, SUBTASK-11
   test "the registry holds every running child, one writer per workspace" do
     assert Tasks.active() == []
 
-    assert :ok = Tasks.acquire("p1", "c1", "/one")
-    assert :ok = Tasks.acquire("p2", "c2", "/two")
+    root = Path.join(System.tmp_dir!(), "elia-registry-#{System.unique_integer([:positive])}")
+
+    assert :ok = Tasks.acquire("p1", "c1", root <> "/one")
+    assert :ok = Tasks.acquire("p2", "c2", root <> "/two")
 
     assert Enum.sort_by(Tasks.active(), & &1.child_id) == [
              %{child_id: "c1", parent_id: "p1"},
@@ -1272,83 +1381,60 @@ defmodule Elia.TasksTest do
 
     assert Tasks.running?("c1")
     refute Tasks.running?("c3")
-    assert Tasks.writing_in("/one") == "c1"
-    assert Tasks.writing_in("/free") == nil
+    assert Tasks.writing_in(root <> "/one") == "c1"
+    assert Tasks.writing_in(root <> "/free") == nil
 
     # SUBTASK-4, SUBTASK-11: one writer per workspace.
     assert {:error, "Not started: sub-task c1 is already writing in that workspace."} =
-             Tasks.acquire("p3", "c3", "/one")
+             Tasks.acquire("p3", "c3", root <> "/one")
 
-    # Releasing one leaves the others alone.
+    # SUBTASK-11: an entry says nothing about a session, so it is held however
+    # the child's turns go (SUBTASK-16, SUBTASK-34) and only released when its
+    # chat is marked done (SUBTASK-13) or deleted (SUBTASK-35).
+    assert Tasks.active() == [
+             %{child_id: "c1", parent_id: "p1"},
+             %{child_id: "c2", parent_id: "p2"}
+           ]
+
     assert :ok = Tasks.release("c1")
     refute Tasks.running?("c1")
     assert Tasks.active() == [%{child_id: "c2", parent_id: "p2"}]
 
-    # SUBTASK-16: a stop is recorded on the child whose turn it stopped, and
-    # consumed once — one stopped turn doesn't end the task, a later turn can.
-    assert :ok = Tasks.note_stop("c1")
-    assert :ok = Tasks.note_stop("c2")
-    assert Tasks.take_stop("c2")
-    refute Tasks.take_stop("c2")
-    refute Tasks.take_stop("c1")
-
     # SUBTASK-17: stopping a parent stops the turns of the children it has
-    # running. Nothing is marked for them here: each child's own session records
-    # its own stop when it stops (SUBTASK-16).
-    assert :ok = Tasks.acquire("p2", "c3", "/three")
-    assert :ok = Tasks.note_stop("p2")
-    refute Tasks.take_stop("c2")
-    refute Tasks.take_stop("c3")
+    # running, and nothing is recorded for a child's own stop (SUBTASK-16): it
+    # keeps its entry.
+    assert :ok = Tasks.stop_children("p2")
+    assert Tasks.running?("c2")
 
     assert :ok = Tasks.release("c2")
-    assert :ok = Tasks.release("c3")
     assert Tasks.active() == []
   end
 
-  # SUBTASK-3
-  test "finish_task records a result only for a running child" do
-    assert {:error, "This chat is not a running sub-task" <> _} =
-             Tasks.finish("c1", %{"status" => "done", "summary" => "x"})
-
-    assert :ok = Tasks.acquire("p1", "c1", "/one")
-
-    assert {:error, "status must be" <> _} =
-             Tasks.finish("c1", %{"status" => "great", "summary" => "x"})
-
-    assert {:error, "summary must not be blank"} =
-             Tasks.finish("c1", %{"status" => "done", "summary" => " "})
-
-    assert {:error, "questions must be" <> _} =
-             Tasks.finish("c1", %{"status" => "done", "summary" => "x", "questions" => [1]})
-
-    # Calling it again replaces the earlier record.
-    assert :ok = Tasks.finish("c1", %{"status" => "failed", "summary" => "x"})
-    assert :ok = Tasks.finish("c1", %{"status" => "done", "summary" => "y"})
-    assert %{status: "done", summary: "y"} = Tasks.finish_record("c1")
-
-    assert :ok = Tasks.release("c1")
-    assert Tasks.active() == []
-  end
-
-  # SUBTASK-26, SUBTASK-27
+  # SUBTASK-26, SUBTASK-27, SUBTASK-34
   test "list_tasks and await_task only see this chat's own sub-tasks", %{parent: parent} do
     other = new_session()
     task = Agent.new_id()
 
+    # A child of an earlier version (Stored data): its metadata still carries a
+    # `status`, and its chat is marked done — so its task ended.
     :ok =
       Store.save(task, [Message.user("x")],
+        done: true,
         task: %{
           parent_id: parent,
           title: "T",
           brief: "B",
           started_at: DateTime.utc_now(),
-          status: "done",
+          status: "blocked",
           start_commit: "abc",
-          result: %{"status" => "done", "summary" => "S"}
+          result: %{"task_id" => task, "summary" => "S", "commit" => nil, "files" => []}
         }
       )
 
     on_exit(fn -> stop_session(task) end)
+
+    # SUBTASK-34: the `status` an older version saved is not read.
+    refute Map.has_key?(Store.load_task(task), :status)
 
     ctx = %{session_id: other, turn_id: nil}
 
@@ -1358,55 +1444,80 @@ defmodule Elia.TasksTest do
     assert {:error, message} = Tasks.await_task(%{"task_id" => task}, ctx)
     assert message =~ "is not a sub-task"
 
-    # SUBTASK-27: a finished task's result comes from its saved metadata.
+    # SUBTASK-27: a task whose chat is marked done answers from its metadata.
     assert {:ok, json} =
              Tasks.await_task(%{"task_id" => task}, %{session_id: parent, turn_id: nil})
 
-    assert %{"status" => "done", "summary" => "S"} = Jason.decode!(json)
+    assert %{"task_id" => ^task, "summary" => "S"} = Jason.decode!(json)
 
-    # SUBTASK-26, UI-59: and the single-task form reports it with the result,
-    # with the status its own chat has — nothing marks it done, so `idle`.
+    # SUBTASK-26, DONE-2: and the single-task form reports it with the result,
+    # with the status its own chat has.
     assert {:ok, json} = Tasks.list_tasks(%{"task_id" => task}, %{session_id: parent})
 
-    assert %{"task_id" => ^task, "status" => "idle", "result" => %{"summary" => "S"}} =
+    assert %{"task_id" => ^task, "status" => "done", "result" => %{"summary" => "S"}} =
              Jason.decode!(json)
+
+    # SUBTASK-34: a child whose chat isn't marked done is a running child, and
+    # its chat's status is what is reported.
+    waiting = Agent.new_id()
+
+    :ok =
+      Store.save(waiting, [Message.user("y")],
+        task: %{
+          parent_id: parent,
+          title: "W",
+          brief: "B",
+          started_at: DateTime.utc_now(),
+          status: "failed",
+          start_commit: "abc"
+        }
+      )
+
+    on_exit(fn -> stop_session(waiting) end)
+
+    assert {:ok, json} = Tasks.list_tasks(%{"task_id" => waiting}, %{session_id: parent})
+    assert %{"task_id" => ^waiting, "status" => "idle"} = Jason.decode!(json)
   end
 
-  # RESUME-7
-  test "rewatch/3 takes a running child's entry back, without sending its brief", %{
-    parent: parent
-  } do
+  # SUBTASK-13, SUBTASK-33, DONE-9
+  test "the end is saved once, however often the chat is marked done", %{parent: parent} do
     child = Agent.new_id()
     {head, 0} = git(["rev-parse", "HEAD"])
 
     :ok =
-      Store.save(child, [Message.user("do it")],
+      Store.save(child, [%Message{role: :assistant, content: [Message.text("It is done.")]}],
         task: %{
           parent_id: parent,
           title: "T",
           brief: "B",
-          status: "running",
+          started_at: DateTime.utc_now(),
           start_commit: String.trim(head)
         }
       )
 
-    {:ok, pid} = Agent.ensure_started(child)
     on_exit(fn -> stop_session(child) end)
 
-    # The restart took its watcher, so the child holds no entry (SUBTASK-11).
-    refute Tasks.running?(child)
+    {:ok, _pid} = Agent.ensure_started(child)
 
-    assert :ok = Tasks.rewatch(child, pid, Elia.Workspace.root())
-    assert Tasks.running?(child)
-    # Its brief is not sent again: the history the child holds already has it.
-    assert [%Message{role: :user}] = Store.load(child)
+    assert {:ok, true} = Agent.set_done(child, true)
+    assert %{result: first} = Store.load_task(child)
+    assert %{"summary" => "It is done."} = first
 
-    # Only a task that is still running is something to watch.
-    assert :ok = Tasks.rewatch(Agent.new_id(), pid, Elia.Workspace.root())
+    # DONE-9: reopening the chat doesn't un-end the task (SUBTASK-33).
+    assert {:ok, false} = Agent.set_done(child, false)
+    assert %{result: ^first} = Store.load_task(child)
 
-    # The test ends the task itself, so its entry doesn't outlive it and hold the
-    # workspace against the next test.
-    :ok = Tasks.release(child)
-    refute Tasks.running?(child)
+    # SUBTASK-13: marked done again, it keeps the result it has — even though the
+    # chat has changed since.
+    File.write!(Path.join(Elia.Workspace.root(), "note.txt"), "x\n")
+
+    :ok = Agent.send_message(child, "One more thing.")
+    Agent.subscribe(child)
+    await_status(child, :idle)
+
+    assert {:ok, true} = Agent.set_done(child, true)
+    assert %{result: ^first} = Store.load_task(child)
+
+    File.rm!(Path.join(Elia.Workspace.root(), "note.txt"))
   end
 end

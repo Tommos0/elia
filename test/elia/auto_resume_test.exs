@@ -115,11 +115,11 @@ defmodule Elia.AutoResumeTest do
 
   # Another running child holds the workspace root. A child of an earlier test
   # may have released it a moment ago, so the entry is taken when it is free.
-  defp occupy_root(parent, other, tries \\ 100) do
-    case Tasks.acquire(parent, other, Elia.Workspace.root(), %{}) do
+  defp occupy_root(parent, other, root, tries \\ 100) do
+    case Tasks.acquire(parent, other, root, %{}) do
       {:error, _message} when tries > 0 ->
         Process.sleep(20)
-        occupy_root(parent, other, tries - 1)
+        occupy_root(parent, other, root, tries - 1)
 
       result ->
         result
@@ -355,8 +355,8 @@ defmodule Elia.AutoResumeTest do
     assert Store.load_turn(id) == nil
   end
 
-  # RESUME-7
-  test "a resumed sub-task chat gets its watcher back and its result reaches its parent", %{
+  # RESUME-7, SUBTASK-11, SUBTASK-33
+  test "a resumed sub-task chat takes its entry again, and its result reaches its parent", %{
     start_commit: start_commit
   } do
     resume_on()
@@ -375,16 +375,13 @@ defmodule Elia.AutoResumeTest do
 
     :ok = saved_turn(child, [Message.user("do it")], task: task)
 
-    # The child's resumed turn: a command the user approves, then its result.
+    # The child's resumed turn: a command the user approves, then its last act,
+    # marking its chat done (SUBTASK-33).
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
 
     FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("c2", "finish_task", %{"status" => "done", "summary" => "did it"})
-      ])
+      FakeLLM.assistant([Message.text("did it"), FakeLLM.tool_call("d1", "mark_done", %{})])
     )
-
-    FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
 
     Agent.subscribe(child)
     {:ok, _pid} = Agent.ensure_started(child)
@@ -400,21 +397,27 @@ defmodule Elia.AutoResumeTest do
     refute Map.has_key?(listed(child), :task_status)
     assert EliaWeb.ChatStatus.for_chat(listed(child), %{running: [child]}) == "working"
 
-    # The entry that was put back is the one `finish_task` records through
-    # (SUBTASK-3), and the watcher ends the task when the turn does (SUBTASK-8).
+    # SUBTASK-33, SUBTASK-13: marking the chat done ends the task, and the result
+    # is saved with it by the child's own session (SESS-18).
     :ok = Agent.approve(child, "c1")
 
-    assert %{"status" => "done", "summary" => "did it"} = await_task_result(child)
+    assert %{"task_id" => ^child, "summary" => "did it"} = await_task_result(child)
+    refute Tasks.running?(child)
 
-    # So the parent's wait gets the result rather than SUBTASK-20's "interrupted
-    # by a restart" (SUBTASK-27).
+    # SUBTASK-27: so the parent's wait gets the result at once, rather than
+    # being left waiting for a chat that ended long ago.
     assert {:ok, json} = Tasks.await_task(%{"task_id" => child}, %{session_id: parent})
-    assert %{"task_id" => ^child, "status" => "done", "summary" => "did it"} = Jason.decode!(json)
-    assert %{result: %{"status" => "done"}} = Store.load_task(child)
+
+    assert %{"task_id" => ^child, "summary" => "did it", "files" => _files} =
+             Jason.decode!(json)
+
+    assert %{result: %{"summary" => "did it"}} = Store.load_task(child)
   end
 
-  # RESUME-7
-  test "a child whose workspace another child is writing in is not resumed" do
+  # RESUME-7, SUBTASK-4, SUBTASK-11
+  test "a child whose workspace another child is writing in is not resumed", %{
+    start_commit: start_commit
+  } do
     resume_on()
 
     parent = Agent.new_id()
@@ -422,11 +425,12 @@ defmodule Elia.AutoResumeTest do
     child = Agent.new_id()
     on_exit(fn -> stop_session(child) end)
 
-    task = %{parent_id: parent, parent_call_id: "call-1", title: "T"}
+    task = %{parent_id: parent, parent_call_id: "call-1", title: "T", start_commit: start_commit}
     :ok = saved_turn(child, [Message.user("do it")], task: task)
 
     # SUBTASK-4, SUBTASK-11: the tree has one writer, and it is another child.
-    :ok = occupy_root(parent, other)
+    root = Elia.Deploy.workspace(Elia.Projects.harness(), child)
+    :ok = occupy_root(parent, other, root)
 
     Agent.subscribe(child)
     {:ok, _pid} = Agent.ensure_started(child)
@@ -437,5 +441,7 @@ defmodule Elia.AutoResumeTest do
     assert %{status: :idle} = Agent.snapshot(child)
     assert Store.load_turn(child) == nil
     refute Tasks.running?(child)
+
+    :ok = Tasks.release(other)
   end
 end

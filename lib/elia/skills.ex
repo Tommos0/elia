@@ -20,6 +20,7 @@ defmodule Elia.Skills do
   @project_file "AGENTS.md"
   @project_max_bytes 32_000
   @self_modification "self-modification"
+  @tasks_skill "tasks"
 
   @base_prompt """
   You are Elia, an assistant running inside a local harness. You can use the \
@@ -65,6 +66,19 @@ defmodule Elia.Skills do
 
   def resolve(fun, _project) when is_function(fun, 0), do: fun.()
   def resolve(skills, _project) when is_list(skills), do: skills
+
+  @doc """
+  The skills a sub-task chat's session runs with (SUBTASK-1, LOOP-17): the
+  skills of `project` minus the `tasks` skill, so a child has no `spawn_task`,
+  `list_tasks` or `await_task` and can't start a sub-task of its own. `nil`
+  means Elia's own project. Everything else is an ordinary chat's registry
+  (PROJ-21), `mark_done` (DONE-6) among it.
+  """
+  @spec for_child(Elia.Projects.t() | nil) :: [Elia.Skill.t()]
+  def for_child(project \\ nil) do
+    {skills, _errors} = for_project(project)
+    Enum.reject(skills, &(&1.name == @tasks_skill))
+  end
 
   @doc """
   The skills available in `project`, with the load errors (PROJ-17 - PROJ-21):

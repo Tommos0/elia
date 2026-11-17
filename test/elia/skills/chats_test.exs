@@ -53,7 +53,7 @@ defmodule Elia.Skills.ChatsTest do
 
     # SUBTASK-1: a sub-task's skills are the registry's without `tasks`, so it
     # has the three too.
-    assert "chats" in Enum.map(Elia.Skills.Tasks.child_skills(), & &1.name)
+    assert "chats" in Enum.map(Elia.Skills.for_child(), & &1.name)
   end
 
   # HIST-2: newest first, the fields a decision needs, and the filters.
