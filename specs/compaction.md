@@ -42,6 +42,13 @@ is worth its weight. So a rung takes its largest items first and stops as soon a
 the target is met (COMPACT-37), and an item below the size floor is left for last
 (COMPACT-36).
 
+The summary is the one part of a pass that costs a model call, and one that can
+outlast the five seconds a caller waits for an answer to a control call. So a pass
+elides in the session's callback — a sort and an estimate per item — and folds in a
+worker of the session's, whose result the session applies when it lands; a turn
+whose start began a fold runs its loop from that result, and a stop ends the
+worker.
+
 ## Requirements
 
 ### The request view
@@ -215,6 +222,38 @@ where it once took every one of them.
   never call a provider. If summarization fails, the turn proceeds with the
   pruned view alone (no error).
 
+### A summary off the session's path
+
+The ladder is cheap — a sort and an estimate per item — so it stays in the
+session's callback, where the chat's state is its own. The fold is a model call,
+and one that can outlast the five seconds a synchronous caller waits for, so it
+runs in a worker of the session's and the session applies its result when it
+lands. A fold that fails, or a worker that dies, leaves the pruned view
+(COMPACT-20) and the turn that was waiting for it goes on.
+
+- **COMPACT-40** A pass folds its summary in a worker of the session's, never
+  inside a session callback: the session applies the ladder's elision and answers
+  the call it was in, and the summary is folded afterwards, so the chat's calls —
+  its snapshot, its status, a stop, a pin and a ledger entry — are answered while
+  the summary is still running.
+- **COMPACT-41** A summary that lands is applied as a summary alone — its text
+  and the boundary it covered — onto the chat's compaction state as it stands
+  when it lands, so a pin, a ledger entry, a deeper elision or a newer summary
+  written while it ran is kept.
+- **COMPACT-42** A turn whose start began a fold (COMPACT-5) starts its loop from
+  that fold's result: the chat shows the turn as running and answers its control
+  calls while it waits, and its first request carries the summary the fold
+  produced (COMPACT-19).
+- **COMPACT-43** A stop ends a summary in flight: the worker is ended, its result
+  is applied nowhere, and no turn starts from it.
+- **COMPACT-44** A summary in flight belongs to the session that started it
+  (SESS-45): the session's death ends the worker.
+- **COMPACT-45** A manual pass (COMPACT-10) while a summary is already in flight
+  is refused as busy, as it is while a turn runs.
+- **COMPACT-46** A turn-start pass (COMPACT-5) that finds a summary already in
+  flight elides the cold prefix as it would (COMPACT-14..16) and folds no summary
+  of its own.
+
 ### Pinning and the ledger
 
 - **COMPACT-21** A message or block can be **pinned** (through
@@ -299,7 +338,10 @@ that does not know a field ignores it (`from_map/1` reads the fields it knows),
 so no migration is needed. Keeping the ledger current (COMPACT-34) and the
 founding entries its trim keeps (COMPACT-35) add no stored field either: the
 ledger is still a list of strings and the guidance is prompt text, so there is
-nothing to migrate.
+nothing to migrate. Folding the summary in a worker (COMPACT-40) changes when a
+summary is written, not what a chat holds: the state it is applied to is the same
+state, with the same fields, that an inline fold produced, so an older file loads
+as it did and a file written now is what an older version wrote.
 
 ## Implementation
 
@@ -368,6 +410,19 @@ own request (`:llm`), and any failure leaves the pruned view and no error
 (COMPACT-20). It is only ever reached from the turn start: `trim/3` shares
 `walk/5` with `compact/3` but has no path to `fold/4` (COMPACT-29).
 
+A pass is split so that only the fold leaves the session's callback:
+`Compaction.elide/3` runs the ladder and says whether a fold is needed, and
+`compact/3` is that plus the fold. The session elides where it stands and folds
+through `Compaction.summarize/3` in a task under `Elia.Agent.TaskSupervisor` —
+the supervisor the loop's task is started under — with a watcher that ends the
+task when the session does (COMPACT-44, the shape `Elia.Agent.Loop.own/1` uses
+for SESS-45). The session keeps that task in its own state: a result that lands
+is applied as a summary alone (COMPACT-41), a stop or the session's death ends
+the worker (COMPACT-43, COMPACT-44), and a turn that began a fold starts its
+loop from the result (COMPACT-42). One fold is in flight per chat: a pass that
+finds one running applies its elision and folds nothing of its own
+(COMPACT-45, COMPACT-46).
+
 ## Tests
 
 - `test/elia/llm/compaction_test.exs` (the ladder, the size-bounded working set,
@@ -385,10 +440,14 @@ own request (`:llm`), and any failure leaves the pruned view and no error
   the item list existed, and the mid-turn pass end to end: a later request
   smaller than an earlier one, the most recent step of the turn being run sent
   in full, a chat whose whole history is one turn compacted while its turn runs,
-  the `{:compaction, state}` broadcast before the turn ends — COMPACT-1,
-  COMPACT-2, COMPACT-5 to COMPACT-7, COMPACT-9, COMPACT-10, COMPACT-17 to
-  COMPACT-24, COMPACT-26, COMPACT-28, COMPACT-29, COMPACT-31 to COMPACT-33,
-  COMPACT-38).
+  the `{:compaction, state}` broadcast before the turn ends, and the summary
+  folded in a worker of the session's: a held summarizer leaves the chat's calls
+  answered and its state visible, a turn starts from the summary it waited for, a
+  stop ends the worker and its late result starts nothing, the session's death
+  ends it, a manual pass while one is in flight is busy and a turn-start pass
+  folds nothing of its own — COMPACT-1, COMPACT-2, COMPACT-5 to COMPACT-7,
+  COMPACT-9, COMPACT-10, COMPACT-17 to COMPACT-24, COMPACT-26, COMPACT-28,
+  COMPACT-29, COMPACT-31 to COMPACT-33, COMPACT-38, COMPACT-40 to COMPACT-46).
 - `test/elia_web/live/compaction_test.exs` (the annotations, the notice, the
   estimate, the pin, the aged-out marker, "compact now" — COMPACT-1, COMPACT-4,
   COMPACT-9 to COMPACT-11, COMPACT-14 to COMPACT-16, COMPACT-19, COMPACT-24 to

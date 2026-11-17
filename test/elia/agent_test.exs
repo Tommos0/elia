@@ -19,6 +19,19 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:status, ^status}}, 5000
   end
 
+  # COMPACT-40, COMPACT-41: the state a pass folded its summary into. The
+  # elision is broadcast from the callback the pass ran in, and the summary
+  # later, from the worker that folded it, so this waits for the second
+  # broadcast rather than the first.
+  defp await_summary(id) do
+    receive do
+      {:agent, ^id, {:compaction, %{summary: summary} = compaction}} when is_binary(summary) ->
+        compaction
+    after
+      5000 -> flunk("no summary was folded")
+    end
+  end
+
   # LOOP-2, SESS-5: the loop's text deltas reach the session as they stream, and
   # what it produces lands in the history.
   test "plain reply streams and lands in history", %{id: id} do
@@ -2000,12 +2013,17 @@ defmodule Elia.AgentTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("ok")]))
     :ok = Agent.send_message(id, "carry on")
 
-    assert_receive {:agent, ^id, {:compaction, compaction}}, 5000
+    # COMPACT-40: the elision is applied and broadcast first, in the callback the
+    # message was sent to; the summary lands later, from the worker that folded
+    # it, and the turn starts from it.
+    assert_receive {:agent, ^id, {:compaction, elided}}, 5000
+    assert elided.level == 3
+
+    compaction = await_summary(id)
+    assert compaction.summary == "Six turns of reading files."
+
     assert_receive {:agent, ^id, {:usage, usage}}, 5000
     await_status(id, :idle)
-
-    assert compaction.level == 3
-    assert compaction.summary == "Six turns of reading files."
 
     # COMPACT-2: the model got the smaller view, the session kept everything.
     [request] = FakeLLM.requests()
@@ -2453,9 +2471,13 @@ defmodule Elia.AgentTest do
     [request] = FakeLLM.requests()
     assert length(request.messages) == length(big_history(4)) + 1
 
+    # COMPACT-40, COMPACT-41: the manual pass elides and answers at once; its
+    # summary lands later, from the worker that folded it.
     :ok = Agent.compact(id)
-    assert_receive {:agent, ^id, {:compaction, compaction}}, 5000
-    assert compaction.level == 3
+    assert_receive {:agent, ^id, {:compaction, elided}}, 5000
+    assert elided.level == 3
+
+    compaction = await_summary(id)
     assert compaction.summary == "The first turns, folded."
     assert %{level: 3} = Elia.Store.load_compaction(id)
   end
@@ -2713,6 +2735,175 @@ defmodule Elia.AgentTest do
     ledger = Enum.find(request.messages, &(&1.meta[:compaction] == :ledger))
     assert Message.text_content(ledger) =~ "COMPACT-22: the ledger is in"
     assert Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
+  end
+
+  ## A summary off the session's path (COMPACT-40..COMPACT-46)
+
+  # A summarizer that holds until the test releases it, so a fold is provably
+  # still running while the chat is driven. It names the process holding it,
+  # which is what the test releases.
+  defp held_summarizer(test_pid) do
+    fn _input ->
+      send(test_pid, {:summarizing, self()})
+
+      receive do
+        :go -> {:ok, "held summary"}
+      end
+    end
+  end
+
+  # COMPACT-40, COMPACT-41, COMPACT-45
+  test "a held summary does not hold the chat's calls" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: held_summarizer(self())]
+    )
+
+    assert :ok = Agent.compact(id)
+    assert_receive {:summarizing, worker}, 5000
+
+    # COMPACT-40: the elision is applied and the chat answers its own calls —
+    # its snapshot, a pin, a ledger entry — while the summary is still held.
+    assert %{status: :idle, compaction: %{level: 3}} = Agent.snapshot(id)
+    assert :ok = Agent.set_pin(id, 1)
+
+    assert {:ok, ["a fact written while the summary ran"]} =
+             Agent.add_ledger(id, ["a fact written while the summary ran"])
+
+    # COMPACT-45: one fold at a time, so a second manual pass is busy.
+    assert {:error, :busy} = Agent.compact(id)
+
+    send(worker, :go)
+    compaction = await_summary(id)
+
+    # COMPACT-41: what landed is the summary alone, onto the state as it stands.
+    assert compaction.summary == "held summary"
+    assert compaction.ledger == ["a fact written while the summary ran"]
+    assert {1, nil} in compaction.pins
+
+    assert %{summary: "held summary", ledger: ["a fact written while the summary ran"]} =
+             Elia.Store.load_compaction(id)
+  end
+
+  # COMPACT-42
+  test "a turn whose start began a fold starts from the summary it waited for" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: held_summarizer(self())]
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("carried on")]))
+
+    assert :ok = Agent.send_message(id, "carry on")
+    assert_receive {:summarizing, worker}, 5000
+
+    # COMPACT-42: the turn is the chat's already — its record and its message are
+    # in the history and it shows as running, so its calls are answered and a
+    # second message is refused — while the summary is held.
+    assert %{status: :running} = Agent.snapshot(id)
+    assert {:error, :busy} = Agent.send_message(id, "again")
+
+    send(worker, :go)
+    await_status(id, :idle)
+
+    # COMPACT-42: the loop starts from the fold's result, so the turn's request
+    # carries the summary the fold produced (COMPACT-19).
+    [request] = FakeLLM.requests()
+    assert [%Message{meta: %{compaction: :summary}} = head | _] = request.messages
+    assert Message.text_content(head) =~ "held summary"
+
+    assert Message.text_content(List.last(Agent.snapshot(id).messages)) == "carried on"
+  end
+
+  # COMPACT-43
+  test "a stop ends a summary in flight, and its late result starts no turn" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: held_summarizer(self())]
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("carried on")]))
+    :ok = Agent.send_message(id, "carry on")
+    assert_receive {:summarizing, worker}, 5000
+
+    ref = Process.monitor(worker)
+    assert :ok = Agent.stop(id)
+
+    # COMPACT-43: the worker is ended, so the summary it held is never produced.
+    assert_receive {:DOWN, ^ref, :process, ^worker, _reason}, 5000
+
+    # The turn is over, the stop is what the transcript holds, and no request was
+    # ever made: nothing started from the result that never landed.
+    snapshot = Agent.snapshot(id)
+    assert snapshot.status == :idle
+    assert snapshot.compaction.summary == nil
+    assert FakeLLM.requests() == []
+    assert Message.text_content(List.last(snapshot.messages)) =~ "Stopped by the user."
+  end
+
+  # COMPACT-44
+  test "a session's death ends the summary in flight" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: held_summarizer(self())]
+    )
+
+    assert :ok = Agent.compact(id)
+    assert_receive {:summarizing, worker}, 5000
+
+    ref = Process.monitor(worker)
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+
+    # COMPACT-44: the fold belongs to the session that started it (SESS-45).
+    assert_receive {:DOWN, ^ref, :process, ^worker, _reason}, 5000
+  end
+
+  # COMPACT-46
+  test "a turn that starts while a summary is in flight folds nothing of its own" do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    :ok = Elia.Store.save(id, big_history(4))
+
+    start_compaction_session(id,
+      compaction: %{budget: 1, working_set: 2},
+      loop_opts: [llm: %{provider: FakeLLM}, summarizer: held_summarizer(self())]
+    )
+
+    # The manual pass's summary is held, so it is in flight when the turn starts.
+    assert :ok = Agent.compact(id)
+    assert_receive {:summarizing, worker}, 5000
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("carried on")]))
+    :ok = Agent.send_message(id, "carry on")
+    await_status(id, :idle)
+
+    # COMPACT-46: the turn-start pass elided as it would and folded nothing of
+    # its own, so the turn ran on the elision alone.
+    [request] = FakeLLM.requests()
+    assert Enum.any?(request.messages, &(&1.meta[:compaction] == :marker))
+    refute Enum.any?(request.messages, &(&1.meta[:compaction] == :summary))
+    refute_receive {:summarizing, _another}, 100
+
+    # The fold that was in flight is still the one that lands (COMPACT-41).
+    send(worker, :go)
+    assert await_summary(id).summary == "held summary"
   end
 
   # SESS-29

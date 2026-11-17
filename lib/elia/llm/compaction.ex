@@ -475,6 +475,49 @@ defmodule Elia.LLM.Compaction do
     state = from_map(state)
     opts = Map.new(opts)
     options = options(Map.merge(state.options, opts))
+    {state, fold?} = ladder(messages, state, options, opts)
+
+    if fold?, do: fold(messages, state, opts, options), else: state
+  end
+
+  @doc """
+  The elision half of a pass (COMPACT-40): the ladder of `compact/3` — the
+  elision of the cold prefix, and whether a summary is needed (COMPACT-17) —
+  without the fold, as `{state, fold?}`.
+
+  It is what a session runs in its own callback, where the work is a sort and an
+  estimate per item; the fold, a model call, is `summarize/3` in a worker of the
+  session's.
+  """
+  @spec elide([Message.t()], t() | map(), map() | keyword()) :: {t(), boolean()}
+  def elide(messages, state \\ %__MODULE__{}, opts \\ %{}) do
+    state = from_map(state)
+    opts = Map.new(opts)
+    options = options(Map.merge(state.options, opts))
+    ladder(messages, state, options, opts)
+  end
+
+  @doc """
+  The fold of a pass (COMPACT-40): the summary for a state whose ladder has
+  already run (COMPACT-17), as `{:folded, text, boundary}` — the summary and the
+  index it covered — or `:none` when there was nothing to fold or the summarizer
+  failed (COMPACT-20).
+  """
+  @spec summarize([Message.t()], t() | map(), map() | keyword()) ::
+          {:folded, binary(), non_neg_integer()} | :none
+  def summarize(messages, state \\ %__MODULE__{}, opts \\ %{}) do
+    state = from_map(state)
+    opts = Map.new(opts)
+    options = options(Map.merge(state.options, opts))
+    folded = fold(messages, state, opts, options)
+
+    if folded.folded > state.folded, do: {:folded, folded.summary, folded.folded}, else: :none
+  end
+
+  # The ladder of a pass: the elision (COMPACT-10, COMPACT-12, COMPACT-28,
+  # COMPACT-31) and whether it reached the target, which is what decides the
+  # fold (COMPACT-17).
+  defp ladder(messages, state, options, opts) do
     target = Map.get(opts, :target)
     overhead = Map.get(opts, :overhead, 0)
 
@@ -494,11 +537,7 @@ defmodule Elia.LLM.Compaction do
 
     {state, reached?} = walk(messages, state, options, target, overhead)
 
-    if not reached? or is_nil(target) do
-      fold(messages, state, opts, options)
-    else
-      state
-    end
+    {state, not reached? or is_nil(target)}
   end
 
   @doc """

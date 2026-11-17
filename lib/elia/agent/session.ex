@@ -101,7 +101,14 @@ defmodule Elia.Agent.Session do
     # save, or while a save that failed waits to be tried again (SESS-46); nil
     # when everything is saved. Read with `Map.get/2`: a session
     # that outlived a hot reload has no such key.
-    save_timer: nil
+    save_timer: nil,
+    # COMPACT-42: the turn id of a turn whose start began a fold, waiting for
+    # that fold's result before its loop runs; nil when no turn is waiting. Read
+    # with `Map.get/2`, as `save_timer` is.
+    pending_turn: nil,
+    # COMPACT-40: `%{ref: ref, pid: pid, opts: opts}` while a summary is being
+    # folded in a worker of this session's; nil otherwise. Read with `Map.get/2`.
+    fold: nil
   ]
 
   def start_link(opts) do
@@ -318,14 +325,20 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  # COMPACT-10: compact an idle chat on demand, ignoring the threshold and the
-  # target (and without needing a window, which only gates COMPACT-7).
+  # COMPACT-10, COMPACT-45: compact an idle chat on demand, ignoring the threshold
+  # and the target (and without needing a window, which only gates COMPACT-7). A
+  # chat that is mid-turn, or whose summary is still being folded, is busy.
   def handle_call(:compact, _from, %{status: status} = state) when status != :idle do
     {:reply, {:error, :busy}, state}
   end
 
+  def handle_call(:compact, _from, %{fold: fold} = state) when fold != nil do
+    {:reply, {:error, :busy}, state}
+  end
+
   def handle_call(:compact, _from, state) do
-    {:reply, :ok, compact(state, target: nil, overhead: overhead(state))}
+    {state, _fold?} = compact(state, target: nil, overhead: overhead(state))
+    {:reply, :ok, state}
   end
 
   # COMPACT-9: this chat's own budget, fraction, target, working set, user cap
@@ -442,19 +455,21 @@ defmodule Elia.Agent.Session do
     {:reply, {:ok, on?}, state}
   end
 
-  def handle_call(:stop, _from, %{task: nil} = state), do: {:reply, :ok, state}
+  def handle_call(:stop, _from, %{task: nil} = state) do
+    # COMPACT-43: with no loop running, what a stop ends is a summary in flight
+    # and the turn that was waiting on it.
+    {:reply, :ok, end_pending_turn(stop_children(cancel_fold(state)))}
+  end
 
   def handle_call(:stop, _from, state) do
-    # SESS-22, SUBTASK-17: stopping this chat's turn stops the turn of every
-    # child of it whose chat isn't marked done, read from the saved chats
-    # (STORE-18). A stop ends a turn and nothing more, so nothing is recorded
-    # for it: each child goes on as a sub-task (SUBTASK-16).
-    stop_children(state.id)
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])
 
     state =
       state
+      |> stop_children()
+      |> cancel_fold()
+      |> Map.put(:pending_turn, nil)
       |> close_dangling_tool_calls("Cancelled by the user.")
       |> append(stop_notice(:stopped, "Stopped by the user."))
       |> finish_turn()
@@ -593,6 +608,20 @@ defmodule Elia.Agent.Session do
     state = set_status(%{state | pause: message}, :paused)
     broadcast(state, {:paused, message})
     {:noreply, state}
+  end
+
+  # COMPACT-40, COMPACT-41: the summary the worker folded has landed. It is
+  # applied as a summary alone, and the turn that was waiting on it — if there
+  # was one — starts from it (COMPACT-42).
+  def handle_info({ref, result}, %{fold: %{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, apply_fold(state, result)}
+  end
+
+  # COMPACT-20, COMPACT-42: a fold whose worker died leaves the pruned view and
+  # no error, and a turn waiting on it goes on without a summary.
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{fold: %{ref: ref}} = state) do
+    {:noreply, start_pending_turn(%{state | fold: nil})}
   end
 
   def handle_info({ref, result}, %{task: %Task{ref: ref}} = state) do
@@ -996,6 +1025,8 @@ defmodule Elia.Agent.Session do
 
   # COMPACT-6: a turn compacts first when the request view's estimate exceeds
   # the trigger. Without a known window nothing automatic happens (COMPACT-7).
+  # Returns the state and whether the pass began a fold, which is what decides
+  # whether the turn's loop waits for it (COMPACT-42).
   defp compact_at_turn_start(state) do
     options = Compaction.options(state.compaction.options)
     trigger = trigger(state)
@@ -1005,21 +1036,118 @@ defmodule Elia.Agent.Session do
     if options.auto and trigger != nil and tokens > trigger do
       compact(state, target: target(state), overhead: overhead)
     else
-      state
+      {state, false}
     end
   end
 
-  # COMPACT-6, COMPACT-8, COMPACT-17: run the ladder and, if it cannot reach the
-  # target, fold the summary. Saving, and the `{:compaction, state}` broadcast
+  # COMPACT-6, COMPACT-8, COMPACT-17, COMPACT-40: elide here — a sort and an
+  # estimate per item, in the session's own callback — and, when the ladder
+  # could not reach the target, fold the summary in a worker of the session's
+  # (`start_fold/2`): the fold is a model call, and one that can outlast the
+  # seconds a caller waits for. Saving, and the `{:compaction, state}` broadcast
   # that lets a UI redraw its annotations and its estimate, happen only when the
-  # state actually changed.
+  # state actually changed. Returns the state and whether this pass began a fold.
   defp compact(state, opts) do
     before = state.compaction
     llm = llm_request(state)
     summarizer = Keyword.get(state.loop_opts, :summarizer, Compaction.default_summarizer(llm))
 
     opts = opts |> Map.new() |> Map.merge(%{summarizer: summarizer, llm: llm})
-    apply_compaction(state, Compaction.compact(state.messages, before, opts))
+    {elided, fold?} = Compaction.elide(state.messages, before, opts)
+
+    state = apply_compaction(state, elided)
+    if fold?, do: start_fold(state, opts), else: {state, false}
+  end
+
+  # COMPACT-40, COMPACT-44: the fold runs in a task under
+  # `Elia.Agent.TaskSupervisor` — the supervisor the turn's own loop task runs
+  # under — so the session goes on answering its calls while the summary is made,
+  # and `own_fold/2` ends the task when the session does, as
+  # `Elia.Agent.Loop.own/1` ends the loop (SESS-45). The task is given the state
+  # the elision left, which is what its summary describes (COMPACT-18).
+  #
+  # COMPACT-45, COMPACT-46: one fold is in flight per chat — a manual pass that
+  # finds one is refused as busy (the caller checks) and a turn-start pass folds
+  # nothing of its own — so a state that already has one keeps it, and the pass
+  # reports that it began no fold. Read with `Map.get/2`, as `save_timer` is: a
+  # session that outlived a hot reload has no such key.
+  defp start_fold(state, opts) do
+    if Map.get(state, :fold) == nil do
+      session = self()
+      messages = state.messages
+      compaction = state.compaction
+
+      task =
+        Task.Supervisor.async_nolink(Elia.Agent.TaskSupervisor, fn ->
+          Compaction.summarize(messages, compaction, opts)
+        end)
+
+      own_fold(session, task)
+      {Map.put(state, :fold, %{ref: task.ref, pid: task.pid, opts: opts}), true}
+    else
+      {state, false}
+    end
+  end
+
+  # COMPACT-44: the fold belongs to the session that started it. The task is
+  # started unlinked, so nothing else would end it: the session's `terminate/2`
+  # saves and returns (SESS-44) and a kill runs nothing at all. Ends with
+  # whichever goes first, the shape `Elia.Agent.Loop.own/1` uses.
+  defp own_fold(session, %Task{pid: pid}) do
+    spawn(fn ->
+      session_ref = Process.monitor(session)
+      task_ref = Process.monitor(pid)
+
+      receive do
+        {:DOWN, ^session_ref, :process, _, _} -> Process.exit(pid, :kill)
+        {:DOWN, ^task_ref, :process, _, _} -> :ok
+      end
+    end)
+  end
+
+  # COMPACT-43: a stop ends a summary in flight — the worker is ended and its
+  # result is applied nowhere — and a turn that was waiting on it never starts.
+  # Read with `Map.get/2`: a session that outlived a hot reload has no `:fold`.
+  defp cancel_fold(state) do
+    case Map.get(state, :fold) do
+      nil ->
+        state
+
+      %{ref: ref, pid: pid} ->
+        Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, pid)
+        Process.demonitor(ref, [:flush])
+        Map.put(state, :fold, nil)
+    end
+  end
+
+  # COMPACT-41: what landed is a summary alone — its text and the boundary it
+  # covered — applied to the compaction state as it stands now, so a pin, a
+  # ledger entry, a deeper elision or a newer summary written while the fold ran
+  # is kept. A fold that produced nothing (COMPACT-20), or one whose boundary is
+  # already covered, leaves the state as it is.
+  defp apply_fold(state, result) do
+    state = %{state | fold: nil}
+
+    state =
+      case result do
+        {:folded, text, folded} when folded > state.compaction.folded ->
+          apply_compaction(state, %{state.compaction | summary: text, folded: folded})
+
+        _ ->
+          state
+      end
+
+    start_pending_turn(state)
+  end
+
+  # COMPACT-42: a turn whose start began a fold starts its loop from that fold's
+  # result — whether it landed (COMPACT-41) or not (COMPACT-20). Read with
+  # `Map.get/2`, as `save_timer` is.
+  defp start_pending_turn(state) do
+    case Map.get(state, :pending_turn) do
+      nil -> state
+      turn_id -> run_turn(%{state | pending_turn: nil}, turn_id)
+    end
   end
 
   # The compaction state this chat's request view follows, taken from either path
@@ -1288,12 +1416,16 @@ defmodule Elia.Agent.Session do
   # turn starts with: the user's, or the notice a resumed turn carries
   # (RESUME-3, UI-73), and `resumed: true` says the turn was an automatic resume
   # (RESUME-5, STORE-30).
+  #
+  # COMPACT-42: the turn-start pass folds its summary in a worker (COMPACT-40), so
+  # when it began one the turn waits for it: the record and the message are
+  # already in the chat and the turn shows as running, its loop starts from the
+  # fold's result, and a stop ends it there like any other turn.
   defp start_turn(state, opts) do
     # COMPACT-5: compaction happens at the start of the turn, before the message
     # that starts it, and again at every step of the loop (COMPACT-29).
-    state = compact_at_turn_start(state)
+    {state, fold?} = compact_at_turn_start(state)
 
-    session = self()
     turn_id = "#{state.id}-#{System.unique_integer([:positive])}"
 
     # INTR-1: the turn is recorded in the chat as it starts and cleared when it
@@ -1303,6 +1435,14 @@ defmodule Elia.Agent.Session do
 
     state = %{state | turn_start: length(state.messages), turn: turn}
     state = append(state, Keyword.fetch!(opts, :message))
+
+    if fold?,
+      do: set_status(Map.put(state, :pending_turn, turn_id), :running),
+      else: run_turn(state, turn_id)
+  end
+
+  defp run_turn(state, turn_id) do
+    session = self()
 
     # The chat's model selected now is used for the whole turn. An explicit
     # provider replaces the selection; other explicit options are merged over it.
@@ -1324,7 +1464,7 @@ defmodule Elia.Agent.Session do
         # TIME-2: the turn's start goes into every step's timing record, so the
         # record needs nothing from the chat's saved term, whose turn entry is
         # taken off when the turn ends (STORE-30, INTR-1).
-        turn_started_at: turn.started_at,
+        turn_started_at: state.turn.started_at,
         # COMPACT-2, COMPACT-29: the loop is given the full history and derives
         # the request view from it at every step, with the trigger, target and
         # overhead of this chat's request (COMPACT-6, COMPACT-8, CTX-1).
@@ -1555,15 +1695,32 @@ defmodule Elia.Agent.Session do
     end)
   end
 
-  # SESS-22, SUBTASK-17: stopping this chat's turn stops the turn of every child
-  # of it whose chat isn't marked done, read from the saved chats (STORE-18) —
-  # a running child is a child chat nobody has marked done, so there is nothing
-  # to keep in memory (the retired SUBTASK-11).
-  defp stop_children(parent_id) do
-    for %{id: child_id, done: false} <- Elia.Store.children(parent_id),
+  # STOP-1, SESS-22, SUBTASK-17, COMPACT-43: what a stop ends besides the turn
+  # that is running. Stopping this chat's turn stops the turn of every child of
+  # it whose chat isn't marked done, read from the saved chats (STORE-18) — a
+  # stop ends a turn and nothing more, so nothing is recorded for it and each
+  # child goes on as a sub-task (SUBTASK-16).
+  defp stop_children(state) do
+    for %{id: child_id, done: false} <- Elia.Store.children(state.id),
         do: stop_session(child_id)
 
-    :ok
+    state
+  end
+
+  # COMPACT-42, COMPACT-43: the turn whose start was waiting on a fold, ended as
+  # a stop ends a turn whose loop was running — the notice stays after its
+  # message, and the turn record goes with the flag (STOP-1, STOP-2, INTR-1).
+  # Read with `Map.get/2`: a session that outlived a hot reload has no such key,
+  # and then no turn is waiting.
+  defp end_pending_turn(state) do
+    if Map.get(state, :pending_turn) == nil do
+      state
+    else
+      state
+      |> Map.put(:pending_turn, nil)
+      |> append(stop_notice(:stopped, "Stopped by the user."))
+      |> finish_turn()
+    end
   end
 
   defp stop_session(id) do
