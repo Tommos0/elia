@@ -21,6 +21,7 @@ else in the tree has grown since, so treat the numbers as approximate.
 | C5 a crashing tool takes down the whole step | `3864bd3` | LOOP-26 |
 | C6 O(n²) history handling in a session | `2802788` | SESS-44 |
 | C7 listing decodes every chat in full | `f5a5ba0` | STORE-44, STORE-45 |
+| S1 cross-site WebSocket access to terminals | `6bc63b5` | SOCK-1..SOCK-5 (`specs/socket-origin.md`) |
 
 Two further bugs, found while fixing the above and not in the first pass, are also fixed:
 a stop racing a terminal's own exit crashed the session (`5be0bd8`, TERM-35), and a terminal
@@ -40,15 +41,25 @@ masked `.elia`, a deps overlay) is thoughtful. The main risks left are:
 
 ## 1. Security
 
-**S1 — Cross-site WebSocket access to terminals, and S2 — unauthenticated app.** Accepted, not
-to be fixed: Elia is a single-user application, and the corpus already says so — the
-`## Out of scope` section of `specs/terminal.md` (and five other specs) states that access
-control is out of scope and that anyone who can reach the app can open a terminal in any chat's
-workspace. Recorded here only so a future review doesn't re-raise it. If Elia is ever exposed
-beyond the machine it runs on, revisit: the terminal socket
-(`lib/elia_web/terminal_socket.ex:17`, `lib/elia_web/terminal_channel.ex:22`) needs no token and
-the endpoint sets `check_origin: false` (`config/dev.exs:13`), and `config/runtime.exs:73`
-binds `::` in prod.
+**S1 — Cross-site WebSocket access to terminals — fixed.** `SOCK-1` and `SOCK-3`
+(`specs/socket-origin.md`). `EliaWeb.TerminalSocket.connect/3` took any `Origin` and
+`config/dev.exs` set `check_origin: false`, so a page on any other site could open a WebSocket
+to Elia and join a terminal, driving a shell in a chat's workspace. The sockets are now bound
+to the page they come from: `Origin` must name the host, scheme and port the handshake itself
+arrived at (`EliaWeb.SocketOrigin.check_origin/0` is the endpoint's policy, in every
+environment), an install served under a different origin names it in `ELIA_ALLOWED_ORIGINS`,
+and the terminal's socket refuses a handshake without a session proof — at a nil
+`connect_info.session`, which is what the transport's own CSRF-token check produces for a
+missing, stale or mismatched token. A handshake with no `Origin` at all is not refused for
+that reason (it is not a page), which is what the session proof is for. Pinned by
+`test/elia_web/socket_origin_test.exs`.
+
+**S2 — Unauthenticated app.** Still accepted, not to be fixed: Elia is a single-user
+application and the corpus says so. The binding above is not authentication — it says a page
+came from this server, not who is using it — so anyone who can reach the app still uses it,
+and can still open a terminal in any chat's workspace (`specs/terminal.md`'s
+`## Out of scope`). `lib/elia_web/terminal_channel.ex:22` and `config/runtime.exs`'s `::` bind
+in prod are unchanged. Recorded here only so a future review doesn't re-raise it.
 
 **S5 — The dev `secret_key_base` is committed** (`config/dev.exs:15`), and it signs the cookies
 of the server people really run when the app runs in the `dev` Mix env. Generate it per install
@@ -122,14 +133,13 @@ the port once the cap is passed and the command's output no longer matters.
   terminal channel), real-browser tests behind a flag, and spec-traceability tests that fail the
   suite. The fixes above each arrived with the test the finding asked for: the S3 chain, the S4
   hook and fsmonitor plantings, the C1/C2 concurrent save and fallback, the C3 process-tree kill,
-  the C4 bound, the C5 exiting tool, and the terminal stop/exit races.
+  the C4 bound, the C5 exiting tool, the terminal stop/exit races, and the S1 socket origin
+  bindings (`test/elia_web/socket_origin_test.exs`).
 - **Still missing:**
   - No unit test for `Elia.Workspace` itself. `real_location/1` is exercised only through
     `test/elia/self_modification_test.exs` and the isolation tests. Add chain-length, loop and
     relative-target cases as a focused module, so the next change to `resolve/3` has somewhere
     to be pinned down.
-  - No test that the terminal socket rejects a foreign `Origin` — accepted with S1, so a test
-    would be documenting an accepted hole; skip it unless S1 is revisited.
 - **Speed and flakiness:** 70 modules in 68 files are `async: false` against 28 `async: true`,
   and there are 34 `Process.sleep` calls in `test/` (no `:timer.sleep`). Many of the non-async
   modules share global `Application` env (`:workspace`, `:runtime_root`). Passing roots
