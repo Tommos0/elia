@@ -6,6 +6,8 @@ defmodule Elia.Store do
   matters because they are echoed back to the provider unchanged.
   """
 
+  require Logger
+
   alias Elia.LLM.Message
   alias Elia.Store.Cache
 
@@ -101,14 +103,14 @@ defmodule Elia.Store do
   @doc """
   Changes some keys of a saved chat and keeps the rest of its file as it was
   (STORE-43): `fun` gets the saved chat's map and returns the new one, and
-  `updated_at` is set to now. Writes nothing for an invalid id or a chat with
-  no file, so it never creates a chat.
+  `updated_at` is set to now. Writes nothing for an invalid id, a chat with no
+  file or a malformed saved chat (STORE-49), so it never creates a chat.
   """
   @spec update(binary(), (map() -> map())) :: :ok | {:error, term()}
   def update(id, fun) when is_function(fun, 1) do
     with true <- valid_id?(id),
          {:ok, data} <- File.read(path(id)),
-         %{} = chat <- decode(data) do
+         {:ok, chat} <- saved_chat(data, id) do
       # STORE-11: a file older than `created_at` gets the date it would have
       # been listed with, before this write changes its modification time.
       chat
@@ -169,8 +171,10 @@ defmodule Elia.Store do
   def load(id) do
     with true <- valid_id?(id),
          {:ok, data} <- File.read(path(id)),
-         %{messages: messages} <- decode(data) do
-      Enum.map(messages, &Message.scrub/1)
+         # STORE-3, STORE-49: a file that can't be read as a chat gives an empty
+         # history — a corrupt one, and a decodable term that isn't a chat.
+         {:ok, chat} <- saved_chat(data, id) do
+      Enum.map(chat.messages, &Message.scrub/1)
     else
       _ -> []
     end
@@ -520,12 +524,15 @@ defmodule Elia.Store do
     record =
       case File.read(path) do
         {:ok, data} ->
-          case decode(data) do
-            %{} = chat ->
+          # STORE-48, STORE-49: a decodable term that isn't a chat is a corrupt
+          # file like one that doesn't decode at all, so it is listed as a chat
+          # with nothing saved rather than taking the listing down with it.
+          case saved_chat(data, id) do
+            {:ok, chat} ->
               {messages, meta} = Map.pop(chat, :messages, [])
               %{meta: meta, title: title(messages), description: title(messages, 1000)}
 
-            _ ->
+            :error ->
               corrupt()
           end
 
@@ -624,13 +631,73 @@ defmodule Elia.Store do
 
   defp path(id), do: Path.join(dir(), id <> ".term")
 
+  # STORE-48, STORE-49, STORE-51: the chat a saved file holds, or `:error`. A
+  # file that doesn't decode and one that decodes to a term that isn't a chat
+  # are both read as no chat at all (STORE-3, STORE-49); the second is a file
+  # someone will want to know about, so it is reported once (STORE-51).
+  defp saved_chat(data, id) do
+    with {:ok, term} <- decode(data) do
+      case chat(term) do
+        {:ok, chat} ->
+          {:ok, chat}
+
+        {:error, why} ->
+          Logger.warning(
+            "Saved chat #{id} isn't a chat (#{why}), so it is read as a chat with no " <>
+              "history; its file is left as it is."
+          )
+
+          :error
+      end
+    end
+  end
+
+  # STORE-48: whether a decoded term is a chat of the shape STORE-1's table
+  # states, and otherwise why it isn't one (STORE-51). The messages are checked
+  # only as far as this module reads them — the UTF-8 scrub (STORE-13) and the
+  # title it derives from the first user message (STORE-7, STORE-10) — so a
+  # provider's own block is kept exactly as it is (LLM-6).
+  defp chat(%{version: 1} = chat) do
+    cond do
+      not is_list(chat[:messages]) -> {:error, "its messages aren't a list"}
+      not Enum.all?(chat[:messages], &message?/1) -> {:error, "one of its messages isn't one"}
+      not timestamp?(chat[:created_at]) -> {:error, "its created_at isn't a date and time"}
+      not timestamp?(chat[:updated_at]) -> {:error, "its updated_at isn't a date and time"}
+      true -> {:ok, chat}
+    end
+  end
+
+  defp chat(%{}), do: {:error, "its version isn't 1"}
+  defp chat(_term), do: {:error, "it isn't a map"}
+
+  # STORE-48, LLM-5: a message of the three roles, whose blocks are maps and
+  # whose text and tool results are the strings the scrub (STORE-13) and the
+  # title (STORE-7) are read from.
+  defp message?(%Message{role: role, content: content, meta: meta}) do
+    role in [:user, :assistant, :tool] and is_list(content) and is_map(meta) and
+      Enum.all?(content, &block?/1)
+  end
+
+  defp message?(_term), do: false
+
+  defp block?(%{type: :text} = block), do: is_binary(Map.get(block, :text))
+  defp block?(%{type: :reasoning} = block), do: is_binary(Map.get(block, :text))
+  defp block?(%{type: :tool_result} = block), do: is_binary(Map.get(block, :content))
+  defp block?(block), do: is_map(block)
+
+  # STORE-11: a file saved before `created_at` existed carries none, and its
+  # modification time is the start date it is read with.
+  defp timestamp?(nil), do: true
+  defp timestamp?(%DateTime{}), do: true
+  defp timestamp?(_term), do: false
+
   # `:safe` refuses atoms that don't exist yet. In dev, modules load lazily,
   # so after a restart atoms like `:tool_call` may not exist until the code
   # that defines them is loaded; load it all first (STORE-3).
   defp decode(data) do
     ensure_app_loaded()
-    :erlang.binary_to_term(data, [:safe])
+    {:ok, :erlang.binary_to_term(data, [:safe])}
   rescue
-    ArgumentError -> nil
+    ArgumentError -> :error
   end
 end

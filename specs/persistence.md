@@ -6,8 +6,12 @@ Chats are saved to disk so they survive restarts and can be listed and
 reopened. A saved chat's shape is stated in one place — the table under STORE-1
 (STORE-40) — and the fields a listed chat carries in one place — the table under
 STORE-6 (STORE-41). A key or a field added later is a row there, and each one's
-own save or load rule is the requirement its row cites. The requirements below
-are grouped by topic: the file, saving a chat, listing chats, the per-chat
+own save or load rule is the requirement its row cites. The store reads a file
+as a chat only while it holds that shape, and a file that doesn't — one that
+decodes to a term that isn't a chat, which no save writes — is contained rather
+than raised on, so one such file never takes out the listing, the resume scan or
+a page for every other chat (STORE-48 to STORE-51). The requirements below are
+grouped by topic: the file, saving a chat, listing chats, the per-chat
 values a save can carry, deleting a chat, and the two tables themselves.
 
 ## Requirements
@@ -63,6 +67,28 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-13** Loading a chat replaces invalid UTF-8 in its text and tool
   results as in LLM-32, so a chat saved with such bytes can still be opened.
   Provider raw blocks stay exact (LLM-6).
+- **STORE-48** A saved file is read as a chat only when it decodes to a map of
+  the shape STORE-1's table states: `version` is `1`; `messages` is a list of
+  `Elia.LLM.Message`, each one a `%Elia.LLM.Message{}` with one of LLM-5's
+  roles, a map `meta` and a list `content` of block maps, a `:text` or
+  `:reasoning` block carrying a string `text` and a `:tool_result` block a
+  string `content`; and `created_at` and `updated_at`, when the chat carries
+  them, are `DateTime`s. A file that isn't one is a malformed saved chat
+  (STORE-49).
+- **STORE-49** A malformed saved chat (STORE-48) is read as a file that can't be
+  decoded at all: `load/1` gives an empty history (STORE-3), `load_meta/1`
+  `nil` and every per-key loader its default (STORE-44), a listing — `list/1`,
+  `entry/1`, `latest/0`, `children/1`, `interrupted/0` — gives the entry of a
+  chat with nothing saved (STORE-6), `update/2` writes nothing and answers
+  `{:error, :not_found}` (STORE-43), and no reader of it raises, so one
+  malformed chat never takes out a listing, a resume scan (STORE-39) or a page
+  for the chats beside it.
+- **STORE-50** A malformed saved chat's file is left exactly as it is: no read,
+  listing or update of one rewrites, repairs or removes it, and only
+  `Elia.Store.delete/1` (STORE-23) takes it off disk.
+- **STORE-51** Decoding a malformed saved chat logs a warning naming the chat's
+  id and why its file isn't a chat, so a contained chat is visible rather than
+  silently skipped.
 
 ### Saving a chat
 
@@ -308,11 +334,17 @@ values a save can carry, deleting a chat, and the two tables themselves.
 
 ## Stored data
 
-Unchanged and backward compatible, with nothing to migrate. The cache of
-STORE-45 lives in memory only, and `load_meta/1` (STORE-44) reads the keys
-STORE-1's table already states, so nothing written to `.elia/sessions/` changes:
-an older file loads and lists as it did before, and a file written now is what
-an older version wrote. STORE-2 and STORE-43 are unchanged.
+Unchanged and backward compatible, with nothing to migrate. Nothing this change
+does alters what a save writes, and STORE-48 refuses only a decodable file that
+isn't of the shape STORE-1's table states — a shape every save writes (STORE-1,
+STORE-42) — so a chat saved by an older version loads and lists exactly as it
+did. The
+cache of STORE-45 lives in memory only, and `load_meta/1` (STORE-44) reads the
+keys STORE-1's table already states, so nothing written to `.elia/sessions/`
+changes: an older file loads and lists as it did before, and a file written now
+is what an older version wrote. STORE-2 is unchanged, and STORE-43 still writes
+what it wrote: a malformed file is one of the files it writes nothing for
+(STORE-49), as an id with no file already was.
 
 ## Implementation
 
@@ -323,7 +355,7 @@ an older version wrote. STORE-2 and STORE-43 are unchanged.
 - `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
   listing and the fields an entry carries, saving and loading each one, deleting
   a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
-  STORE-29, STORE-36 to STORE-38, STORE-43, STORE-47).
+  STORE-29, STORE-36 to STORE-38, STORE-43, STORE-47, STORE-48 to STORE-51).
 - `test/elia/store_cache_test.exs` (one decode for a session's settings, a
   listing that decodes only what changed, and a write, a replacement or a removal
   by another process seen at the next read — STORE-44, STORE-45).

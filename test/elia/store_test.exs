@@ -591,10 +591,19 @@ defmodule Elia.StoreTest do
     File.write!(Path.join(dir, "bad!.term"), :erlang.term_to_binary(%{turn: turn}))
     File.write!(Path.join(dir, "junk.term"), "not a term")
 
-    found = Store.interrupted() |> Enum.map(& &1.id)
+    # STORE-51: the decodable file that isn't a chat is reported when it is read.
+    parent = self()
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(parent, {:found, Store.interrupted() |> Enum.map(& &1.id)})
+      end)
+
+    found = receive do: ({:found, ids} -> ids)
     File.rm!(Path.join(dir, "bad!.term"))
     File.rm!(Path.join(dir, "junk.term"))
 
+    assert log =~ "bad!"
     refute finished in found
     refute "bad!" in found
     refute "junk" in found
@@ -752,6 +761,123 @@ defmodule Elia.StoreTest do
     # A corrupt chat has a file, so it is still an entry.
     File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
     assert %{id: ^id, title: "New chat"} = Store.entry(id)
+  end
+
+  # STORE-48, STORE-49, STORE-50: a file that decodes to a term that isn't a
+  # chat is contained — every reader answers as it does for a file that can't be
+  # decoded at all (STORE-3), and the file is left exactly as it was.
+  test "a decodable file that isn't a chat is contained" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    path = Path.join(Store.dir(), id <> ".term")
+
+    not_chats = [
+      # STORE-48: no version of the shape STORE-1's table states.
+      %{version: 2, messages: [Message.user("hi")]},
+      %{version: 1, messages: nil},
+      %{version: 1, messages: 5},
+      %{version: 1, messages: ["not a message"]},
+      %{version: 1, messages: [Message.user("hi"), "not a message"]},
+      %{version: 1, messages: [%Message{role: :user, content: [%{type: :text, text: 5}]}]},
+      %{
+        version: 1,
+        messages: [%Message{role: :system, content: [Message.text("hi")], meta: %{}}]
+      },
+      %{version: 1, messages: [Message.user("hi")], created_at: 5},
+      %{version: 1, messages: [Message.user("hi")], updated_at: "today"},
+      [1, 2, 3],
+      nil
+    ]
+
+    for term <- not_chats do
+      data = :erlang.term_to_binary(term)
+      write_chat(id, data)
+
+      # STORE-51: each read reports the file once, so the reads are captured.
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert Store.load(id) == [], "load of #{inspect(term)}"
+        assert Store.load_meta(id) == nil
+        assert Store.load_model(id) == nil
+        assert Store.load_auto_approve(id) == []
+        assert Store.load_jail(id) == true
+        assert Store.load_done(id) == false
+        assert Store.chat_title(id) == "New chat"
+
+        assert %{id: ^id, title: "New chat", description: "New chat", done: false} =
+                 Store.entry(id),
+               "entry of #{inspect(term)}"
+
+        assert entry(Store.list(1000), id).title == "New chat"
+        assert Store.update(id, &Map.put(&1, :title, "mine")) == {:error, :not_found}
+      end)
+
+      # STORE-50: nothing rewrote, repaired or removed it.
+      assert File.read!(path) == data
+    end
+  end
+
+  # STORE-49, STORE-39: one malformed file never takes out a listing or the
+  # resume scan for the chats saved beside it.
+  test "a malformed chat doesn't take a listing or the resume scan down" do
+    with_empty_store(fn ->
+      good = Elia.Agent.new_id()
+      bad = Elia.Agent.new_id()
+      turn = %{id: "turn-1", started_at: ~U[2026-01-02 03:04:05Z]}
+
+      :ok = Store.save(good, [Message.user("still here")], turn: turn)
+      write_chat(bad, :erlang.term_to_binary(%{version: 1, messages: nil}))
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert %{title: "still here"} = entry(Store.list(1000), good)
+        assert [%{id: ^good, interrupted: true}] = Store.interrupted()
+        assert %{title: "New chat"} = entry(Store.list(1000), bad)
+      end)
+    end)
+  end
+
+  # STORE-48: a chat of the shape every save writes still reads as one, including
+  # one an earlier version wrote — with no `created_at` of its own (STORE-11) and
+  # a provider's raw block kept exactly as it is (LLM-6).
+  test "a chat of the stored shape is still read as one" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    raw = %{type: :text, text: "from before", raw: {Elia.LLM.Anthropic, %{"type" => "text"}}}
+
+    write_chat(
+      id,
+      :erlang.term_to_binary(%{version: 1, messages: [%Message{role: :user, content: [raw]}]})
+    )
+
+    assert [%Message{role: :user, content: [^raw]}] = Store.load(id)
+    assert %{title: "from before"} = Store.entry(id)
+    # The chat's own keys, read as they are — the version a save writes included.
+    assert Store.load_meta(id) == %{version: 1}
+  end
+
+  # STORE-51: a contained chat is reported, naming it and why its file isn't a
+  # chat, rather than skipped in silence.
+  test "a malformed chat is reported when it is decoded" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+    write_chat(id, :erlang.term_to_binary(%{version: 1, messages: nil}))
+
+    log = ExUnit.CaptureLog.capture_log(fn -> assert Store.load(id) == [] end)
+
+    assert log =~ id
+    assert log =~ "isn't a chat"
+    assert log =~ "messages"
+  end
+
+  # A saved file written as raw bytes, as a chat saved by a version that wrote
+  # something this one doesn't write would be. Renamed into place, so the store
+  # cache (STORE-45) sees a file it hasn't read.
+  defp write_chat(id, data) do
+    File.mkdir_p!(Store.dir())
+    path = Path.join(Store.dir(), id <> ".term")
+    File.write!(path <> ".raw", data)
+    File.rename!(path <> ".raw", path)
+    on_exit(fn -> File.rm(path) end)
   end
 
   # A store of its own: a throwaway runtime root, since that is where Elia's
