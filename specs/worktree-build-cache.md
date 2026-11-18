@@ -80,8 +80,8 @@ off. The chat makes that copy itself now (DEPLOY-29).
 
 Removed with the harness's own worktree: `Elia.Deploy`'s seeding of a worktree
 at creation (`add_worktree/4`, `link_deps/2`, `ensure_child_worktree/3`) and
-`Elia.Deps`. What remains is the instruction (`AGENTS.md` and the
-`self-modification` skill, DEPLOY-29) and `Elia.Workspace`'s protected paths,
+`Elia.Deps`. What remains is the instruction (`AGENTS.md`, DEPLOY-29) and
+`Elia.Workspace`'s protected paths,
 which still cover `_build` (WS-1).
 
 ## Tests

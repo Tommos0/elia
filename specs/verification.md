@@ -15,7 +15,7 @@ its own work in a worktree of its own (DEPLOY-28), so a turn that breaks the
 suite cannot reach the running tree, and the deploy gate already runs the full
 suite, then a compile,
 before loading anything (DEPLOY-5, HOT-4, HOT-6). Running the tests is the
-agent's own step — `AGENTS.md` and the `self-modification` skill tell it to run
+agent's own step — `AGENTS.md` tells it to run
 plain `mix precommit` before finishing a change (a command never inherits the
 server's `MIX_ENV`, ISOL-24, so the alias's `preferred_envs` picks `test`) — and
 the user runs them again through a deploy.
@@ -103,7 +103,7 @@ time rather than killed halfway through the compile and started again.
   plain `mix precommit` before finishing a change (ISOL-24) — and every such
   call needs the user's approval (SHELL-1, APPR), where the retired tool needed
   none; what its schema carried (the default and the maximum, VERIFY-9) is in
-  `AGENTS.md` and the `self-modification` skill instead.
+  `AGENTS.md` instead.
   `Elia.Harness.run_tests/3` stays, for the deploy's suite run (DEPLOY-5,
   ISOL-14) and the tests.
 

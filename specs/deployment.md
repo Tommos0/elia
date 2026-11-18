@@ -71,8 +71,8 @@ tree's front end (`/recover`, RECOVER-10).
 
 ### The worktree a chat makes itself
 
-- **DEPLOY-28** A chat in Elia's own project is told — in `AGENTS.md` and the
-  `self-modification` skill — that its workspace is its project's folder, that
+- **DEPLOY-28** A chat in Elia's own project is told — in its project's
+  `AGENTS.md` — that its workspace is its project's folder, that
   the harness makes no worktree for it, and that before it changes code it makes
   one for itself: forked from the trunk `master` — or, for a sub-task, from the
   branch its brief names, its parent's, so it sees what its parent has committed
@@ -129,7 +129,7 @@ tree's front end (`/recover`, RECOVER-10).
   rebases on `master` when the trunk has moved, and fast-forwards `master` to
   its branch (`git push . HEAD:master`, which refuses anything else). The
   harness never merges a chat's branch for it: the merge is the agent's step,
-  guided by the instruction in `AGENTS.md` and the `self-modification` skill,
+  guided by the instruction in the project's `AGENTS.md`,
   and a deploy (DEPLOY-5) is the separate step that brings the trunk to the
   running app. A sub-task is the exception: it commits on its branch and stops
   there, and its parent merges that branch (SUBTASK-23).
@@ -396,9 +396,8 @@ tree's front end (`/recover`, RECOVER-10).
 
 - **DEPLOY-11** There is no guarded-file list: `Elia.Guarded` and GUARD-1,
   GUARD-6 and GUARD-9–GUARD-13 are retired. "Never edit `harness.ex`,
-  `workspace.ex` to weaken them" stays as prose in
-  `AGENTS.md` and the self-modification skill. The no-op request behaviour
-  (GUARD-8) is kept by DEPLOY-8.
+  `workspace.ex` to weaken them" stays as prose in `AGENTS.md`. The no-op
+  request behaviour (GUARD-8) is kept by DEPLOY-8.
 
 ## Stored data
 
@@ -439,8 +438,8 @@ CONF (the Settings page's deployment section: the steps a deploy reports, the
 deploy that outlives its result, and going back to a revision the app has run,
 CONF-21–CONF-23), RESTART (the restart control), PROJ (a chat's workspace is its
 project's folder, Elia's own project included; the live tree), SKILL and APPR
-(the `self-modification` skill's tools and the instruction it carries,
-DEPLOY-28 to DEPLOY-30), CKPT, GUARD and BUILD (retired), RECOVER (revived for a
+(the instruction a chat in Elia's own project is given and the tools its work
+needs, DEPLOY-28 to DEPLOY-30), CKPT, GUARD and BUILD (retired), RECOVER (revived for a
 different job, the page that reaches the app when a deploy has broken its UI:
 RECOVER-10), SUBTASK (the workspace a child gets, SUBTASK-23), ISOL (the deploy's
 own fetch and suite run, DEPLOY-18, ISOL-14; the profile a chat's commands run
@@ -466,7 +465,7 @@ itself, DEPLOY-36),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
 workspace), `Elia.Agent.Loop`, `Elia.Harness` (running the tests in that
-workspace), `Elia.Skills.{Files,Shell,Folder,SelfModification}` (the
+workspace), `Elia.Skills.{Files,Shell,Folder}` (the
 `ELIA_CHAT_ID` a command gets, SHELL-14, and the instruction a chat carries,
 DEPLOY-28 to DEPLOY-30),
 `EliaWeb.SettingsLive` (the

@@ -6,6 +6,12 @@ A skill pairs instructions for the model with the tools that carry them out.
 The registry combines built-in skills with folder skills and builds the
 system prompt from them. It can be reloaded while the app runs.
 
+The built-in skills are the same for every project. The one that was not — a
+`self-modification` skill carrying Elia's own code-changing workflow, which
+only Elia's own project had — is retired (SKILL-9, PROJ-17): every chat in that
+project is given that project's `AGENTS.md` (PROJ-15, SKILL-10), which carries
+the same instruction, so the skill held a second copy of it and nothing more.
+
 ## Requirements
 
 - **SKILL-1** A skill has a name, a description, instructions and tools. A
@@ -34,23 +40,24 @@ system prompt from them. It can be reloaded while the app runs.
   [Marking a chat done](chat-done.md), DONE-6), `user-input` (`ask_user`,
   [Structured user input](user-input.md), ASK-1), `chats` (`list_chats`,
   `read_chat`, `search_chats`, [Reading earlier chats](chat-history.md),
-  HIST-1) and `self-modification`
-  (instructions only). The last one is a chat's only when its project is Elia's
-  own (PROJ-17);
-  a sub-task session gets neither the `tasks` skill nor one of its own, so it
-  has exactly the tools an ordinary chat has (SUBTASK-1).
+  HIST-1). A chat's built-in skills are the same whatever project it belongs to
+  (PROJ-18); a sub-task session gets neither the `tasks` skill nor one of its
+  own, so it has exactly the tools an ordinary chat has (SUBTASK-1).
 - **SKILL-8** The `harness` skill's instructions apply in every project: they
   tell the model to prefer a folder skill over changing code, to reload skills
   with `reload_skills`, and to run the tests before finishing. Folder skills
   are written without approval, but their tools always ask.
-- **SKILL-9** The `self-modification` skill's instructions tell the model that
+- ~~**SKILL-9** The `self-modification` skill's instructions tell the model that
   Elixir changes need the user's approval and only take effect after a deploy
   (DEPLOY-8); that when its work is done it commits it and merges its own branch
   into the trunk `master` itself (DEPLOY-13), which is where its part ends — the
   user deploys, from Settings (DEPLOY-5–DEPLOY-7); and
   that the project is spec-driven: before changing Elixir code it updates or
   adds the feature's spec in `specs/` (see `specs/README.md`), keeps
-  requirement IDs stable and cites the IDs it touched in the tests it writes.
+  requirement IDs stable and cites the IDs it touched in the tests it writes.~~
+  Retired: the instruction is in Elia's own project's `AGENTS.md`, which every
+  chat in that project is given (PROJ-15, SKILL-10, DEPLOY-28), so the skill was
+  a second copy of it and nothing else.
 - **SKILL-10** When `AGENTS.md` exists in a chat's project folder and isn't
   blank, its contents are injected into the system prompt as a section headed
   `## Project instructions (AGENTS.md)`, after the base prompt and before the
@@ -116,7 +123,7 @@ config :elia, Elia.Skills,
 ## Implementation
 
 `Elia.Skill`, `Elia.Skills` (`project_instructions/1`, `system_sections/2`,
-`for_project/1`), `Elia.Skills.Harness`, `Elia.Skills.SelfModification`.
+`for_project/1`), `Elia.Skills.Harness`.
 
 ## Tests
 
@@ -125,7 +132,7 @@ config :elia, Elia.Skills,
   `AGENTS.md` link out of the folder, into a protected location and one that
   can't be resolved, the resolver, the base prompt — SKILL-1 to SKILL-5, SKILL-7,
   SKILL-10 to SKILL-18).
-- `test/elia/self_modification_test.exs` (reloading the folder, SKILL-6, SKILL-9).
+- `test/elia/self_modification_test.exs` (reloading the folder, SKILL-6).
 - `test/elia/agent_test.exs` (the skills a turn is given, SKILL-7; the
   instructions its request carries are the confined ones, SKILL-17).
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every

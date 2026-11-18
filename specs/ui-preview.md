@@ -161,7 +161,7 @@ live tree's saved chats are never touched.
   changing a template, a stylesheet (`assets/css/`), a hook or another
   client-side file, run a preview and put its image links in the reply, since
   the user cannot see the change in the running app until they deploy it. The
-  wording lives in `AGENTS.md` and the `self-modification` skill. By default a
+  wording lives in `AGENTS.md`. By default a
   preview for that purpose is taken in the dark theme at a mobile width
   (`ELIA_PREVIEW_THEME=dark` with `ELIA_PREVIEW_WIDTH=390`, PREVIEW-3), and a
   light or desktop picture is taken as well only when the change is about that.
@@ -216,8 +216,8 @@ CLI is not among them — it is user-wide, installed once for the user
   entry (PREVIEW-7), `test/elia_web/browser/preview_test.exs` with
   `use EliaWeb.BrowserCase` (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12,
   PREVIEW-15), `bin/preview` (PREVIEW-1, PREVIEW-14), the transcript's image
-  styling in `EliaWeb.ChatLive` (PREVIEW-8), `AGENTS.md`,
-  `docs/agents/harness.md` and the `self-modification` skill (PREVIEW-9).
+  styling in `EliaWeb.ChatLive` (PREVIEW-8), `AGENTS.md` and
+  `docs/agents/harness.md` (PREVIEW-9).
 
 ## Tests
 
@@ -233,8 +233,7 @@ CLI is not among them — it is user-wide, installed once for the user
   `tmp/worktrees/` and with none.
 - `test/elia_web/live/chat_live_test.exs` (an image in a message, PREVIEW-8).
 - `test/elia/skills_test.exs` (the preview instruction the agent follows names
-  the dark, mobile default, in the `self-modification` skill and `AGENTS.md`,
-  PREVIEW-9).
+  the dark, mobile default in `AGENTS.md`, PREVIEW-9).
 - `bin/preview`'s install when `assets/node_modules` is missing (PREVIEW-14) is
   checked by hand, like the preview run itself, which needs a browser:
   `bin/preview`, from a chat in Elia's own project.

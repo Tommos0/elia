@@ -67,10 +67,9 @@ kept apart from the ones that apply in every project.
 - **PROJ-13** Elia's own data — `.elia/projects.term` and `.elia/sessions/` —
   lives in Elia's root (the live tree, DEPLOY-2) whatever project a chat
   belongs to, so a project folder is never written to by the harness itself.
-- **PROJ-14** The deploy workflow is bound to Elia's own project: only it has
-  the `self-modification` skill (PROJ-17), and only a chat in it carries the
-  instruction to make its own worktree and merge into the trunk (DEPLOY-28,
-  DEPLOY-13).
+- **PROJ-14** The deploy workflow is bound to Elia's own project: its `AGENTS.md`
+  carries the instruction to make a worktree of one's own and to merge into the
+  trunk (PROJ-15, DEPLOY-28, DEPLOY-13), so only a chat in it is told to.
 
 ### Instructions and skills
 
@@ -82,11 +81,14 @@ kept apart from the ones that apply in every project.
   the tests before finishing — with the tools `reload_skills` and
   `update_ledger` (SKILL-7, COMPACT-22): a test run is the `shell` tool's
   (VERIFY-11).
-- **PROJ-17** A built-in `self-modification` skill carries what only applies to
+- ~~**PROJ-17** A built-in `self-modification` skill carries what only applies to
   Elia's own code: changing Elixir files, the spec-driven workflow and merging
   to the trunk (`master`). It has no tools of its own. A chat has it only when
-  its project is Elia's own.
-- **PROJ-18** A chat's skills are the built-in skills (PROJ-17), the folder
+  its project is Elia's own.~~ Retired: everything it said is in Elia's own
+  project's `AGENTS.md`, which every chat in that project is given (PROJ-15,
+  SKILL-10), so it was a second copy of that instruction and nothing else, and
+  the built-in skills are now the same for every project (SKILL-7).
+- **PROJ-18** A chat's skills are the built-in skills (SKILL-7), the folder
   skills of Elia's `skills/` dir (SKILL-2–SKILL-4) and the folder skills of
   project P's `skills/` dir. P's are skipped when P's folder is Elia's root, so
   they are not loaded twice.
@@ -140,7 +142,7 @@ kept apart from the ones that apply in every project.
 
 `Elia.Projects`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
-`Elia.Skills.SelfModification`, `Elia.Skills.Files`, `Elia.Skills.Shell`,
+`Elia.Skills.Files`, `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
 `EliaWeb.ProjectsLive`, `EliaWeb.ChatLive`, `EliaWeb.FilesLive`,
 `EliaWeb.Router`, `EliaWeb.Layouts`.
@@ -156,7 +158,7 @@ kept apart from the ones that apply in every project.
 - `test/elia/skills_test.exs` (a project's own skills, re-read for every step —
   PROJ-18 to PROJ-21).
 - `test/elia/agent_test.exs` (a chat's project as its workspace, its system
-  prompt and its skills — PROJ-9, PROJ-12, PROJ-15, PROJ-17, PROJ-18).
+  prompt and its skills — PROJ-9, PROJ-12, PROJ-15, PROJ-18).
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
