@@ -39,9 +39,13 @@ exactly what it is asked today, so attaching an image never costs a turn.
   OpenRouter reports it as `architecture.input_modalities` listing `image`, and
   every Anthropic model accepts them (its Models API reports no such field); a
   model of the local llama.cpp provider (LOCAL) does not, since Elia starts that
-  server without a projector. The capability is recorded with the chat's
-  selection when a model is chosen (MODEL-1) and read back for a request without
-  a catalog fetch, as the context window is (CTX-7).
+  server without a projector. The answer for a chat's model is the catalog's
+  when the cache holds it, else the capability recorded with the chat's
+  selection, else the provider's own — read back for a request without a catalog
+  fetch, as the context window is (CTX-7). The capability is recorded with the
+  selection when a model is chosen (MODEL-1), from the provider's catalog
+  whatever the age of the cache: its cached answer, or one fetched for the
+  choice, so a picker whose list went stale cannot leave it unrecorded.
 - **VISION-8** Each provider encodes an `:image` block its own way: Anthropic as
   a base64 image content block carrying the media type, and the
   OpenAI-compatible encoding (LLM-19, LOCAL-1) as a user message whose `content`
@@ -56,6 +60,9 @@ exactly what it is asked today, so attaching an image never costs a turn.
   bucket (CTX-4), so the breakdown still sums to the total. It is counted from
   the attachment's path alone — the estimate reads no file — so the images count
   whether or not the request ends up sending them (VISION-4, VISION-5).
+- **VISION-11** A choice whose catalog cannot be read is still made: the
+  selection carries no capability, and the provider's own answer applies until
+  that model is chosen again (VISION-7).
 
 ## Terms
 
@@ -83,7 +90,9 @@ is the model selection (MODEL-1, MODEL-15), which gains whether its model
 accepts images (VISION-7): a chat's settings map and the stored default are maps
 that already carry such values, and a selection written before this feature has
 no such key, which reads as unknown and falls back to the catalog cache and then
-to the provider's own default, so an older file loads as it did. A message
+to the provider's own default, so an older file loads as it did. Choosing that
+model again records the capability (VISION-7); nothing is rewritten when a file
+loads. A message
 stores no image (VISION-3): the bytes of a file the user attached are read from
 the chat's workspace and never enter `.elia`, so the saved transcript keeps the
 shape it has.
@@ -98,8 +107,9 @@ accepts images), `Elia.LLM.Anthropic` and `Elia.LLM.OpenAI` (the encodings —
 VISION-8), `Elia.LLM.Message` (the `:image` block), `Elia.LLM.Tokens` (the
 estimate — VISION-10), `Elia.LLM.Provider` (the model's capability),
 `Elia.LLM.Anthropic`, `Elia.LLM.OpenRouter` and `Elia.LLM.LlamaCpp` (the
-capability each catalog reports) and `Elia.LLM` (the capability of a chat's
-selection — VISION-7).
+capability each catalog reports), `Elia.LLM.Catalog` (the catalog a choice asks
+when its cache no longer holds one) and `Elia.LLM` (the capability of a chat's
+selection — VISION-7, VISION-11).
 
 ## Tests
 
@@ -114,7 +124,9 @@ selection — VISION-7).
 - `test/elia/llm/anthropic_test.exs` and `test/elia/llm/open_ai_test.exs` (the
   encoding each provider gives an `:image` block — VISION-8).
 - `test/elia/llm/catalog_test.exs` and `test/elia/llm/images_test.exs` (the
-  capability each provider's catalog reports and the one a chat's selection
-  resolves to without a fetch — VISION-7).
+  capability each provider's catalog reports, the one a chat's selection
+  resolves to without a fetch, the one a model chosen from a cold cache records,
+  and the choice a catalog that cannot be read still makes — VISION-7,
+  VISION-11).
 - `test/elia/llm/context_test.exs` (an image counted in the User bucket, so the
   breakdown still sums to the total — VISION-10).

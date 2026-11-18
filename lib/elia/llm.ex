@@ -213,6 +213,12 @@ defmodule Elia.LLM do
   @doc """
   Builds a selection and remembers it as the default for chats without one
   (MODEL-15). The caller stores it on the chat (`Elia.Agent.select_model/4`).
+
+  The selection records what the provider's catalog says about the model — its
+  context length (CTX-7) and whether it accepts images (VISION-7) — asking the
+  provider for its catalog when the cache doesn't hold one, so a picker's stale
+  list can't leave them out. A catalog that can't be read leaves both unknown and
+  the choice is made anyway (VISION-11).
   """
   @spec select(binary(), binary(), binary() | nil) :: {:ok, map()} | {:error, binary()}
   def select(key, model, name \\ nil) do
@@ -224,10 +230,12 @@ defmodule Elia.LLM do
         {:error, "Choose a model"}
 
       true ->
+        entry = catalog_entry(key, model)
+
         selection =
           %{provider: key, model: model, name: name || model}
-          |> put_context_length(cached_context_length(key, model))
-          |> put_vision(cached_vision(key, model))
+          |> put_context_length(entry[:context_length])
+          |> put_vision(entry[:vision])
 
         with :ok <- Settings.put(:model, selection), do: {:ok, selection}
     end
@@ -347,12 +355,26 @@ defmodule Elia.LLM do
     end
   end
 
+  # VISION-7, CTX-7: what a choice records comes from the provider's catalog
+  # whatever the age of the cache — its cached answer, else one fetched for the
+  # choice (MODEL-8) — so a picker list that went stale can't leave the length or
+  # the capability unrecorded. A catalog that can't be read, or doesn't list the
+  # model, leaves the entry unknown and the choice stands (VISION-11).
+  defp catalog_entry(key, model) do
+    with {:ok, models} <- Catalog.models(key),
+         %{} = entry <- Enum.find(models, &(&1.id == model)) do
+      entry
+    else
+      _unknown -> %{}
+    end
+  end
+
   defp put_context_length(selection, nil), do: selection
   defp put_context_length(selection, length), do: Map.put(selection, :context_length, length)
 
   # VISION-7: the capability is recorded with the selection as the context window
-  # is (CTX-7), so the chat's answer outlives the catalog cache. A model the
-  # cache doesn't hold keeps no answer, and the provider's own applies.
+  # is (CTX-7), so the chat's answer outlives the catalog cache. A model whose
+  # catalog entry is unknown keeps no answer, and the provider's own applies.
   defp put_vision(selection, nil), do: selection
   defp put_vision(selection, vision), do: Map.put(selection, :vision, vision)
 

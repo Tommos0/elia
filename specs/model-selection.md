@@ -14,7 +14,7 @@ code change.
 ### Selection
 
 - **MODEL-1** A selection is a provider key, a model id and the model's
-  display name, plus its context length when the cached catalog knows it
+  display name, plus its context length when its catalog entry knows it
   (CTX-7) and whether the model accepts images (VISION-7). Each chat has its own
   selection, saved with the chat (STORE-1), so
   it is chat-local and survives restarts. Choosing a model in one chat never

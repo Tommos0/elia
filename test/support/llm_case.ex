@@ -98,6 +98,14 @@ defmodule Elia.LLMCase do
     end)
   end
 
+  @doc """
+  Answers a provider's catalog request with `models` (none by default), so a
+  choice that asks the catalog (VISION-7) makes no real request.
+  """
+  def stub_catalog(module, models \\ []) do
+    Req.Test.stub(module, &Req.Test.json(&1, %{"data" => models}))
+  end
+
   @doc "Streams OpenAI-style chunks as SSE, recording each request body."
   def stub_openrouter_stream(test_pid, chunks) do
     stub_openai_stream(Elia.LLM.OpenRouter, test_pid, chunks)

@@ -182,9 +182,13 @@ defmodule Elia.LLM.CatalogTest do
 
   # CTX-7: a selection stored without a length picks it up from the catalog.
   test "context_window saves a cached length the stored selection lacks" do
+    # VISION-7: the choice asks the catalog, which knows no such model here, so
+    # the selection it stores carries neither the length nor the capability.
+    stub_catalog(OpenRouter)
     {:ok, _} = LLM.select("openrouter", "zeta/tools", "Zeta: Tools")
     refute Map.has_key?(LLM.selection(), :context_length)
 
+    LLM.Catalog.clear("openrouter")
     Req.Test.stub(OpenRouter, &Req.Test.json(&1, openrouter_models()))
     assert {:ok, _} = LLM.models("openrouter")
     assert %{context_length: 200_000} = LLM.context_window()
@@ -210,6 +214,7 @@ defmodule Elia.LLM.CatalogTest do
 
   # CTX-7: non-Anthropic providers have no built-in fallback window.
   test "context_window is nil for a provider without a cached window" do
+    stub_catalog(OpenRouter)
     LLM.select("openrouter", "vendor/model", "Vendor: Model")
     assert %{provider: "openrouter", context_length: nil} = LLM.context_window()
   end
@@ -288,6 +293,53 @@ defmodule Elia.LLM.CatalogTest do
     assert LLM.vision?(%{provider: "anthropic", model: "claude-unknown"})
   end
 
+  # VISION-7: a choice asks the catalog when the cache no longer holds it, so a
+  # picker whose list went stale can't leave the capability unrecorded — and the
+  # record then outlives the cache as the context window does.
+  test "a choice records the capability from a catalog the cache doesn't hold" do
+    LLM.Catalog.clear("openrouter")
+    assert LLM.Catalog.peek("openrouter") == :miss
+
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(OpenRouter, fn conn ->
+      Agent.update(calls, &(&1 + 1))
+
+      Req.Test.json(conn, %{
+        "data" => [
+          %{
+            "id" => "sees/images",
+            "name" => "Sees Images",
+            "supported_parameters" => ["tools"],
+            "architecture" => %{"input_modalities" => ["text", "image"]}
+          }
+        ]
+      })
+    end)
+
+    assert {:ok, %{vision: true}} = LLM.select("openrouter", "sees/images", "Sees Images")
+
+    # MODEL-8: that one fetch fills the cache, so the next choice asks nothing.
+    assert {:ok, %{vision: true}} = LLM.select("openrouter", "sees/images")
+    assert Agent.get(calls, & &1) == 1
+
+    LLM.Catalog.clear("openrouter")
+    assert LLM.vision?() == true
+  end
+
+  # VISION-11: a catalog that can't be read doesn't refuse the choice.
+  test "a choice whose catalog can't be read is still made" do
+    LLM.Catalog.clear("openrouter")
+    Req.Test.stub(OpenRouter, fn conn -> Plug.Conn.send_resp(conn, 503, "down") end)
+
+    assert {:ok, selection} = LLM.select("openrouter", "vendor/model", "Vendor Model")
+    refute Map.has_key?(selection, :vision)
+    assert %{provider: "openrouter", model: "vendor/model"} = LLM.selection()
+
+    # The provider's own answer applies until that model is chosen again.
+    refute LLM.vision?()
+  end
+
   # MODEL-8
   test "results are cached, failures are not, and saving a key clears the cache" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)
@@ -314,6 +366,8 @@ defmodule Elia.LLM.CatalogTest do
     # Tests configure Elia.FakeLLM, which isn't registered: Anthropic is the fallback.
     assert %{provider: "anthropic", model: "claude-configured"} = LLM.selection()
     assert LLM.selection_request() == %{}
+
+    stub_catalog(OpenRouter)
 
     assert {:ok, %{provider: "openrouter", model: "vendor/model"}} =
              LLM.select("openrouter", "vendor/model", "Vendor: Model")

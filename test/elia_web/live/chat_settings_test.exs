@@ -175,6 +175,11 @@ defmodule EliaWeb.ChatSettingsTest do
   test "a change made in another view of the chat shows up here", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
 
+    # MODEL-1, VISION-7: a choice asks the provider's catalog, stubbed here.
+    Req.Test.set_req_test_to_shared()
+    Elia.LLMCase.configure(Elia.LLM.OpenRouter)
+    Elia.LLMCase.stub_catalog(Elia.LLM.OpenRouter)
+
     {:ok, _} = Agent.select_model(id, "openrouter", "vendor/model", "Vendor Model")
     :ok = Agent.set_jail(id, false)
     :ok = Agent.set_limits(id, %{max_steps: 7, pause_on_limit: true})

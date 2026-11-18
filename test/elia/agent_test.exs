@@ -1399,6 +1399,7 @@ defmodule Elia.AgentTest do
   test "a turn uses the model selected when it starts", %{id: id} do
     Elia.LLMCase.reset_settings()
     Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
+    Elia.LLMCase.stub_catalog(Elia.LLM.OpenRouter)
     {:ok, _} = Elia.LLM.select("openrouter", "vendor/picked")
 
     Elia.LLMCase.stub_openrouter_stream(self(), [
@@ -1430,6 +1431,7 @@ defmodule Elia.AgentTest do
   test "the chat remembers its model across restarts and other chats' choices", %{id: id} do
     Elia.LLMCase.reset_settings()
     Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
+    Elia.LLMCase.stub_catalog(Elia.LLM.OpenRouter)
     on_exit(fn -> Elia.Store.delete(id) end)
 
     # Selecting in an empty chat is broadcast but not written to disk.
@@ -1462,6 +1464,7 @@ defmodule Elia.AgentTest do
     Elia.LLMCase.reset_settings()
     Elia.LLMCase.configure(Elia.LLM.OpenRouter, api_key: "or-key")
     on_exit(fn -> Elia.Store.delete(id) end)
+    Elia.LLMCase.stub_catalog(Elia.LLM.OpenRouter)
     {:ok, _} = Elia.LLM.select("openrouter", "vendor/first")
     assert Agent.snapshot(id).settings.model == nil
 
@@ -3316,6 +3319,9 @@ defmodule Elia.AgentTest do
     # MODEL-15: selecting writes the picked model into the settings database as
     # the default, so the scratch one is emptied and put back (LLMCase).
     Elia.LLMCase.reset_settings()
+    # VISION-7: a choice asks the provider's catalog, so it is stubbed here.
+    Elia.LLMCase.configure(Elia.LLM.OpenRouter)
+    Elia.LLMCase.stub_catalog(Elia.LLM.OpenRouter)
     :ok = Agent.set_jail(id, false)
     assert_receive {:agent, ^id, {:settings, %{jail: false}}}
 
