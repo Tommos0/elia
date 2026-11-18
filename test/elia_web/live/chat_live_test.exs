@@ -922,7 +922,6 @@ defmodule EliaWeb.ChatLiveTest do
     root = Path.join(Workspace.root(), "chat-live-group")
     File.mkdir_p!(root)
     {:ok, project} = Projects.create("Grouped", root)
-    {:ok, _empty} = Projects.create("No chats", root)
 
     project_chat = Agent.new_id()
     harness_chat = Agent.new_id()
