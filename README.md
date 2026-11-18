@@ -100,6 +100,18 @@ settings database (CONF-5). Don't put `MIX_ENV` in it: the server runs in Mix's
 default `dev` env either way, and every command it spawns would inherit the
 value (RESTART-8, ISOL-24).
 
+Behind a proxy that terminates TLS or rewrites the hostname,
+`ELIA_ALLOWED_ORIGINS` belongs there too: the origins the app is reached at,
+comma-separated, each an origin (`https://elia.example.com:8443`), a host
+(`//elia.example.com:8443`) or a host with a wildcard (`//*.example.com`). Elia
+has no authentication, so a socket handshake is bound to the *page* it came from
+— its `Origin` must name the host, scheme and port the handshake itself arrived
+at (SOCK-1) — and naming origins puts your list in place of that binding, which
+is what an install served from somewhere else needs (SOCK-4). Unset is the
+ordinary install, and then the host binding is the whole policy: a page loaded
+from this server connects with nothing to configure. It is read at boot, so a
+change to it needs a restart rather than a hot reload.
+
 `bin/serve` runs without an interactive shell; attach one with
 `iex --sname dbg --remsh elia`. Without systemd, any supervisor will do, with
 `bin/serve` as its command (`specs/auto-restart.md`).
