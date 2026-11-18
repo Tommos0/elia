@@ -668,19 +668,87 @@ defmodule Elia.Deploy do
 
   @doc """
   Fast-forwards `live` to the trunk `master` (DEPLOY-5). A merge can only ever
-  be a fast-forward: the trunk is at or ahead of `live` (DEPLOY-14).
+  be a fast-forward: the trunk is at or ahead of `live` (DEPLOY-14). A merge
+  that fails leaves the live tree as it found it (DEPLOY-38).
   `{:ok, message}` or `{:error, reason}`.
   """
   @spec merge(binary()) :: {:ok, binary()} | {:error, binary()}
   def merge(root \\ Workspace.runtime_root()) do
-    case git(root, ["merge", "--ff-only", @trunk]) do
-      {:ok, _output} ->
-        {:ok, "#{@trunk} merged into #{@live}."}
+    with {:ok, before} <- git(root, ["rev-parse", @live]) do
+      # DEPLOY-38: whose changes the tree's are if the merge fails — the caller's
+      # when it was already dirty, this merge's when it was not.
+      clean = clean?(root) == :ok
 
-      {:error, reason} ->
-        {:error,
-         "Could not merge #{@trunk} into #{@live}. A deploy is fast-forward only, so " <>
-           "#{@live} must be an ancestor of #{@trunk} (DEPLOY-14).\n\n#{reason}"}
+      case git(root, ["merge", "--ff-only", @trunk]) do
+        {:ok, _output} ->
+          {:ok, "#{@trunk} merged into #{@live}."}
+
+        {:error, reason} ->
+          {:error, merge_error(reason) <> undo_merge(before, clean, root)}
+      end
+    end
+  end
+
+  # DEPLOY-39: git's own refusal to take a lock is reported as what it is, with
+  # the file to remove, rather than as the merge's other failure — a trunk that
+  # is not ahead of `live` (DEPLOY-14) — which a lock is not.
+  defp merge_error(reason) do
+    case lock_file(reason) do
+      nil ->
+        "Could not merge #{@trunk} into #{@live}. A deploy is fast-forward only, so " <>
+          "#{@live} must be an ancestor of #{@trunk} (DEPLOY-14).\n\n#{reason}"
+
+      lock ->
+        "Could not merge #{@trunk} into #{@live}: git could not take #{lock}.\n\n" <>
+          "#{reason}\n\nA git process that was killed leaves its lock behind: remove " <>
+          "#{lock} once no git process is running and deploy again."
+    end
+  end
+
+  # DEPLOY-39: the lock file git names when it cannot take one — the fingerprint
+  # of a git process that died instead of removing it.
+  defp lock_file(reason) do
+    case Regex.run(~r/Unable to create '([^']+\.lock)'/, reason) do
+      [_, lock] -> lock
+      _ -> nil
+    end
+  end
+
+  # DEPLOY-38: whether the live tree has nothing uncommitted — the question
+  # `set_aside/1` asks of the same call (DEPLOY-37), asked here without stashing
+  # anything: a merge is not where the user's changes get put aside.
+  defp clean?(root) do
+    case git(root, ["status", "--porcelain"]) do
+      {:ok, ""} -> :ok
+      _ -> :error
+    end
+  end
+
+  # DEPLOY-38: `git merge --ff-only` writes the index and the working files
+  # before it moves the branch, so a merge that cannot finish — a lock it could
+  # not take (DEPLOY-39), a process killed halfway — leaves changes nobody made,
+  # and every later deploy is refused for them (DEPLOY-5). They are put back
+  # from the revision the merge started at, without moving `live`.
+  #
+  # `git reset --hard` is not the way back here: it needs the very lock that
+  # stopped the merge (a reset updates the ref it is checked out on), so the
+  # one case it is there for is the one it fails. `git read-tree --reset -u`
+  # restores the index and the working files and leaves the ref alone, which is
+  # all that is undone: HEAD did not move. A tree that was dirty before the
+  # merge keeps the changes that are the caller's.
+  defp undo_merge(_before, false, _root), do: ""
+
+  defp undo_merge(before, true, root) do
+    if clean?(root) == :ok do
+      ""
+    else
+      case git(root, ["read-tree", "--reset", "-u", before]) do
+        {:ok, _output} ->
+          "\n\nNothing was merged: the live tree is back at #{short(before)}."
+
+        {:error, reason} ->
+          "\n\n#{@live} could not be put back to #{short(before)}: #{reason}"
+      end
     end
   end
 

@@ -957,6 +957,49 @@ defmodule Elia.DeploymentTest do
     assert {:error, _} = Deploy.deploy()
   end
 
+  # DEPLOY-38: `git merge --ff-only` writes the index and the working files
+  # before it moves the branch, so a merge git cannot finish leaves changes
+  # nobody made — the lock it could not take stops it exactly there (DEPLOY-39)
+  # — and every later deploy would be refused for them (DEPLOY-5). The merge
+  # that failed puts the tree back, so what it leaves is what it found.
+  test "a merge that fails leaves the live tree as it found it (DEPLOY-38)", %{tree: tree} do
+    {_id, path} = new_worktree()
+    file = work_on_trunk(path)
+    live = head(tree)
+
+    # The lock a killed git process leaves behind (DEPLOY-39).
+    File.write!(Path.join([tree, ".git", "HEAD.lock"]), "")
+
+    assert {:error, message} = Deploy.merge()
+    assert message =~ "Nothing was merged"
+
+    assert head(tree) == live
+    assert {output, 0} = git(tree, ["status", "--porcelain"])
+    assert output == ""
+    refute File.exists?(Path.join(tree, file))
+  end
+
+  # DEPLOY-39: git's refusal to take a lock is reported as what it is, with the
+  # file to remove, rather than as a trunk that is not ahead of `live`
+  # (DEPLOY-14) — and once the lock is gone the deploy goes through.
+  test "a merge that fails on a lock names it, and the deploy goes through after (DEPLOY-39)",
+       %{tree: tree} do
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+
+    lock = Path.join([tree, ".git", "HEAD.lock"])
+    File.write!(lock, "")
+
+    assert {:error, message} = Deploy.merge()
+    assert message =~ lock
+    assert message =~ "remove #{lock}"
+    refute message =~ "fast-forward only"
+
+    File.rm!(lock)
+    assert {:ok, _message} = Deploy.deploy()
+    assert head(tree) == trunk(tree)
+  end
+
   # DEPLOY-6, HOT-5
   test "hot reload deploys, then reloads the running app", %{tree: tree} do
     running_server()

@@ -162,6 +162,25 @@ tree's front end (`/recover`, RECOVER-10).
   not as a step (DEPLOY-21) — and a tree that is already clean stashes nothing
   and says nothing about it. The operation does not restore the stash itself:
   the tree it leaves is the clean one it needs to leave.
+- **DEPLOY-38** A merge that fails leaves the live tree as it found it. `git
+  merge --ff-only` writes the index and the working files before it moves the
+  branch, so a merge that cannot finish — a lock git cannot take (DEPLOY-39), a
+  process killed halfway — leaves changes nobody made. They are not the user's:
+  a deploy that finds them puts them in the stash beside the changes the user
+  did leave (DEPLOY-37), so the tree says a change was left behind that no one
+  made, and the stash no longer holds only what the user left. So a merge that
+  fails puts the index and the working files back from the revision it started
+  at, without moving `live`, and says in its message that nothing was merged.
+  That undo must not need the lock the merge could not take: a `git reset
+  --hard` needs exactly that one, and so cannot undo the merge it is there for.
+  A tree that was dirty before the merge is left alone — those changes are not
+  the merge's to discard.
+- **DEPLOY-39** A merge that fails because git could not take a lock says so,
+  naming the lock file, and says what to do: a git process that was killed —
+  one the harness killed when it timed out, say — leaves its lock behind, and
+  removing it once no git process is running lets the next deploy through. It
+  is not reported as a trunk that is not ahead of `live` (DEPLOY-14), which a
+  lock is not.
 - **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
   test in the live tree itself — `mix deps.get`, jailed in the live tree
   (ISOL-13, ISOL-14) — before the suite runs. A dependency a chat added lives in the
@@ -510,11 +529,12 @@ served from there (PREVIEW-2, PREVIEW-4).
 nothing is created for it, the trunk, the deploy, the front
 end it builds before it loads — the staged build, what it promotes, and what a
 rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
-checks for, whether a restart is possible (DEPLOY-33), the steps it
+checks for, whether a restart is possible (DEPLOY-33), a merge that fails and
+leaves the live tree as it found it (DEPLOY-38, DEPLOY-39), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
 restart, the runner, the loaded revision a boot records and what a deploy
 brought, and the uncommitted changes it puts aside (DEPLOY-37), DEPLOY-1 to
-DEPLOY-33, DEPLOY-36 and DEPLOY-37),
+DEPLOY-33, DEPLOY-36, DEPLOY-37, DEPLOY-38 and DEPLOY-39),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to
