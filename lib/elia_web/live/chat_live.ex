@@ -57,6 +57,11 @@ defmodule EliaWeb.ChatLive do
   defp mount_chat(id, socket) do
     {:ok, _pid} = Agent.ensure_started(id)
 
+    # NOTIF-8: opening the chat is what reads its entries — the user is here,
+    # whether they came from the menu, the chat list, a push notification or a
+    # URL. Nothing is written when the chat has nothing unread.
+    Elia.Notifications.mark_chat_read(id)
+
     if connected?(socket) do
       Agent.subscribe(id)
       Elia.Skills.subscribe()
@@ -168,7 +173,7 @@ defmodule EliaWeb.ChatLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} chats_sidebar>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications} chats_sidebar>
       <%!-- UI-78: this fills the shell (`main`, a flex column) and lets its own
       column and the message list shrink to nothing, so the composer stays at
       the bottom of the screen however long the transcript is. PUSH-14: the

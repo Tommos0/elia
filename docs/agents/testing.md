@@ -115,6 +115,11 @@ a browser during `mix test`.
   partition feels lopsided.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8).
+- A partition can fail on a test that passes on its own. In this tree partition
+  2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
+  and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with
+  other runs, and each file passed when run alone (`mix test test/<file>`). When
+  a partition fails, run the file it named before believing it.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run

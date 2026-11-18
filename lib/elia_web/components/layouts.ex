@@ -23,7 +23,7 @@ defmodule EliaWeb.Layouts do
 
   ## Examples
 
-      <Layouts.app flash={@flash}>
+      <Layouts.app flash={@flash} notifications={@notifications}>
         <h1>Content</h1>
       </Layouts.app>
 
@@ -47,6 +47,12 @@ defmodule EliaWeb.Layouts do
   # UI-91, UI-92: the chat list's state (`EliaWeb.ChatList`), which is what the
   # drawer draws. Every page in the live session has it assigned.
   attr :chats, :map, default: nil, doc: "the chat list's state (UI-91, UI-92)"
+
+  # NOTIF-5: the bell's state (`EliaWeb.Notifications`). Every page in the live
+  # session has it assigned, and the header draws the bell from it. Required, so
+  # a page that does not hand it over fails to compile rather than losing the
+  # bell.
+  attr :notifications, :map, required: true, doc: "the notification bell's state (NOTIF-5)"
 
   slot :inner_block, required: true
 
@@ -105,6 +111,9 @@ defmodule EliaWeb.Layouts do
           <.nav_link to={~p"/sessions"} id="sessions-link" icon="hero-signal" label="Sessions" />
           <.nav_link to={~p"/system"} id="system-link" icon="hero-chart-bar" label="System" />
           <.nav_link to={~p"/settings"} id="settings-link" icon="hero-cog-6-tooth" label="Settings" />
+          <%!-- NOTIF-5: the notification bell, at the right-hand end of the
+          header, last so that it sits at the top right of every page. --%>
+          <EliaWeb.Notifications.bell state={@notifications} />
         </div>
       </header>
 

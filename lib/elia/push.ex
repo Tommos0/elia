@@ -69,12 +69,24 @@ defmodule Elia.Push do
   def chat_payload(chat_id, reason) do
     %{
       title: title(chat_id),
-      body: body(reason),
+      body: reason_text(reason),
       url: "/c/" <> chat_id,
       tag: "chat-" <> chat_id,
       icon: @icon
     }
   end
+
+  @doc """
+  PUSH-11, PUSH-12, NOTIF-2: what a reason reads as — one phrase, so the push
+  notification and the list's own entry (`Elia.Notifications`) say the same
+  thing about the same event rather than two copies of the same words.
+  """
+  @spec reason_text(atom()) :: binary()
+  def reason_text(:approval), do: "Needs your approval."
+  def reason_text(:input), do: "Needs your answer."
+  def reason_text(:finished), do: "Finished."
+  def reason_text(:paused), do: "Paused at a limit."
+  def reason_text(_reason), do: "Needs you."
 
   @doc """
   PUSH-8: send the test notification, so the user can see that push works from
@@ -197,10 +209,4 @@ defmodule Elia.Push do
   defp classify({:error, reason}), do: {:error, reason}
 
   defp title(chat_id), do: Elia.Store.chat_title(chat_id) || "Elia"
-
-  defp body(:approval), do: "Needs your approval."
-  defp body(:input), do: "Needs your answer."
-  defp body(:finished), do: "Finished."
-  defp body(:paused), do: "Paused at a limit."
-  defp body(_reason), do: "Needs you."
 end

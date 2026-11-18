@@ -40,6 +40,10 @@ defmodule EliaWeb.LogsLive do
   def handle_info({:log_entry, _entry}, socket), do: {:noreply, refresh(socket)}
   def handle_info(:logs_cleared, socket), do: {:noreply, refresh(socket)}
 
+  # Every page is subscribed to the activity topic, so this one sees a chat's
+  # status too (UI-47, `EliaWeb.ChatList`); it has nothing to say about one.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # LOG-5, LOG-6
   defp refresh(socket) do
     entries = Logs.list(level: socket.assigns.level, query: socket.assigns.query)
@@ -72,7 +76,7 @@ defmodule EliaWeb.LogsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list}>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
       <div class="h-full overflow-y-auto">
         <div class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <div class="flex flex-wrap items-end justify-between gap-4">

@@ -189,7 +189,7 @@ defmodule EliaWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list}>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
       <div id="home-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
           <header>

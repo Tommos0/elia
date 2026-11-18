@@ -21,6 +21,10 @@ defmodule EliaWeb.SystemLive do
   @impl true
   def handle_info(:tick, socket), do: {:noreply, update_stats(socket, SystemStats.sample())}
 
+  # Every page is subscribed to the activity topic, so this one sees a chat's
+  # status too (UI-47, `EliaWeb.ChatList`); it has nothing to say about one.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   defp update_stats(socket, sample) do
     prev = socket.assigns.prev
     cpu = SystemStats.cpu_usage(prev && prev.cpu, sample.cpu)
@@ -43,7 +47,7 @@ defmodule EliaWeb.SystemLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list}>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
       <div id="system-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <div class="flex flex-wrap items-end justify-between gap-4">

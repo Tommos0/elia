@@ -224,7 +224,7 @@ defmodule EliaWeb.FilesLive do
       end
 
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list}>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
       <div class="flex h-full flex-col lg:flex-row">
         <aside
           id="file-list"

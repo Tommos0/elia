@@ -145,7 +145,9 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 
 - Choosing *what* notifies (per chat, per event, quiet hours): one setting, and
   every event of PUSH-11 and PUSH-12.
-- Delivery receipts, a history of what was sent, and retrying a failed send.
+- Delivery receipts, a record of what push sent (what Elia itself knows about a
+  chat needing the user is the notification list, `specs/notifications.md`), and
+  retrying a failed send.
 - Managing a single subscription from the UI (only "remove all", PUSH-7).
 - Notifications for a sub-task chat's own progress (SUBTASK), and for anything
   other than a chat needing the user.

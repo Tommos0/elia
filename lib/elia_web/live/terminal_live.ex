@@ -171,7 +171,7 @@ defmodule EliaWeb.TerminalLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list}>
+    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
       <div class="flex min-h-0 flex-1 flex-col" style="min-height: 0">
         <div class="border-b border-base-300 px-4 py-3 sm:px-6">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
