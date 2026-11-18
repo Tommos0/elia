@@ -146,7 +146,9 @@ tree's front end (`/recover`, RECOVER-10).
   was, so nothing is deployed and the running app is unaffected, and it returns
   the test output. When `live` is already at `master` there is nothing to
   *merge*: no tests run, the live tree's front end is still made current before
-  the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens.
+  the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens. A
+  deploy can be asked to leave the suite out, and is then the same deploy
+  without it (DEPLOY-40).
 - **DEPLOY-37** Uncommitted changes in the live tree are put aside rather than
   refused: the tree is also where a chat works (DEPLOY-1), so a change left
   there — a spec drafted before the worktree existed (DEPLOY-28), an edit
@@ -208,6 +210,21 @@ tree's front end (`/recover`, RECOVER-10).
   (DEPLOY-32) — writes under `priv/static`, so the browser's live reload fires
   (DEPLOY-12) and a page that is already open comes back on the new bundle
   instead of keeping the one it loaded (HOT-8).
+- **DEPLOY-40** A deploy can be asked to leave the live tree's test suite out,
+  and is then the same deploy in every other respect: it is refused for the same
+  reasons and does the same things first — the tree set up for deployment
+  (DEPLOY-14), the uncommitted changes put aside (DEPLOY-37), the trunk's
+  dependencies fetched (DEPLOY-18) — and then fast-forwards `live` onto the
+  trunk, makes the front end current and checks it (DEPLOY-19, DEPLOY-24) and
+  loads the result (DEPLOY-6, DEPLOY-7). Only the suite is left out, so the merge
+  is kept untested rather than refused and the rollback a failing suite would
+  cause does not happen (DEPLOY-5). Running the suite is what a deploy does
+  unless it was asked to leave it out, and a deploy with nothing to merge has no
+  suite either way (DEPLOY-5). No `:tests` step is reported, since a step the
+  operation never takes is never reported (DEPLOY-21), and the message the
+  deploy returns says the suite was skipped, so a deploy that left it out is not
+  read as one whose tests passed (CONF-20, CONF-22). A rollback (DEPLOY-26) is
+  unaffected: it runs no suite for a skip to remove.
 - **DEPLOY-20** The front-end step of a deploy (DEPLOY-19) runs on every deploy,
   including one whose `live` is already at the trunk and so has nothing to merge
   (DEPLOY-5): what a deploy loads is then always what the tree it loads builds.
@@ -457,7 +474,10 @@ nothing is rewritten.
   from the environment when it is asked, so nothing about it is stored either.
 - The shapes that do outlive the process — a deploy record, the loaded
   revisions, the settings database — gain and lose no key and no file here, so
-  an older record, revision file or settings row still loads. A boot writes
+  an older record, revision file or settings row still loads. How a deploy was
+  asked for — whether it leaves the suite out (DEPLOY-40) — is not stored: it
+  adds no key to the record, and what a page reads back about it afterwards is
+  the result message, which the record already holds (CONF-22). A boot writes
   them where before only a deploy or a rollback did (DEPLOY-36): the same loaded
   revision in `.elia/deployed` and the same revision entry in `.elia/deploy.json`
   (DEPLOY-17, DEPLOY-23, DEPLOY-25), so a record an older Elia wrote still reads
@@ -495,8 +515,9 @@ entry points it checked, including the removal of what a rejected attempt wrote
 (DEPLOY-24) and the seam its tests replace the way `load:` and `stop:` are, and
 `rollback/3`, DEPLOY-26, and `changes/1`, DEPLOY-27),
 `Elia.Deploy.Runner` (the deploy's own process, its step and its result,
-DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23, and the boot record it makes
-itself, DEPLOY-36),
+DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23, the option a deploy is started
+with — whether it runs the live tree's suite (DEPLOY-40) — and the boot record
+it makes itself, DEPLOY-36),
 `Elia.Application` (starts it),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
@@ -532,9 +553,9 @@ rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
 checks for, whether a restart is possible (DEPLOY-33), a merge that fails and
 leaves the live tree as it found it (DEPLOY-38, DEPLOY-39), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
-restart, the runner, the loaded revision a boot records and what a deploy
-brought, and the uncommitted changes it puts aside (DEPLOY-37), DEPLOY-1 to
-DEPLOY-33, DEPLOY-36, DEPLOY-37, DEPLOY-38 and DEPLOY-39),
+restart, the runner, a deploy that leaves the suite out (DEPLOY-40), the loaded
+revision a boot records and what a deploy brought, and the uncommitted changes
+it puts aside (DEPLOY-37), DEPLOY-1 to DEPLOY-33, DEPLOY-36 to DEPLOY-40),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to

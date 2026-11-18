@@ -55,11 +55,12 @@ defmodule Elia.Deploy.Runner do
   @doc """
   Starts a deploy in the background: `:reload` (DEPLOY-6) or `:restart`
   (DEPLOY-7). `:ok`, or `{:error, :busy}` while another operation runs
-  (DEPLOY-16).
+  (DEPLOY-16). Its options are the deploy's own, so `skip_tests: true` starts
+  one that leaves the live tree's suite out (DEPLOY-40).
   """
-  @spec start(:reload | :restart) :: :ok | {:error, :busy}
-  def start(mode) when mode in [:reload, :restart] do
-    GenServer.call(__MODULE__, {:start, {:deploy, mode}}, 5_000)
+  @spec start(:reload | :restart, keyword()) :: :ok | {:error, :busy}
+  def start(mode, opts \\ []) when mode in [:reload, :restart] do
+    GenServer.call(__MODULE__, {:start, {:deploy, mode, opts}}, 5_000)
   end
 
   @doc """
@@ -256,18 +257,20 @@ defmodule Elia.Deploy.Runner do
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp kind({:deploy, _mode}), do: :deploy
+  defp kind({:deploy, _mode, _opts}), do: :deploy
   defp kind({:rollback, _sha, _mode}), do: :rollback
 
-  defp mode({:deploy, mode}), do: mode
+  defp mode({:deploy, mode, _opts}), do: mode
   defp mode({:rollback, _sha, mode}), do: mode
 
   # A deploy's revision is the one it loads, which it only knows once it has
   # loaded it; a rollback's is the one it is going back to, from the start.
-  defp sha({:deploy, _mode}), do: nil
+  defp sha({:deploy, _mode, _opts}), do: nil
   defp sha({:rollback, sha, _mode}), do: sha
 
-  defp run({:deploy, mode}, root), do: Deploy.run(mode, root)
+  # DEPLOY-40: the options a deploy was started with travel with it, so the
+  # operation this process holds is the one it runs.
+  defp run({:deploy, mode, opts}, root), do: Deploy.run(mode, root, opts)
   defp run({:rollback, sha, mode}, root), do: Deploy.rollback(sha, mode, root)
 
   defp running(running, step, :started, _ms, _status), do: %{running | step: step}

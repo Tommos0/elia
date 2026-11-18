@@ -24,7 +24,9 @@ defmodule Elia.Deploy do
   (DEPLOY-19) — on every deploy, merge or not (DEPLOY-20) — and loads the result
   into the running app, by hot reload
   (`hot_reload/1`, DEPLOY-6) or by restarting the server (`restart/1`,
-  DEPLOY-7). No request ever reloads code (DEPLOY-8).
+  DEPLOY-7). No request ever reloads code (DEPLOY-8). A deploy can be asked to
+  leave the live tree's suite out (DEPLOY-40), which is the checkbox the
+  Settings page offers beside its deploy buttons (CONF-36).
   """
 
   require Logger
@@ -628,7 +630,8 @@ defmodule Elia.Deploy do
   @doc """
   Deploys the trunk into the live tree (DEPLOY-5): fast-forwards `live` to
   `master`, runs the full test suite there, and rolls `live` back when the tests
-  fail, so nothing is deployed and the running app is unaffected (HOT-4).
+  fail, so nothing is deployed and the running app is unaffected (HOT-4). A
+  deploy asked to leave the suite out merges untested instead (DEPLOY-40).
 
   `{:ok, message}`, `{:tests_failed, output}` or `{:error, reason}`. Nothing to
   merge when `live` is already at the trunk: no tests run, but the tree's front
@@ -636,18 +639,23 @@ defmodule Elia.Deploy do
   Uncommitted changes in the live tree are put aside in the stash before
   anything runs, and the message says so (DEPLOY-37).
   """
-  @spec deploy(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def deploy(root \\ Workspace.runtime_root()) do
+  @spec deploy(binary(), keyword()) ::
+          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def deploy(root \\ Workspace.runtime_root(), opts \\ []) do
     with :ok <- deployable(root),
          {:ok, set_aside} <- set_aside(root) do
       case status(root) do
         {:ok, %{pending: 0}} -> nothing_to_merge(root)
-        {:ok, %{pending: pending}} -> merge_and_test(pending, root)
+        {:ok, %{pending: pending}} -> merge_and_test(pending, root, skip_tests?(opts))
         {:error, reason} -> {:error, reason}
       end
       |> with_set_aside(set_aside)
     end
   end
+
+  # DEPLOY-40: running the suite is what a deploy does; only a deploy that was
+  # asked to leave it out does not.
+  defp skip_tests?(opts), do: Keyword.get(opts, :skip_tests, false) == true
 
   # DEPLOY-5, DEPLOY-20: the trunk is already deployed, so there is nothing to
   # merge and no suite to run — but the tree's front end is still made current
@@ -758,14 +766,16 @@ defmodule Elia.Deploy do
   running state. Only available when the endpoint's code reloader is on
   (HOT-2, HOT-7).
   """
-  @spec hot_reload(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def hot_reload(root \\ Workspace.runtime_root()), do: deploy_and_load(root, :deploy)
+  @spec hot_reload(binary(), keyword()) ::
+          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def hot_reload(root \\ Workspace.runtime_root(), opts \\ []),
+    do: deploy_and_load(root, :deploy, opts)
 
   # Both modes report the load as the operation's last step (DEPLOY-21): `:load`
   # for the hot reload, `:restart` for the restart.
-  defp deploy_and_load(root, by) do
+  defp deploy_and_load(root, by, opts) do
     if hot_reload_available?() do
-      case deploy(root) do
+      case deploy(root, opts) do
         {:ok, deployed} -> load(deployed, root, by)
         other -> other
       end
@@ -787,10 +797,11 @@ defmodule Elia.Deploy do
   turns into a restart (RESTART-1, RESTART-2). Nothing is deployed or restarted
   when the tests fail.
   """
-  @spec restart(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def restart(root \\ Workspace.runtime_root()) do
+  @spec restart(binary(), keyword()) ::
+          {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
+  def restart(root \\ Workspace.runtime_root(), opts \\ []) do
     with :ok <- restartable?() do
-      case deploy(root) do
+      case deploy(root, opts) do
         {:ok, deployed} -> stop_for(deployed, root, :deploy)
         other -> other
       end
@@ -935,14 +946,16 @@ defmodule Elia.Deploy do
   @doc """
   Runs a deploy in one of its modes (DEPLOY-6, DEPLOY-7): `:reload` for the hot
   reload, `:restart` for the restart. What `Elia.Deploy.Runner` calls, so a
-  deploy started from the Settings page runs outside the page (DEPLOY-15).
+  deploy started from the Settings page runs outside the page (DEPLOY-15). Its
+  options are the deploy's own, so `skip_tests: true` runs one that leaves the
+  live tree's suite out (DEPLOY-40).
   """
-  @spec run(:reload | :restart, binary()) ::
+  @spec run(:reload | :restart, binary(), keyword()) ::
           {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
-  def run(mode, root \\ Workspace.runtime_root())
+  def run(mode, root \\ Workspace.runtime_root(), opts \\ [])
 
-  def run(:reload, root), do: hot_reload(root)
-  def run(:restart, root), do: restart(root)
+  def run(:reload, root, opts), do: hot_reload(root, opts)
+  def run(:restart, root, opts), do: restart(root, opts)
 
   # DEPLOY-33: what says that something outside the VM started the server and
   # will bring it back is a marker in its environment — set by `bin/serve`
@@ -1021,41 +1034,49 @@ defmodule Elia.Deploy do
   # DEPLOY-5: merge, fetch dependencies, test in the live tree, and undo the
   # merge when either of those fails, so a failed deploy changes nothing. Each
   # of those is a step the deploy reports (DEPLOY-21), and a step it never
-  # reaches is never reported.
-  defp merge_and_test(count, root) do
+  # reaches is never reported — the suite included, when the deploy was asked to
+  # leave it out (DEPLOY-40).
+  defp merge_and_test(count, root, skip?) do
     with {:ok, before} <- git(root, ["rev-parse", @live]) do
       case step(:merge, root, fn -> merge(root) end) do
-        {:ok, _merged} -> deps_and_test(count, before, root)
+        {:ok, _merged} -> deps_and_test(count, before, root, skip?)
         {:error, reason} -> {:error, reason}
       end
     end
   end
 
-  defp deps_and_test(count, before, root) do
+  defp deps_and_test(count, before, root, skip?) do
     case step(:deps, root, fn -> fetch_deps(root) end) do
-      {:ok, _output} -> test_merged(count, before, root)
+      {:ok, _output} -> test_merged(count, before, root, skip?)
       {:error, reason} -> {:error, fetch_failed(reason) <> rollback_note(before, root)}
     end
   end
 
-  defp test_merged(count, before, root) do
+  # DEPLOY-40: the suite left out — the merge is kept whatever it is, so the
+  # deploy says the tests were skipped: what it loads has not been tested
+  # (CONF-20, CONF-22).
+  defp test_merged(count, before, root, true),
+    do: after_tests(count, before, root, " The test suite was skipped.")
+
+  defp test_merged(count, before, root, false) do
     case step(:tests, root, fn -> run_suite(root) end) do
       {:ok, _output} ->
-        # DEPLOY-19: the tree is deployed, so what a browser loads from it is
-        # made current before anything loads the tree itself.
-        case front_end(root) do
-          {:ok, note} ->
-            {:ok, "#{commits(count)} merged into #{@live}.#{note}"}
-
-          {:error, reason} ->
-            {:error, front_end_failed(reason) <> rollback_note(before, root)}
-        end
+        after_tests(count, before, root, "")
 
       {:tests_failed, output} ->
         {:tests_failed, output <> rollback_note(before, root)}
 
       {:error, reason} ->
         {:error, reason <> rollback_note(before, root)}
+    end
+  end
+
+  # DEPLOY-19: the tree is deployed, so what a browser loads from it is made
+  # current before anything loads the tree itself.
+  defp after_tests(count, before, root, note) do
+    case front_end(root) do
+      {:ok, front_end} -> {:ok, "#{commits(count)} merged into #{@live}.#{note}#{front_end}"}
+      {:error, reason} -> {:error, front_end_failed(reason) <> rollback_note(before, root)}
     end
   end
 

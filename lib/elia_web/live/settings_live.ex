@@ -38,6 +38,10 @@ defmodule EliaWeb.SettingsLive do
         # operation runs, as `Process.send_after/3` returned it — nil when
         # nothing is scheduled.
         deploy_timer: nil,
+        # CONF-36: whether the next deploy leaves the live tree's suite out
+        # (DEPLOY-40). The page's own state, and unchecked whenever it loads:
+        # nothing about it is stored.
+        deploy_skip_tests: false,
         # CONF-24: the clock the section's elapsed time is read against. It is
         # an assign because a render only recomputes what a tracked assign says
         # has changed, so the tick moves this one.
@@ -662,7 +666,30 @@ defmodule EliaWeb.SettingsLive do
               <span class="break-words">{deploy_status(@deployment)}</span>
             </p>
 
-            <div :if={deploy_ready?(@deployment)} class="mt-4 flex flex-wrap gap-2">
+            <%!-- CONF-36, DEPLOY-40: the one gate a deploy from this page can
+            leave out is the suite — one checkbox for either button — and it is
+            unchecked whenever the page loads, since nothing about it is
+            stored. --%>
+            <label
+              :if={deploy_ready?(@deployment)}
+              class="mt-4 flex items-start gap-2 rounded-xl bg-base-200 px-3 py-2 text-xs text-base-content/70"
+              title="Load the trunk without running its tests: the deploy is not gated by the suite (DEPLOY-40)"
+            >
+              <input
+                type="checkbox"
+                id="deploy-skip-tests"
+                phx-click="skip-tests"
+                checked={@deploy_skip_tests}
+                disabled={@deploy_op != nil}
+                class="checkbox checkbox-sm mt-0.5 shrink-0"
+              />
+              <span class="break-words">
+                Skip tests — deploy without running the live tree's suite, so what
+                it loads has not been tested
+              </span>
+            </label>
+
+            <div :if={deploy_ready?(@deployment)} class="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
                 id="deploy-reload"
@@ -1515,8 +1542,17 @@ defmodule EliaWeb.SettingsLive do
   # while an operation runs is refused there (DEPLOY-16), and either way the
   # section goes on showing what the runner holds.
   def handle_event("deploy", %{"mode" => mode}, socket) when mode in ~w(reload restart) do
-    _result = Deploy.Runner.start(deploy_mode(mode))
+    _result =
+      Deploy.Runner.start(deploy_mode(mode), skip_tests: socket.assigns.deploy_skip_tests)
+
     {:noreply, deploy_assigns(socket)}
+  end
+
+  # CONF-36: the checkbox's state belongs to the page and nothing else — it is
+  # unchecked whenever the page loads and is never stored (DEPLOY-40) — so the
+  # page is what holds it, and the click that flipped it is the browser's own.
+  def handle_event("skip-tests", _params, socket) do
+    {:noreply, assign(socket, deploy_skip_tests: !socket.assigns.deploy_skip_tests)}
   end
 
   # CONF-23, DEPLOY-26: going back to a revision the app has run is an operation

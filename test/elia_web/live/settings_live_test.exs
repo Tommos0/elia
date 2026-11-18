@@ -709,6 +709,77 @@ defmodule EliaWeb.SettingsLiveTest do
     :ok
   end
 
+  # CONF-36, DEPLOY-40: a chat's merge whose suite fails — the trunk commit a
+  # deploy refuses unless it is asked to leave the suite out.
+  defp broken_trunk do
+    id = Elia.Agent.new_id()
+    path = LiveTree.worktree(Elia.Workspace.runtime_root(), id)
+    on_exit(fn -> File.rm_rf!(path) end)
+    LiveTree.work!(path)
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    LiveTree.commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+  end
+
+  # CONF-36, DEPLOY-40: the Deployment section offers one checkbox that leaves
+  # the live tree's suite out, beside the buttons, and the deploy either button
+  # starts is the one it asks for.
+  test "the skip-tests checkbox leaves the suite out of the deploy it starts", %{conn: conn} do
+    running_server()
+    live_tree()
+    broken_trunk()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-36: it is there, unchecked, and says what checking it means.
+    assert has_element?(view, "#deploy-skip-tests")
+    refute has_element?(view, "#deploy-skip-tests[checked]")
+    assert render(view) =~ "Skip tests"
+    assert render(view) =~ "has not been tested"
+
+    # CONF-36: the click flips the page's own state, and nothing else.
+    view |> element("#deploy-skip-tests") |> render_click()
+    assert has_element?(view, "#deploy-skip-tests[checked]")
+
+    # DEPLOY-40: the deploy it starts leaves the suite out, so the merge the
+    # suite would have refused is loaded and the section says the tests were
+    # skipped rather than that they passed.
+    Runner.subscribe()
+    view |> element("#deploy-reload") |> render_click()
+    assert {:ok, message} = await_deploy()
+    assert message =~ "The test suite was skipped"
+    assert has_element?(view, "#deploy-result", "The test suite was skipped")
+    assert {:ok, %{pending: 0}} = Deploy.status()
+  end
+
+  # CONF-36: nothing about the checkbox is stored — not in the settings database
+  # and not in the browser — so a page that loads again starts with the tests
+  # running.
+  test "the checkbox is unchecked whenever the page loads (CONF-36)", %{conn: conn} do
+    running_server()
+    live_tree()
+    work_on_trunk()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    view |> element("#deploy-skip-tests") |> render_click()
+    assert has_element?(view, "#deploy-skip-tests[checked]")
+
+    # The page comes back — a reload, a new visit — and the state it held is
+    # gone with it.
+    assert {:ok, again, _html} = live(conn, ~p"/settings")
+    refute has_element?(again, "#deploy-skip-tests[checked]")
+  end
+
   # CONF-19, DEPLOY-14
   test "the deployment section says how the live tree stands", %{conn: conn} do
     # The test workspace isn't set up for deployment: it is not on `live`.
@@ -877,8 +948,8 @@ defmodule EliaWeb.SettingsLiveTest do
     assert {:ok, %{behind?: false}} = Deploy.status()
   end
 
-  # CONF-20, DEPLOY-16: one deploy at a time, and the runner's state reaches a
-  # page that mounts while a deploy runs or after it finished.
+  # CONF-20, CONF-36, DEPLOY-16: one deploy at a time, and the runner's state
+  # reaches a page that mounts while a deploy runs or after it finished.
   test "a page that mounts during or after a deploy shows it", %{conn: conn} do
     # The deploy is held in its load step until this test lets it finish, so the
     # page below mounts mid-deploy for real instead of racing one that may have
@@ -900,6 +971,10 @@ defmodule EliaWeb.SettingsLiveTest do
     # started it.
     {:ok, during, _html} = live(conn, ~p"/settings")
     assert has_element?(during, "#deploy-reload[disabled]")
+
+    # CONF-36: the checkbox is disabled with the buttons, so an operation in
+    # flight cannot be asked a different question halfway.
+    assert has_element?(during, "#deploy-skip-tests[disabled]")
 
     send(deploy, :continue)
 

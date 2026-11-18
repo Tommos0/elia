@@ -1552,6 +1552,100 @@ defmodule Elia.DeploymentTest do
            ]
   end
 
+  # DEPLOY-40: a deploy can be asked to leave the live tree's suite out. It is
+  # the same deploy in every other respect — it merges, fetches the trunk's
+  # dependencies, makes the front end current and loads — so a merge whose suite
+  # fails is kept rather than rolled back, no `:tests` step is reported
+  # (DEPLOY-21), and the message says the suite was skipped rather than that it
+  # passed.
+  test "a deploy asked to leave the suite out keeps an untested merge (DEPLOY-40)" do
+    running_server()
+    tree = front_end_tree()
+    build_front_end_with(self())
+
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload, skip_tests: true)
+    assert {:ok, message} = await_deploy()
+
+    # DEPLOY-40: what it says is that the suite was skipped, so a deploy that
+    # left it out is not read as one whose tests passed.
+    assert message =~ "merged into live."
+    assert message =~ "The test suite was skipped"
+
+    # DEPLOY-40, DEPLOY-21: every step but the suite is taken, and a step the
+    # deploy never takes is never reported.
+    assert deploy_progress() == [
+             {:merge, :started},
+             {:merge, :finished},
+             {:deps, :started},
+             {:deps, :finished},
+             {:packages, :started},
+             {:packages, :finished},
+             {:assets, :started},
+             {:assets, :finished},
+             {:load, :started},
+             {:load, :finished}
+           ]
+
+    assert %{running: nil, last: %{steps: steps}} = Runner.state()
+    assert Enum.map(steps, & &1.step) == [:merge, :deps, :packages, :assets, :load]
+
+    # The merge is kept, where the suite would have rolled it back (DEPLOY-5).
+    assert head(tree) == trunk(tree)
+    assert Deploy.loaded_revision() == trunk(tree)
+  end
+
+  # DEPLOY-40: running the suite is what a deploy does unless it was asked to
+  # leave it out, so the same tree and the same command without the option
+  # refuses the merge the suite fails on — and only the option makes the
+  # difference.
+  test "the same deploy without the option is refused by the suite (DEPLOY-40)" do
+    running_server()
+    tree = front_end_tree()
+    build_front_end_with(self())
+
+    {_id, path} = new_worktree()
+
+    File.write!(Path.join(path, "test/broken_test.exs"), """
+    defmodule BrokenTest do
+      use ExUnit.Case
+
+      test "fails" do
+        assert false
+      end
+    end
+    """)
+
+    commit(path, "broken")
+    LiveTree.push_to_trunk(path)
+
+    before = head(tree)
+
+    Runner.subscribe()
+    assert :ok = Runner.start(:reload)
+    assert {:tests_failed, output} = await_deploy()
+    assert output =~ "1 failure"
+    refute output =~ "skipped"
+
+    # Nothing is deployed (DEPLOY-5).
+    assert head(tree) == before
+  end
+
   # DEPLOY-22, DEPLOY-23: the runner holds the step in flight, and the record on
   # disk says what the operation is doing while it does it — so an operation the
   # VM dies under leaves a record that has not finished.

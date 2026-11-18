@@ -164,6 +164,15 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   stops moving once the operation has ended. A page that mounts while one runs
   (CONF-21) counts from the runner's own start time (DEPLOY-22), the same as
   the value it renders first.
+- **CONF-36** The Deployment section has a "Skip tests" checkbox
+  (`#deploy-skip-tests`) beside the deploy buttons (CONF-19): checking it makes
+  the next deploy — either button — one that leaves the live tree's suite out
+  (DEPLOY-40), and the section says what that means, that the trunk is loaded
+  without its tests having run. It is unchecked whenever the page loads, since
+  nothing about it is stored — neither in the settings database (CONF-1) nor in
+  the browser — so a reload, a new visit and a page that comes back after a
+  restart deploy (CONF-22) all start with the tests running. It is disabled
+  while an operation runs, the way the buttons are (CONF-20).
 
 ### Sections
 
@@ -246,8 +255,9 @@ reads and writes the same key.
   with the value it read — CONF-1 to CONF-8, CONF-28, CONF-29).
 - `test/elia_web/live/settings_live_test.exs` (the page, a card per provider,
   checking, saving and removing a key, the credits line and its refresh,
-  appearance and its UI scale control, the Deployment section and its steps,
-  the elapsed time, the collapsible sections — CONF-7 to CONF-30).
+  appearance and its UI scale control, the Deployment section, the checkbox
+  that leaves the suite out (CONF-36), its steps,
+  the elapsed time, the collapsible sections — CONF-7 to CONF-36).
 - `test/elia_web/browser/settings_sections_test.exs` (the four sections in a
   real browser: all four collapsed on load, a header expanding and collapsing
   one, and an open one that a re-render the user did not ask for leaves open —
