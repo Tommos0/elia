@@ -6,7 +6,9 @@ defmodule Elia.Explorer do
   Paths are relative to a project's folder: Elia's own root by default, or the
   folder of the project being browsed (EXPL-15). Anything outside that folder,
   in a protected path (`.git`, `_build`, `deps`, `.elia`) or reached through a
-  symlink is refused with `{:error, :forbidden}`.
+  symlink is refused with `{:error, :forbidden}`. The browsed root itself is
+  judged by what it points at (EXPL-20), so a project whose folder is a symlink
+  to a directory is browsed like any other.
   """
 
   alias Elia.Workspace
@@ -29,7 +31,7 @@ defmodule Elia.Explorer do
   @spec list(String.t(), String.t()) :: {:ok, [entry()]} | {:error, error()}
   def list(rel, root \\ Workspace.root()) do
     with {:ok, abs} <- safe_path(rel, root),
-         {:ok, :dir} <- type_of(abs, :not_a_directory),
+         {:ok, :dir} <- type_of(abs, :not_a_directory, root),
          {:ok, names} <- File.ls(abs) |> posix() do
       entries =
         names
@@ -53,7 +55,7 @@ defmodule Elia.Explorer do
           | {:error, error() | :binary}
   def read(rel, root \\ Workspace.root()) do
     with {:ok, abs} <- safe_path(rel, root),
-         {:ok, :file} <- type_of(abs, :directory),
+         {:ok, :file} <- type_of(abs, :directory, root),
          {:ok, size} <- size(abs),
          {:ok, data} <- read_head(abs) do
       truncated? = size > @max_bytes
@@ -160,9 +162,15 @@ defmodule Elia.Explorer do
     |> Enum.any?(fn path -> match?({:ok, %File.Stat{type: :symlink}}, File.lstat(path)) end)
   end
 
-  # `wrong` is the error for a path of the other kind (dir vs. file).
-  defp type_of(abs, wrong) do
-    case File.lstat(abs) do
+  # EXPL-20: the browsed root is the workspace the user pointed the project at,
+  # so its own type is what it points at — a root that is a symlink to a
+  # directory is browsed like any other, while every path inside it is judged as
+  # before (EXPL-2). `wrong` is the error for a path of the other kind (dir vs.
+  # file).
+  defp type_of(abs, wrong, root) do
+    stat = if abs == Path.expand(root), do: File.stat(abs), else: File.lstat(abs)
+
+    case stat do
       {:ok, %File.Stat{type: :directory}} when wrong == :directory ->
         {:error, :directory}
 

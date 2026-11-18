@@ -141,4 +141,67 @@ defmodule Elia.ExplorerTest do
     assert {:ok, entries} = Explorer.list(@dir)
     assert Enum.any?(entries, &(&1.name == "project"))
   end
+
+  # EXPL-20: the browsed root is judged by what it points at, so a project
+  # whose folder is itself a symlink is browsed — while a path through a link
+  # inside it, or out of it, is refused as before (EXPL-2).
+  test "browses a root that is itself a symlink" do
+    base = in_root("tmp/symlink_root")
+    real = Path.join(base, "real")
+    root = Path.join(base, "link")
+    File.mkdir_p!(Path.join(real, "inner"))
+    File.write!(Path.join(real, "note.txt"), "through the link\n")
+    File.write!(Path.join(real, "inner/deep.txt"), "deep")
+    File.ln_s!("real", root)
+    on_exit(fn -> File.rm_rf!(base) end)
+
+    assert {:ok, entries} = Explorer.list("", root)
+    assert Enum.map(entries, & &1.name) == ["inner", "note.txt"]
+
+    assert %{path: "note.txt", type: :file, size: 17} =
+             Enum.find(entries, &(&1.name == "note.txt"))
+
+    assert {:ok, %{content: "deep", path: "inner/deep.txt"}} =
+             Explorer.read("inner/deep.txt", root)
+
+    assert {:error, :directory} = Explorer.read("", root)
+
+    # A link inside that root is still refused, and so is a path out of it.
+    File.ln_s!("/etc", Path.join(real, "etc-link"))
+    assert {:error, :forbidden} = Explorer.list("etc-link", root)
+    assert {:error, :forbidden} = Explorer.read("etc-link/hostname", root)
+    assert {:error, :forbidden} = Explorer.list("../real", root)
+
+    # ...but the links themselves are listed, as at any other root.
+    {:ok, entries} = Explorer.list("", root)
+    assert %{type: :symlink} = Enum.find(entries, &(&1.name == "etc-link"))
+  end
+
+  # EXPL-21: a root whose link leads to something that isn't a directory, to
+  # nothing, or into a chain that can't be followed is reported, not browsed.
+  test "reports a root link that is not a directory or leads nowhere" do
+    dir = in_root("tmp/symlink_root_bad")
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "target.txt"), "not a folder")
+    File.ln_s!("target.txt", Path.join(dir, "file-link"))
+    File.ln_s!("nowhere", Path.join(dir, "gone-link"))
+    File.ln_s!("loop-b", Path.join(dir, "loop-a"))
+    File.ln_s!("loop-a", Path.join(dir, "loop-b"))
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    assert {:error, :not_a_directory} = Explorer.list("", Path.join(dir, "file-link"))
+    assert {:error, :not_found} = Explorer.list("", Path.join(dir, "gone-link"))
+    assert {:error, :unreadable} = Explorer.list("", Path.join(dir, "loop-a"))
+
+    # The links are ordinary entries of the directory that holds them.
+    assert {:ok, entries} = Explorer.list("", dir)
+
+    assert Enum.map(entries, & &1.name) == [
+             "file-link",
+             "gone-link",
+             "loop-a",
+             "loop-b",
+             "target.txt"
+           ]
+  end
 end

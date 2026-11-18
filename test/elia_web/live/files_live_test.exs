@@ -345,4 +345,61 @@ defmodule EliaWeb.FilesLiveTest do
     assert has_element?(view, "#project-picker option[value='harness']", "Elia")
     refute render(element(view, "#project-picker")) =~ "Elia (unavailable)"
   end
+
+  # EXPL-20: a project whose folder is itself a symlink to a directory is
+  # browsed like any other, rather than reported as an unreadable root.
+  test "a project whose folder is a symlink is browsed", %{conn: conn} do
+    base = in_root("#{@project}_symlink")
+    File.rm_rf!(base)
+    File.mkdir_p!(Path.join(base, "real/inner"))
+    File.write!(Path.join(base, "real/note.txt"), "through the link\n")
+    File.write!(Path.join(base, "real/inner/deep.txt"), "deep")
+    File.ln_s!("real", Path.join(base, "link"))
+    {:ok, project} = Projects.create("Linked", Path.join(base, "link"))
+
+    on_exit(fn ->
+      File.rm_rf!(base)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    refute has_element?(view, "#root-error")
+    assert has_element?(view, "#project-name", "Linked")
+    assert has_element?(view, "[data-entry='inner']")
+    assert has_element?(view, "[data-entry='note.txt']")
+    refute render(view) =~ "Empty directory"
+
+    view |> element("[data-entry='note.txt']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "note.txt"}}")
+    assert has_element?(view, "#file-content", "through the link")
+
+    view |> element("[data-entry='inner']") |> render_click()
+    assert_patch(view, ~p"/files?#{%{project: project.id, path: "inner"}}")
+    refute has_element?(view, "#root-error")
+    assert has_element?(view, "[data-entry='inner/deep.txt']")
+  end
+
+  # EXPL-21: a project whose folder is a link that leads nowhere reports its
+  # root the way any other root that can't be listed does.
+  test "a project whose folder is a broken symlink shows the root message", %{conn: conn} do
+    base = in_root("#{@project}_broken")
+    File.rm_rf!(base)
+    File.mkdir_p!(Path.join(base, "real"))
+    File.ln_s!("real", Path.join(base, "link"))
+    folder = Path.join(base, "link")
+    {:ok, project} = Projects.create("Broken link", folder)
+    File.rm_rf!(Path.join(base, "real"))
+
+    on_exit(fn ->
+      File.rm_rf!(base)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    assert has_element?(view, "#root-error", folder)
+    assert has_element?(view, "#project-name", "Broken link")
+    assert has_element?(view, "#project-picker")
+    refute has_element?(view, "#file-error")
+    refute has_element?(view, "[data-entry]")
+  end
 end

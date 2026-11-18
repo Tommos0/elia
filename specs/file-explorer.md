@@ -29,6 +29,14 @@ a file the agent mentions in that chat is opened (FLINK-5).
   reported as distinct errors (not found, directory, not a directory). Special
   files (sockets, FIFOs, devices) and I/O failures are "unreadable"; they are
   never opened.
+- **EXPL-20** The browsed root (EXPL-15, EXPL-17) is judged by what it points
+  at, so a root that is itself a symlink to a directory is listed and browsed
+  as any other root is, while a path through a symlink *inside* it is still
+  refused (EXPL-2).
+- **EXPL-21** A browsed root whose link leads to something that is not a
+  directory, to nothing, or into a chain that can't be followed is reported as
+  EXPL-19 says for a root that can't be listed: not a directory, not found, or
+  unreadable.
 
 ### Files page
 
@@ -111,6 +119,14 @@ always sends the plain text, so the socket payload doesn't grow.
   read the (non-protected) workspace. Its socket is bound to this server's own
   origin ([SOCK](socket-origin.md)), which bounds the page, not the person.
 
+## Stored data
+
+Nothing stored changes. A project's `folder` is stored as the path it was
+registered with (PROJ-2), symlink and all, and is never rewritten: the link is
+followed when the root is browsed, not when the project is saved or read. An
+existing project whose folder is a symlink therefore browses as it is, and no
+migration is needed.
+
 ## Implementation
 
 `Elia.Explorer` (path safety, listing, reading, language detection),
@@ -123,11 +139,12 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 ## Tests
 
 - `test/elia/explorer_test.exs` (path safety, the listing, reading and its
-  refusals, the language a path maps to — EXPL-1 to EXPL-5, EXPL-11).
+  refusals, a browsed root that is a symlink, the language a path maps to —
+  EXPL-1 to EXPL-5, EXPL-11, EXPL-20, EXPL-21).
 - `test/elia_web/live/files_live_test.exs` (the page, its breadcrumbs, the
   viewer and its refusals, the language attribute, the header link, the project
-  and the chat in view — EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to
-  EXPL-19).
+  and the chat in view, a project whose folder is a symlink — EXPL-6 to
+  EXPL-10, EXPL-12, EXPL-13, EXPL-15 to EXPL-21).
 - `test/elia_web/file_links_test.exs` (the paths a link may name, EXPL-1,
   EXPL-2, EXPL-6, EXPL-9).
 - `test/elia/preview_test.exs` (a path through a symlink refused, EXPL-2).
