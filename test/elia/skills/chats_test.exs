@@ -326,9 +326,9 @@ defmodule Elia.Skills.ChatsTest do
     assert message =~ other
   end
 
-  # HIST-9: a phrase found across the chats, in text, tool results and tool
-  # calls.
-  test "HIST-9 search_chats finds a phrase across the chats" do
+  # SEARCH-7: the terms a query is split into, found in a message's text, a
+  # tool result's content and a tool call's input JSON.
+  test "SEARCH-7 search_chats searches the terms a query is split into" do
     token = unique("seek")
 
     id =
@@ -362,21 +362,87 @@ defmodule Elia.Skills.ChatsTest do
     assert third["index"] == 4
     assert third["role"] == "assistant"
 
-    # Nothing found is not an error.
-    assert {:ok, "[]"} = call("search_chats", %{"query" => unique("absent")})
+    # A term is a substring of the text, not a word of it: part of one finds
+    # every message holding it.
+    assert Enum.map(search(String.slice(token, 3, 8)), & &1["id"]) == [id, id, id]
 
-    # A blank query says so, and the schema refuses a missing one.
-    assert {:error, message} = call("search_chats", %{"query" => "   "})
-    assert message =~ "non-blank"
-    assert {:error, message} = Elia.Tool.validate(tool("search_chats"), %{})
-    assert message =~ "query is required"
-
-    # The cap: at most `limit` matches, from the first chat that has them.
-    assert [%{"id" => ^id}] = search(token, %{"limit" => 1})
+    # SEARCH-7: the terms of a query are its whitespace-separated parts, and
+    # every one of them has to be found (SEARCH-8): a second term that is not
+    # there leaves nothing.
+    assert [%{"id" => ^id, "index" => 2}] = search("the #{token}")
+    assert search("#{token} #{unique("absent")}") == []
   end
 
-  # HIST-9: a snippet is the text around the match, cut with an ellipsis.
-  test "HIST-9 a snippet is cut around the match" do
+  # SEARCH-8: a message matches when every term is in it, and a chat whose
+  # title holds them all matches even when none of its messages does.
+  test "SEARCH-8 every term has to be in the message, and a title can match alone" do
+    one = unique("alpha")
+    two = unique("beta")
+
+    apart =
+      save([Message.user("this message holds #{one}"), Message.user("this one holds #{two}")],
+        title: "Both terms, each in a message of its own"
+      )
+
+    # No message holds both terms, so neither does the chat ...
+    assert search("#{one} #{two}") == []
+
+    # ... while each term on its own finds the message holding it.
+    assert indexes(one, apart) == [1]
+    assert indexes(two, apart) == [2]
+
+    # A message holding both is what the query finds.
+    together = save([Message.user("a message holding #{one} and #{two}")], title: "Both together")
+    assert indexes("#{one} #{two}", together) == [1]
+
+    # SEARCH-8: a chat whose title holds every term whose messages do not match
+    # contributes one match of its own — its first message.
+    titled =
+      save([Message.user("nothing of the query in this message")], title: "A #{one} #{two} title")
+
+    assert [{^titled, 1}] =
+             for(
+               match <- search("#{one} #{two}", %{"limit" => 100}),
+               match["id"] == titled,
+               do: {match["id"], match["index"]}
+             )
+  end
+
+  # SEARCH-9: a chat whose title holds every term first, then the newer chat,
+  # then the earlier message — and `limit` is that many from the front.
+  test "SEARCH-9 matches come title-matching chats first, then newest, then earliest" do
+    token = unique("order")
+
+    # The oldest of the three, and the only one whose title holds the term: an
+    # ordinary title of this chat's own, so nothing else about it is what puts
+    # it first.
+    title_only =
+      save([Message.user("nothing here")], title: "A chat about #{token} and nothing else")
+
+    # Two messages holding it each, so their order within the chat is visible,
+    # and a title that does not hold the term.
+    two =
+      save([Message.user("#{token} in the first"), Message.user("#{token} in the second")],
+        title: "Two messages"
+      )
+
+    # The newest of the three.
+    newest = save([Message.user("and #{token} in the newest chat")], title: "The newest chat")
+
+    assert Enum.map(search(token), &{&1["id"], &1["index"]}) == [
+             {title_only, 1},
+             {newest, 1},
+             {two, 1},
+             {two, 2}
+           ]
+
+    assert Enum.map(search(token, %{"limit" => 2}), & &1["id"]) == [title_only, newest]
+  end
+
+  # SEARCH-10: a snippet is the text around the match, cut to 200 characters;
+  # a short message is carried whole, and the match a title alone makes shows
+  # its message from the start.
+  test "SEARCH-10 a snippet is the text around the match, cut to 200 characters" do
     token = unique("snippet")
     id = save([Message.user(String.duplicate("x", 300) <> token <> String.duplicate("y", 300))])
 
@@ -387,12 +453,64 @@ defmodule Elia.Skills.ChatsTest do
     assert String.ends_with?(snippet, "…")
     # The window is 200 characters plus the two ellipses.
     assert String.length(snippet) == 202
+
+    # SEARCH-8's title match: the message from its start, uncut and without an
+    # ellipsis, since it is shorter than a window.
+    titled =
+      save([Message.user("a first message holding nothing of it")], title: "A #{token} title")
+
+    assert [%{"id" => ^titled, "snippet" => from_start}] =
+             Enum.filter(search(token), &(&1["id"] == titled))
+
+    assert from_start == "a first message holding nothing of it"
+  end
+
+  # SEARCH-11: `query` is required and non-blank, and `limit` is 20 by default
+  # and at most 100, clamped rather than refused.
+  test "SEARCH-11 a blank query is an error, and the limit is clamped" do
+    assert {:error, message} = call("search_chats", %{"query" => "   "})
+    assert message =~ "non-blank"
+    assert {:error, message} = Elia.Tool.validate(tool("search_chats"), %{})
+    assert message =~ "query is required"
+
+    # Nothing found is not an error.
+    assert {:ok, "[]"} = call("search_chats", %{"query" => unique("absent")})
+
+    token = unique("limited")
+    id = save(for n <- 1..21, do: Message.user("#{token} number #{n}"))
+
+    # A search with no limit returns the default, 20, from the front of the
+    # order (SEARCH-9) — the newer chat's 21 matches.
+    assert {:ok, json} = call("search_chats", %{"query" => token})
+    assert json |> Jason.decode!() |> length() == 20
+
+    # A limit above the cap is the cap, and one below the smallest sensible
+    # value is that value rather than an error.
+    assert length(search(token, %{"limit" => 100_000})) == 21
+    assert length(search(token, %{"limit" => -5})) == 1
+    assert Enum.map(search(token, %{"limit" => 1}), & &1["id"]) == [id]
+  end
+
+  # SEARCH-12: the skill's instructions say how a query is read.
+  test "SEARCH-12 the chats skill's instructions say how a query is read" do
+    instructions = Chats.instructions()
+
+    assert instructions =~ "search_chats"
+    assert instructions =~ "terms split on whitespace"
+    assert instructions =~ "every one of them has to be there"
+    assert instructions =~ "title"
+
+    assert tool("search_chats").description =~ "terms"
+    assert tool("search_chats").description =~ "title"
   end
 
   defp search(query, extra \\ %{}) do
     {:ok, json} = call("search_chats", Map.merge(%{"query" => query, "limit" => 100}, extra))
     Jason.decode!(json)
   end
+
+  # The messages of `id` a query matches, in the order they are reported.
+  defp indexes(query, id), do: for(match <- search(query), match["id"] == id, do: match["index"])
 
   # HIST-10: reading changes nothing and never needs approval.
   test "HIST-10 the tools never write and never need approval" do

@@ -88,7 +88,7 @@ whether or not it is jailed, and without a command or an approval prompt.
   names the matching chats' ids and titles (up to 10) so the model can pick
   rather than guess. `id` and `query` are both required, or the call is a tool
   error saying so.
-- **HIST-9** `search_chats` takes `query` (required, non-blank) and `limit`
+- ~~**HIST-9** `search_chats` takes `query` (required, non-blank) and `limit`
   (default 20, at most 100) and returns the matches as a JSON array of objects
   with `id`, `title`, `index` (the message's 1-based position, HIST-6), `role`
   and `snippet`. `query` is a literal case-insensitive substring of a message's
@@ -98,7 +98,10 @@ whether or not it is jailed, and without a command or an approval prompt.
   start. Chats are searched newest first (STORE-12) and their matches are
   returned in message order; the search stops as soon as it has `limit` matches,
   so a match in an older chat can be left out, and `[]` is returned when there
-  is none at all.
+  is none at all.~~ Superseded by SEARCH-7 to SEARCH-11 (`specs/chat-search.md`),
+  which read a query as terms that all have to be there, count a chat's title as
+  well as its messages, and put a match a title makes first; a query of one term
+  still means what this described.
 - **HIST-10** The three tools never write: no saved chat is changed, no session
   is started for a chat they read — reading a chat is not a way to resume it
   (SESS-14) — and no approval is asked, as for `await_task` (SUBTASK-27, APPR-1).
@@ -138,7 +141,8 @@ STORE-36),
 
 - `test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
   filtering — the `children` filter among it, HIST-2, SUBTASK-26 — and statuses,
-  reading a chat with paging and truncation, reading by query and the errors,
-  searching and the cap — HIST-2 to HIST-10).
+  reading a chat with paging and truncation, reading by query and the errors, and
+  searching — HIST-2 to HIST-8, HIST-10; how a search reads a query is SEARCH-7
+  to SEARCH-12, `specs/chat-search.md`).
 - `test/elia/store_test.exs` (`entry/1`, STORE-36) and `test/elia/agent_test.exs`
   (a session's tool list names the three, HIST-1).

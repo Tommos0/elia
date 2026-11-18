@@ -10,6 +10,7 @@ defmodule Elia.Store do
 
   alias Elia.LLM.Message
   alias Elia.Store.Cache
+  alias Elia.Store.Index
 
   @id_format ~r/^[A-Za-z0-9_-]{1,64}$/
 
@@ -134,9 +135,11 @@ defmodule Elia.Store do
 
       with :ok <- write_synced(tmp, :erlang.term_to_binary(chat)),
            :ok <- File.rename(tmp, path) do
-        # STORE-45: the rename already changed the file's identity; the entry
-        # goes now rather than waiting for a listing to find it stale.
+        # STORE-45, SEARCH-4: the rename already changed the file's identity;
+        # the cache's entry and the index's go now rather than waiting for a
+        # listing or a search to find them stale.
         Cache.drop(id)
+        Index.drop(id)
         :ok
       else
         error ->
@@ -171,13 +174,38 @@ defmodule Elia.Store do
   def load(id) do
     with true <- valid_id?(id),
          {:ok, data} <- File.read(path(id)),
-         # STORE-3, STORE-49: a file that can't be read as a chat gives an empty
-         # history — a corrupt one, and a decodable term that isn't a chat.
-         {:ok, chat} <- saved_chat(data, id) do
-      Enum.map(chat.messages, &Message.scrub/1)
+         # SEARCH-5, SEARCH-6: this is a decode of the chat's file, reported the
+         # way the cache of STORE-45 reports its own (`decode_record/4`), so a
+         # test can count which chats a search read.
+         :ok <- decoded(id) do
+      # STORE-3, STORE-49: a file that can't be read as a chat gives an empty
+      # history — a corrupt one, and a decodable term that isn't a chat.
+      case saved_chat(data, id) do
+        {:ok, chat} -> Enum.map(chat.messages, &Message.scrub/1)
+        :error -> []
+      end
     else
       _ -> []
     end
+  end
+
+  defp decoded(id) do
+    :telemetry.execute([:elia, :store, :decode], %{count: 1}, %{id: id})
+    :ok
+  end
+
+  @doc """
+  The identity of a chat's file — its inode, size and modification time, in
+  POSIX time — or `nil` for an id that isn't one and for an id with no file.
+
+  It is what the listing cache of STORE-45 and the search index of SEARCH-4 key
+  a chat's decoded form on: every save renames a new file into place (STORE-2),
+  so a file written by anything has an identity no entry was made from. Read
+  with one `stat`, so asking is cheap.
+  """
+  @spec identity(binary()) :: {integer(), integer(), integer()} | nil
+  def identity(id) do
+    if valid_id?(id), do: stat(id)
   end
 
   @doc """
@@ -508,13 +536,22 @@ defmodule Elia.Store do
   defp record(id) do
     path = path(id)
 
-    case File.stat(path, time: :posix) do
-      {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} ->
-        identity = {inode, size, mtime}
-        Cache.fetch(id, identity) || decode_record(id, path, identity, mtime)
-
-      {:error, _} ->
+    case stat(id) do
+      nil ->
         nil
+
+      {_inode, _size, mtime} = identity ->
+        Cache.fetch(id, identity) || decode_record(id, path, identity, mtime)
+    end
+  end
+
+  # STORE-45: a chat's file identity, which the cache and SEARCH-4's index key
+  # on — the inode, size and modification time a stat gives, in POSIX time — or
+  # `nil` when there is no file.
+  defp stat(id) do
+    case File.stat(path(id), time: :posix) do
+      {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} -> {inode, size, mtime}
+      {:error, _} -> nil
     end
   end
 
@@ -583,8 +620,10 @@ defmodule Elia.Store do
     if valid_id?(id) do
       Elia.StepTiming.delete(id)
 
-      # STORE-45: the entry goes now, not at the next listing.
+      # STORE-45, SEARCH-4: the entry goes now, not at the next listing, and so
+      # does the index's, not at the next search.
       Cache.drop(id)
+      Index.drop(id)
 
       case File.rm(path(id)) do
         :ok -> :ok

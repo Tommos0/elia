@@ -27,8 +27,10 @@ defmodule Elia.Application do
       EliaWeb.Presence,
       Elia.Logs,
       # STORE-45: before anything that reads saved chats — the sessions, the
-      # pages.
+      # pages. SEARCH-1: the search index sits beside it, and is built from the
+      # files a search considers.
       Elia.Store.Cache,
+      Elia.Store.Index,
       {Registry, keys: :unique, name: Elia.Agent.Registry},
       {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},

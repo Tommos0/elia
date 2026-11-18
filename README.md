@@ -209,7 +209,7 @@ page (PREVIEW-9, `specs/ui-preview.md`).
 | `Elia.Workspace` | The workspace root and the path classes of the policy (WS) |
 | `Elia.Shell` / `Elia.Priority` | Running OS commands, jailed and below the server's own priority |
 | `Elia.Limits` | Per-chat turn limits: steps, wall-clock time and tokens |
-| `Elia.Store` | Saved conversations in `.elia/sessions/` |
+| `Elia.Store` / `Elia.Store.Index` | Saved conversations in `.elia/sessions/`, and the index in memory over them that a search reads (SEARCH) |
 | `Elia.Settings` | API keys and the selected model, in a DETS file outside the workspace |
 | `Elia.Logs` / `Elia.SystemStats` / `Elia.Explorer` | The `/logs`, `/system` and `/files` pages |
 | `Elia.Preview` | What a UI preview names, seeds and serves (`bin/preview`) |

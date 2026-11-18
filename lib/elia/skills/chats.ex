@@ -1,9 +1,10 @@
 defmodule Elia.Skills.Chats do
   @moduledoc """
-  Reading earlier chats (spec: `specs/chat-history.md`). The built-in skill
-  `chats` gives a chat `list_chats`, `read_chat` and `search_chats`, so the
-  agent can consult the chats the user has had before this one — what was
-  decided, which paths were used, what was already tried.
+  Reading earlier chats (spec: `specs/chat-history.md`; what a search itself
+  does, `specs/chat-search.md`). The built-in skill `chats` gives a chat
+  `list_chats`, `read_chat` and `search_chats`, so the agent can consult the
+  chats the user has had before this one — what was decided, which paths were
+  used, what was already tried.
 
   They read Elia's own saved chats (STORE-1) through the harness — no command
   is run and no approval is asked — so they work in a chat whose jail is on too
@@ -30,7 +31,7 @@ defmodule Elia.Skills.Chats do
   # HIST-6: what one message shows of itself before it is cut.
   @text_cap 2_000
   @result_cap 1_000
-  # HIST-9: how much of the matched text a snippet carries, and how far it
+  # SEARCH-10: how much of the matched text a snippet carries, and how far it
   # reaches back before the match.
   @snippet 200
   @snippet_before 60
@@ -52,6 +53,12 @@ defmodule Elia.Skills.Chats do
     transcript, and `search_chats` finds a phrase across them. Work from an \
     earlier chat — a decision, a path, what was already tried — can be \
     recovered this way instead of asked about again.
+
+    `search_chats` reads its `query` as terms split on whitespace: every one \
+    of them has to be there — in a message's text, in a tool result or in a \
+    tool call's input, as a substring — and a chat's title counts as well as \
+    its messages, so a chat whose title holds every term is reported before \
+    one whose title does not.
 
     A chat is named by its id, the one in its URL (`/c/<id>`). The tools read \
     Elia's own saved chats through the harness — not with a command and not \
@@ -147,13 +154,19 @@ defmodule Elia.Skills.Chats do
       %Elia.Tool{
         name: "search_chats",
         description:
-          "Search the saved chats for a phrase, ignoring case, newest chats first, as " <>
-            "JSON: the `id` and `title` of each chat with a match, and the matching " <>
-            "message's `index`, `role` and a `snippet` of the text around the match.",
+          "Search the saved chats for a query of terms — every one of them has to be " <>
+            "there, in a message or in a chat's title — ignoring case, as JSON: the " <>
+            "`id` and `title` of each chat with a match, and the matching message's " <>
+            "`index`, `role` and a `snippet` of the text around the match. A chat whose " <>
+            "title holds every term comes first, then the newest chats, then the " <>
+            "earliest messages.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
-            "query" => %{"type" => "string", "description" => "The text to search for"},
+            "query" => %{
+              "type" => "string",
+              "description" => "The terms to search for, split on whitespace"
+            },
             "limit" => %{
               "type" => "integer",
               "description" => "How many matches (default 20, at most 100)"
@@ -403,88 +416,163 @@ defmodule Elia.Skills.Chats do
 
   defp role(%Message{role: role}), do: to_string(role)
 
-  ## search_chats (HIST-9)
+  ## search_chats (SEARCH-7 - SEARCH-11)
 
   defp search_chats(input) do
     case blank_to_nil(input["query"]) do
       nil ->
+        # SEARCH-11: a query is required, and a blank one is the same as none.
         {:error, "Give a non-blank `query` to search for."}
 
       query ->
         limit = clamp(input["limit"], @search_default, @search_max)
-        {:ok, query |> String.downcase() |> find_matches(limit) |> Jason.encode!()}
+        terms = terms(query)
+        entries = candidates()
+
+        # SEARCH-4, SEARCH-5: the index is brought up to date with the chats a
+        # search considers before anything is looked up in it, so a chat saved,
+        # replaced or deleted anywhere is searched as it is now, and this first
+        # search is the one that builds it.
+        Elia.Store.Index.refresh(entries)
+
+        result =
+          entries
+          |> find_matches(terms)
+          |> Enum.take(limit)
+          |> report(terms)
+
+        {:ok, Jason.encode!(result)}
     end
   end
 
-  # HIST-9: newest chats first, message order within a chat, stopping as soon
-  # as there are `limit` matches.
-  defp find_matches(needle, limit) do
-    Elia.Store.list(@scan)
-    |> Enum.filter(&Elia.Store.valid_id?(&1.id))
-    |> Enum.reduce_while([], fn entry, found ->
-      found = found ++ matches(entry, needle)
+  # SEARCH-7: a query is split into terms on whitespace, and each is folded the
+  # way the index is, so it is found whatever its case.
+  defp terms(query), do: query |> String.downcase() |> String.split(~r/\s+/, trim: true)
 
-      if length(found) >= limit,
-        do: {:halt, Enum.take(found, limit)},
-        else: {:cont, found}
-    end)
+  # The chats a search considers: the newest `@scan`, as a listing and a
+  # lookup by title consider (UI-4).
+  defp candidates do
+    Elia.Store.list(@scan) |> Enum.filter(&Elia.Store.valid_id?(&1.id))
   end
 
-  defp matches(entry, needle) do
-    entry.id
-    |> Elia.Store.load()
-    |> Enum.with_index(1)
-    |> Enum.flat_map(fn {message, index} ->
-      case searchable(message, needle) do
+  # SEARCH-8, SEARCH-9: the matches of every chat, ordered with a chat whose
+  # title holds every term before one whose title does not, then the way the
+  # chats are listed — the newer chat first (STORE-12) — and the earlier
+  # message within a chat.
+  defp find_matches(_entries, []), do: []
+
+  defp find_matches(entries, terms) do
+    # SEARCH-8: a message matches when every term appears in it, so the messages
+    # holding the query are the ones every term's own messages have in common.
+    holding =
+      terms
+      |> Enum.map(&MapSet.new(Elia.Store.Index.term(&1)))
+      |> Enum.reduce(&MapSet.intersection/2)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    found = Enum.flat_map(entries, &matches_of(&1, terms, holding))
+    {by_title, rest} = Enum.split_with(found, & &1.titled)
+    by_title ++ rest
+  end
+
+  # SEARCH-8: the matches of one chat — the messages holding every term and no
+  # other, or, when none of them does and its title holds every term, one match
+  # of its own, of its first message.
+  defp matches_of(entry, terms, holding) do
+    with identity when not is_nil(identity) <- Elia.Store.identity(entry.id),
+         index when not is_nil(index) <- Elia.Store.Index.fetch(entry.id, identity) do
+      titled = Enum.all?(terms, &String.contains?(index.title, &1))
+
+      case holding |> Map.get(entry.id, []) |> Enum.sort() do
+        [] -> if titled and index.messages > 0, do: [match(entry, 1, titled, true)], else: []
+        indexes -> Enum.map(indexes, &match(entry, &1, titled, false))
+      end
+    else
+      _ -> []
+    end
+  end
+
+  defp match(entry, index, titled, by_title),
+    do: %{id: entry.id, title: entry.title, index: index, titled: titled, by_title: by_title}
+
+  # SEARCH-6, SEARCH-10: one match per message, the snippet of the text around
+  # its first match — or, for the match SEARCH-8 makes of a title, the message's
+  # text from its start. Only the chats a match is reported from are decoded.
+  defp report(matches, terms) do
+    messages = decoded(Enum.map(matches, & &1.id))
+
+    Enum.flat_map(matches, fn match ->
+      case messages[match.id][match.index] do
         nil ->
           []
 
-        text ->
+        message ->
           [
             %{
-              "id" => entry.id,
-              "title" => entry.title,
-              "index" => index,
+              "id" => match.id,
+              "title" => match.title,
+              "index" => match.index,
               "role" => role(message),
-              "snippet" => snippet(text, needle)
+              "snippet" => snippet(match, message, terms)
             }
           ]
       end
     end)
   end
 
-  # HIST-9: what a message is searched in — its text, its tool results and its
-  # tool calls' input — the first block of it that matches.
-  defp searchable(%Message{content: content}, needle) do
-    Enum.find_value(content, fn block ->
-      case searchable_text(block) do
-        text when is_binary(text) -> if contains?(text, needle), do: text
-        _none -> nil
-      end
+  # A chat is decoded once, however many of its messages are reported.
+  defp decoded(ids) do
+    ids
+    |> Enum.uniq()
+    |> Map.new(fn id ->
+      indexed =
+        id
+        |> Elia.Store.load()
+        |> Enum.with_index(1)
+        |> Map.new(fn {message, index} -> {index, message} end)
+
+      {id, indexed}
     end)
   end
 
-  defp searchable_text(%{type: :text, text: text}), do: text
-  defp searchable_text(%{type: :tool_result, content: content}), do: content
-  defp searchable_text(%{type: :tool_call, input: input}), do: Jason.encode!(input)
-  defp searchable_text(_block), do: nil
+  # SEARCH-10: what a message shows of itself, and the match a title alone
+  # makes shows it from its start.
+  defp snippet(%{by_title: true}, message, _terms), do: from_start(text(message))
 
-  # HIST-9: the text around the first match, cut to `@snippet` characters with
-  # an ellipsis where it was cut off. The match is found in the folded text and
-  # measured in the text as it is; folding can change a byte length (a few
-  # non-ASCII letters do), so a position that doesn't land on a character
-  # boundary falls back to the start of the text.
-  defp snippet(text, needle) do
-    case :binary.match(String.downcase(text), needle) do
-      :nomatch ->
-        String.slice(text, 0, @snippet)
-
-      {at, _length} ->
-        window(text, binary_part(text, 0, at))
+  defp snippet(_match, message, terms) do
+    case matched_text(message, terms) do
+      nil -> from_start(text(message))
+      text -> window(text, first_match(String.downcase(text), terms))
     end
   end
 
-  defp window(text, before_the_match) do
+  # SEARCH-7, SEARCH-10: the first block of a message that holds a term, and
+  # where that term first appears in it, in the folded text.
+  defp matched_text(message, terms) do
+    Enum.find(Elia.Store.Index.searchable_texts(message), &any_term?(&1, terms))
+  end
+
+  defp any_term?(text, terms), do: Enum.any?(terms, &contains?(text, &1))
+
+  defp first_match(folded, terms) do
+    terms
+    |> Enum.flat_map(fn term ->
+      case :binary.match(folded, term) do
+        :nomatch -> []
+        {at, _length} -> [at]
+      end
+    end)
+    |> Enum.min(fn -> 0 end)
+  end
+
+  # SEARCH-10: the text around the match, cut to `@snippet` characters with an
+  # ellipsis where it was cut off. The match is found in the folded text and
+  # measured in the text as it is; folding can change a byte length (a few
+  # non-ASCII letters do), so a position that doesn't land on a character
+  # boundary falls back to the start of the text.
+  defp window(text, at) do
+    before_the_match = binary_part(text, 0, at)
+
     if String.valid?(before_the_match) do
       start = max(String.length(before_the_match) - @snippet_before, 0)
       prefix = if start > 0, do: "…", else: ""
@@ -495,6 +583,12 @@ defmodule Elia.Skills.Chats do
       # position is unusable, so the text is shown from its start.
       String.slice(text, 0, @snippet)
     end
+  end
+
+  defp from_start(text) do
+    if String.length(text) > @snippet,
+      do: String.slice(text, 0, @snippet) <> "…",
+      else: text
   end
 
   ## Shared
@@ -512,9 +606,9 @@ defmodule Elia.Skills.Chats do
       else: String.slice(text, 0, cap) <> "…[+#{String.length(text) - cap} more characters]"
   end
 
-  # HIST-2, HIST-4, HIST-9: a call asks for at most `max` and gets the default
-  # when it asks for nothing; a value that isn't a whole number is the default
-  # too, as for an unset one.
+  # HIST-2, HIST-4, SEARCH-11: a call asks for at most `max` and gets the
+  # default when it asks for nothing; a value that isn't a whole number is the
+  # default too, as for an unset one.
   defp clamp(value, _default, max) when is_integer(value), do: value |> min(max) |> max(1)
   defp clamp(_value, default, _max), do: default
 

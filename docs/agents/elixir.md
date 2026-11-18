@@ -26,6 +26,7 @@ Read this before writing or changing Elixir code.
 - Predicates end in `?` and don't start with `is_`. Reserve `is_thing` for guards.
 - `DynamicSupervisor` and `Registry` need a name in the child spec (`{DynamicSupervisor, name: Elia.MySup}`).
 - Use `Task.async_stream/3` for concurrent enumeration with back-pressure. You'll usually want `timeout: :infinity`.
+- `:ets.foldl/3` is OTP's `(function, accumulator, table)` — **not** Elixir's pipe-friendly order (`table |> :ets.foldl(fun, acc)`). The wrong order raises `ArgumentError` that a `rescue` can swallow into an empty result, so a table that looks empty is worth checking against the argument order first.
 - HTTP: use `Req`. **Avoid** `:httpoison`, `:tesla` and `:httpc`.
 
 ## Project conventions

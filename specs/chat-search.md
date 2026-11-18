@@ -1,6 +1,6 @@
 # Chat search
 
-Status: Draft
+Status: Implemented
 
 `search_chats` is how a chat answers "have I done this before?" (HIST-1), but it
 answers it expensively and narrowly. It walks the saved chats newest first and
@@ -93,14 +93,19 @@ file.
 
 ## Implementation
 
-- `Elia.Store` (the index, beside the listing cache of STORE-45, whose file
-  identity it keys on: `list/1` and `load/1` are what it reads the chats with).
+- `Elia.Store` (the file identity of a chat the index and the listing cache of
+  STORE-45 both key on, `identity/1`, and the decode a search is counted with)
+  and `Elia.Store.Index` (the index itself, beside `Elia.Store.Cache`:
+  `Elia.Store.list/1` and `Elia.Store.load/1` are what it reads the chats with).
 - `Elia.Skills.Chats` (the query, the order, the snippets and the tool error,
   SEARCH-7 to SEARCH-11, and its instructions, SEARCH-12).
 - `specs/chat-history.md` (HIST-9 struck as superseded).
 
 ## Tests
 
-- No test: SEARCH-1 to SEARCH-12 — the code this spec names is not written yet.
-  This spec is `Draft`, and the change that implements it replaces this line with
-  the test files and moves the status to `Implemented`.
+- `test/elia/chat_index_test.exs` (the index the server keeps over the saved
+  chats, what it is derived from, how it follows the files, and what a search
+  decodes while it uses it — SEARCH-1 to SEARCH-6).
+- `test/elia/skills/chats_test.exs` (the terms of a query, the message a title
+  alone matches, the order of the matches, the snippets, the tool's errors and
+  limit, and the skill's instructions — SEARCH-7 to SEARCH-12).
