@@ -1,6 +1,6 @@
 # Terminal
 
-Status: Draft
+Status: Implemented
 
 A Terminal page shows a chat a real terminal: a pty running a command — the
 user's own shell, or a terminal app the agent started — drawn with xterm.js in

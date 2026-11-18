@@ -1,6 +1,6 @@
 # Turn limits
 
-Status: Draft
+Status: Implemented
 
 A turn can run long: many steps, and — with a slow provider, or a shell command
 that hangs — a lot of wall-clock time. It can also stand still, running the same

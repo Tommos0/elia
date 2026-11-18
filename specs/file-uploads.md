@@ -1,6 +1,6 @@
 # File uploads
 
-Status: Draft
+Status: Implemented
 
 A chat can take files from the browser. The composer's attach control uploads
 them, and sending the message writes them into the chat's own workspace — its

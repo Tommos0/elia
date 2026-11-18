@@ -1,6 +1,6 @@
 # Interaction feedback
 
-Status: Draft
+Status: Implemented
 
 Every control in Elia is a LiveView event: a tap goes over the websocket and the
 page changes when the reply comes back. The controls said almost nothing about

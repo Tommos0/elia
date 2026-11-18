@@ -1,6 +1,6 @@
 # Sub-tasks
 
-Status: Draft
+Status: Implemented
 
 The feature is built (phases 1 to 4 of `specs/plans/subagents.md`); this draft
 is the model it was built with, consolidated further: a sub-task is an ordinary

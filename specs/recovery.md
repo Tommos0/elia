@@ -1,6 +1,6 @@
 # Recovery
 
-Status: Draft
+Status: Implemented
 
 A page that reaches the app when its own UI cannot. It existed once for a world
 where the agent edited the tree the server ran from, so a bad change could leave

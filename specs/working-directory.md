@@ -1,6 +1,6 @@
 # Working directory
 
-Status: Draft
+Status: Implemented
 
 A chat has a working directory: the directory its file tool calls (FILE) and
 its `shell` call (SHELL) resolve a relative path against. It starts as the

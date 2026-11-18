@@ -1,6 +1,6 @@
 # Chat settings
 
-Status: Draft
+Status: Implemented
 
 Every per-chat switch, limit and option lives on the chat's own settings page,
 `/c/<id>/settings`, rather than in the chat composer. The composer row held the

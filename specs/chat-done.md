@@ -1,6 +1,6 @@
 # Marking a chat done
 
-Status: Draft
+Status: Implemented
 
 An ordinary chat has one status: working, waiting for the user, or idle
 (UI-59). Nothing says that the work is *finished* — that the change has landed

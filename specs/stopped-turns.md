@@ -1,6 +1,6 @@
 # Stopped turns
 
-Status: Draft
+Status: Implemented
 
 A turn can end without the model finishing it: it reaches a limit (LOOP-3), a
 provider fails (LOOP-5, LLM-13), the model declines the request (LOOP-4), the

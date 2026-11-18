@@ -1,6 +1,6 @@
 # llama.cpp local provider
 
-Status: Draft
+Status: Implemented
 
 A `llama-server` from the user's own llama.cpp checkout is a third provider
 (LLM-15), next to Anthropic and OpenRouter: it needs no API key, no account and

@@ -1,6 +1,6 @@
 # Turn retries
 
-Status: Draft
+Status: Implemented
 
 A model call can fail for reasons that are nobody's fault in the chat: the
 network drops the connection mid-answer, the stream stalls until the idle

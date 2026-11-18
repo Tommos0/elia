@@ -1,6 +1,6 @@
 # Image viewer
 
-Status: Draft
+Status: Implemented
 
 An image in an assistant message is usually a screenshot — a UI preview
 (PREVIEW-8), a chart — and at the transcript's width it is often too small to

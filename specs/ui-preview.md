@@ -1,6 +1,6 @@
 # UI preview
 
-Status: Draft
+Status: Implemented
 
 A chat's UI changes are invisible to the running app until the user deploys
 them (DEPLOY-8), which is a heavy loop for a tweak to a template, a class or a

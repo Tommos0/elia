@@ -1,6 +1,6 @@
 # Chat titles
 
-Status: Draft
+Status: Implemented
 
 A chat's title is what its sidebar row, its page title and the chat list show,
 and today it is always derived from the first user message, cut to 60
