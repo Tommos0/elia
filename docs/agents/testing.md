@@ -114,7 +114,8 @@ a browser during `mix test`.
   a comment away in `bin/test`; re-measure with `mix test --slowest 20` when a
   partition feels lopsided.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
-  (SUITE-8).
+  (SUITE-8) — unless the change is one you judge safe without a run, and then say
+  in your last message why the skip was safe (`AGENTS.md`).
 - A partition can fail on a test that passes on its own. In this tree partition
   2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
   and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with

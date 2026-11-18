@@ -39,6 +39,6 @@ Read this before writing or changing Elixir code.
 ## Mix
 
 - Read the docs and options with `mix help task_name` before using a task.
-- `mix precommit` (compile with warnings as errors, `deps.unlock --unused`, `format`, `test`) must pass before you finish.
+- `mix precommit` (compile with warnings as errors, `deps.unlock --unused`, `format`, `test`) must pass before you finish — unless the change is one you judge safe without a run (a docs, spec or comment edit, a rename with nothing behind it), in which case skip it and say in your last message why it was safe to skip (`AGENTS.md`).
 - Run it as plain `mix precommit`: since a command never inherits the server's `MIX_ENV` (ISOL-24, `Elia.Shell`), the alias's `preferred_envs: [precommit: :test]` applies and it compiles and tests in `test`. A `MIX_ENV` set explicitly on the command overrides that preference, so don't set one.
 - `mix deps.clean --all` is almost never needed. Avoid it.
