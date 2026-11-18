@@ -19,6 +19,28 @@ defmodule EliaWeb.AssetVersion do
   # about it changes from one render to the next.
   @unbuilt "0"
 
+  # The bundle: the two entry points the endpoint serves (DEPLOY-24), named the
+  # way the version string names them (BUNDLE-1).
+  @bundle [css: "/assets/css/app.css", js: "/assets/js/app.js"]
+
+  @doc """
+  The version of the bundle a tree serves (BUNDLE-1).
+
+  `css=<version>;js=<version>`, each version read from the built file the way
+  `versioned/2` reads one, so the page and the server compare one string.
+
+  `dir` is where the files are read from, the app's own `priv/static` by
+  default.
+  """
+  @spec current(Path.t() | nil) :: String.t()
+  def current(dir \\ nil) do
+    dir = dir || Application.app_dir(:elia, "priv/static")
+
+    Enum.map_join(@bundle, ";", fn {name, path} ->
+      "#{name}=#{version_of(path, dir)}"
+    end)
+  end
+
   @doc """
   `url` with the version of the file it names appended as `?v=<version>`.
 

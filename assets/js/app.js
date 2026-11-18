@@ -27,6 +27,7 @@ import topbar from "../vendor/topbar"
 import {Highlight} from "./highlight"
 import {TerminalHook} from "./terminal"
 import {autoReconnect} from "./auto_reconnect"
+import {bundleRefresh} from "./bundle_refresh"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -43,6 +44,9 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 autoReconnect(liveSocket)
+// BUNDLE-4: an open page asks whether the bundle it loaded is still the one
+// served, and loads itself again when it is not.
+bundleRefresh(liveSocket)
 
 // Installable web app (PWA-5): a failure here must never break the page. It is
 // logged, and left on `window` as well: the push section reports it (PUSH-19),

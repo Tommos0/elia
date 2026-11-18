@@ -41,6 +41,9 @@ requirements are checked by hand (see Tests).
 ## Implementation
 
 - `assets/js/auto_reconnect.js`: `autoReconnect(liveSocket)`.
+- `assets/js/reload_budget.js`: `reloadAllowed()`, the tab's reload budget
+  (CONN-5), counted in one place because the bundle refresh reloads in the same
+  budget (BUNDLE-6).
 - `assets/js/app.js`: calls it after `liveSocket.connect()`.
 
 ## Tests
@@ -49,4 +52,4 @@ Manual (no JS runner): open a chat, stop the server for 15 seconds or use
 DevTools "Offline" and switch back, and check the page reconnects (CONN-1,
 CONN-3) or reloads (CONN-4). `test/elia_web/auto_reconnect_test.exs` checks the
 module exists, is wired into `app.js`, and carries the constants the spec
-states (CONN-2, CONN-4, CONN-5).
+states, including the budget it shares (CONN-2, CONN-4, CONN-5).

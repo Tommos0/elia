@@ -5,6 +5,7 @@ defmodule EliaWeb.AutoReconnectTest do
 
   @js File.read!("assets/js/auto_reconnect.js")
   @app File.read!("assets/js/app.js")
+  @budget File.read!("assets/js/reload_budget.js")
 
   test "app.js starts autoReconnect after connecting" do
     assert @app =~ ~s|import {autoReconnect} from "./auto_reconnect"|
@@ -23,9 +24,11 @@ defmodule EliaWeb.AutoReconnectTest do
     assert @js =~ "visible() && !liveSocket.isConnected()"
   end
 
-  # CONN-5
+  # CONN-5: the budget is the tab's, counted in one place, which the bundle
+  # refresh counts in too (BUNDLE-6).
   test "reloads are limited to 3 per minute" do
-    assert @js =~ "MAX_RELOADS = 3"
-    assert @js =~ "RELOAD_WINDOW_MS = 60000"
+    assert @js =~ ~s|import {reloadAllowed} from "./reload_budget"|
+    assert @budget =~ "MAX_RELOADS = 3"
+    assert @budget =~ "RELOAD_WINDOW_MS = 60000"
   end
 end

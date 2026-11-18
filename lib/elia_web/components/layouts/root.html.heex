@@ -14,6 +14,10 @@
     <meta name="theme-color" content="#111827" />
     <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
     <.live_title default="Elia" prefix="Elia - " phx-no-format>{assigns[:page_title]}</.live_title>
+    <%!-- BUNDLE-2: the version of the bundle this document loaded, so the page
+    can tell whether the server serves another one now and load itself again
+    (BUNDLE-4, BUNDLE-5). --%>
+    <meta name="elia-asset-version" content={AssetVersion.current()} />
     <%!-- PWA-8: the bundle is fetched under a version read from the built file,
     so a page that loads again on a new build does not get the old one from the
     browser's cache. --%>

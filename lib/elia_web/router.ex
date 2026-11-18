@@ -34,6 +34,12 @@ defmodule EliaWeb.Router do
   scope "/", EliaWeb do
     pipe_through :browser
 
+    # BUNDLE-3: the bundle the server serves now, for a page that is already
+    # open and asks whether the one it loaded is still the one served
+    # (specs/bundle-refresh.md). Through the browser pipeline, so it is never
+    # answered from a cache (PWA-9).
+    get "/asset-version", AssetVersionController, :show
+
     # UI-32, UI-36, UI-91: `EliaWeb.ChatList` gives every page the chat list's
     # state and its events, which is the drawer the header's "Chats" button
     # opens on the pages that keep no list of their own.

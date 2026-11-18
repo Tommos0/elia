@@ -153,6 +153,7 @@ it.
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Socket origin](socket-origin.md) | `SOCK` | A socket handshake is bound to a page this server served: the request's own origin, and a session proof for the terminal |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
+| [Bundle refresh](bundle-refresh.md) | `BUNDLE` | A page that notices the server serves a newer bundle than the one it loaded loads itself again, so an open tab does not run the old one |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `await_task` waits for it and brings back what it said |

@@ -62,10 +62,10 @@ than reused (PWA-9).
 
 - Offline use, caching, push notifications.
 - The document itself: the HTML an installed app opens carries no version — it
-  revalidates with the server instead (PWA-9). So a page that keeps the bundle it
-  already loaded, without loading the document again, is still not reached
-  (HOT-8), and what an installed app does with a document its own window holds
-  on to is the browser's site data, not something the server sends.
+  revalidates with the server instead (PWA-9). What a page does when the bundle
+  it loaded is no longer the one served is not this spec's: that is the page
+  asking the server itself and loading again (`specs/bundle-refresh.md`,
+  BUNDLE-4, BUNDLE-5).
 - The browser only offers installation on a secure origin. Over plain HTTP on a
   LAN address, Chrome only offers a shortcut, not an installed app. Use HTTPS
   (e.g. a tunnel or reverse proxy) or `chrome://flags` "Insecure origins treated
