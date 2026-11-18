@@ -219,6 +219,37 @@ defmodule Elia.LLM.AnthropicTest do
            ] = Anthropic.encode_messages(history)
   end
 
+  # VISION-8: an image is sent as its bytes in base64, with the media type the
+  # file's format names, in the message that carries it.
+  test "encodes an image block as a base64 image" do
+    history = [
+      %Message{
+        role: :user,
+        content: [
+          Message.text("look"),
+          %{type: :image, media_type: "image/png", data: "aGk=", path: "uploads/shot.png"}
+        ]
+      }
+    ]
+
+    assert [
+             %{
+               "role" => "user",
+               "content" => [
+                 %{"type" => "text", "text" => "look"},
+                 %{
+                   "type" => "image",
+                   "source" => %{
+                     "type" => "base64",
+                     "media_type" => "image/png",
+                     "data" => "aGk="
+                   }
+                 }
+               ]
+             }
+           ] = Anthropic.encode_messages(history)
+  end
+
   test "maps refusals and API errors" do
     stub_stream(self(), [
       %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},

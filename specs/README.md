@@ -108,6 +108,7 @@ it.
 | [Chat titles](chat-titles.md) | `TITLE` | A chat's own title, set by the agent's `set_title` tool; the first-message derivation stays as the fallback |
 | [Chat done](chat-done.md) | `DONE` | A chat can be marked done (with it in the saved chat), shown as its status and skipped by the chat list's resume; a message reopens it |
 | [Image viewer](image-viewer.md) | `IMG` | An image in the transcript opens over the chat, closable by its own button or the back button, never in a new tab |
+| [Image input](image-input.md) | `VISION` | An image the user attaches is sent to a model that accepts images as the picture itself, read from the chat's workspace; one that doesn't is asked what it is asked today |
 | [Chat settings](chat-settings.md) | `CSET` | The per-chat settings page: model, auto-approval, jail, limits and compaction options |
 | [Turn limits](turn-limits.md) | `LIMIT` | Per-chat step limit, time budget and whether a limit pauses the turn; reaching one pauses by default, and the transcript says so |
 | [Context indicator](context-indicator.md) | `CTX` | Context size and window shown per chat, with a clickable breakdown |

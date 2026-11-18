@@ -131,13 +131,45 @@ defmodule Elia.LLM.OpenRouter do
     end
   end
 
+  # VISION-7: OpenRouter's catalog is the exact answer, and its cache usually
+  # holds it (the picker fills it). A request is built without a fetch, so a
+  # model whose entry isn't cached yet is answered from the families that read
+  # images: being wrong here costs a model that isn't sent the picture, never a
+  # failed turn.
+  @vision_families ~w(anthropic/ openai/ google/ gemini x-ai/grok amazon/nova
+                      qwen/qwen2.5-vl qwen/qwen3-vl mistralai/pixtral meta-llama/llama-4
+                      microsoft/phi-4-multimodal moonshotai/kimi deepseek/deepseek-vl
+                      z-ai/glm-4.5v)
+
+  @impl true
+  def vision?(model) when is_binary(model) do
+    case cached_vision(model) do
+      nil -> Enum.any?(@vision_families, &String.contains?(String.downcase(model), &1))
+      cached -> cached
+    end
+  end
+
+  def vision?(_model), do: false
+
+  defp cached_vision(model) do
+    with {:ok, models} <- Elia.LLM.Catalog.peek("openrouter"),
+         %{vision: vision} when is_boolean(vision) <- Enum.find(models, &(&1.id == model)) do
+      vision
+    else
+      _ -> nil
+    end
+  end
+
   defp to_model(model) do
     %{
       id: model["id"],
       name: model["name"] || model["id"],
       context_length: model["context_length"],
       prompt_price: per_million(get_in(model, ["pricing", "prompt"])),
-      completion_price: per_million(get_in(model, ["pricing", "completion"]))
+      completion_price: per_million(get_in(model, ["pricing", "completion"])),
+      # VISION-7: OpenRouter says which modalities a model takes, so the picker's
+      # own catalog is where a model's answer is exact.
+      vision: "image" in (get_in(model, ["architecture", "input_modalities"]) || [])
     }
   end
 

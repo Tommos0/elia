@@ -216,6 +216,13 @@ defmodule Elia.LLM.LlamaCpp do
 
   defp config, do: Keyword.merge(@defaults, Application.get_env(:elia, __MODULE__, []))
 
+  # VISION-7: a local model is asked for no images. llama.cpp reads them only
+  # through a projector file (`--mmproj`), and the server Elia starts (LOCAL) is
+  # started without one, so a request that carried an image would fail rather
+  # than be read.
+  @impl true
+  def vision?(_model), do: false
+
   # LOCAL-10: the same encoder OpenRouter uses, without its reasoning details
   # (LOCAL-9). Exposed for the tests that hold the two to one shape.
   @doc false

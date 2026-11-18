@@ -119,11 +119,25 @@ defmodule Elia.LLM.OpenAI do
         %{"role" => "tool", "tool_call_id" => result.tool_call_id, "content" => body}
       end
 
-    case text_of(content) do
-      "" -> results
-      text -> results ++ [%{"role" => "user", "content" => text}]
+    case {text_of(content), images_of(content)} do
+      {"", []} -> results
+      {text, []} -> results ++ [%{"role" => "user", "content" => text}]
+      {text, images} -> results ++ [%{"role" => "user", "content" => parts(text, images)}]
     end
   end
+
+  # VISION-8: a user message that carries images has a list of parts for its
+  # content — the text it has, then one `image_url` part per image, each a
+  # `data:` URL holding the bytes in base64.
+  defp parts(text, images) do
+    text_parts = if text == "", do: [], else: [%{"type" => "text", "text" => text}]
+    text_parts ++ Enum.map(images, &image_part/1)
+  end
+
+  defp image_part(%{media_type: media_type, data: data}),
+    do: %{"type" => "image_url", "image_url" => %{"url" => "data:#{media_type};base64,#{data}"}}
+
+  defp images_of(content), do: for(%{type: :image} = image <- content, do: image)
 
   defp own_details(content, tag) do
     for %{type: :reasoning, raw: {^tag, %{"reasoning_details" => details}}} <- content,

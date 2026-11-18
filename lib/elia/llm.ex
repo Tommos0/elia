@@ -227,6 +227,7 @@ defmodule Elia.LLM do
         selection =
           %{provider: key, model: model, name: name || model}
           |> put_context_length(cached_context_length(key, model))
+          |> put_vision(cached_vision(key, model))
 
         with :ok <- Settings.put(:model, selection), do: {:ok, selection}
     end
@@ -298,8 +299,62 @@ defmodule Elia.LLM do
     end
   end
 
+  ## Images (VISION-7)
+
+  @doc """
+  Whether a chat's model accepts images (VISION-7), so a request knows to send
+  the pictures a message carries (VISION-4).
+
+  The answer is the cached catalog's for the model, else what the selection
+  recorded when it was chosen, else the provider's own — never a catalog fetch,
+  so asking costs nothing at every step of a turn.
+  """
+  @spec vision?(map() | nil) :: boolean()
+  def vision?(chat_selection \\ nil) do
+    %{provider: provider, model: model} = selection = selection(chat_selection)
+
+    case cached_vision(provider, model) do
+      nil ->
+        case selection[:vision] do
+          vision when is_boolean(vision) -> vision
+          _unknown -> module_vision(provider_info(provider).module, model)
+        end
+
+      cached ->
+        cached
+    end
+  end
+
+  @doc """
+  Whether the provider `module` accepts images for `model` (VISION-7), for a
+  request that names its provider rather than a chat's selection (MODEL-3).
+
+  A module that exports no `vision?/1` accepts none.
+  """
+  @spec module_vision(module(), binary() | nil) :: boolean()
+  def module_vision(module, model) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :vision?, 1),
+      do: module.vision?(model),
+      else: false
+  end
+
+  defp cached_vision(key, model) do
+    with {:ok, models} <- Catalog.peek(key),
+         %{vision: vision} when is_boolean(vision) <- Enum.find(models, &(&1.id == model)) do
+      vision
+    else
+      _ -> nil
+    end
+  end
+
   defp put_context_length(selection, nil), do: selection
   defp put_context_length(selection, length), do: Map.put(selection, :context_length, length)
+
+  # VISION-7: the capability is recorded with the selection as the context window
+  # is (CTX-7), so the chat's answer outlives the catalog cache. A model the
+  # cache doesn't hold keeps no answer, and the provider's own applies.
+  defp put_vision(selection, nil), do: selection
+  defp put_vision(selection, vision), do: Map.put(selection, :vision, vision)
 
   defp fallback_context_length("anthropic"), do: @anthropic_context_window
   defp fallback_context_length(_provider), do: nil

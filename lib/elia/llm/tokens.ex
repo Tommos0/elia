@@ -11,6 +11,11 @@ defmodule Elia.LLM.Tokens do
 
   alias Elia.LLM.Message
 
+  # VISION-10: what one image counts as in the context estimate, whatever its
+  # size — the order of what a full-screen screenshot costs a provider's own
+  # tokenizer.
+  @image_tokens 1500
+
   @doc """
   A token count written short: `1.5M`, `500K`, and a plain count below 10,000 —
   a limit is easier to read as "1100" than as "1K" (LIMIT-12).
@@ -40,7 +45,23 @@ defmodule Elia.LLM.Tokens do
   def estimate_content(_content), do: 0
 
   @spec estimate_message(Message.t()) :: non_neg_integer()
-  def estimate_message(%Message{content: content}), do: estimate_content(content)
+  def estimate_message(%Message{content: content} = message),
+    do: estimate_content(content) + attachment_tokens(content, message)
+
+  # VISION-10: an image a message carries is counted from its path, without
+  # reading the file, so the estimate stays the cheap fold it is (CTX-8). A
+  # message that already carries image blocks — the request the loop builds
+  # (VISION-1) — counts those blocks instead, so nothing is counted twice.
+  defp attachment_tokens(content, message) do
+    if Enum.any?(content, &(&1.type == :image)) do
+      0
+    else
+      message
+      |> Message.attachments()
+      |> Enum.count(&Elia.LLM.Images.attachment?/1)
+      |> Kernel.*(@image_tokens)
+    end
+  end
 
   @doc "Estimated tokens for a single content block (text, reasoning, call, result)."
   @spec estimate_block(map()) :: non_neg_integer()
@@ -55,6 +76,12 @@ defmodule Elia.LLM.Tokens do
 
   def estimate_block(%{type: :tool_result, content: content}),
     do: estimate(result_text(content))
+
+  # VISION-10: an image occupies context like anything else, and what it costs
+  # depends on the provider's own tiling of it, which Elia does not work out. A
+  # picture is counted at a flat estimate, and the provider's report of the real
+  # figure calibrates the total (CTX-10) as it does for text.
+  def estimate_block(%{type: :image}), do: @image_tokens
 
   # The provider's raw block, sized as the JSON it is sent back as.
   def estimate_block(%{type: :opaque, raw: {_provider, raw}}), do: estimate(encode(raw))

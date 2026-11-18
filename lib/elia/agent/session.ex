@@ -1211,11 +1211,29 @@ defmodule Elia.Agent.Session do
         llm -> Map.merge(Elia.LLM.selection_request(settings(state).model), llm)
       end
 
+    # VISION-4, VISION-7: whether this turn's model accepts images travels with
+    # the request, decided here where the chat's selection is known.
+    llm = Map.put_new(llm, :vision, vision(llm, state))
+
     # SESS-40, LLM-39: the chat's own reasoning effort travels as the request's
     # `:effort`, unless the caller named one, which wins.
     if settings(state).effort,
       do: Map.put_new(llm, :effort, settings(state).effort),
       else: llm
+  end
+
+  # VISION-7: the chat's own selection answers when the request is the
+  # selection's; a request that names its provider (MODEL-3) is answered by the
+  # module it names; and a chat with no selection of its own takes the answer
+  # `Elia.LLM` resolves for it (MODEL-15, MODEL-2).
+  defp vision(llm, state) do
+    selection = settings(state).model
+
+    cond do
+      is_nil(llm[:provider]) -> Elia.LLM.vision?(selection)
+      is_map(selection) and selection[:model] == llm[:model] -> Elia.LLM.vision?(selection)
+      true -> Elia.LLM.module_vision(llm[:provider], llm[:model])
+    end
   end
 
   # The chat's project (PROJ-9): the saved one, else Elia's own. Read through

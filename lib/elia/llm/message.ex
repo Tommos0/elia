@@ -8,6 +8,9 @@ defmodule Elia.LLM.Message do
     * `%{type: :reasoning, text: binary}` - model reasoning / progress notes
     * `%{type: :tool_call, id: binary, name: binary, input: map}`
     * `%{type: :tool_result, tool_call_id: binary, content: binary, is_error: boolean}`
+    * `%{type: :image, media_type: binary, data: binary, path: binary}` - a picture
+      read from the chat's workspace as the request is built (VISION); the bytes
+      are base64 and nothing of it is stored
     * `%{type: :opaque}` - a provider-specific block with no neutral meaning
 
   Blocks produced by a provider may carry `raw: {provider_module, map}`, the

@@ -214,6 +214,80 @@ defmodule Elia.LLM.CatalogTest do
     assert %{provider: "openrouter", context_length: nil} = LLM.context_window()
   end
 
+  # VISION-7: the models a provider offers say whether they accept images, and
+  # a chat's selection answers for its model without a catalog fetch.
+  test "a model's catalog entry says whether it accepts images" do
+    Req.Test.stub(OpenRouter, fn conn ->
+      Req.Test.json(conn, %{
+        "data" => [
+          %{
+            "id" => "sees/images",
+            "name" => "Sees Images",
+            "supported_parameters" => ["tools"],
+            "architecture" => %{"input_modalities" => ["text", "image"]}
+          },
+          %{
+            "id" => "text/only",
+            "name" => "Text Only",
+            "supported_parameters" => ["tools"],
+            "architecture" => %{"input_modalities" => ["text"]}
+          }
+        ]
+      })
+    end)
+
+    assert {:ok, [sees, text_only]} = LLM.models("openrouter")
+    assert %{id: "sees/images", vision: true} = sees
+    assert %{id: "text/only", vision: false} = text_only
+  end
+
+  # VISION-7: every Anthropic model accepts images — its Models API reports no
+  # modalities — and the local server's models accept none, since Elia starts
+  # that server without a projector.
+  test "Anthropic models accept images and local ones do not" do
+    configure(Anthropic, api_key: "ak", model: "claude-a")
+
+    Req.Test.stub(Anthropic, fn conn ->
+      Req.Test.json(conn, %{"data" => [%{"id" => "claude-a", "name" => "Claude A"}]})
+    end)
+
+    assert {:ok, [%{id: "claude-a", vision: true}]} = LLM.models("anthropic")
+
+    assert LLM.vision?(%{provider: "anthropic", model: "claude-anything"})
+    refute LLM.vision?(%{provider: "llamacpp", model: "local/model"})
+    refute LlamaCpp.vision?("local/model")
+  end
+
+  # VISION-7: the answer is read without a fetch — from the cache, else what the
+  # selection recorded, else the provider's own — so asking costs nothing.
+  test "vision? reads the cache, the selection, then the provider" do
+    Req.Test.stub(OpenRouter, fn conn ->
+      Req.Test.json(conn, %{
+        "data" => [
+          %{
+            "id" => "sees/images",
+            "supported_parameters" => ["tools"],
+            "architecture" => %{"input_modalities" => ["text", "image"]}
+          }
+        ]
+      })
+    end)
+
+    assert {:ok, _} = LLM.models("openrouter")
+
+    # MODEL-1, VISION-7: the capability is stored with the selection, so it
+    # outlives the catalog cache as the context window does (CTX-7).
+    assert {:ok, %{vision: true}} = LLM.select("openrouter", "sees/images", "Sees Images")
+    LLM.Catalog.clear("openrouter")
+    assert LLM.vision?() == true
+
+    # A selection written before the capability existed (or for a model the
+    # catalog doesn't hold) falls back to the provider's own answer.
+    assert LLM.vision?(%{provider: "openrouter", model: "anthropic/claude-sonnet-4"})
+    refute LLM.vision?(%{provider: "openrouter", model: "vendor/mystery"})
+    assert LLM.vision?(%{provider: "anthropic", model: "claude-unknown"})
+  end
+
   # MODEL-8
   test "results are cached, failures are not, and saving a key clears the cache" do
     {:ok, calls} = Agent.start_link(fn -> 0 end)

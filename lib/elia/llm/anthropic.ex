@@ -98,8 +98,13 @@ defmodule Elia.LLM.Anthropic do
         _ -> fallback
       end
 
-    {:ok, Enum.map(models, &put_prices/1)}
+    {:ok, Enum.map(models, &(Map.put(&1, :vision, true) |> put_prices()))}
   end
+
+  # VISION-7: the Models API reports no modalities, and every Claude model Elia
+  # offers reads images, so a request may send them without a catalog fetch.
+  @impl true
+  def vision?(_model), do: true
 
   defp put_prices(model) do
     prices = Map.merge(@prices, config()[:prices] || %{})
@@ -224,6 +229,21 @@ defmodule Elia.LLM.Anthropic do
         "tool_use_id" => result.tool_call_id,
         "content" => result.content,
         "is_error" => result.is_error
+      }
+    ]
+  end
+
+  # VISION-8: an image is sent as its bytes in base64, with the media type the
+  # file's format names.
+  defp encode_block(%{type: :image} = image) do
+    [
+      %{
+        "type" => "image",
+        "source" => %{
+          "type" => "base64",
+          "media_type" => image.media_type,
+          "data" => image.data
+        }
       }
     ]
   end

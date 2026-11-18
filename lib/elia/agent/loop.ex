@@ -46,7 +46,7 @@ defmodule Elia.Agent.Loop do
   `:compaction_trigger`, `:compaction_target` and `:compaction_overhead`.
   """
 
-  alias Elia.LLM.{Compaction, Context, Message}
+  alias Elia.LLM.{Compaction, Context, Images, Message}
   alias Elia.Tool
 
   @max_steps 300
@@ -246,7 +246,7 @@ defmodule Elia.Agent.Loop do
         system:
           Elia.Skills.system_prompt(skills, Elia.Skills.project_instructions(ctx.workspace)),
         tools: Enum.map(Map.values(tools), &Map.take(&1, [:name, :description, :input_schema])),
-        messages: request_messages(ctx, history)
+        messages: with_images(ctx, request_messages(ctx, history))
       })
 
     ask(ctx, request, history, step, tools, 0, 0)
@@ -480,6 +480,14 @@ defmodule Elia.Agent.Loop do
 
   defp request_messages(ctx, history),
     do: Compaction.view(history, ctx.compaction).messages
+
+  # VISION-1, VISION-3, VISION-9: the pictures a message carries are read from
+  # the chat's workspace as the request is built, and again at every step, so a
+  # message that stays in the view keeps sending its image — while the history
+  # itself keeps the paths and no picture. A model that accepts none (VISION-4)
+  # is sent the messages exactly as they are.
+  defp with_images(ctx, messages),
+    do: Images.attach(messages, ctx.workspace, ctx.llm_opts[:vision] == true)
 
   defp append(ctx, message), do: send(ctx.session, {:loop_append, message})
 

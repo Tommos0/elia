@@ -87,8 +87,9 @@ its work.
 ## Out of scope
 
 - Sending a file's content to the model: an attachment reaches the model as a
-  path (UPLOAD-10), and the agent reads the file with its own tools. An image is
-  not sent as an image, and a binary file reads as binary (FILE).
+  path (UPLOAD-10), and the agent reads the file with its own tools, so a binary
+  file reads as binary (FILE). An image attachment is the one exception, sent to
+  a model that accepts images as the picture itself (VISION).
 - Showing an uploaded image in the transcript: a chip is a link to the Files
   page, which shows a non-text file as binary (EXPL-8).
 - Pasting or dropping a file onto the chat, and uploading from the Files page,

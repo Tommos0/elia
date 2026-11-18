@@ -41,7 +41,10 @@ defmodule Elia.LLM.Provider do
           required(:name) => binary(),
           optional(:context_length) => pos_integer() | nil,
           optional(:prompt_price) => float() | nil,
-          optional(:completion_price) => float() | nil
+          optional(:completion_price) => float() | nil,
+          # VISION-7: whether the model accepts images. `nil` when the catalog
+          # doesn't say, which reads as the provider's own answer.
+          optional(:vision) => boolean() | nil
         }
 
   @callback stream(request(), on_event :: (event() -> any())) ::
@@ -77,9 +80,20 @@ defmodule Elia.LLM.Provider do
   @doc "The credit balance for `api_key`, when the provider exposes one."
   @callback balance(api_key :: binary()) :: {:ok, balance()} | {:error, binary()}
 
+  @doc """
+  Whether this provider's `model` accepts images (VISION-7), so a request knows
+  to send the pictures a message carries (VISION-4).
+
+  It is answered without a catalog fetch — from the provider's own knowledge,
+  the cache of what its catalog reported, or both — and is `false` for a
+  provider that exports nothing here.
+  """
+  @callback vision?(model :: binary()) :: boolean()
+
   @optional_callbacks default_model: 0,
                       check_key: 1,
                       list_models: 1,
                       balance: 1,
-                      check_base_url: 1
+                      check_base_url: 1,
+                      vision?: 1
 end

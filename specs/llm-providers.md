@@ -24,9 +24,9 @@ provider, with no key and no network at all (LOCAL).
 - **LLM-4** Stop reasons are `:end_turn`, `:tool_use`, `:max_tokens`,
   `:refusal` and `:other`.
 - **LLM-5** Messages have the role `:user`, `:assistant` or `:tool`, and
-  content blocks of type `:text`, `:reasoning`, `:tool_call`, `:tool_result`
-  or `:opaque`. `meta` is harness bookkeeping that is never sent to a
-  provider.
+  content blocks of type `:text`, `:reasoning`, `:tool_call`, `:tool_result`,
+  `:image` (VISION) or `:opaque`. `meta` is harness bookkeeping that is never
+  sent to a provider.
 - **LLM-6** Provider blocks carry `raw: {provider, map}`. A provider sends its
   own raw blocks back unchanged and drops reasoning and opaque blocks from
   other providers.

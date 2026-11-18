@@ -1796,6 +1796,16 @@ defmodule Elia.AgentTest do
   defp other_project(folder),
     do: %{id: Agent.new_id(), name: "Other", folder: folder, harness?: false}
 
+  # VISION-2: a PNG, whose signature is what makes the file one. Returns the
+  # bytes, so a test can hold the request's image to the file's own.
+  defp write_image(dir, path) do
+    file = Path.join(dir, path)
+    File.mkdir_p!(Path.dirname(file))
+    png = <<0x89, "PNG\r\n", 0x1A, "\n">> <> "shot body"
+    File.write!(file, png)
+    png
+  end
+
   defp start_project_session(project, opts \\ []) do
     id = Agent.new_id()
     {:ok, pid} = Agent.ensure_started(id, [project: project] ++ opts)
@@ -1811,6 +1821,78 @@ defmodule Elia.AgentTest do
 
     assert %{project: %{id: project_id}} = Agent.snapshot(id)
     assert project_id == project.id
+  end
+
+  # VISION-1, VISION-3, VISION-9: an image a message carries is read from the
+  # chat's workspace as the request is built, after the text the user wrote and
+  # the line naming the paths (UPLOAD-10), and a later step of the same turn
+  # sends it again — while the chat itself keeps the path and no picture.
+  test "an attached image is sent with the request, and again at the next step" do
+    dir = tmp_dir("vision")
+    png = write_image(dir, "uploads/shot.png")
+
+    id =
+      start_project_session(other_project(dir),
+        loop_opts: [llm: %{provider: FakeLLM, vision: true}, skills: fn -> fake_skill("ok") end]
+      )
+
+    # One step asks for a tool, so the turn has a second step to compare with.
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "fake_tool", %{})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("I see it.")]))
+
+    :ok = Agent.send_message(id, "look at this", ["uploads/shot.png"])
+    await_status(id, :idle)
+
+    assert [first, second] = FakeLLM.requests()
+
+    for request <- [first, second] do
+      assert request.vision == true
+      assert %Message{role: :user, content: content} = user = List.first(request.messages)
+
+      assert Enum.map(content, & &1.type) == [:text, :text, :image]
+      assert Message.text_content(user) =~ "[Uploaded files: uploads/shot.png]"
+
+      assert %{type: :image, media_type: "image/png", path: "uploads/shot.png"} =
+               List.last(content)
+
+      assert Base.decode64!(List.last(content).data) == png
+    end
+
+    # VISION-3: the saved chat keeps the path and no image bytes.
+    assert %Message{content: content} = user = hd(Agent.snapshot(id).messages)
+    assert Message.attachments(user) == ["uploads/shot.png"]
+    refute Enum.any?(content, &(&1.type == :image))
+    refute inspect(Elia.Store.load(id)) =~ Base.encode64(png)
+  end
+
+  # VISION-4, VISION-5: a model that accepts no images, and an image that can't
+  # be read, are asked what the chat is asked today — the paths, and no picture —
+  # and the turn goes on either way.
+  test "no image reaches a model that accepts none, or for a file that is gone" do
+    dir = tmp_dir("vision-none")
+    write_image(dir, "uploads/shot.png")
+
+    for {attachment, vision} <- [{"uploads/shot.png", false}, {"uploads/gone.png", true}] do
+      id =
+        start_project_session(other_project(dir),
+          loop_opts: [llm: %{provider: FakeLLM, vision: vision}]
+        )
+
+      FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+      :ok = Agent.send_message(id, "look", [attachment])
+      await_status(id, :idle)
+
+      assert request = List.last(FakeLLM.requests())
+
+      assert %Message{role: :user, content: [%{type: :text}, %{type: :text}]} =
+               user = List.first(request.messages)
+
+      assert Message.text_content(user) =~ "[Uploaded files: #{attachment}]"
+      refute Enum.any?(user.content, &(&1.type == :image))
+      refute Enum.any?(request.messages, &Enum.any?(&1.content, fn b -> b[:type] == :image end))
+      assert request.vision == vision
+    end
   end
 
   # PROJ-12, FILE-1, FILE-4, LOOP-10, SESS-23

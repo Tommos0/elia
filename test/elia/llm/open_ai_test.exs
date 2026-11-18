@@ -84,6 +84,36 @@ defmodule Elia.LLM.OpenAITest do
     assert [%{"role" => "assistant", "content" => "Listing."}] = LlamaCpp.encode_messages(history)
   end
 
+  # VISION-8: a user message that carries images has a list of parts for its
+  # content — its text, then one `image_url` part per image as a `data:` URL.
+  test "encodes an image as an image_url part, and nothing else changes" do
+    image = %{type: :image, media_type: "image/jpeg", data: "aGk=", path: "uploads/shot.jpg"}
+
+    history = [
+      %Message{role: :user, content: [Message.text("look"), image]},
+      %Message{role: :user, content: [image]},
+      Message.user("plain")
+    ]
+
+    assert [
+             %{
+               "role" => "user",
+               "content" => [
+                 %{"type" => "text", "text" => "look"},
+                 %{
+                   "type" => "image_url",
+                   "image_url" => %{"url" => "data:image/jpeg;base64,aGk="}
+                 }
+               ]
+             },
+             %{
+               "role" => "user",
+               "content" => [%{"type" => "image_url", "image_url" => %{"url" => "data:" <> _}}]
+             },
+             %{"role" => "user", "content" => "plain"}
+           ] = OpenRouter.encode_messages(history)
+  end
+
   # LLM-36, LOCAL-10: one decoder too, so an error code that names no status is
   # read the same way for both — the service's sentence as a plain error.
   test "both read a code that is not a status the same way" do

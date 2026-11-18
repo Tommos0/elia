@@ -15,7 +15,8 @@ code change.
 
 - **MODEL-1** A selection is a provider key, a model id and the model's
   display name, plus its context length when the cached catalog knows it
-  (CTX-7). Each chat has its own selection, saved with the chat (STORE-1), so
+  (CTX-7) and whether the model accepts images (VISION-7). Each chat has its own
+  selection, saved with the chat (STORE-1), so
   it is chat-local and survives restarts. Choosing a model in one chat never
   changes another chat's model. The choice is broadcast on the chat's topic
   (SESS-6) so every tab showing that chat updates its picker.
@@ -46,8 +47,9 @@ code change.
 - **MODEL-6** Anthropic models come from `GET /v1/models` when a key is
   available. Without a key, or if the request fails, the configured model is
   offered on its own.
-- **MODEL-7** Each model has `id`, `name` and, when known, `context_length`
-  and prompt/completion prices per million tokens.
+- **MODEL-7** Each model has `id`, `name` and, when known, `context_length`,
+  prompt/completion prices per million tokens, and whether it accepts images
+  (VISION-7).
 - **MODEL-14** The Anthropic Models API has no prices, so Anthropic models get
   them from a built-in table of Anthropic's published first-party rates,
   merged with `config :elia, Elia.LLM.Anthropic, prices: %{id => {in, out}}`.

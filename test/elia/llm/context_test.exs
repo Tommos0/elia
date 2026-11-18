@@ -69,6 +69,29 @@ defmodule Elia.LLM.ContextTest do
     refute Map.has_key?(by_id, :other_tools)
   end
 
+  # VISION-10: an image a message carries is counted at a fixed estimate per
+  # image, in that message's own User bucket, from its path alone — the estimate
+  # reads no file — so the breakdown still sums to the total.
+  test "an image attachment counts in the User bucket" do
+    image = Message.user("look at this", ["uploads/shot.png"])
+    other = Message.user("look at this", ["uploads/note.txt"])
+
+    # The two messages differ only in the format their path names.
+    assert Tokens.estimate_message(image) == Tokens.estimate_message(other) + 1500
+
+    breakdown = Context.build([image], skills())
+    assert breakdown.total == Enum.sum(Enum.map(breakdown.buckets, &bucket_tokens(&1)))
+
+    messages = Enum.find(breakdown.buckets, &(&1.id == :messages))
+    assert %{id: :user, tokens: tokens} = Enum.find(messages.children, &(&1.id == :user))
+    assert tokens == Tokens.estimate_message(image)
+
+    # A file that isn't an image counts as its path line alone.
+    assert Enum.find(Context.build([other], skills()).buckets, &(&1.id == :messages)).children
+           |> Enum.find(&(&1.id == :user))
+           |> Map.fetch!(:tokens) == Tokens.estimate_message(other)
+  end
+
   # CTX-4: the system bucket lists agent instructions and one child per skill.
   test "system bucket has an agent-instructions child and one child per skill" do
     breakdown = Context.build([], skills())
