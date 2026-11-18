@@ -295,6 +295,15 @@
   transition: text-decoration-color 150ms;
 }
 .markdown a:has(> code):hover > code { text-decoration-color: currentColor; }
+/* CITE-5: a cited requirement (CITE-1) reads as the agent's own text and is
+   marked as having more to show — the requirement itself is the tooltip's
+   (CITE-2), so nothing here has to be shown or hidden. */
+.markdown .spec-cite {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  text-underline-offset: 2px;
+  cursor: help;
+}
 .markdown :where(ul, ol) { padding-left: 1.4em; }
 .markdown ul { list-style: disc; }
 .markdown ol { list-style: decimal; }

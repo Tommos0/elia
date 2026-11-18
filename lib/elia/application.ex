@@ -38,6 +38,10 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Terminal.Registry},
       {DynamicSupervisor, name: Elia.Terminal.Supervisor, strategy: :one_for_one},
       Elia.Settings,
+      # CITE-4: the spec corpus the transcript cites from, kept while the files
+      # it was made from are unchanged. After the store's cache, which is the
+      # same idea for a saved chat (STORE-45).
+      Elia.Specs.Cache,
       # PUSH-13, PUSH-14: which chats have a visible page, and PUSH-11, PUSH-12:
       # the notifications sent when one needs the user.
       Elia.Push.Viewers,

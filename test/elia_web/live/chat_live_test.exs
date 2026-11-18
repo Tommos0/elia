@@ -656,6 +656,61 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#transcript .markdown a code", "nowhere_file.txt")
   end
 
+  # CITE-1: a requirement the reply cites carries that requirement's own text as
+  # a tooltip — while the text streams into the draft (UI-10) and once the
+  # message is saved (UI-8) — read from the corpus the chat's own workspace
+  # holds (CITE-4, PROJ-12).
+  test "a cited requirement shows its own text as a tooltip", %{conn: conn} do
+    id = Agent.new_id()
+    test_pid = self()
+
+    spec = "chat_live_cite_fixture.md"
+    dir = Path.join(Workspace.root(), "specs")
+    File.mkdir_p!(dir)
+
+    File.write!(
+      Path.join(dir, spec),
+      "# Fixture\n\n## Requirements\n\n- **CITE-8** A requirement the reply cites.\n"
+    )
+
+    on_exit(fn ->
+      File.rm(Path.join(dir, spec))
+      File.rmdir(dir)
+    end)
+
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "See CITE-8"})
+      send(test_pid, {:streamed, self()})
+      receive do: (:finish -> :ok)
+
+      {:ok,
+       %{
+         message: FakeLLM.assistant([Message.text("See CITE-8")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "which requirement?"}) |> render_submit()
+    assert_receive {:streamed, llm}, 5000
+    _ = :sys.get_state(view.pid)
+
+    cited = "span.spec-cite[title='A requirement the reply cites.']"
+
+    # CITE-1, UI-10: the citation in the streaming draft carries it too.
+    assert has_element?(view, "#draft .markdown #{cited}", "CITE-8")
+
+    send(llm, :finish)
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    # CITE-1, UI-8: and so does the saved message.
+    assert has_element?(view, "#transcript .markdown #{cited}", "CITE-8")
+  end
+
   # UI-29: saved reasoning is collapsed behind a header with its word count.
   test "saved reasoning is collapsed by default", %{conn: conn} do
     id = Agent.new_id()

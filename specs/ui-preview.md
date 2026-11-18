@@ -93,7 +93,9 @@ live tree's saved chats are never touched.
   and a reasoning block — the pieces a transcript renders (UI-8, UI-15, UI-16,
   UI-20, UI-29). The reply mentions a file of the workspace in inline code and
   the sample holds a `read_file` call for one, so the picture shows a linked
-  mention in a reply and on a tool card (FLINK-1, FLINK-4). It holds a
+  mention in a reply and on a tool card (FLINK-1, FLINK-4). It cites a
+  requirement of the workspace's own corpus, in inline code and in prose, so the
+  picture shows a citation (CITE-1). It holds a
   `spawn_task` call with its brief too, so a picture shows a sub-task's call is
   the ordinary tool call it is (UI-43). A user message in it
   carries uploaded files, so the picture shows the chips a message with

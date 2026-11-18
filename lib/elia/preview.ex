@@ -218,7 +218,8 @@ defmodule Elia.Preview do
 
   @doc """
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply
-  with the Markdown a transcript renders (UI-25), a reasoning block (UI-29), the
+  with the Markdown a transcript renders (UI-25) and a requirement it cites
+  (CITE-1), a reasoning block (UI-29), the
   `set_title` call that named the chat (TITLE-5, UI-74), a `read_file` call for a
   file of the workspace (FLINK-4), a `shell` call with its
   output and a failed one (UI-15, UI-16, UI-20), and a last user message
@@ -346,7 +347,9 @@ defmodule Elia.Preview do
     ```
 
     The workflow is written up in `AGENTS.md`, and the spec is
-    [ui-preview.md](/files?path=specs%2Fui-preview.md).
+    [ui-preview.md](/files?path=specs%2Fui-preview.md). A preview is taken
+    before a deploy (`PREVIEW-1`), and what it shows is the workspace's own
+    code (PREVIEW-2).
     """
   end
 end

@@ -28,6 +28,33 @@ defmodule EliaWeb.MarkdownTest do
     root
   end
 
+  @spec_file "cite_markdown_fixture.md"
+
+  # CITE-4: a citation resolves in the chat's own workspace, so its corpus is a
+  # spec of the scratch workspace a test chat works in (PROJ-12).
+  defp spec_root do
+    dir = Path.join(Workspace.root(), "specs")
+    File.mkdir_p!(dir)
+
+    File.write!(Path.join(dir, @spec_file), """
+    # Citations fixture
+
+    ## Requirements
+
+    - **CITE-8** A requirement the reply cites.
+    - **CITE-9** A requirement with `code` in it, and a second
+      line that the tooltip joins.
+    - **CITE-10** One holding <angle brackets>, an & and a "quote".
+    """)
+
+    on_exit(fn ->
+      File.rm(Path.join(dir, @spec_file))
+      File.rmdir(dir)
+    end)
+
+    dir
+  end
+
   # UI-25
   test "renders GitHub-flavoured Markdown" do
     doc =
@@ -153,5 +180,50 @@ defmodule EliaWeb.MarkdownTest do
            |> URI.decode_query()
            |> Map.get("path") ==
              "#{@dir}/x<b>y.ex"
+  end
+
+  # CITE-1, CITE-2, CITE-5: a requirement ID a reply cites carries that
+  # requirement's own text as a tooltip — in an inline code span and in the
+  # prose alike — while the citation stays the agent's own text.
+  test "cites a requirement with its own text as a tooltip" do
+    spec_root()
+
+    doc = doc("See `CITE-9` and CITE-8, but not CITE-77 or NOPE-1.", links())
+
+    assert doc |> LazyHTML.query("span.spec-cite") |> LazyHTML.attribute("title") == [
+             "A requirement with `code` in it, and a second line that the tooltip joins.",
+             "A requirement the reply cites."
+           ]
+
+    # CITE-1: an ID the corpus does not define is left as text, and CITE-5: the
+    # citation's own text is unchanged — still code where the agent wrote code.
+    assert LazyHTML.text(doc) == "See CITE-9 and CITE-8, but not CITE-77 or NOPE-1."
+    assert LazyHTML.text(LazyHTML.query(doc, "code")) == "CITE-9"
+  end
+
+  # CITE-3: the citation and its tooltip are escaped, so a requirement holding
+  # markup adds none of it to the message (UI-27).
+  test "escapes a citation and its tooltip" do
+    spec_root()
+
+    html = render("CITE-10", links())
+
+    refute html =~ "<angle"
+    assert html =~ "&lt;angle brackets&gt;"
+    assert html =~ "&amp;"
+    assert html =~ "&quot;quote&quot;"
+  end
+
+  # CITE-6: a code block is content, and so are a link's text and an image's alt
+  # text — a citation is the reply's own text, not text quoted from elsewhere.
+  test "leaves a code block, a link and an image alone" do
+    spec_root()
+
+    doc = doc("```\nCITE-9\n```\n\n[`CITE-9`](/files) ![CITE-9](/x.png)\n", links())
+
+    assert doc |> LazyHTML.query("span.spec-cite") |> Enum.count() == 0
+    assert LazyHTML.text(LazyHTML.query(doc, "pre")) == "CITE-9\n"
+    assert LazyHTML.text(LazyHTML.query(doc, "a")) == "CITE-9"
+    assert doc |> LazyHTML.query("img") |> LazyHTML.attribute("alt") == ["CITE-9"]
   end
 end
