@@ -255,6 +255,11 @@ stream in, approves or denies tool calls, and switches between saved chats.
   transcript holds — pressing it on a chat with nothing in it scrolls nothing —
   and without its hook (a page whose assets were not rebuilt, HOT-8) it does
   nothing rather than leaving the page broken.
+- **UI-94** The transcript stops following its end (UI-14) as soon as the reader
+  moves it up themselves — a wheel up, a finger dragging the content down, an
+  upward key, or a press on the transcript's own scrollbar — rather than when
+  the browser reports the scroll position afterwards, so content arriving in the
+  same frame is not followed.
 - **UI-73** The notice a session writes after a restart cut the turn short
   (INTR-3) renders as an error row (UI-12), not as a plain harness notice
   (UI-9), so a turn the app killed is not mistaken for one that ended normally.
@@ -736,8 +741,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
-  browser: Enter sending a message, the transcript at its end and the
-  jump-to-the-end button — UI-14, UI-21, UI-87; the message box's draft,
+  browser: Enter sending a message, the transcript at its end, the reader's own
+  scroll stopping the following and the jump-to-the-end button — UI-14, UI-21,
+  UI-87, UI-94; the message box's draft,
   stored and restored per chat — UI-89; a browser test, so it runs with
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and

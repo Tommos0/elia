@@ -765,13 +765,28 @@ defmodule EliaWeb.ChatLive do
           }
         }
       </script>
+      <%!-- UI-14, UI-94: the transcript follows its end as content arrives, until
+      the reader moves it up themselves. That move is taken from the input event
+      itself — a wheel up, a finger dragging the content down, an upward key, a
+      press on the scrollbar — and not from the `scroll` event, which a browser
+      fires a frame later: content still arriving in that frame would otherwise
+      pull the view back to the end before the reader's move was ever seen. --%>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollBottom">
+        const UP_KEYS = ["ArrowUp", "PageUp", "Home"]
+        const END_TOLERANCE = 80
+
         export default {
           mounted() {
             this.stick = true
+            this.touchY = null
+
+            const atEnd = () =>
+              this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < END_TOLERANCE
+
             this.el.addEventListener("scroll", () => {
-              this.stick = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 80
+              this.stick = atEnd()
             })
+
             // UI-87: the jump-to-the-end button (phx-click's JS.dispatch) asks
             // for the end, and the follow state comes back with it, so content
             // arriving afterwards is followed again (UI-14).
@@ -779,9 +794,48 @@ defmodule EliaWeb.ChatLive do
               this.stick = true
               this.el.scrollTop = this.el.scrollHeight
             })
+
+            // UI-94: the reader moving up, heard when they do it rather than
+            // when the browser reports the position afterwards.
+            this.el.addEventListener(
+              "wheel",
+              e => {
+                if (e.deltaY < 0) this.stick = false
+              },
+              {passive: true}
+            )
+
+            this.el.addEventListener("keydown", e => {
+              if (UP_KEYS.includes(e.key)) this.stick = false
+            })
+
+            // A press on the scrollbar itself, which is the element: a press
+            // inside the transcript is on a message, a link or a button.
+            this.el.addEventListener("mousedown", e => {
+              if (e.target === this.el) this.stick = false
+            })
+
+            // A finger dragging the content down is a move up the transcript.
+            this.el.addEventListener(
+              "touchstart",
+              e => {
+                this.touchY = e.touches[0].clientY
+              },
+              {passive: true}
+            )
+
+            this.el.addEventListener(
+              "touchmove",
+              e => {
+                if (this.touchY !== null && e.touches[0].clientY > this.touchY) this.stick = false
+              },
+              {passive: true}
+            )
+
             new MutationObserver(() => {
               if (this.stick) this.el.scrollTop = this.el.scrollHeight
             }).observe(this.el, {childList: true, subtree: true, characterData: true})
+
             this.el.scrollTop = this.el.scrollHeight
           }
         }
