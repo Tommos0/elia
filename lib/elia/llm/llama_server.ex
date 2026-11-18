@@ -68,6 +68,11 @@ defmodule Elia.LLM.LlamaServer do
   # answer about an outside server is reused.
   @poll_interval 250
 
+  # LOCAL-27: the log a page shows is refreshed while the server runs, so the
+  # output it writes is broadcast — at most once per this interval, so a chatty
+  # server cannot make a subscribed page re-render once per line.
+  @output_broadcast_interval 250
+
   ## Supervision
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: @name)
@@ -87,7 +92,8 @@ defmodule Elia.LLM.LlamaServer do
       error: nil,
       started_at: nil,
       server: nil,
-      health: nil
+      health: nil,
+      broadcast_pending: false
     }
   end
 
@@ -244,7 +250,15 @@ defmodule Elia.LLM.LlamaServer do
   def handle_info(:poll, state), do: {:noreply, state}
 
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    {:noreply, %{state | output: append_output(state.output, data, log_lines(state))}}
+    state = %{state | output: append_output(state.output, data, log_lines(state))}
+    {:noreply, broadcast_output_soon(state)}
+  end
+
+  # LOCAL-27: the broadcast the output this interval held back is waiting for.
+  def handle_info(:output_broadcast, state) do
+    state = %{state | broadcast_pending: false}
+    broadcast(state)
+    {:noreply, state}
   end
 
   # LOCAL-16, LOCAL-18: the process is gone. Before it was ready that is a
@@ -449,6 +463,15 @@ defmodule Elia.LLM.LlamaServer do
 
   defp broadcast(state) do
     Phoenix.PubSub.broadcast(Elia.PubSub, @topic, {:llama_server, status_map(state)})
+  end
+
+  # LOCAL-27: one broadcast per interval however many chunks arrive within it, so
+  # a page follows the output of a running server without re-rendering per line.
+  defp broadcast_output_soon(%{broadcast_pending: true} = state), do: state
+
+  defp broadcast_output_soon(state) do
+    Process.send_after(self(), :output_broadcast, @output_broadcast_interval)
+    %{state | broadcast_pending: true}
   end
 
   defp append_output(output, data, limit) do

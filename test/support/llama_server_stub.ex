@@ -10,6 +10,8 @@ defmodule Elia.LLM.LlamaServerStub do
 
     * `healthy` (the default) — really listens on `--port` and answers
       `GET /health`, `/v1/models` and `/props`, so a start becomes `:running`
+    * `late` — `healthy`, and writes one more line a second after it is ready,
+      so a page can be seen following a running server's output (LOCAL-27)
     * `slow` — waits two seconds first, so `:starting` can be observed
     * `exit` — prints a line and exits with status 3, before it is ready
     * `silent` — prints a line and never listens, so the startup poll times out
@@ -37,6 +39,14 @@ defmodule Elia.LLM.LlamaServerStub do
         mode ->
           IO.puts("stub: mode " <> mode)
           if mode == "slow", do: Process.sleep(2_000)
+
+          if mode == "late" do
+            spawn(fn ->
+              Process.sleep(1_000)
+              IO.puts("stub: late line")
+            end)
+          end
+
           serve(port(args))
       end
     end

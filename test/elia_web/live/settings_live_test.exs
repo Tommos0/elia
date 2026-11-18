@@ -204,9 +204,18 @@ defmodule EliaWeb.SettingsLiveTest do
     # A free port: this host's own llama-server may be on the default 8080, and
     # the badge asks the configured port whether somebody else is there
     # (LOCAL-16).
+    #
+    # The stub is a fresh `elixir` boot, so on a busy machine — the deploy gate
+    # runs the whole suite in a jail, below the server's own priority — a start
+    # takes seconds. It is allowed far longer than it normally needs: the
+    # timeout is `llama_server_test.exs`'s subject (LOCAL-20), not this test's,
+    # and `badge_wait` keeps the wait inside the minute ExUnit allows one test.
+    startup_timeout = 60_000
+    badge_wait = 45_000
+
     configure(LlamaServer,
       binary: stub,
-      startup_timeout: 15_000,
+      startup_timeout: startup_timeout,
       port: LlamaServerStub.free_port()
     )
 
@@ -236,7 +245,7 @@ defmodule EliaWeb.SettingsLiveTest do
         port: to_string(port),
         context: "4096",
         threads: "4",
-        extra_args: "--stub healthy",
+        extra_args: "--stub late",
         jinja: "true"
       }
     })
@@ -247,18 +256,29 @@ defmodule EliaWeb.SettingsLiveTest do
     assert render(view) =~ "-c 4096 -t 4 --jinja"
     assert has_element?(view, "#local-server-status", model)
 
-    await_element(view, "#local-server-badge", "Running")
+    # LOCAL-17, LOCAL-26: the badge follows the server's own health poll and the
+    # broadcast that follows it, so it waits as long as the start is allowed
+    # rather than on a budget of its own — a fixed five seconds here failed the
+    # deploy gate on a machine that was busy compiling something else.
+    await_element(view, "#local-server-badge", "Running", timeout: badge_wait)
 
-    # LOCAL-27: the output it wrote while it started, and that it is up.
+    # LOCAL-27: the output it wrote while it started, and that it is up. The
+    # lines reach the page through the same status broadcast the badge follows,
+    # so they are awaited the same way rather than read at once.
     assert has_element?(view, "#local-server-log")
-    assert render(view) =~ "stub: listening on #{port}"
+    await_element(view, "#local-server-log", "stub: listening on #{port}")
     assert LlamaServerStub.listening?(port)
+
+    # LOCAL-27: and the log is refreshed while it runs — a line the server writes
+    # after it was ready reaches the page too, not just the snapshot the status
+    # that said "Running" happened to carry.
+    await_element(view, "#local-server-log", "stub: late line", timeout: badge_wait)
 
     view |> element("#stop-local-server") |> render_click()
 
     assert has_element?(view, "#local-server-result", "Server stopped.")
     await_element(view, "#local-server-badge", "Stopped")
-    assert LlamaServerStub.wait_until(fn -> not LlamaServerStub.listening?(port) end)
+    assert LlamaServerStub.wait_until(fn -> not LlamaServerStub.listening?(port) end, 10_000)
   end
 
   # LOCAL-20, LOCAL-25: starting without a llama-server on the machine says what
@@ -342,17 +362,26 @@ defmodule EliaWeb.SettingsLiveTest do
     path
   end
 
-  defp await_element(view, selector, text, tries \\ 100) do
-    cond do
-      tries == 0 ->
-        flunk("#{selector} never showed #{inspect(text)}")
+  # Waits until `selector` shows `text`, up to `:timeout` milliseconds (5s by
+  # default). What the page shows is fed by the server's own health poll and its
+  # broadcast (LOCAL-17, LOCAL-26), so an await that drives a start has to allow
+  # as long as that start is given rather than its own shorter budget.
+  defp await_element(view, selector, text, opts \\ []) do
+    deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :timeout, 5_000)
+    await_text(view, selector, text, deadline)
+  end
 
+  defp await_text(view, selector, text, deadline) do
+    cond do
       has_element?(view, selector, text) ->
         :ok
 
+      System.monotonic_time(:millisecond) >= deadline ->
+        flunk("#{selector} never showed #{inspect(text)}")
+
       true ->
         Process.sleep(50)
-        await_element(view, selector, text, tries - 1)
+        await_text(view, selector, text, deadline)
     end
   end
 
@@ -630,6 +659,21 @@ defmodule EliaWeb.SettingsLiveTest do
     end)
   end
 
+  # DEPLOY-33: the other way round — a server started by hand in a shell, which
+  # nothing outside the VM would bring back. A suite run from a running server
+  # inherits its `ELIA_SUPERVISED`, so the case says which server it is about
+  # rather than reading whatever started the tests.
+  defp unsupervised do
+    previous = System.get_env("ELIA_SUPERVISED")
+    System.delete_env("ELIA_SUPERVISED")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("ELIA_SUPERVISED", previous),
+        else: System.delete_env("ELIA_SUPERVISED")
+    end)
+  end
+
   # The server going away under an operation (DEPLOY-15, DEPLOY-23): the runner
   # and the operation it holds die together, and the record is what is left
   # behind — the state a restart deploy leaves for the page that comes up after
@@ -738,6 +782,7 @@ defmodule EliaWeb.SettingsLiveTest do
   # offered a restart — the control is there, disabled, and says why — since a
   # restart would be the end of it.
   test "a server nothing would bring back is not offered a restart (DEPLOY-33)", %{conn: conn} do
+    unsupervised()
     running_server()
     stop_server_with(self())
     tree = live_tree()

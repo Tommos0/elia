@@ -127,8 +127,11 @@ it was launched is visible when it fails.
   to, the model, and the command it runs, so a refused start or a crash is
   explained by what is on the page.
 - **LOCAL-27** The section shows the server's last output lines
-  (`#local-server-log`), refreshed while it runs, truncated to a bounded
-  number of lines (config `log_lines`, default 200).
+  (`#local-server-log`), truncated to a bounded number of lines (config
+  `log_lines`, default 200). It is refreshed while the server runs, not only
+  when its status changes: the lines a running server writes reach the page as
+  it writes them, at most once per 250 ms, so a server that says nothing more
+  does not leave the page with the output it had when it became ready.
 - **LOCAL-28** Saving the settings of LOCAL-25 stores them in the settings
   database (CONF-1) and they survive a restart. Values equal to the configured
   default are stored as easily as any other; "Reset" (`#reset-local-server`)
