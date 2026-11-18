@@ -633,16 +633,19 @@ defmodule Elia.Deploy do
   `{:ok, message}`, `{:tests_failed, output}` or `{:error, reason}`. Nothing to
   merge when `live` is already at the trunk: no tests run, but the tree's front
   end is still made current before the load (DEPLOY-20), and the message says so.
+  Uncommitted changes in the live tree are put aside in the stash before
+  anything runs, and the message says so (DEPLOY-37).
   """
   @spec deploy(binary()) :: {:ok, binary()} | {:tests_failed, binary()} | {:error, binary()}
   def deploy(root \\ Workspace.runtime_root()) do
     with :ok <- deployable(root),
-         :ok <- clean?(root),
-         {:ok, %{pending: pending}} <- status(root) do
-      case pending do
-        0 -> nothing_to_merge(root)
-        _ -> merge_and_test(pending, root)
+         {:ok, set_aside} <- set_aside(root) do
+      case status(root) do
+        {:ok, %{pending: 0}} -> nothing_to_merge(root)
+        {:ok, %{pending: pending}} -> merge_and_test(pending, root)
+        {:error, reason} -> {:error, reason}
       end
+      |> with_set_aside(set_aside)
     end
   end
 
@@ -760,8 +763,9 @@ defmodule Elia.Deploy do
   (DEPLOY-21) and what it did is recorded (DEPLOY-23).
 
   Refused, changing nothing, when the live tree isn't set up for deployment
-  (DEPLOY-14), has uncommitted changes, `sha` is not one the app has run
-  (DEPLOY-25), or is the revision it is running now. A rollback that fails
+  (DEPLOY-14), `sha` is not one the app has run
+  (DEPLOY-25), or is the revision it is running now; uncommitted changes in the
+  tree are put aside first (DEPLOY-37). A rollback that fails
   after it has moved `live` — a front end it cannot build (DEPLOY-24) — puts
   `live` back where it was and loads nothing. Returns what `deploy/1` does.
   """
@@ -771,15 +775,17 @@ defmodule Elia.Deploy do
 
   def rollback(sha, mode, root) when mode in [:reload, :restart] do
     with :ok <- deployable(root),
-         :ok <- clean?(root),
-         {:ok, sha} <- ran?(sha, root),
-         :ok <- not_running?(sha, root),
-         :ok <- mode_available?(mode),
-         {:ok, before} <- git(root, ["rev-parse", @live]) do
-      case step(:reset, root, fn -> reset_to(sha, root) end) do
-        {:ok, _note} -> after_reset(sha, mode, before, root)
-        {:error, reason} -> {:error, reason}
+         {:ok, set_aside} <- set_aside(root) do
+      with {:ok, sha} <- ran?(sha, root),
+           :ok <- not_running?(sha, root),
+           :ok <- mode_available?(mode),
+           {:ok, before} <- git(root, ["rev-parse", @live]) do
+        case step(:reset, root, fn -> reset_to(sha, root) end) do
+          {:ok, _note} -> after_reset(sha, mode, before, root)
+          {:error, reason} -> {:error, reason}
+        end
       end
+      |> with_set_aside(set_aside)
     end
   end
 
@@ -1151,22 +1157,51 @@ defmodule Elia.Deploy do
     end
   end
 
-  # A deploy merges into the live tree and rolls back with `git reset --hard`
-  # when the tests fail (DEPLOY-5), so it refuses a tree with uncommitted changes
-  # rather than touching them.
-  defp clean?(root) do
+  # DEPLOY-37: the live tree is also where a chat works (DEPLOY-1), so a change
+  # nobody committed there — a spec drafted before the worktree existed
+  # (DEPLOY-28), an edit left behind — is an ordinary state rather than a reason
+  # to hold up a deploy. It is put aside in the stash, untracked files included,
+  # so a deploy merges and tests the tree as committed and DEPLOY-5's
+  # `git reset --hard` has nothing of the user's to lose. `{:ok, ""}` for a tree
+  # that was already clean, `{:ok, note}` for one whose changes were put aside.
+  defp set_aside(root) do
     case git(root, ["status", "--porcelain"]) do
       {:ok, ""} ->
-        :ok
+        {:ok, ""}
 
       {:ok, _changes} ->
-        {:error,
-         "The live tree has uncommitted changes: commit or discard them before deploying."}
+        put_aside(root)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  defp put_aside(root) do
+    message = "elia deploy: uncommitted changes put aside before deploying"
+
+    case git(root, ["stash", "push", "--include-untracked", "--message", message]) do
+      {:ok, _output} ->
+        {:ok, set_aside_note()}
+
+      {:error, reason} ->
+        {:error, "The live tree's uncommitted changes could not be put aside: " <> reason}
+    end
+  end
+
+  defp set_aside_note do
+    " The live tree had uncommitted changes: they were put aside in the stash " <>
+      "before anything ran. `git stash list` shows them and `git stash pop` brings them back."
+  end
+
+  # What the note `set_aside/1` returns says is added to the operation's result,
+  # whatever that result is (DEPLOY-37): a deploy or rollback that went on, and
+  # one that failed for another reason, both left the user's changes in the
+  # stash and both say so.
+  defp with_set_aside(result, ""), do: result
+  defp with_set_aside({:ok, message}, note), do: {:ok, message <> note}
+  defp with_set_aside({:tests_failed, output}, note), do: {:tests_failed, output <> note}
+  defp with_set_aside({:error, reason}, note), do: {:error, reason <> note}
 
   # HOT-5, DEPLOY-26: recompile the live tree and load the changed modules, as
   # the operation's `:load` step (DEPLOY-21). Loading is a function so tests can

@@ -29,11 +29,12 @@ defmodule Elia.LiveTree do
     File.mkdir_p!(Path.join(dir, "test"))
 
     # DEPLOY-28: a chat makes its own worktree in `tmp/worktrees/`, and an
-    # untracked `tmp/` would make the tree a dirty one that can't be deployed
-    # (DEPLOY-5) — as in the project itself, where `/tmp/` is ignored. The
-    # generated outputs the real project ignores too are here as well: what a
-    # deploy installs and builds is not something a tree has to commit
-    # (DEPLOY-31, DEPLOY-32).
+    # untracked `tmp/` would be part of what a deploy stashes out of the way:
+    # the stash takes untracked files with it (DEPLOY-37), so it would take a
+    # chat's worktree with them — as in the project itself, where `/tmp/` is
+    # ignored. The generated outputs the real project ignores too are here as
+    # well: what a deploy installs and builds is not something a tree has to
+    # commit (DEPLOY-31, DEPLOY-32).
     File.write!(
       Path.join(dir, ".gitignore"),
       "/_build/\n/deps/\n/.elia/\n/tmp/\n/assets/node_modules/\n/priv/static/assets/\n"

@@ -138,7 +138,8 @@ tree's front end (`/recover`, RECOVER-10).
 
 - **DEPLOY-5** A deploy brings the trunk to `live` and loads it into the
   running app. It is refused, before anything runs, when the live tree isn't
-  set up for deployment (DEPLOY-14) or has uncommitted changes. Otherwise it
+  set up for deployment (DEPLOY-14); uncommitted changes there are put aside
+  rather than refused (DEPLOY-37). Otherwise it
   runs the full test suite in the live tree — after fetching the trunk's
   dependencies there (DEPLOY-18) — then fast-forwards `live` to
   `master` when the tests pass; when they fail it rolls `live` back to where it
@@ -146,6 +147,21 @@ tree's front end (`/recover`, RECOVER-10).
   the test output. When `live` is already at `master` there is nothing to
   *merge*: no tests run, the live tree's front end is still made current before
   the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens.
+- **DEPLOY-37** Uncommitted changes in the live tree are put aside rather than
+  refused: the tree is also where a chat works (DEPLOY-1), so a change left
+  there — a spec drafted before the worktree existed (DEPLOY-28), an edit
+  nobody committed — is an ordinary state and not a reason to hold up a deploy.
+  A deploy (DEPLOY-5) or a rollback (DEPLOY-26) that finds the tree dirty
+  stashes what is there before it does anything else — every tracked
+  modification and every untracked file, under a message naming Elia — so the
+  tree it merges into, resets and runs the suite in is the tree as committed,
+  and then goes on as it would have on a clean one. Nothing is discarded: a
+  deploy whose suite fails still rolls `live` back (DEPLOY-5) with the changes
+  safe in the stash. What the operation returns says the changes were put aside
+  and how they come back (`git stash list`, `git stash pop`) — in its message,
+  not as a step (DEPLOY-21) — and a tree that is already clean stashes nothing
+  and says nothing about it. The operation does not restore the stash itself:
+  the tree it leaves is the clean one it needs to leave.
 - **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
   test in the live tree itself — `mix deps.get`, jailed in the live tree
   (ISOL-13, ISOL-14) — before the suite runs. A dependency a chat added lives in the
@@ -328,10 +344,11 @@ tree's front end (`/recover`, RECOVER-10).
   DEPLOY-24 checks it) and loads it the way a deploy does (hot reload, DEPLOY-6,
   or restart, DEPLOY-7), recording it as loaded (DEPLOY-17, DEPLOY-25). It runs
   in the runner, one operation at a time (DEPLOY-15, DEPLOY-16), reports its
-  steps (DEPLOY-21) and records what it did (DEPLOY-23). It is refused, changing
-  nothing, for a revision that is not one the app has run (DEPLOY-25), for the
-  revision the app is running now — there is nothing to go back to — or for a
-  live tree with uncommitted changes (DEPLOY-5); a rollback that fails after it
+  steps (DEPLOY-21) and records what it did (DEPLOY-23). Uncommitted changes in
+  the live tree are put aside first and the rollback goes on (DEPLOY-37). It is
+  refused, changing nothing, for a revision that is not one the app has run
+  (DEPLOY-25), and for the revision the app is running now — there is nothing to
+  go back to; a rollback that fails after it
   has moved `live` (a front end it cannot build, DEPLOY-24) puts `live` back
   where it was and loads nothing, so the tree it leaves is the one the app is
   running. Afterwards `live` is behind the
@@ -496,7 +513,8 @@ rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
 checks for, whether a restart is possible (DEPLOY-33), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
 restart, the runner, the loaded revision a boot records and what a deploy
-brought, DEPLOY-1 to DEPLOY-33 and DEPLOY-36),
+brought, and the uncommitted changes it puts aside (DEPLOY-37), DEPLOY-1 to
+DEPLOY-33, DEPLOY-36 and DEPLOY-37),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to

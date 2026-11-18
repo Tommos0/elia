@@ -865,17 +865,40 @@ defmodule Elia.DeploymentTest do
     refute File.exists?(Path.join(tree, "test/broken_test.exs"))
   end
 
-  # DEPLOY-5, DEPLOY-14
-  test "a deploy refuses a live tree with uncommitted changes", %{tree: tree} do
+  # DEPLOY-5, DEPLOY-37: uncommitted changes in the live tree are not a refusal
+  # — the tree is also where a chat works — so they are put aside in the stash
+  # and the deploy goes on in the tree as committed.
+  test "a deploy puts uncommitted changes aside and goes on (DEPLOY-37)", %{tree: tree} do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
+    # A tracked file edited by hand, and a file nobody ever added.
+    File.write!(
+      Path.join(tree, "lib/deploy_tmp.ex"),
+      "defmodule DeployTmp do\n  # hand edited\nend\n"
+    )
+
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
 
-    live = head(tree)
-    assert {:error, message} = Deploy.deploy()
-    assert message =~ "uncommitted changes"
-    assert head(tree) == live
+    assert {:ok, message} = Deploy.deploy()
+    assert message =~ "put aside in the stash"
+    assert message =~ "git stash pop"
+
+    # The deploy went on and the tree it tested was the tree as committed: the
+    # trunk is deployed and neither change is in it any more.
+    assert head(tree) == trunk(tree)
+    refute File.exists?(Path.join(tree, "lib/hand_edited.ex"))
+    refute File.read!(Path.join(tree, "lib/deploy_tmp.ex")) =~ "hand edited"
+
+    # A tree that was already clean stashes nothing and says nothing about it.
+    assert {:ok, clean} = Deploy.deploy()
+    refute clean =~ "stash"
+
+    # Nothing was discarded: the untracked file comes back with the rest.
+    assert LiveTree.git!(tree, ["stash", "list"]) =~ "elia deploy"
+    LiveTree.git!(tree, ["stash", "pop"])
+    assert File.exists?(Path.join(tree, "lib/hand_edited.ex"))
+    assert File.read!(Path.join(tree, "lib/deploy_tmp.ex")) =~ "hand edited"
   end
 
   # DEPLOY-14: the one-time setup a live tree needs before anything can be
@@ -1924,9 +1947,10 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == live
   end
 
-  # DEPLOY-5, DEPLOY-26: a rollback refuses a live tree with uncommitted changes
-  # rather than resetting over them.
-  test "a rollback refuses a live tree with uncommitted changes (DEPLOY-26)", %{tree: tree} do
+  # DEPLOY-26, DEPLOY-37: a rollback is the way out of a broken deploy, so a
+  # live tree with uncommitted changes puts them aside and goes on rather than
+  # refusing to reset.
+  test "a rollback puts uncommitted changes aside and goes on (DEPLOY-37)", %{tree: tree} do
     running_server()
     {_id, path} = new_worktree()
 
@@ -1940,13 +1964,13 @@ defmodule Elia.DeploymentTest do
     assert_receive :loaded
 
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
-    live = head(tree)
 
-    assert {:error, message} = Deploy.rollback(first, :reload)
-    assert message =~ "uncommitted changes"
-    assert head(tree) == live
-    assert File.exists?(Path.join(tree, "lib/hand_edited.ex"))
-    refute_received :loaded
+    assert {:ok, message} = Deploy.rollback(first, :reload)
+    assert message =~ "put aside in the stash"
+    assert head(tree) == first
+    refute File.exists?(Path.join(tree, "lib/hand_edited.ex"))
+    assert_receive :loaded
+    assert LiveTree.git!(tree, ["stash", "list"]) =~ "elia deploy"
   end
 
   # DEPLOY-14, DEPLOY-26: a tree that isn't set up for deployment is refused

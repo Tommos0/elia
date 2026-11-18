@@ -1210,18 +1210,24 @@ defmodule Elia.SelfModificationTest do
   end
 
   describe "the instruction a chat in Elia's own project carries" do
-    # DEPLOY-28, DEPLOY-29, DEPLOY-30, SHELL-14: the instruction tells a chat its
-    # workspace is the project's folder and no worktree was made for it, how to
-    # make its own — forked from the trunk, on the branch its chat id names, with
-    # the copies that save its first command minutes — how its work lands, and
-    # what to do when it can't. `AGENTS.md` is its only home: the
+    # DEPLOY-28, DEPLOY-29, DEPLOY-30, DEPLOY-37, SHELL-14: the instruction tells
+    # a chat its workspace is the project's folder and no worktree was made for
+    # it, how to make its own — forked from the trunk, on the branch its chat id
+    # names, with the copies that save its first command minutes — how its work
+    # lands, what to do when it can't, and that the live tree is left clean
+    # (DEPLOY-37). `AGENTS.md` is its only home: the
     # `self-modification` skill that carried a second copy is retired (SKILL-9,
     # PROJ-17), so there is one place to change it.
     test "the project's AGENTS.md carries the worktree recipe" do
       agents = File.read!("AGENTS.md")
 
       assert agents =~ "works in the project's folder"
-      assert agents =~ "Don't change code there"
+      assert agents =~ "Don't write anything there"
+      # DEPLOY-37: the live tree stays clean — a draft written there before the
+      # worktree existed moves into it and the tree is put back, and a deploy
+      # puts aside what is left.
+      assert agents =~ "git status --porcelain"
+      assert agents =~ "aside in a git stash"
       assert agents =~ "git worktree add"
       assert agents =~ "tmp/worktrees/"
       assert agents =~ "chat/$ELIA_CHAT_ID"

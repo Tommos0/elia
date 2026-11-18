@@ -812,16 +812,46 @@ defmodule EliaWeb.SettingsLiveTest do
     running_server()
     tree = live_tree()
     work_on_trunk()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # DEPLOY-14: the tree stops being deployable between the page's render and
+    # the click — it is on the trunk now rather than on `live`.
+    LiveTree.git!(tree, ["checkout", "-q", LiveTree.trunk()])
+
+    Runner.subscribe()
+    view |> element("#deploy-reload") |> render_click()
+
+    assert {:error, reason} = await_deploy(30_000)
+    assert reason =~ "not on the branch live"
+    assert has_element?(view, "#deploy-result", "not on the branch live")
+
+    # Nothing happened: the tree is where it was, and nothing was loaded.
+    assert LiveTree.branch(tree) == LiveTree.trunk()
+    refute_received :loaded
+  end
+
+  # CONF-20, DEPLOY-37: a deploy with uncommitted changes in the live tree goes
+  # on — they are put aside in the stash — and the section says so.
+  test "a deploy that put changes aside says so (DEPLOY-37)", %{conn: conn} do
+    running_server()
+    tree = live_tree()
+    work_on_trunk()
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
 
     {:ok, view, _html} = live(conn, ~p"/settings")
     Runner.subscribe()
     view |> element("#deploy-reload") |> render_click()
 
-    assert {:error, reason} = await_deploy(30_000)
-    assert reason =~ "uncommitted changes"
-    assert has_element?(view, "#deploy-result", "uncommitted changes")
-    refute LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
+    assert {:ok, message} = await_deploy()
+    assert message =~ "put aside in the stash"
+    assert has_element?(view, "#deploy-result", "put aside in the stash")
+
+    # The deploy went on (DEPLOY-37): the trunk is deployed, and what the tree
+    # held is in the stash rather than lost.
+    assert LiveTree.head(tree) == LiveTree.sha(tree, LiveTree.trunk())
+    refute File.exists?(Path.join(tree, "lib/hand_edited.ex"))
+    assert LiveTree.git!(tree, ["stash", "list"]) =~ "elia deploy"
   end
 
   # DEPLOY-15: a deploy runs to the end when the page that started it goes away

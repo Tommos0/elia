@@ -11,7 +11,8 @@ tree the server runs from (DEPLOY-1) and does a change in a worktree of its own
 deploy runs the full suite and a compile first and refuses to load a tree that
 fails either (DEPLOY-5, HOT-4, HOT-6), so the app cannot be left uncompilable.
 The page's own work then was hollow — it rolled *files* back, and a deploy
-refuses a live tree with uncommitted changes (DEPLOY-5), which is exactly what a
+insisted on a live tree with no uncommitted changes (DEPLOY-5; they are put
+aside now, DEPLOY-37), which is exactly what a
 rollback leaves behind — so the whole thing was retired (RECOVER-1–RECOVER-9).
 
 It comes back smaller, for the failure the deploy gate does *not* catch: a

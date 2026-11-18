@@ -120,7 +120,11 @@ a browser during `mix test`.
   2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
   and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with
   other runs, and each file passed when run alone (`mix test test/<file>`). When
-  a partition fails, run the file it named before believing it.
+  a partition fails, run the file it named before believing it. The same goes for
+  a run that fails a handful of tests at once under load —
+  `test/elia/shell_test.exs`'s process-group ones are the usual suspects there —
+  and for a partition whose failures you can't name: re-run, and say what you
+  re-ran.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run
