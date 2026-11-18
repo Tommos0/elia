@@ -34,7 +34,7 @@ left off in exactly as `/` used to (UI-1, UI-71).
 ### Where you left off
 
 - **DASH-3** A "Continue" card (`#continue`) shows the chat the user left off
-  in — `Elia.Store.latest/0` (STORE-29), the most recently started chat that
+  in — `Elia.Store.latest/1` (STORE-29), the most recently started chat that
   isn't a task chat (STORE-17) and isn't done (STORE-35, DONE-10) — with its
   title (`#continue-title`), its project's name (`#continue-project`), when it
   was started in relative form
@@ -136,9 +136,9 @@ left off in exactly as `/` used to (UI-1, UI-71).
 ## Out of scope
 
 - A second chat list: the dashboard shows recent chats and needs-attention
-  rows, while listing every chat, grouping them by project and deleting them
-  stays in the one chat list — the chat page's sidebar (UI-4, UI-64) and the
-  drawer every other page opens (UI-91 to UI-93).
+  rows, while listing every chat and deleting them stays in the one chat list —
+  the chat page's sidebar (UI-4, UI-64) and the drawer every other page opens
+  (UI-91 to UI-93).
 - Per-chat actions on the dashboard: stopping a turn, approving a call, resuming
   a paused chat, deploying and the rest stay where they are, one tap away.
 - Configurable widgets, drag-to-rearrange, or a per-user dashboard.
@@ -147,7 +147,7 @@ left off in exactly as `/` used to (UI-1, UI-71).
 
 `EliaWeb.DashboardLive` (whose column grid shrinks with the screen, DASH-12),
 `EliaWeb.Router` (the `/` route and the `/chats` route
-of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/0` (STORE-29),
+of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/1` (STORE-29),
 `Elia.Projects`, `Elia.Agent` (statuses), `Elia.SystemStats` (DASH-10),
 `Elia.Deploy.status/0` (DASH-11) and `Elia.Deploy.changes/0` (DASH-14).
 

@@ -29,12 +29,13 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `/chats` (UI-77), and the app's start URL (PWA-1) and the header logo open the
   dashboard.
 - **UI-77** `/chats` is the chat list's entry point and resumes work rather than
-  starting over: it opens the most recently started chat (STORE-12 order, the
-  first one the sidebar lists) that isn't a task chat (STORE-17, UI-45), since a
-  sub-task chat is reached from its own row in the chat list (UI-45) and not
+  starting over: it opens the most recently started chat of the open project
+  (PROJ-28, PROJ-31, STORE-52, in STORE-12 order, the first one the sidebar
+  lists) that isn't a task chat (STORE-17, UI-45), since a sub-task chat is
+  reached from its own row in the chat list (UI-45) and not
   where the user
-  left off. Only when there is no such chat does it start a fresh one in the
-  default project (PROJ-8), saved at once (STORE-22) — so browsing to it never
+  left off. Only when the open project has no such chat does it start a fresh
+  one in it (PROJ-8), saved at once (STORE-22) — so browsing to it never
   leaves another empty "New chat" behind while a chat exists, and resuming
   writes nothing (STORE-22, STORE-29). It is where deleting the open chat lands
   (UI-65); the header's "Chats" control no longer leads here, since it opens the
@@ -52,22 +53,24 @@ stream in, approves or denies tool calls, and switches between saved chats.
 ### Chat list
 
 - **UI-4** On large screens a sidebar lists the 30 most recently started chats
-  (STORE-12), newest first, grouped by project (PROJ-24), each linking to
-  `/c/<id>`. The open chat is highlighted. Small screens get the same list
-  through a drawer (UI-36). Those 30 are the list's first page: while more chats
-  are saved than it lists, the list carries a "Load more chats" button (UI-84).
+  of the open project (PROJ-28, PROJ-31, STORE-12, STORE-52), newest first,
+  each linking to `/c/<id>`. The open chat is highlighted. Small screens get
+  the same list through a drawer (UI-36). Those 30 are the list's first page:
+  while more chats of that project are saved than it lists, the list carries a
+  "Load more chats" button (UI-84).
 - **UI-84** The chat list shows a "Load more chats" button
   (`#load-more-chats`) below the list and outside the list's own scroll box
   (`#chat-list`), so it is visible without scrolling to the end, and it is
   shown on small screens with the drawer's list too (UI-36). It is there
-  exactly while more saved chats exist than the list shows — so never with no
-  chats saved (UI-5) and never once the list shows them all — and it never
+  exactly while more chats of the open project are saved than the list shows
+  (PROJ-28, PROJ-31) — so never with no chat saved in it (UI-5) and never once
+  the list shows them all — and it never
   replaces the "No chats yet" empty state (UI-5). Clicking it lists the next
-  30 chats in the same order (STORE-12) and grouping (PROJ-24), without a
+  30 chats of that project in the same order (STORE-12, STORE-52), without a
   reload, leaving the open chat, the drawer (UI-36) and the list's scroll
   position where they are; the button stays while further chats remain and is
   gone when the last page is shown. Pressing it a second time loads 30 more
-  again, and so on until every saved chat is listed.
+  again, and so on until every chat of the project is listed.
 - **UI-85** The list keeps the size the user loaded it to. The refreshes the
   sidebar does anyway — a turn starting or ending (UI-6), a task or title event
   (UI-49, UI-74), a chat marked done (UI-80), a deletion (UI-65) — leave the
@@ -88,20 +91,21 @@ stream in, approves or denies tool calls, and switches between saved chats.
   then a date after a week), in a `<time>` element whose `datetime` is the
   start time and whose `title` is the exact date and time. The relative text
   refreshes every minute.
-- **UI-5** With no saved chats, the sidebar shows "No chats yet".
+- **UI-5** With no chats saved in the open project (PROJ-28, PROJ-31), the
+  sidebar shows "No chats yet".
 - **UI-6** When a turn starts (status becomes running) and when it ends (status
   becomes idle), the sidebar and page title refresh, so a chat that was just
   started shows its first message as its title without waiting for the turn to
   end.
 - **UI-63** A chat started from `/chats` or from a "New chat" button (UI-77,
-  UI-31, PROJ-26) is in the sidebar list as soon as it opens: under its project
-  (PROJ-24), newest first (STORE-12), highlighted as the open chat (UI-4), with
+  UI-31, PROJ-26) is in the sidebar list as soon as it opens: newest first
+  (STORE-12), highlighted as the open chat (UI-4), with
   the title "New chat" (STORE-7) and the start time "just now" (UI-34), before
   the user has sent anything. It stays listed when the user never writes to it
   (STORE-22).
 - **UI-31** The sidebar shows a "New chat" button (`#new-chat`) above the chat
-  list that starts a fresh chat in the open chat's project (PROJ-26), which is
-  the default project when there is none (PROJ-8).
+  list that starts a fresh chat in the open project (PROJ-28, PROJ-26), which
+  is the project of the chat the page shows when it shows one (UI-2).
 - **UI-33** Each sidebar chat link has a `title` attribute with the chat's
   description (STORE-10), so hovering shows the full text (up to 1000
   characters) rather than the truncated line.
@@ -112,7 +116,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   12rem and 40rem (and at most half the window), is kept in the browser's
   `localStorage`, and survives LiveView patches and navigation between chats.
 - **UI-32** The header on every page carries a "Chats" control first, to the
-  left of Projects, Files, Sessions, System and Settings. It opens the chat
+  left of Files, Sessions, System and Settings, with the open project next to
+  the logo (PROJ-29). It opens the chat
   list's drawer (`#chats-toggle`, UI-36, UI-91) rather than leaving the page: it
   is a button that opens the list and closes it again, and it never navigates —
   pressing it opens no other chat and loads no other page. Nothing in the header
@@ -135,7 +140,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   there at every width (UI-32, UI-36). It starts closed, and opening or closing
   it loads no other page and leaves the rest of that page as it is.
 - **UI-92** The drawer holds the chat list: the "New chat" button (UI-31), the
-  chats in the order, grouping and rows UI-4, UI-5, UI-33, UI-34, UI-45 to
+  chats in the order and rows UI-4, UI-5, UI-33, UI-34, UI-45 to
   UI-47, UI-59, UI-63, UI-64, UI-72, UI-76 and UI-80 describe, and "Load more
   chats" (UI-84, UI-85). It draws the list's state, which is one state wherever
   the list is shown, so it cannot drift from the sidebar's: the list is read as
@@ -255,11 +260,6 @@ stream in, approves or denies tool calls, and switches between saved chats.
   transcript holds — pressing it on a chat with nothing in it scrolls nothing —
   and without its hook (a page whose assets were not rebuilt, HOT-8) it does
   nothing rather than leaving the page broken.
-- **UI-94** The transcript stops following its end (UI-14) as soon as the reader
-  moves it up themselves — a wheel up, a finger dragging the content down, an
-  upward key, or a press on the transcript's own scrollbar — rather than when
-  the browser reports the scroll position afterwards, so content arriving in the
-  same frame is not followed.
 - **UI-73** The notice a session writes after a restart cut the turn short
   (INTR-3) renders as an error row (UI-12), not as a plain harness notice
   (UI-9), so a turn the app killed is not mistaken for one that ended normally.
@@ -662,16 +662,19 @@ CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
 The chat list lives in one place: `EliaWeb.ChatList` draws it (the "New chat"
-button, the project groups, the rows with their status indicators and delete
+button, the rows with their status indicators and delete
 buttons, the empty state and "Load more chats"), and its hook in the session's
-`on_mount` list gives every page the list's state — the listed chats and whether
-more are saved, the page size (UI-84, UI-85), the projects, the statuses a row
+`on_mount` list gives every page the list's state — the listed chats of the
+open project and whether more are saved in it, the page size (UI-84, UI-85),
+the projects and the open one (PROJ-28, PROJ-31), the statuses a row
 is marked with (UI-47, UI-58, UI-59, UI-72, UI-76) and whether the drawer is
 open — and handles the events that drive it (`toggle_chats`, `close_chats`,
-`more_chats`, `chat_page`, `delete_chat`). A page that draws the drawer therefore
+`more_chats`, `chat_page`, `delete_chat`, and `open_project`, which makes a
+project the open one, PROJ-29). A page that draws the drawer therefore
 needs no wiring of its own, and one page's sidebar and another page's drawer are
 one list with one state, kept in step by construction. `EliaWeb.Layouts` renders
-the header's "Chats" button on every page, and the drawer (`#chats-drawer`, with
+the header's "Chats" button on every page, the open project's switcher beside
+the logo (PROJ-29), and the drawer (`#chats-drawer`, with
 its backdrop, UI-36) on every page that is not `chats_sidebar` — which
 `EliaWeb.ChatLive` is, since it lays the list out as its own page's sidebar
 (UI-4, UI-35, UI-36).
@@ -681,7 +684,9 @@ colocated hook keeps it in `localStorage` and puts it back on mount, and nothing
 of it reaches the server or a saved chat.
 
 The chat list's page size is `EliaWeb.ChatLive`'s (`@chat_page`, 30, UI-4). It
-lists the page's chats and asks `Elia.Store.list/1` for one chat more than it
+lists the page's chats — the open project's (PROJ-28, PROJ-31), asking
+`Elia.Store.list/2` with a `where:` for them (STORE-52) — and asks for one chat
+more than it
 shows, so whether more are saved is known without reading the chats twice
 (UI-84), and it keeps the page size in its state, so every refresh re-lists the
 same pages (UI-85). The store itself is unchanged: a page is a prefix of
@@ -726,7 +731,10 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   UI-46, UI-79, UI-80).
 - `test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
   button, the pages that stay loaded, and a list that had no more to begin with —
-  UI-2, UI-4, UI-65, UI-84, UI-85).
+  UI-2, UI-4, UI-65, UI-84, UI-85; the list holding one project's chats, PROJ-31).
+- `test/elia_web/live/project_switcher_test.exs` (the project the header names,
+  its menu, choosing a project, and the projects page behind the menu's entry —
+  PROJ-28 to PROJ-30).
 - `test/elia_web/live/chat_drawer_test.exs` (the drawer on the pages that have
   no chat list of their own — the dashboard, files, settings and a chat's
   terminal: the button at every width, the backdrop and Escape, the list it
@@ -741,9 +749,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
-  browser: Enter sending a message, the transcript at its end, the reader's own
-  scroll stopping the following and the jump-to-the-end button — UI-14, UI-21,
-  UI-87, UI-94; the message box's draft,
+  browser: Enter sending a message, the transcript at its end and the
+  jump-to-the-end button — UI-14, UI-21, UI-87; the message box's draft,
   stored and restored per chat — UI-89; a browser test, so it runs with
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and

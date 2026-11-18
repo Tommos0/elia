@@ -122,6 +122,13 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `done` | whether the chat is marked done (STORE-35) | any | STORE-35 |
   | `parent_id` | the id of the chat that spawned it (STORE-17) | task only | STORE-17 |
 
+- **STORE-52** `Elia.Store.list/2` and `Elia.Store.latest/1` take a `where:`
+  option — a one-argument function of a listed entry (STORE-6) — and the
+  listing holds only the chats it returns `true` for: the same order, fields
+  and limit (STORE-6, STORE-12), and `nil` from `latest/1` when no chat matches
+  (STORE-29). A caller lists one project's chats without listing the others
+  (PROJ-31, UI-4); a listing with no `where:` answers exactly what it answered
+  before.
 - **STORE-7** A chat's title is its first user message that isn't a harness
   message, cut to 60 characters, or "New chat" if there is none.
 - **STORE-10** Each listed chat also carries `description`: the same source
@@ -145,7 +152,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   `parent_call_id`, which no longer exists (STORE-16), went with the task card it
   existed for (SUBTASK-15).
 - **STORE-20** Each listed chat carries `project_id`, or `nil` when it has none.
-- **STORE-29** `latest/0` returns the most recently started listed chat
+- **STORE-29** `latest/1` returns the most recently started listed chat
   (STORE-12) that isn't a task chat (STORE-17) and isn't done (STORE-35,
   DONE-10), as a listed entry, or `nil`
   when there is none. It looks at every saved chat, not only the first page of
@@ -182,7 +189,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   one page of `list/1` (STORE-12) and skips an id that isn't valid (STORE-4) and
   a chat whose file can't be read, so a scan at boot sees the chats a restart
   cut a turn short in and not only the ones its page holds (RESUME-1).
-- **STORE-45** Listing (`list/1`, `entry/1`, `latest/0`, `children/1`,
+- **STORE-45** Listing (`list/2`, `entry/1`, `latest/1`, `children/1`,
   `interrupted/0`) and the per-chat loaders (`load_meta/1`, STORE-44, and the
   `load_*` loaders it backs) decode a chat's file only when the file has changed
   since it was last decoded. A cache keeps, per chat, the file's identity — its
@@ -354,8 +361,9 @@ what it wrote: a malformed file is one of the files it writes nothing for
 
 - `test/elia/store_test.exs` (the file and its atomic write, loading, valid ids,
   listing and the fields an entry carries, saving and loading each one, deleting
-  a chat, `entry/1` — STORE-1 to STORE-4, STORE-6 to STORE-7, STORE-9 to
-  STORE-29, STORE-36 to STORE-38, STORE-43, STORE-47, STORE-48 to STORE-51).
+  a chat, `entry/1`, a `where:` narrowing a listing — STORE-1 to STORE-4,
+  STORE-6 to STORE-7, STORE-9 to STORE-29, STORE-36 to STORE-38, STORE-43,
+  STORE-47, STORE-48 to STORE-51, STORE-52).
 - `test/elia/store_cache_test.exs` (one decode for a session's settings, a
   listing that decodes only what changed, and a write, a replacement or a removal
   by another process seen at the next read — STORE-44, STORE-45).

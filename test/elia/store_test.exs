@@ -354,6 +354,33 @@ defmodule Elia.StoreTest do
     assert %{updated_at: %DateTime{}} = listed(older)
   end
 
+  # STORE-52: a listing's `where:` keeps the entries it returns true for — the
+  # same order and limit, and `latest/1` narrowed the same way.
+  test "list/2 and latest/1 take a where: that narrows the listing" do
+    keep = Elia.Agent.new_id()
+    drop = Elia.Agent.new_id()
+    on_exit(fn -> Enum.each([keep, drop], &Store.delete/1) end)
+
+    :ok = Store.save(drop, [Message.user("dropped")], project: "other")
+    :ok = Store.save(keep, [Message.user("kept")], project: "mine")
+    where = fn entry -> entry.project_id == "mine" end
+
+    ids = Store.list(1000, where: where) |> Enum.map(& &1.id)
+    assert keep in ids
+    refute drop in ids
+    assert Enum.all?(Store.list(1000, where: where), &(&1.project_id == "mine"))
+
+    # The order and the limit are the unfiltered listing's (STORE-12).
+    assert Store.list(1, where: where) == [Store.entry(keep)]
+    assert %{id: ^keep} = Store.latest(where: where)
+
+    # No `where:` at all is the listing it always was, and one nothing matches
+    # is an empty listing and `nil` from `latest/1` (STORE-29).
+    assert length(Store.list(1000)) >= 2
+    assert Store.list(1000, where: fn _ -> false end) == []
+    assert Store.latest(where: fn _ -> false end) == nil
+  end
+
   # STORE-13: a chat saved before LLM-32 still holds raw bytes.
   test "loading replaces invalid UTF-8 but keeps raw blocks exact" do
     id = Elia.Agent.new_id()

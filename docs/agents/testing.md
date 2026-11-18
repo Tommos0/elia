@@ -130,7 +130,11 @@ a browser during `mix test`.
   starts (SUITE-13).
 - What two runs still cannot share is the port: a run that starts the endpoint
   binds one, so give a second browser run its own `ELIA_TEST_PORT` (`bin/preview`
-  takes `ELIA_PREVIEW_PORT`, default 4010, and moves the test server there).
+  takes `ELIA_PREVIEW_PORT`, default 4010, and moves the test server there). A
+  preview whose port is taken fails as a `Node.js` `EPIPE` stack from the
+  Playwright CLI with no picture, and its exit is 0 all the same — check for the
+  `UI preview: N picture(s)` line, and rerun it with another
+  `ELIA_PREVIEW_PORT` rather than reading the stack as a broken page.
 - A suite run through the `shell` tool needs a longer timeout than the shell's
   default: `timeout_seconds` is 300s unless the call asks for more, and never more
   than 1800s (SHELL-10), while `mix precommit` compiles, formats and runs four

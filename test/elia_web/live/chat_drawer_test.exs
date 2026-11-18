@@ -78,7 +78,9 @@ defmodule EliaWeb.ChatDrawerTest do
 
         refute has_element?(view, "#chats-drawer #drawer-chat-link-#{other}.bg-base-300")
         assert has_element?(view, "#chats-drawer #drawer-new-chat[href='/p/#{project.id}/new']")
-        assert has_element?(view, "#chats-drawer #drawer-project-header-#{project.id}", "Widgets")
+        # PROJ-31: and the list is that project's, in the drawer as on the
+        # page's own sidebar.
+        assert has_element?(view, "#chats-drawer #drawer-chat-link-#{id}")
       end
     end)
   end
@@ -104,21 +106,20 @@ defmodule EliaWeb.ChatDrawerTest do
     end)
   end
 
-  # UI-92: the drawer lists the chats as the sidebar does — grouped by project,
-  # with the status indicator each one has (UI-45 to UI-47).
-  test "the drawer lists the chats, grouped, with their statuses", %{conn: conn} do
+  # UI-92, PROJ-31: the drawer lists the open project's chats and no other
+  # project's, with the status indicator each one has (UI-45 to UI-47).
+  test "the drawer lists the open project's chats, with their statuses", %{conn: conn} do
     with_empty_store(fn ->
       {:ok, project} = Projects.create("Widgets", Workspace.root())
       mine = saved_chat("in Elia's own project", nil)
       theirs = saved_chat("in Widgets", project)
 
-      publish_status(theirs, :awaiting_approval)
+      publish_status(mine, :awaiting_approval)
 
+      # PROJ-8, PROJ-28: Elia's own project is the open one, so its chats are
+      # the list's and the other project's are not.
       {:ok, view, _html} = live(conn, ~p"/files")
       view |> element("#chats-toggle") |> render_click()
-
-      assert has_element?(view, "#chats-drawer #drawer-project-header-harness", "Elia")
-      assert has_element?(view, "#chats-drawer #drawer-project-header-#{project.id}", "Widgets")
 
       assert has_element?(
                view,
@@ -126,13 +127,24 @@ defmodule EliaWeb.ChatDrawerTest do
                "in Elia's own project"
              )
 
+      refute has_element?(view, "#chats-drawer #drawer-chat-link-#{theirs}")
+
       # UI-47: the status the registry has for the chat, read as the drawer
       # opens.
       assert has_element?(
                view,
-               "#chats-drawer #drawer-chat-status-#{theirs}[data-status='awaiting_approval']" <>
+               "#chats-drawer #drawer-chat-status-#{mine}[data-status='awaiting_approval']" <>
                  "[title='Needs approval']"
              )
+
+      # PROJ-28, PROJ-31: opening that project's chat opens the project, and the
+      # list a page without a chat of its own draws is that project's.
+      {:ok, _chat, _html} = live(conn, ~p"/c/#{theirs}")
+      {:ok, view, _html} = live(conn, ~p"/files")
+      view |> element("#chats-toggle") |> render_click()
+
+      assert has_element?(view, "#chats-drawer #drawer-chat-link-#{theirs}")
+      refute has_element?(view, "#chats-drawer #drawer-chat-link-#{mine}")
     end)
   end
 

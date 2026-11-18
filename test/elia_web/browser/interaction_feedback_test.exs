@@ -214,10 +214,10 @@ defmodule EliaWeb.InteractionFeedbackTest do
     # chat-list toggle as well, UI-32, UI-91), the same holds for a navigation
     # link.
     conn = conn |> visit("/settings") |> connected() |> press("#chats-toggle", "Tab")
-    reached = state(conn, "#projects-link")
+    reached = state(conn, "#files-link")
 
     assert js_get(reached, "focused"),
-           "tabbing on from Chats did not reach Projects: the keyboard is on " <>
+           "tabbing on from Chats did not reach Files: the keyboard is on " <>
              "#{js(conn, "document.activeElement.id || document.activeElement.tagName")}"
 
     assert_ring(reached, "a navigation link the keyboard reached")

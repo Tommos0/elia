@@ -144,4 +144,40 @@ defmodule Elia.ProjectsTest do
     assert project in Projects.list()
     assert Projects.get(project.id) == project
   end
+
+  # PROJ-31: the chats of a project are the listed chats whose project_id is
+  # its own — and Elia's own takes the ones with no project and the ones whose
+  # project the registry no longer holds (PROJ-7, PROJ-9).
+  test "chats_of/1 keeps one project's chats" do
+    {:ok, project} = Projects.create("Widgets", Workspace.root())
+    gone = "goneproject1"
+    theirs = chat_in(project.id)
+    mine = chat_in(nil)
+    orphan = chat_in(gone)
+
+    on_exit(fn -> Enum.each([theirs, mine, orphan], &Elia.Store.delete/1) end)
+
+    wanted = fn filter -> Elia.Store.list(1000, where: filter) |> Enum.map(& &1.id) end
+
+    assert theirs in wanted.(Projects.chats_of(project))
+    refute mine in wanted.(Projects.chats_of(project))
+    refute orphan in wanted.(Projects.chats_of(project))
+
+    assert mine in wanted.(Projects.chats_of(Projects.harness()))
+    assert orphan in wanted.(Projects.chats_of(Projects.harness()))
+    refute theirs in wanted.(Projects.chats_of(Projects.harness()))
+
+    # A chat's project is its own while the registry holds it, else Elia's own.
+    ids = Enum.map(Projects.list(), & &1.id)
+    assert Projects.chat_project_id(%{project_id: project.id}, ids) == project.id
+    assert Projects.chat_project_id(%{project_id: gone}, ids) == "harness"
+    assert Projects.chat_project_id(%{}, ids) == "harness"
+  end
+
+  # A saved chat in a project, `nil` for Elia's own (PROJ-9).
+  defp chat_in(project) do
+    id = Elia.Agent.new_id()
+    :ok = Elia.Store.save(id, [Elia.LLM.Message.user("hi")], project: project)
+    id
+  end
 end

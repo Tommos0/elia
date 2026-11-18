@@ -109,8 +109,41 @@ defmodule Elia.Projects do
   def set_default(id) do
     case get(id) do
       nil -> :ok
-      %{id: id} -> Settings.put(@default_key, id)
+      %{id: id} -> store_default(id)
     end
+  end
+
+  @doc """
+  PROJ-31, STORE-52: the `where:` a listing takes to hold one project's chats —
+  the listed chats whose `project_id` is that project's, with a chat that has
+  none and one whose id names no project counted with Elia's own (PROJ-9).
+  """
+  @spec chats_of(t()) :: (map() -> boolean())
+  def chats_of(project) do
+    ids = Enum.map(list(), & &1.id)
+
+    fn chat -> chat_project_id(chat, ids) == project.id end
+  end
+
+  @doc """
+  PROJ-9, PROJ-31: the id of the project a listed chat belongs to — its own
+  `project_id` while the registry still holds it, else Elia's own, which is
+  where a chat with none and one whose project has been deleted (PROJ-7) both
+  belong. `ids` is the ids of `list/0`, so a caller that holds the projects
+  resolves a page of chats without reading the registry again.
+  """
+  @spec chat_project_id(map(), [binary()]) :: binary()
+  def chat_project_id(chat, ids) do
+    case Map.get(chat, :project_id) do
+      id when is_binary(id) -> if id in ids, do: id, else: @harness_id
+      _none -> @harness_id
+    end
+  end
+
+  # PROJ-28: the open project is written through whenever a chat page opens, so
+  # a value the settings already hold is left as it is rather than written again.
+  defp store_default(id) do
+    if Settings.get(@default_key) == id, do: :ok, else: Settings.put(@default_key, id)
   end
 
   @doc """

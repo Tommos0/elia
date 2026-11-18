@@ -2,7 +2,8 @@ defmodule EliaWeb.ChatList do
   @moduledoc """
   The chat list: its state, the markup it is drawn with and the events that
   drive it (UI-4 to UI-6, UI-31 to UI-36, UI-45 to UI-47, UI-59, UI-63 to UI-65,
-  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93).
+  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93), and the project whose
+  chats it lists (PROJ-28 to PROJ-31).
 
   The list is drawn in two places — the chat page's own sidebar (UI-4, UI-35,
   UI-36) and the drawer every page that keeps no list of its own opens (UI-91) —
@@ -41,8 +42,12 @@ defmodule EliaWeb.ChatList do
         more_chats: false,
         limit: @chat_page,
         projects: [],
-        # UI-31, UI-92: the project "New chat" starts a chat in (PROJ-8).
-        project: nil,
+        # UI-31, PROJ-28, PROJ-31: the project the interface has open — what
+        # "New chat" starts a chat in, whose chats the list holds, and what the
+        # header names (PROJ-29).
+        open_project: nil,
+        # PROJ-29: the open project's menu, closed until the header opens it.
+        projects_open: false,
         # UI-72: chats whose turn a restart cut short (STORE-31).
         interrupted: [],
         # UI-47, UI-58, UI-59, UI-76: the chats the registry marks.
@@ -56,9 +61,22 @@ defmodule EliaWeb.ChatList do
       |> attach_hook(:chat_list_events, :handle_event, &handle_event/3)
       |> attach_hook(:chat_list_status, :handle_info, &handle_info/2)
       |> attach_hook(:chat_list_page, :handle_params, &put_page_chat/3)
+      |> put_projects()
       |> clock()
 
     {:cont, socket}
+  end
+
+  # PROJ-28, PROJ-29: the header names the open project on every page, from the
+  # first render — so which project is open and which ones there are is read
+  # here, while the chats themselves wait until a page draws the list (UI-92).
+  defp put_projects(socket) do
+    projects = Elia.Projects.list()
+
+    put_state(socket,
+      projects: projects,
+      open_project: open_project(socket.assigns.chat_list.active, projects)
+    )
   end
 
   @doc """
@@ -70,15 +88,18 @@ defmodule EliaWeb.ChatList do
   """
   def refresh(socket) do
     state = socket.assigns.chat_list
-    {chats, more_chats} = list_chats(state.limit)
     projects = Elia.Projects.list()
+    # PROJ-28: a page that is about a chat opens that chat's project. PROJ-29,
+    # PROJ-31: the header and the list follow the project that is open.
+    open = open_project(state.active, projects)
+    {chats, more_chats} = list_chats(state.limit, open)
 
     put_state(socket,
       chats: chats,
       more_chats: more_chats,
       projects: projects,
       interrupted: interrupted_ids(chats),
-      project: project_for(state.active, chats, projects),
+      open_project: open,
       awaiting: Elia.Agent.awaiting_approval(),
       input: Elia.Agent.awaiting_input(),
       paused: Elia.Agent.paused(),
@@ -100,6 +121,16 @@ defmodule EliaWeb.ChatList do
 
   defp handle_event("close_chats", _params, socket),
     do: {:halt, put_state(socket, open: false)}
+
+  # PROJ-29: the header's project control, which opens and closes the menu a
+  # project is switched in. It is drawn like the settings page's pickers: the
+  # trigger asks to close while the menu is open, so a press on it is not also a
+  # press outside the menu.
+  defp handle_event("open_projects", _params, socket),
+    do: {:halt, put_state(socket, projects_open: true)}
+
+  defp handle_event("close_projects", _params, socket),
+    do: {:halt, put_state(socket, projects_open: false)}
 
   # UI-84: "Load more chats" lists the next page — 30 more chats (UI-4), the
   # same prefix of STORE-12 order one page longer. The open chat, the drawer
@@ -145,7 +176,7 @@ defmodule EliaWeb.ChatList do
   # UI-4, UI-84, UI-85: the listed chats, re-read at a page size, with the
   # interrupted markers that go with them (UI-72, STORE-31).
   defp assign_limit(socket, limit) do
-    {chats, more_chats} = list_chats(limit)
+    {chats, more_chats} = list_chats(limit, socket.assigns.chat_list.open_project)
 
     put_state(socket,
       limit: limit,
@@ -229,12 +260,15 @@ defmodule EliaWeb.ChatList do
 
   ## The list's own data
 
-  # UI-4, UI-84: the chats the list shows — one page, or as many pages as the
-  # user loaded (UI-85) — and whether the store holds more than that. One chat
-  # past the page is enough to know: a page is a prefix of STORE-12 order, so
-  # the store is read once and not twice.
-  defp list_chats(limit) do
-    case Elia.Store.list(limit + 1) do
+  # UI-4, UI-84, PROJ-31: the chats the list shows — one page, or as many pages
+  # as the user loaded (UI-85) — the open project's and no other project's, and
+  # whether the store holds more of them than that. One chat past the page is
+  # enough to know: a page is a prefix of STORE-12 order, so the store is read
+  # once and not twice (STORE-52).
+  defp list_chats(limit, project) do
+    where = Elia.Projects.chats_of(project)
+
+    case Elia.Store.list(limit + 1, where: where) do
       chats when length(chats) > limit -> {Enum.take(chats, limit), true}
       chats -> {chats, false}
     end
@@ -244,18 +278,31 @@ defmodule EliaWeb.ChatList do
   # is right on first render and every page shows the same.
   defp interrupted_ids(chats), do: for(%{interrupted: true} = chat <- chats, do: chat.id)
 
-  # UI-31, PROJ-8, UI-92: the project "New chat" starts a chat in — this page's
-  # chat's own project (PROJ-26), or the default project where the page is about
-  # no chat or its chat isn't among those listed.
-  defp project_for(active, chats, projects) do
-    with id when is_binary(id) <- active,
-         %{project_id: project_id} <- Enum.find(chats, &(&1.id == id)),
-         %{} = project <- Enum.find(projects, &(&1.id == (project_id || "harness"))) do
-      project
-    else
-      _none -> Elia.Projects.default()
+  # PROJ-28: the project the interface has open — this page's chat's own project
+  # (PROJ-9) when the page is about a chat, and the stored default (PROJ-8)
+  # otherwise. Opening a chat opens its project, so a new chat started from the
+  # list (UI-31) and a new chat started from `/chats` (UI-77) are in the project
+  # the page shows, whatever the settings said before.
+  defp open_project(active, projects) do
+    case chat_project(active, projects) do
+      nil ->
+        Elia.Projects.default()
+
+      project ->
+        :ok = Elia.Projects.set_default(project.id)
+        project
     end
   end
+
+  # PROJ-9: the project this page's chat belongs to — its own, or Elia's own for
+  # a chat with none and one whose project is gone (PROJ-7) — or `nil` when the
+  # page is about no chat at all, which is what sends a caller to the default.
+  defp chat_project(active, projects) when is_binary(active) do
+    Enum.find(projects, &(&1.id == Elia.Store.load_project(active))) ||
+      Enum.find(projects, & &1.harness?)
+  end
+
+  defp chat_project(_active, _projects), do: nil
 
   ## The list itself
 
@@ -272,9 +319,9 @@ defmodule EliaWeb.ChatList do
     default: nil,
     doc: "the chat the page is showing, if it is showing one (UI-4)"
 
-  attr :project, :map,
+  attr :open_project, :map,
     default: nil,
-    doc: "the project \"New chat\" starts a chat in (UI-31, UI-92)"
+    doc: "the open project, which \"New chat\" starts a chat in (UI-31, PROJ-28)"
 
   @doc """
   UI-4, UI-5, UI-31 to UI-34, UI-36, UI-64, UI-84, UI-91, UI-92: the chat list.
@@ -285,7 +332,7 @@ defmodule EliaWeb.ChatList do
     assigns =
       assign(assigns,
         active: assigns.active || assigns.state.active,
-        project: assigns.project || assigns.state.project,
+        open_project: assigns.open_project || assigns.state.open_project,
         statuses: Map.take(assigns.state, [:awaiting, :input, :paused, :running, :interrupted])
       )
 
@@ -317,10 +364,11 @@ defmodule EliaWeb.ChatList do
     <p class="px-4 pt-4 pb-2 text-xs font-medium uppercase tracking-wider text-base-content/50">
       Chats
     </p>
-    <%!-- UI-31, PROJ-26: start a chat in the open chat's project. --%>
+    <%!-- UI-31, PROJ-26: start a chat in the open project — the open chat's own
+    project when the page shows one (PROJ-28). --%>
     <.link
-      :if={@project}
-      navigate={~p"/p/#{@project.id}/new"}
+      :if={@open_project}
+      navigate={~p"/p/#{@open_project.id}/new"}
       id={"#{@scope}new-chat"}
       class="mx-2 mb-1 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition hover:bg-base-200"
     >
@@ -331,48 +379,30 @@ defmodule EliaWeb.ChatList do
       phx-hook=".ChatPageSize"
       class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4"
     >
-      <%!-- UI-4, PROJ-24: chats grouped by project, newest first --%>
-      <%= for group <- project_groups(@state.projects, @state.chats) do %>
+      <%!-- UI-4, PROJ-31: the open project's chats, newest first, with a task
+      chat nested under the parent it belongs to (UI-45). --%>
+      <%= for {chat, children} <- chat_tree(@state.chats) do %>
+        <.chat_row
+          chat={chat}
+          active={chat.id == @active}
+          statuses={@statuses}
+          now={@state.now}
+          scope={@scope}
+        />
         <div
-          id={"#{@scope}project-header-#{group.project.id}"}
-          class="flex items-center gap-1 px-3 pt-3 pb-1"
+          :if={children != []}
+          id={"#{@scope}chat-children-#{chat.id}"}
+          class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
         >
-          <.icon name="hero-rectangle-stack" class="size-3.5 shrink-0 text-base-content/40" />
-          <span class="min-w-0 flex-1 truncate text-xs font-medium uppercase tracking-wider text-base-content/50">
-            {group.project.name}
-          </span>
-          <.link
-            navigate={~p"/p/#{group.project.id}/new"}
-            id={"#{@scope}new-chat-#{group.project.id}"}
-            title={"New chat in #{group.project.name}"}
-            class="rounded-md p-1 text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
-          >
-            <.icon name="hero-plus" class="size-3.5" />
-          </.link>
-        </div>
-        <%= for {chat, children} <- group.tree do %>
           <.chat_row
-            chat={chat}
-            active={chat.id == @active}
+            :for={child <- children}
+            chat={child}
+            active={child.id == @active}
             statuses={@statuses}
             now={@state.now}
             scope={@scope}
           />
-          <div
-            :if={children != []}
-            id={"#{@scope}chat-children-#{chat.id}"}
-            class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
-          >
-            <.chat_row
-              :for={child <- children}
-              chat={child}
-              active={child.id == @active}
-              statuses={@statuses}
-              now={@state.now}
-              scope={@scope}
-            />
-          </div>
-        <% end %>
+        </div>
       <% end %>
       <p :if={@state.chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
     </nav>
@@ -456,16 +486,5 @@ defmodule EliaWeb.ChatList do
     {nested, top} = Enum.split_with(chats, &(Map.get(&1, :parent_id) in ids))
     by_parent = nested |> Enum.reverse() |> Enum.group_by(& &1.parent_id)
     Enum.map(top, &{&1, Map.get(by_parent, &1.id, [])})
-  end
-
-  # PROJ-24: the listed chats grouped by project, each project with its nested
-  # tree of chats. A chat without a project id belongs to Elia's own project
-  # (PROJ-9); projects without chats still get an entry (an empty tree).
-  defp project_groups(projects, chats) do
-    by_project = Enum.group_by(chats, &(&1.project_id || "harness"))
-
-    Enum.map(projects, fn project ->
-      %{project: project, tree: chat_tree(Map.get(by_project, project.id, []))}
-    end)
   end
 end

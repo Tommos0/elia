@@ -414,8 +414,22 @@ defmodule Elia.Store do
     end
   end
 
-  @doc "Saved conversations, most recently started first (STORE-12)."
-  def list(limit \\ 50), do: all_entries() |> Enum.take(limit)
+  #  STORE-52
+  @doc """
+  Saved conversations, most recently started first (STORE-12), up to `limit` of
+  them — and, with `where:` (STORE-52), only the ones a one-argument function of
+  the listed entry (STORE-6) returns `true` for. That is how one project's chats
+  are listed without the other projects' (PROJ-31).
+  """
+  def list(limit \\ 50, opts \\ []) do
+    all_entries() |> where(opts[:where]) |> Enum.take(limit)
+  end
+
+  # STORE-52: the entries a listing's `where:` keeps — a one-argument function of
+  # the listed entry — or every one of them when it is given none.
+  defp where(entries, nil), do: entries
+
+  defp where(entries, keep), do: Enum.filter(entries, keep)
 
   @doc """
   The chats a restart cut a turn short in (STORE-39, RESUME-1): the listed
@@ -445,11 +459,14 @@ defmodule Elia.Store do
   recently started chat (STORE-12) that isn't a task chat (STORE-17 — one
   started by `spawn_task` carries its `parent_id`) and isn't done (STORE-35,
   DONE-10), as a listed entry, or `nil` when there is none. Every saved chat is
-  considered, not only the first page of `list/1`.
+  considered, not only the first page of `list/2`, and a `where:` (STORE-52)
+  narrows it to one project's chats, which is what `/chats` resumes within
+  (PROJ-31, UI-77).
   """
-  @spec latest() :: map() | nil
-  def latest do
+  @spec latest(keyword()) :: map() | nil
+  def latest(opts \\ []) do
     all_entries()
+    |> where(opts[:where])
     |> Enum.find(fn entry ->
       valid_id?(entry.id) and Map.get(entry, :parent_id) == nil and
         Map.get(entry, :done) != true

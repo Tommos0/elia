@@ -102,7 +102,9 @@ it.
 
 | Spec | Prefix | Summary |
 | --- | --- | --- |
-| [Projects](projects.md) | `PROJ` | Project folders; chats belong to a project, which supplies its own `AGENTS.md` and skills |
+| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md` and skills; one project is open at a time, named in the header, and the chat list holds its chats |
+| [Bundle refresh](bundle-refresh.md) | `BUNDLE` | An open page loads the bundle a deploy served, and keeps the page's own state while it does |
+| [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about |
 | [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Chat titles](chat-titles.md) | `TITLE` | A chat's own title, set by the agent's `set_title` tool; the first-message derivation stays as the fallback |
@@ -132,7 +134,6 @@ it.
 | [Structured user input](user-input.md) | `ASK` | `ask_user` puts a question with options to the user as a card of buttons; the turn waits and the answer comes back as the call's result |
 | [Conversation persistence](persistence.md) | `STORE` | Saving, loading and listing chats |
 | [Reading earlier chats](chat-history.md) | `HIST` | `list_chats`, `read_chat` and `search_chats`: the agent can consult chats other than the one it runs in, jailed or not |
-| [Chat search](chat-search.md) | `SEARCH` | An index in memory over the saved chats, and a `search_chats` query of terms, ordered so the chat that is about the subject comes first |
 | [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic, OpenRouter and a local llama.cpp server backends |
 | [llama.cpp local provider](llamacpp-provider.md) | `LOCAL` | A local `llama-server` as a third provider: no API key, and Elia starts and stops it from a `.gguf` |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
@@ -154,7 +155,6 @@ it.
 | [Auto reconnect](auto-reconnect.md) | `CONN` | Page reconnects or reloads itself when the LiveView socket dies |
 | [Socket origin](socket-origin.md) | `SOCK` | A socket handshake is bound to a page this server served: the request's own origin, and a session proof for the terminal |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
-| [Bundle refresh](bundle-refresh.md) | `BUNDLE` | A page that notices the server serves a newer bundle than the one it loaded loads itself again, so an open tab does not run the old one |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
 | [Notifications](notifications.md) | `NOTIF` | The notifications Elia keeps itself: a chat that needs you is recorded in a list, and the header's bell counts what is unread and shows it in a menu |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |

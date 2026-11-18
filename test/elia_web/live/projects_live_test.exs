@@ -38,7 +38,7 @@ defmodule EliaWeb.ProjectsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/projects")
 
-    assert has_element?(view, "#projects-link")
+    assert has_element?(view, "#project-switcher", "Elia")
     assert has_element?(view, "#project-harness")
     assert has_element?(view, "#project-#{project.id}")
     assert has_element?(view, "#project-name-#{project.id}", "My App")

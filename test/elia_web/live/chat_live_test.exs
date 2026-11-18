@@ -431,10 +431,14 @@ defmodule EliaWeb.ChatLiveTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
     # UI-32: on the chat page the first control is the chat list's toggle.
-    for id <- ~w(chats-toggle projects-link files-link sessions-link system-link settings-link) do
+    for id <- ~w(chats-toggle files-link sessions-link system-link settings-link) do
       assert has_element?(view, "header ##{id}[title]")
       assert has_element?(view, "header ##{id} span.sr-only.sm\\:not-sr-only")
     end
+
+    # PROJ-29: the open project beside the logo is not an icon-only control — it
+    # names the project at every width, which is the point of it.
+    assert has_element?(view, "header #project-switcher", "Elia")
   end
 
   # UI-32, UI-36, UI-91: the header's Chats control comes before the other
@@ -447,7 +451,7 @@ defmodule EliaWeb.ChatLiveTest do
 
     assert has_element?(view, "header #chats-toggle")
     assert before?(html, "id=\"chats-toggle\"", "id=\"sessions-link\"")
-    assert before?(html, "id=\"chats-toggle\"", "id=\"projects-link\"")
+    assert before?(html, "id=\"project-switcher\"", "id=\"chats-toggle\"")
 
     # Clicking it opens the drawer. The view is still mounted afterwards, so
     # the click did not navigate anywhere.
@@ -900,23 +904,25 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#context-breakdown li", "Skill:")
   end
 
-  # PROJ-25: the header carries a Projects link next to Chats.
-  test "the header has a Projects link next to Chats", %{conn: conn} do
+  # PROJ-29, PROJ-30: the header names the open project next to the logo, and it
+  # carries no Projects link of its own — the projects page is reached from the
+  # switcher's menu.
+  test "the header names the open project next to the logo", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    assert has_element?(view, "header #projects-link[href='/projects'][title='Projects']")
-    assert has_element?(view, "header #projects-link span.sr-only.sm\\:not-sr-only")
-
-    assert before?(html, "id=\"chats-toggle\"", "id=\"projects-link\"")
+    assert has_element?(view, "header #project-switcher", "Elia")
+    refute has_element?(view, "header #projects-link")
+    # It stands beside the logo, before the header's other controls.
+    assert before?(html, "id=\"project-switcher\"", "id=\"chats-toggle\"")
   end
 
-  # PROJ-24: the sidebar groups chats under a header per project, with a
-  # per-project new chat button; a project without chats still has a header.
-  test "sidebar groups chats by project", %{conn: conn} do
+  # PROJ-31, PROJ-28: the sidebar holds the open project's chats and no other
+  # project's, and its "New chat" starts a chat in that project (UI-31).
+  test "the sidebar lists the open project's chats only", %{conn: conn} do
     root = Path.join(Workspace.root(), "chat-live-group")
     File.mkdir_p!(root)
     {:ok, project} = Projects.create("Grouped", root)
-    {:ok, empty} = Projects.create("No chats", root)
+    {:ok, _empty} = Projects.create("No chats", root)
 
     project_chat = Agent.new_id()
     harness_chat = Agent.new_id()
@@ -926,25 +932,28 @@ defmodule EliaWeb.ChatLiveTest do
       Elia.Store.delete(project_chat)
       Elia.Store.delete(harness_chat)
       Projects.delete(project.id)
-      Projects.delete(empty.id)
     end)
 
     :ok = Elia.Store.save(project_chat, [Message.user("in project")], project: project.id)
     :ok = Elia.Store.save(harness_chat, [Message.user("in harness")])
 
+    # A chat with no project is in Elia's own project (PROJ-9), which is the
+    # open one here, so its chats are the list's.
     {:ok, view, _html} = live(conn, ~p"/c/#{Agent.new_id()}")
 
-    assert has_element?(view, "#project-header-harness", "Elia")
-    assert has_element?(view, "#project-header-#{empty.id}", "No chats")
-    assert has_element?(view, "#project-header-#{project.id}", "Grouped")
-    assert has_element?(view, "#new-chat-#{project.id}[href='/p/#{project.id}/new']")
-    assert has_element?(view, "#new-chat-harness[href='/p/harness/new']")
+    assert has_element?(view, "#new-chat[href='/p/harness/new']")
+    assert has_element?(view, "#chat-list #chat-link-#{harness_chat}")
+    refute has_element?(view, "#chat-list #chat-link-#{project_chat}")
+    refute has_element?(view, "#chat-list #project-header-harness")
 
-    html = render(view)
-    # Each chat sits under its own project's header.
-    assert before?(html, "project-header-harness", "chat-link-#{harness_chat}")
-    assert before?(html, "chat-link-#{harness_chat}", "project-header-#{project.id}")
-    assert before?(html, "project-header-#{project.id}", "chat-link-#{project_chat}")
+    # Opening the other project's chat opens that project (PROJ-28), and the
+    # list is then that project's.
+    {:ok, view, _html} = live(conn, ~p"/c/#{project_chat}")
+
+    assert has_element?(view, "header #project-switcher", "Grouped")
+    assert has_element?(view, "#new-chat[href='/p/#{project.id}/new']")
+    assert has_element?(view, "#chat-list #chat-link-#{project_chat}")
+    refute has_element?(view, "#chat-list #chat-link-#{harness_chat}")
   end
 
   # PROJ-26: /p/<id>/new starts a chat in that project and makes it the default.

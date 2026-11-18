@@ -39,7 +39,8 @@ defmodule EliaWeb.Layouts do
   # list itself, as its own sidebar (UI-4, UI-35), says so with `chats_sidebar`:
   # then the button is that list's small-screen shape and the layout renders no
   # drawer (UI-36). The logo at the top left goes home, `/`, the dashboard
-  # (DASH-1); the other pages' links (PROJ-25) are below the button.
+  # (DASH-1), and the open project stands beside the logo as the switcher that
+  # changes it (PROJ-29); the other pages' links (UI-32) are below the button.
   attr :chats_sidebar, :boolean,
     default: false,
     doc: "the page draws the chat list itself, so no drawer here (UI-36, UI-91)"
@@ -70,16 +71,22 @@ defmodule EliaWeb.Layouts do
     URL bar cannot overlap the bottom of the page. The keyboard is PWA-7. --%>
     <div id="app-shell" class="flex flex-col bg-base-100" style="height: 100vh; height: 100svh">
       <header class="flex items-center justify-between border-b border-base-300 px-4 py-3 sm:px-6">
-        <.link
-          navigate={~p"/"}
-          title="Home"
-          class="flex items-center gap-2 font-semibold tracking-tight"
-        >
-          <span class="grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-content">
-            E
-          </span>
-          Elia
-        </.link>
+        <div class="flex min-w-0 items-center gap-2">
+          <%!-- DASH-1: the logo goes home — `/`, the dashboard. The open
+          project's name stands beside it, where the app's own name used to, as
+          the switcher that changes it (PROJ-29). --%>
+          <.link navigate={~p"/"} title="Home" class="flex shrink-0 items-center">
+            <span class="grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-content">
+              E
+            </span>
+          </.link>
+          <.project_switcher
+            :if={@chats && @chats.open_project}
+            projects={@chats.projects}
+            open={@chats.open_project}
+            menu={@chats.projects_open}
+          />
+        </div>
         <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
           <%!-- UI-32, UI-36, UI-91: the chat list's drawer toggle, on every
           page. Where the page keeps the list itself the drawer is that list's
@@ -101,12 +108,6 @@ defmodule EliaWeb.Layouts do
             <.icon name="hero-chat-bubble-left-right" class="size-4" />
             <span class="sr-only sm:not-sr-only">Chats</span>
           </button>
-          <.nav_link
-            to={~p"/projects"}
-            id="projects-link"
-            icon="hero-rectangle-stack"
-            label="Projects"
-          />
           <.nav_link to={~p"/files"} id="files-link" icon="hero-folder" label="Files" />
           <.nav_link to={~p"/sessions"} id="sessions-link" icon="hero-signal" label="Sessions" />
           <.nav_link to={~p"/system"} id="system-link" icon="hero-chart-bar" label="System" />
@@ -154,6 +155,74 @@ defmodule EliaWeb.Layouts do
     </div>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :projects, :list, required: true, doc: "every project, in `list/0` order (PROJ-4)"
+
+  attr :open, :map, required: true, doc: "the open project (PROJ-28)"
+
+  attr :menu, :boolean, default: false, doc: "whether the menu is open (PROJ-29)"
+
+  # PROJ-29, PROJ-30: the open project beside the logo — its name where the
+  # header used to show the app's own — and the menu it opens: every project,
+  # the open one marked `data-open="true"`, and, below them, the entry to the
+  # projects page (PROJ-23), where a project is created and deleted. Choosing a
+  # project opens it and its chat list (PROJ-8, PROJ-28, UI-77). The control is
+  # drawn like the settings page's pickers: the trigger asks to close while the
+  # menu is open (so a press on it is not also a press outside), and the menu
+  # closes on Escape and on a press outside it.
+  defp project_switcher(assigns) do
+    ~H"""
+    <div class="relative flex min-w-0 items-center">
+      <button
+        type="button"
+        id="project-switcher"
+        phx-click={if @menu, do: "close_projects", else: "open_projects"}
+        aria-haspopup="listbox"
+        aria-expanded={to_string(@menu)}
+        title={"Open project: #{@open.name}"}
+        class="group flex min-w-0 items-center gap-1 rounded-lg px-1.5 py-1 font-semibold tracking-tight transition hover:bg-base-200"
+      >
+        <span class="truncate">{@open.name}</span>
+        <.icon
+          name="hero-chevron-up-down"
+          class="size-3.5 shrink-0 opacity-60 transition group-hover:opacity-100"
+        />
+      </button>
+
+      <div
+        :if={@menu}
+        id="project-menu"
+        phx-click-away="close_projects"
+        phx-window-keydown="close_projects"
+        phx-key="Escape"
+        class="absolute top-full left-0 z-30 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
+      >
+        <.link
+          :for={project <- @projects}
+          navigate={~p"/chats?project=#{project.id}"}
+          id={"project-option-#{project.id}"}
+          data-open={to_string(project.id == @open.id)}
+          class={[
+            "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-base-200",
+            project.id == @open.id && "font-medium"
+          ]}
+        >
+          <.icon name="hero-rectangle-stack" class="size-4 shrink-0 opacity-60" />
+          <span class="min-w-0 flex-1 truncate">{project.name}</span>
+          <.icon :if={project.id == @open.id} name="hero-check" class="size-4 shrink-0" />
+        </.link>
+        <div class="my-1 border-t border-base-300"></div>
+        <.link
+          navigate={~p"/projects"}
+          id="manage-projects-link"
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+        >
+          <.icon name="hero-cog-6-tooth" class="size-4 shrink-0" /> Manage projects
+        </.link>
+      </div>
+    </div>
     """
   end
 

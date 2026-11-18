@@ -8,6 +8,11 @@ brings its own `AGENTS.md` and `skills/`, which are added to Elia's own; the
 instructions and tools that only make sense while changing Elia's own code are
 kept apart from the ones that apply in every project.
 
+One project is open at a time: it is the one the header names beside the logo,
+the chat list holds its chats and no other project's, and the switcher in the
+header changes it. Opening a chat opens that chat's project, so the header, the
+list and the page agree about where the user is.
+
 ## Requirements
 
 ### The registry
@@ -49,10 +54,19 @@ kept apart from the ones that apply in every project.
 
 - **PROJ-9** A chat belongs to a project: saving a session stores its
   `project_id` (STORE-19), and a listed chat carries it (STORE-20). A chat
-  without one belongs to Elia's own project.
+  without one, and a chat whose `project_id` names no project in the registry
+  (PROJ-5) — one whose project has been deleted (PROJ-7) — belong to Elia's own
+  project, which is what its session resolves it to (PROJ-12, PROJ-28).
 - **PROJ-10** A sub-task chat belongs to its parent's project.
 - **PROJ-11** Starting a chat in a project (PROJ-26) calls `set_default/1`, so
-  the next new chat starts there (PROJ-8).
+  the next new chat starts there (PROJ-8) and that project is the open one
+  (PROJ-28).
+
+- **PROJ-31** The chats of a project are the listed chats (STORE-6) whose
+  `project_id` (STORE-20) is that project's id, and Elia's own project's also
+  include the chats that belong to it by PROJ-9 — those with no `project_id`
+  and those whose `project_id` names no project (PROJ-5, PROJ-7). The chat list
+  holds the open project's chats and no other project's (PROJ-28, UI-4).
 
 ### The project folder is the workspace
 
@@ -116,19 +130,44 @@ kept apart from the ones that apply in every project.
   (`#new-project`), and a delete button (`#delete-project-<id>`) for every
   project except Elia's. Creating with a folder that isn't a directory shows
   the error and adds nothing; deleting asks for confirmation.
-- **PROJ-24** The chat sidebar groups chats by project: a header per project
+- ~~**PROJ-24** The chat sidebar groups chats by project: a header per project
   (`#project-header-<id>`) with the project's name and a "New chat" button
   (`#new-chat-<id>`) starting a chat in it (PROJ-26), and that project's chats
   below, newest first at the top level (UI-4), with a task chat nested under
   its parent, oldest first (UI-45). Projects with no chats still show their
-  header.
-- **PROJ-25** The header on every page has a "Projects" link (`#projects-link`)
+  header.~~ Retired: the list holds the open project's chats and no other
+  project's (PROJ-28, PROJ-31, UI-4), so there is nothing left to group, and a
+  task chat is still nested under its parent (UI-45).
+- ~~**PROJ-25** The header on every page has a "Projects" link (`#projects-link`)
   next to the header's "Chats" control (UI-32, the chat list's drawer toggle
-  wherever there is no chat list on the page itself).
+  wherever there is no chat list on the page itself).~~ Retired: the header
+  shows the open project next to the logo instead (PROJ-29), and the projects
+  page (PROJ-23) is reached from the switcher's menu (PROJ-30).
 - **PROJ-26** `/p/<project id>/new` starts a chat in that project (PROJ-11) and
   redirects to `/c/<new id>`; an unknown project id redirects to `/`. The
-  sidebar's "New chat" button (UI-31) starts a chat in the default project
-  (PROJ-8), which is the open chat's project when there is one.
+  sidebar's "New chat" button (UI-31) starts a chat in the open project
+  (PROJ-28), which is the open chat's project when the page shows one.
+- **PROJ-28** The open project — the project the interface works in — is
+  `Elia.Projects.default/0` (PROJ-8): the one the switcher (PROJ-29) last
+  opened, or a chat was last started in (PROJ-11, PROJ-26), and it is still
+  that one after a restart. Opening a chat opens its project: a page showing a
+  chat (UI-2) makes that chat's project (PROJ-9) the open one. The open project
+  is what the header names (PROJ-29) and the only project whose chats the chat
+  list holds (PROJ-31, UI-4).
+- **PROJ-29** Every page's header shows the open project next to the logo: its
+  name (PROJ-1) stands where the header showed the app's name, as the trigger
+  of the project switcher (`#project-switcher`) — so with Elia's own project
+  open it reads "Elia" (PROJ-3). Pressing it lists every project
+  (`#project-option-<id>`, in `list/0` order, PROJ-4), the open one marked with
+  `data-open="true"`, and choosing one makes it the open project (PROJ-8,
+  PROJ-28) and opens its chat list: `/chats` for that project (UI-77), which
+  resumes its most recent chat or starts a chat in it. The menu closes when a
+  project is chosen, on Escape, and on a press outside it.
+- **PROJ-30** The switcher's menu ends with an entry (`#manage-projects-link`)
+  leading to the projects page (PROJ-23), labelled for what that page holds —
+  every project, with the form that creates one and the button that deletes one
+  — rather than for creating alone. The header itself carries no "Projects" link
+  (PROJ-25).
 
 ## Out of scope
 
@@ -137,6 +176,22 @@ kept apart from the ones that apply in every project.
   and so does a chat in Elia's own project, unless it makes one for itself
   (DEPLOY-1, DEPLOY-28).
 - Projects have no per-project model, provider or settings.
+- The Files page's project picker (EXPL-16) browses one project without opening
+  it: browsing another project's files leaves the open project, the header and
+  the chat list where they are.
+
+## Stored data
+
+Unchanged and backward compatible, with nothing to migrate. The registry file
+keeps its shape and its version and no project field changes, so a file written
+before this change reads as it did (PROJ-2). The open project is the default
+project the settings database already held (PROJ-8, PROJ-28): the same key and
+the same values, with the meaning the interface gives it widened from "where a
+new chat starts" to "the project the interface works in", so a value stored by
+an older version says what it said. Nor does a chat's saved `project_id`
+(STORE-19) change: a chat whose project is gone already resolved to Elia's own
+project when its session loaded, which is now stated for a view too (PROJ-9,
+PROJ-12).
 
 ## Implementation
 
@@ -144,14 +199,16 @@ kept apart from the ones that apply in every project.
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
 `Elia.Skills.Files`, `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
-`EliaWeb.ProjectsLive`, `EliaWeb.ChatLive`, `EliaWeb.FilesLive`,
+`EliaWeb.ProjectsLive`, `EliaWeb.ChatLive`, `EliaWeb.ChatList`,
+`EliaWeb.FilesLive`,
 `EliaWeb.Router`, `EliaWeb.Layouts`.
 
 ## Tests
 
 - `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
-  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`, a
-  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27).
+  Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`,
+  `chats_of/1` and the project a chat belongs to, a
+  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27, PROJ-31).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
   PROJ-3, PROJ-13, PROJ-14, PROJ-22).
@@ -163,10 +220,15 @@ kept apart from the ones that apply in every project.
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
 - `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23).
-- `test/elia_web/live/chat_live_test.exs` (a chat started in a project, the
-  sidebar's groups, the header link — PROJ-8, PROJ-11, PROJ-12, PROJ-24 to
-  PROJ-26).
+- `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
+  opening a chat of another project making it the open one — PROJ-8, PROJ-11,
+  PROJ-12, PROJ-26, PROJ-28).
+- `test/elia_web/live/project_switcher_test.exs` (the project the header names,
+  its menu, choosing a project, the entry to the projects page and no
+  "Projects" link — PROJ-28 to PROJ-30).
+- `test/elia_web/live/chat_list_test.exs` (a list holding the open project's
+  chats only, a chat whose project is gone under Elia's own — PROJ-31).
 - `test/elia_web/live/dashboard_test.exs` (the projects card and the default
-  project, PROJ-8, PROJ-9, PROJ-24).
+  project, PROJ-8, PROJ-9).
 - `test/elia_web/live/files_live_test.exs` (the project a page browses, and one
   whose folder is gone marked in the picker — PROJ-12, PROJ-27).
