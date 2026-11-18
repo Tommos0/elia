@@ -5,9 +5,9 @@ defmodule Elia.Skills.Harness do
   It carries no test runner (VERIFY-11): a test run is the `shell` tool's, and
   `Elia.Harness.run_tests/3` stays for the deploy's own suite (DEPLOY-5).
 
-  What only applies to Elia's own code — approval, merging into
-  the trunk `master` and deploying — is `Elia.Skills.SelfModification`
-  (PROJ-17).
+  What only applies to Elia's own code — the worktree a chat makes for itself,
+  merging into the trunk `master` and deploying — is in that project's
+  `AGENTS.md` (DEPLOY-28) rather than in a skill.
   """
 
   @behaviour Elia.Skill

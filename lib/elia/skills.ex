@@ -19,7 +19,6 @@ defmodule Elia.Skills do
   @topic "skills"
   @project_file "AGENTS.md"
   @project_max_bytes 32_000
-  @self_modification "self-modification"
   @tasks_skill "tasks"
 
   @base_prompt """
@@ -81,14 +80,14 @@ defmodule Elia.Skills do
   end
 
   @doc """
-  The skills available in `project`, with the load errors (PROJ-17 - PROJ-21):
+  The skills available in `project`, with the load errors (PROJ-18 - PROJ-21):
   the built-in skills, then the folder skills of Elia's `skills/` dir and those
   of the project's own `skills/` dir, in that order. `nil` means Elia's own
   project.
 
-  The `self-modification` skill is left out unless the project is Elia's own
-  (PROJ-17), and the project's folder is skipped when it *is* Elia's own root,
-  so Elia's skills are not loaded twice (PROJ-18). A project's folder skills
+  The built-in skills are the same for every project (SKILL-7), and the
+  project's folder is skipped when it *is* Elia's own root, so Elia's skills are
+  not loaded twice (PROJ-18). A project's folder skills
   follow FOLDER-1 - FOLDER-9 like Elia's; a folder that fails to load is logged
   and returned as `{relative_folder, reason}` while the rest still load
   (PROJ-19). Everything is read again on every call, so a skill written into the
@@ -98,7 +97,7 @@ defmodule Elia.Skills do
   def for_project(project \\ nil) do
     project = project || Elia.Projects.harness()
 
-    {skills, errors} = load_folder_skills(builtin_skills(project), Elia.Workspace.root())
+    {skills, errors} = load_folder_skills(builtin_skills(), Elia.Workspace.root())
 
     if Path.expand(project.folder) == Elia.Workspace.root() do
       {skills, errors}
@@ -244,24 +243,13 @@ defmodule Elia.Skills do
 
   defp load do
     {skills, errors} =
-      load_folder_skills(builtin_skills(Elia.Projects.harness()), Elia.Workspace.root())
+      load_folder_skills(builtin_skills(), Elia.Workspace.root())
 
     %{skills: skills, errors: errors}
   end
 
-  # The built-in skills, without `self-modification` unless `project` is Elia's
-  # own (PROJ-17).
-  defp builtin_skills(project) do
-    skills = Enum.map(builtin(), &Elia.Skill.from_module/1)
-
-    if harness_project?(project),
-      do: skills,
-      else: Enum.reject(skills, &(&1.name == @self_modification))
-  end
-
-  defp harness_project?(project) do
-    Map.get(project, :harness?, false) or Map.get(project, :id) == "harness"
-  end
+  # The built-in skills, the same for every project (SKILL-7).
+  defp builtin_skills, do: Enum.map(builtin(), &Elia.Skill.from_module/1)
 
   # Appends the folder skills under `root` to `skills`, applying FOLDER-1 -
   # FOLDER-9 as `Elia.Skills.Folder` does. A folder that fails to load, or whose

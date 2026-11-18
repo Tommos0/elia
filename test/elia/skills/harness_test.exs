@@ -11,7 +11,8 @@ defmodule Elia.Skills.HarnessTest do
     assert instructions =~ "mix precommit"
     refute instructions =~ "run_tests"
     assert instructions =~ "Folder skills need no approval"
-    # The spec workflow and the code-change guardrails are self-modification's.
+    # The spec workflow and the code-change guardrails are Elia's own project's
+    # `AGENTS.md` (DEPLOY-28), not a skill's.
     refute instructions =~ "specs/README.md"
     refute instructions =~ "hot_reload"
   end

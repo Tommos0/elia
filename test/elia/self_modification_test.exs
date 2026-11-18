@@ -1209,65 +1209,32 @@ defmodule Elia.SelfModificationTest do
     end
   end
 
-  describe "self-modification" do
-    # SKILL-7, PROJ-17
-    test "is a built-in skill with no tools of its own" do
-      assert Elia.Skills.SelfModification in Elia.Skills.builtin()
-      assert Elia.Skills.SelfModification.name() == "self-modification"
-      assert Elia.Skills.SelfModification.tools() == []
-    end
-
-    # SKILL-9, PROJ-17
-    test "instructions carry the guardrails and the spec workflow" do
-      instructions = Elia.Skills.SelfModification.instructions()
-
-      assert instructions =~ "approval"
-      assert instructions =~ "Nothing verifies a turn"
-      assert instructions =~ "rolled back"
-      # DEPLOY-13: merging its own branch into the trunk is where the agent's
-      # part ends; deploying is the user's step, from Settings (SKILL-9).
-      assert instructions =~ "git push . HEAD:master"
-      assert instructions =~ "Settings"
-      refute instructions =~ "hot_reload"
-      assert instructions =~ "specs/README.md"
-      assert instructions =~ "requirement IDs"
-      assert instructions =~ "Never renumber"
-      # Folder skills apply in every project: they are the harness skill's.
-      refute instructions =~ "folder skill"
-    end
-
-    # DEPLOY-28, DEPLOY-29, DEPLOY-30, SHELL-14: the instruction tells a chat
-    # its workspace is the project's folder and no worktree was made for it, how
-    # to make its own — forked from the trunk, on the branch its chat id names,
-    # with the copies that save its first command minutes — and what to do when
-    # it can't be made.
-    test "instructions say to make a worktree of its own before changing code" do
-      instructions = Elia.Skills.SelfModification.instructions()
-
-      assert instructions =~ "works in the project's folder"
-      assert instructions =~ "don't change code in it"
-      assert instructions =~ "git worktree add"
-      assert instructions =~ "tmp/worktrees/"
-      assert instructions =~ "chat/$ELIA_CHAT_ID"
-      assert instructions =~ "deps _build"
-      assert instructions =~ "cp -a"
-      assert instructions =~ "cp -a assets/node_modules"
-      assert instructions =~ "ELIA_CHAT_ID"
-      # ...and it says what to do when the worktree can't be made (DEPLOY-30).
-      assert instructions =~ "ask the user"
-      assert instructions =~ "don't fall back to editing the live tree"
-    end
-
-    # DEPLOY-30, used by the harness-injected AGENTS.md too: the same recipe,
-    # so a chat that reads either is told the same thing.
-    test "the project's AGENTS.md carries the same worktree recipe" do
+  describe "the instruction a chat in Elia's own project carries" do
+    # DEPLOY-28, DEPLOY-29, DEPLOY-30, SHELL-14: the instruction tells a chat its
+    # workspace is the project's folder and no worktree was made for it, how to
+    # make its own — forked from the trunk, on the branch its chat id names, with
+    # the copies that save its first command minutes — how its work lands, and
+    # what to do when it can't. `AGENTS.md` is its only home: the
+    # `self-modification` skill that carried a second copy is retired (SKILL-9,
+    # PROJ-17), so there is one place to change it.
+    test "the project's AGENTS.md carries the worktree recipe" do
       agents = File.read!("AGENTS.md")
 
+      assert agents =~ "works in the project's folder"
+      assert agents =~ "Don't change code there"
       assert agents =~ "git worktree add"
+      assert agents =~ "tmp/worktrees/"
       assert agents =~ "chat/$ELIA_CHAT_ID"
-      assert agents =~ "cp -a"
-      assert agents =~ "assets/node_modules"
+      assert agents =~ "deps _build"
+      assert agents =~ "cp -a assets/node_modules"
+      assert agents =~ "ELIA_CHAT_ID"
+      # DEPLOY-13: merging its own branch into the trunk is where the agent's
+      # part ends.
       assert agents =~ "git push . HEAD:master"
+      # ...and it says what to do when the worktree or the merge can't be made
+      # (DEPLOY-30).
+      assert agents =~ "ask the user"
+      assert agents =~ "rather than editing the live tree"
     end
   end
 

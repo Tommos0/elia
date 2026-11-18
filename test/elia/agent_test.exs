@@ -1985,8 +1985,8 @@ defmodule Elia.AgentTest do
     assert content == "here\n[exit: 0]"
   end
 
-  # PROJ-15, PROJ-17, PROJ-18
-  test "the system prompt is the chat's project's AGENTS.md and skills, without self-modification" do
+  # PROJ-14, PROJ-15, PROJ-18
+  test "the system prompt is the chat's project's AGENTS.md and skills, with no Elia-own instruction" do
     dir = tmp_dir("prompt")
     File.write!(Path.join(dir, "AGENTS.md"), "Project rule: be terse.")
 
@@ -2008,7 +2008,9 @@ defmodule Elia.AgentTest do
     assert request.system =~ "Project rule: be terse."
     assert request.system =~ "Skill: proj-skill"
     assert request.system =~ "Skill: harness"
-    refute request.system =~ "self-modification"
+    # PROJ-14: Elia's own worktree instruction is in Elia's own AGENTS.md, so a
+    # chat in another project is not given it.
+    refute request.system =~ "tmp/worktrees/"
   end
 
   # PROJ-9, STORE-19

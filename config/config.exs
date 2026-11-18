@@ -168,8 +168,7 @@ config :elia, Elia.Skills,
     Elia.Skills.Titles,
     Elia.Skills.Done,
     Elia.Skills.Chats,
-    Elia.Skills.UserInput,
-    Elia.Skills.SelfModification
+    Elia.Skills.UserInput
   ]
 
 # The chat's own terminal (TERM): one session per chat, a tmux process tree in

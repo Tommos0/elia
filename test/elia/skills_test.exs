@@ -186,25 +186,21 @@ defmodule Elia.SkillsTest do
 
   # PREVIEW-9
   test "the preview instruction names the dark, mobile default" do
-    instructions = Elia.Skills.SelfModification.instructions()
+    agents = File.read!("AGENTS.md")
 
-    assert instructions =~ "bin/preview"
-    assert instructions =~ "ELIA_PREVIEW_THEME=dark"
-    assert instructions =~ "ELIA_PREVIEW_WIDTH=390"
-
-    # The project instructions carry the same default, so the two agree.
-    assert File.read!("AGENTS.md") =~ "ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390"
+    assert agents =~ "bin/preview"
+    assert agents =~ "ELIA_PREVIEW_THEME=dark"
+    assert agents =~ "ELIA_PREVIEW_WIDTH=390"
   end
 
-  # SKILL-7, PROJ-17
-  test "self-modification is a built-in skill of Elia's own project only", %{tmp_dir: dir} do
-    assert "self-modification" in names(Skills.current())
-
+  # SKILL-7, PROJ-18
+  test "a chat's built-in skills are the same in every project", %{tmp_dir: dir} do
     {own, _errors} = Skills.for_project(nil)
-    assert "self-modification" in names(own)
-
     {other, _errors} = Skills.for_project(project(dir))
-    refute "self-modification" in names(other)
+
+    assert names(other) == names(own)
+    assert "harness" in names(own)
+    assert "chats" in names(own)
   end
 
   # SKILL-2, PROJ-16, PROJ-18
@@ -236,9 +232,9 @@ defmodule Elia.SkillsTest do
         harness?: false
       })
 
-    # The same folder skills, once, and no `self-modification` for the other
-    # project: the folder is not scanned a second time.
-    assert names(same) == Enum.reject(names(own), &(&1 == "self-modification"))
+    # The same skills, once: the folder is not scanned a second time, and the
+    # built-in skills do not vary with the project (SKILL-7).
+    assert names(same) == names(own)
     assert names(same) == Enum.uniq(names(same))
   end
 
@@ -294,13 +290,14 @@ defmodule Elia.SkillsTest do
     assert Skills.resolve(fn -> [@skill] end, project) == [@skill]
 
     assert "project-skill" in names(Skills.resolve(nil, project))
-    refute "self-modification" in names(Skills.resolve(nil, project))
+    # The built-ins are the same for every project (SKILL-7).
+    assert "harness" in names(Skills.resolve(nil, project))
   end
 
   # SKILL-14
   test "resolve/1 defaults the project to Elia's own" do
     assert Skills.resolve([@skill]) == [@skill]
     assert Skills.resolve(fn -> [@skill] end) == [@skill]
-    assert "self-modification" in names(Skills.resolve(nil))
+    assert "harness" in names(Skills.resolve(nil))
   end
 end
