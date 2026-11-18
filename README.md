@@ -104,6 +104,13 @@ value (RESTART-8, ISOL-24).
 `iex --sname dbg --remsh elia`. Without systemd, any supervisor will do, with
 `bin/serve` as its command (`specs/auto-restart.md`).
 
+A supervisor is also what makes the Settings page's *Restart* deploy available:
+`bin/serve` exports `ELIA_SUPERVISED=1` to the server it runs, and the app asks
+for that marker, because only a server something outside the VM would bring back
+can be restarted (DEPLOY-33, RESTART-12). A manager that starts the app itself —
+`mix phx.server`, not `bin/serve` — has to export `ELIA_SUPERVISED=1` too;
+without it the page offers hot reload only, and the disabled control says why.
+
 A change to `lib/`, `config/` or `mix.exs` reaches the running app only through
 a *deploy*, from the Settings page — a request recompiles and loads nothing
 (DEPLOY-8). See Guardrails below.
