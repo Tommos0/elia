@@ -256,4 +256,81 @@ defmodule EliaWeb.Layouts do
     </div>
     """
   end
+
+  @doc """
+  The UI scale: a slider, a readout of the percentage in force and a reset
+  (CONF-30), kept in the browser rather than on the server (CONF-32).
+
+  The page head applies the stored scale before anything is painted (CONF-33),
+  so applying it is not this control's job: it reads the scale in force off the
+  root element, where the head script leaves it, and asks for a new one with
+  the event that script listens for. The server knows nothing about the scale,
+  so `phx-update="ignore"` keeps a patch out of the control's own DOM.
+  """
+  def ui_scale(assigns) do
+    ~H"""
+    <div
+      id="ui-scale"
+      phx-hook=".UiScale"
+      phx-update="ignore"
+      class="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-base-300 p-4"
+    >
+      <div class="min-w-0 flex-1">
+        <div class="flex items-baseline justify-between gap-3">
+          <label for="ui-scale-range" class="text-sm font-medium">UI scale</label>
+          <output
+            id="ui-scale-value"
+            for="ui-scale-range"
+            class="font-mono text-sm text-base-content/60"
+          >
+            100%
+          </output>
+        </div>
+        <input
+          id="ui-scale-range"
+          type="range"
+          min="80"
+          max="150"
+          step="5"
+          value="100"
+          class="range range-sm mt-3 w-full"
+        />
+      </div>
+      <button id="ui-scale-reset" type="button" class="btn btn-sm">
+        <.icon name="hero-arrow-path" class="size-4" /> Reset
+      </button>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".UiScale">
+        export default {
+          mounted() {
+            const range = this.el.querySelector("#ui-scale-range")
+            const readout = this.el.querySelector("#ui-scale-value")
+
+            // CONF-34: the scale in force is the one the page head applied
+            // (CONF-33), which is what the control shows.
+            const show = () => {
+              const scale = document.documentElement.dataset.uiScale || "100"
+              range.value = scale
+              readout.textContent = scale + "%"
+            }
+
+            // CONF-32: the head script owns storing and applying it, so this
+            // only tells it, and nothing reaches the server.
+            const apply = (scale) => {
+              range.dataset.phxUiScale = scale
+              range.dispatchEvent(new CustomEvent("phx:set-ui-scale", { bubbles: true }))
+              show()
+            }
+
+            range.addEventListener("input", () => apply(range.value))
+            this.el
+              .querySelector("#ui-scale-reset")
+              .addEventListener("click", () => apply("100"))
+
+            show()
+          }
+        }
+      </script>
+    </div>
+    """
+  end
 end

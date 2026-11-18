@@ -220,10 +220,11 @@ defmodule EliaWeb.SettingsLive do
             id="appearance"
             icon="hero-swatch"
             title="Appearance"
-            blurb="Follow the system, or pick light or dark."
+            blurb="Follow the system, or pick light or dark — and scale the interface."
             class="mt-8"
           >
             <Layouts.theme_toggle />
+            <Layouts.ui_scale />
           </.collapsible>
 
           <.collapsible

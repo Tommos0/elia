@@ -90,6 +90,28 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   the theme toggle (`#theme-toggle`) with its system, light and dark buttons.
 - **CONF-18** The app header has no theme toggle; it is only on the Settings
   page.
+- **CONF-30** The Appearance section holds a UI scale control (`#ui-scale`)
+  beside the theme toggle: a slider (`#ui-scale-range`) whose range is 80% to
+  150% in steps of 5, a readout (`#ui-scale-value`) of the scale in whole
+  percent, and a reset button (`#ui-scale-reset`) that returns the scale to
+  100%.
+- **CONF-31** The scale applies to the page as a whole: it sets the root
+  element's font size, so everything the app sizes in `rem` — text, controls,
+  spacing and the chat transcript — scales together.
+- **CONF-32** The scale is the browser's own preference: it is kept in
+  `localStorage` under `elia:ui-scale` as the whole percentage, so no request
+  carries it to the server and no key of the settings database (CONF-1) holds
+  it.
+- **CONF-33** The stored scale is applied before the page is first painted, so
+  no page is drawn at one scale and then jumps to another, and it is the scale
+  a reload, a move to another page of the app and a page that comes back after
+  a restart deploy (CONF-22) shows.
+- **CONF-34** The settings page shows the stored scale: on load the slider sits
+  at it and the readout shows it, a slider moved applies the new scale at once
+  with the readout following it, and a reset applies 100% and puts both back
+  there.
+- **CONF-35** A stored scale that is missing, not a number or outside 80 to 150
+  is read as 100%.
 
 ### Deployment
 
@@ -193,7 +215,8 @@ selected model (`:model`, MODEL-15) and, for push, the subscriptions
 PUSH-1). Carrying the operations out in one process (CONF-28) and updating a
 key as one operation (CONF-29) adds no key and changes no value's shape, so a
 table an older version wrote is read and written as it is: backward compatible,
-with no migration.
+with no migration. The UI scale (CONF-30) is the browser's own `localStorage`
+rather than the table (CONF-32), so it adds no key here either.
 
 ## Implementation
 
@@ -210,6 +233,11 @@ in flight, DEPLOY-22), `EliaWeb.SettingsLive` (whose collapsible sections keep
 the browser's own `open` state out of a patch, `JS.ignore_attributes/1`),
 `EliaWeb.Layouts`.
 
+The UI scale (CONF-30–CONF-35) is applied the way the theme is: the page head
+sets a preference before anything is painted, and it reads `elia:ui-scale`
+there to set the root font size; the `#ui-scale` control on the settings page
+reads and writes the same key.
+
 ## Tests
 
 - `test/elia/settings_test.exs` (the database and its file, the directory mode,
@@ -218,12 +246,16 @@ the browser's own `open` state out of a patch, `JS.ignore_attributes/1`),
   with the value it read — CONF-1 to CONF-8, CONF-28, CONF-29).
 - `test/elia_web/live/settings_live_test.exs` (the page, a card per provider,
   checking, saving and removing a key, the credits line and its refresh,
-  appearance, the Deployment section and its steps, the elapsed time, the
-  collapsible sections — CONF-7 to CONF-26).
+  appearance and its UI scale control, the Deployment section and its steps,
+  the elapsed time, the collapsible sections — CONF-7 to CONF-30).
 - `test/elia_web/browser/settings_sections_test.exs` (the four sections in a
   real browser: all four collapsed on load, a header expanding and collapsing
   one, and an open one that a re-render the user did not ask for leaves open —
   CONF-25, CONF-27).
+- `test/elia_web/browser/ui_scale_test.exs` (the UI scale in a real browser: a
+  page scaled before it is painted, the slider scaling it, the scale a reload
+  and a move to another page keep, the reset, and a stored value that cannot be
+  read — CONF-31 to CONF-35).
 - `test/elia/command_isolation_test.exs` (the settings path is outside what a
   jailed command reaches, CONF-1).
 - `test/elia/deployment_test.exs` (the deploy the page starts, CONF-19).

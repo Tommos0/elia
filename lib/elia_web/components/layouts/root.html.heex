@@ -57,6 +57,49 @@
         });
       })();
     </script>
+    <%!-- CONF-30 - CONF-35: the UI scale is the browser's own preference, the way
+    the theme is, and this is what applies it before anything is painted
+    (CONF-33). The scale in force is on the root element as `data-ui-scale`, so
+    the settings page's control (#ui-scale) reads it there, and asks for a new
+    one by dispatching `phx:set-ui-scale` the same way the theme's buttons
+    dispatch `phx:set-theme`. --%>
+    <script>
+      (() => {
+        const KEY = "elia:ui-scale";
+        const MIN = 80;
+        const MAX = 150;
+
+        // CONF-35: what cannot be read as a scale in range is 100%.
+        const read = (value) => {
+          const scale = parseInt(value, 10);
+          return Number.isInteger(scale) && scale >= MIN && scale <= MAX ? scale : 100;
+        };
+
+        // CONF-31: rem is the root font size, so setting it scales the page.
+        // CONF-32: the browser keeps the value, and nothing is sent anywhere.
+        const setScale = (value) => {
+          const scale = read(value);
+          document.documentElement.style.fontSize = `${scale}%`;
+          document.documentElement.dataset.uiScale = `${scale}`;
+          try {
+            localStorage.setItem(KEY, `${scale}`);
+          } catch (_) {
+            /* a browser that refuses storage still gets the scale for this page */
+          }
+        };
+
+        let stored = null;
+        try {
+          stored = localStorage.getItem(KEY);
+        } catch (_) {
+          stored = null;
+        }
+
+        setScale(stored);
+        window.addEventListener("storage", (e) => e.key === KEY && setScale(e.newValue));
+        window.addEventListener("phx:set-ui-scale", (e) => setScale(e.target.dataset.phxUiScale));
+      })();
+    </script>
   </head>
   <body>
     {@inner_content}

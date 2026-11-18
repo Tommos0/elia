@@ -449,6 +449,25 @@ defmodule EliaWeb.SettingsLiveTest do
     refute has_element?(files, "#theme-toggle")
   end
 
+  # CONF-30
+  test "the appearance section has a UI scale control", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-30: a slider over the range the scale may take, in steps of 5, and a
+    # reset, in the section the theme toggle is in.
+    assert has_element?(
+             view,
+             ~s(#appearance #ui-scale #ui-scale-range[min="80"][max="150"][step="5"])
+           )
+
+    assert view |> element("#ui-scale-reset") |> render() =~ "Reset"
+
+    # CONF-32, CONF-34: the readout is the scale in force, which is the
+    # browser's — so the server renders its default and the browser's own script
+    # moves both it and the slider to what is stored.
+    assert view |> element("#ui-scale-value") |> render() =~ "100%"
+  end
+
   # CONF-25, CONF-26
   test "the page is four collapsible sections, all collapsed on load", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/settings")
