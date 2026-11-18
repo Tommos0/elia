@@ -172,18 +172,43 @@ defmodule Elia.Deploy do
   loaded (DEPLOY-6), one a rollback went back to (DEPLOY-26), or one a restart
   is about to come up on (DEPLOY-7). The server's first start in the live tree
   counts too — it runs what the tree has checked out — so `Elia.Deploy.Runner`
-  records that at boot. A tree that isn't set up for deployment (DEPLOY-14) is
-  left alone, and failing to record is never a deploy failure.
+  records that at boot (DEPLOY-36). A tree that isn't set up for deployment
+  (DEPLOY-14) is left alone, and failing to record is never a deploy failure.
   """
   @spec record_loaded(binary(), :deploy | :rollback, :reload | :restart) :: :ok
-  def record_loaded(root \\ Workspace.runtime_root(), by \\ :deploy, mode \\ :reload) do
+  def record_loaded(root \\ Workspace.runtime_root(), by \\ :deploy, mode \\ :reload),
+    do: write_loaded(root, by, mode, :runner)
+
+  @doc false
+  # DEPLOY-36: the revision the server comes up on, which the runner records at
+  # its own start. Every other load is written through the runner — the record's
+  # only writer (DEPLOY-23), since the operation it belongs to is the runner's
+  # own child — and this one cannot be: the process recording it *is* the
+  # runner, which has not reached its loop yet, and a boot has no operation of
+  # its own to keep in step. So it is written here, by the runner's own boot.
+  #
+  # A directory that is no git tree at all is left alone before git runs: it is
+  # not a live tree anything could be deployed to (DEPLOY-14), and a server may
+  # well come up with no tree yet — a test run's scratch workspace is made after
+  # the application starts.
+  @spec record_boot(binary()) :: :ok
+  def record_boot(root \\ Workspace.runtime_root()) do
+    if File.exists?(Path.join(root, ".git")),
+      do: write_loaded(root, :deploy, :restart, :direct)
+
+    :ok
+  end
+
+  # DEPLOY-17, DEPLOY-36: what the app is running, recorded where a page reads
+  # it back — the loaded revision and the list the revisions are kept in.
+  defp write_loaded(root, by, mode, route) do
     with :ok <- deployable(root),
          {:ok, sha} <- git(root, ["rev-parse", @live]) do
       File.mkdir_p(Workspace.data_dir(root))
       File.write(loaded_path(root), sha <> "\n")
       # DEPLOY-25: the record keeps the revisions the app has run, so one it has
       # run and no longer is can still be named and gone back to (DEPLOY-26).
-      record_revision(root, sha, by, mode)
+      record_revision(root, sha, by, mode, route)
     end
 
     :ok
@@ -539,11 +564,12 @@ defmodule Elia.Deploy do
   # DEPLOY-25: the revision the app has loaded, kept in the record. The runner
   # is the record's only writer (DEPLOY-23), so this goes through it — the
   # operation process is the runner's own child, and the call is done before a
-  # restart stops the server (DEPLOY-17).
-  defp record_revision(root, sha, by, mode) do
+  # restart stops the server (DEPLOY-17) — unless the runner is the one writing
+  # it, at its own boot (DEPLOY-36), where a call to itself is no call at all.
+  defp record_revision(root, sha, by, mode, route) do
     revision = %{sha: sha, at: DateTime.utc_now(), by: by, mode: mode}
 
-    case Process.whereis(Elia.Deploy.Runner) do
+    case writer(route) do
       nil ->
         record = read_record(root)
         write_record(root, %{record | loaded: append_revision(loaded_revisions(root), revision)})
@@ -552,6 +578,9 @@ defmodule Elia.Deploy do
         Elia.Deploy.Runner.loaded(root, sha, by, mode)
     end
   end
+
+  defp writer(:direct), do: nil
+  defp writer(:runner), do: Process.whereis(Elia.Deploy.Runner)
 
   ## A step of an operation (DEPLOY-21)
 

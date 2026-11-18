@@ -583,7 +583,8 @@ defmodule EliaWeb.DashboardTest do
     {:ok, view, _html} = live(conn, ~p"/")
     assert has_element?(view, "#whats-new-none", "No changes to show yet.")
 
-    # The app records what it comes up on (DEPLOY-17) — still nothing to compare.
+    # What the app records when it comes up on this tree (DEPLOY-36) — made by
+    # hand here, since a test doesn't boot the server. Still nothing to compare.
     assert :ok = Deploy.record_loaded(tree)
     send(view.pid, :deploy)
     assert has_element?(view, "#whats-new-none")

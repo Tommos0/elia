@@ -235,6 +235,15 @@ tree's front end (`/recover`, RECOVER-10).
   the server stops. `Elia.Deploy.status/1` compares `live` with it, so the
   state a deploy leaves when it merges (DEPLOY-5) and never reaches the load is
   reported rather than looking up to date (CONF-19).
+- **DEPLOY-36** The server's own start records the revision it comes up on:
+  `Elia.Deploy.Runner` records `live`'s checkout when it starts, so what the app
+  is running after a restart that no deploy made — and on a tree the app has
+  never run before — is recorded rather than read as an older revision than it
+  runs (DEPLOY-17, DEPLOY-23, DEPLOY-25). It is recorded as a restart, the pair
+  the record already has (`by: :deploy`, `mode: :restart`), and a revision the
+  record already holds keeps the time it was first loaded (DEPLOY-25). A tree
+  that isn't set up for deployment is left alone and a boot never fails on it
+  (DEPLOY-14).
 
 ### What a deploy is doing
 
@@ -413,7 +422,13 @@ nothing is rewritten.
   from the environment when it is asked, so nothing about it is stored either.
 - The shapes that do outlive the process — a deploy record, the loaded
   revisions, the settings database — gain and lose no key and no file here, so
-  an older record, revision file or settings row still loads.
+  an older record, revision file or settings row still loads. A boot writes
+  them where before only a deploy or a rollback did (DEPLOY-36): the same loaded
+  revision in `.elia/deployed` and the same revision entry in `.elia/deploy.json`
+  (DEPLOY-17, DEPLOY-23, DEPLOY-25), so a record an older Elia wrote still reads
+  — a tree with only `.elia/deployed` keeps that revision, with the boot's on
+  top of it, and a revision already in the list keeps the time it was first
+  loaded.
 - Nothing else outlives the process here: the saved sessions and the settings
   database gain and lose no key.
 
@@ -436,7 +451,8 @@ goes with the harness's own: ISOL-7, ISOL-22, ISOL-27, ISOL-28), SHELL
 `Elia.Deploy` (the trunk and `live`, the deploy, hot reload and restart,
 `deployable/1`, `status/1`, the inert request reloader, the steps a
 deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
-`last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), the front-end step
+`last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), `record_boot/1` (the
+revision a boot records, DEPLOY-36), the front-end step
 a deploy runs before it loads — `npm install` in the live tree's `assets/` and
 `mix assets.build`, DEPLOY-19 — the staged build and the promotion of the two
 entry points it checked, including the removal of what a rejected attempt wrote
@@ -444,7 +460,8 @@ entry points it checked, including the removal of what a rejected attempt wrote
 (DEPLOY-24) and the seam its tests replace the way `load:` and `stop:` are, and
 `rollback/3`, DEPLOY-26, and `changes/1`, DEPLOY-27),
 `Elia.Deploy.Runner` (the deploy's own process, its step and its result,
-DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23),
+DEPLOY-15 to DEPLOY-17, DEPLOY-22, DEPLOY-23, and the boot record it makes
+itself, DEPLOY-36),
 `Elia.Application` (starts it),
 `Elia.Workspace` (`:runtime_root`, the data dir), `Elia.Projects` (`harness/0`
 is the live tree, `harness_ctx?/1`), `Elia.Agent.Session` (the chat's
@@ -479,8 +496,8 @@ end it builds before it loads — the staged build, what it promotes, and what a
 rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
 checks for, whether a restart is possible (DEPLOY-33), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
-restart, the runner, the loaded revision and what a deploy brought, DEPLOY-1 to
-DEPLOY-33),
+restart, the runner, the loaded revision a boot records and what a deploy
+brought, DEPLOY-1 to DEPLOY-33 and DEPLOY-36),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to

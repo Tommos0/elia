@@ -254,6 +254,46 @@ defmodule Elia.DeploymentTest do
     on_exit(fn -> Application.put_env(:elia, Elia.Deploy, deploy) end)
   end
 
+  # DEPLOY-36: the server coming up — the application starts the runner, and
+  # what runs at that start is what records the revision the tree has checked
+  # out. The runner dying and its supervisor starting it again is that start.
+  defp boot_server do
+    pid = Process.whereis(Runner)
+    ref = Process.monitor(pid)
+    :ok = Supervisor.terminate_child(Elia.Supervisor, Runner)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    {:ok, _pid} = Supervisor.restart_child(Elia.Supervisor, Runner)
+    :ok
+  end
+
+  # A boot records its revision as the runner's own start continues, rather than
+  # in the supervisor's start (DEPLOY-36), so a test waits for the revision it is
+  # waiting for — the way it waits for a deploy's own events — instead of reading
+  # the record the moment the start returns.
+  defp await_boot(sha, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    if await_revision(sha, deadline) do
+      :ok
+    else
+      flunk("the boot never recorded #{String.slice(sha, 0, 7)}")
+    end
+  end
+
+  defp await_revision(sha, deadline) do
+    cond do
+      Deploy.loaded_revision() == sha ->
+        true
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        false
+
+      true ->
+        Process.sleep(20)
+        await_revision(sha, deadline)
+    end
+  end
+
   # The deploy's front-end step (DEPLOY-19), replaced for a test the way `load:`
   # and `stop:` are: the real one installs the trunk's Node packages and builds
   # the live tree's assets, which a test doesn't run in its throwaway tree.
@@ -745,6 +785,60 @@ defmodule Elia.DeploymentTest do
     assert message =~ "Nothing to deploy"
     assert message =~ "Recompiled and reloaded"
     assert {:ok, %{behind?: false, loaded: ^live}} = Deploy.status()
+  end
+
+  # DEPLOY-36: the server's own start in the live tree records the revision it
+  # comes up on — it runs what the tree has checked out — so a `live` no deploy
+  # loaded, and a tree the app has never run before, are not read as an older
+  # revision than the app is running.
+  test "the app's own start records the revision it came up on (DEPLOY-36)", %{tree: tree} do
+    running = head(tree)
+
+    # A tree the app has never run before: nothing recorded yet (DEPLOY-17).
+    assert Deploy.loaded_revision() == nil
+    assert Deploy.loaded_revisions() == []
+
+    boot_server()
+
+    # What it came up on is the tree's own checkout, recorded as the restart a
+    # boot is (DEPLOY-25).
+    assert :ok = await_boot(running)
+    assert [%{sha: ^running, at: at, by: :deploy, mode: :restart}] = Deploy.loaded_revisions()
+
+    assert {:ok, %{loaded: ^running, live: ^running, behind?: false}} = Deploy.status()
+
+    # `live` moves with no deploy at all — the trunk merged into it by hand —
+    # while the app goes on running the revision the last boot came up on, which
+    # is what the section reads as behind (DEPLOY-17, CONF-19).
+    {_id, path} = new_worktree()
+    work_on_trunk(path)
+    assert {_, 0} = git(tree, ["merge", "--ff-only", "master"])
+    moved = head(tree)
+    assert moved != running
+
+    assert {:ok, %{loaded: ^running, live: ^moved, behind?: true}} = Deploy.status()
+
+    # The server comes back on it — a restart by hand, or a crash `bin/serve`
+    # brought back (RESTART-1) — and the boot records the revision it is running
+    # now, keeping the one it ran before it (DEPLOY-25).
+    boot_server()
+
+    assert :ok = await_boot(moved)
+
+    assert [%{sha: ^moved, by: :deploy, mode: :restart}, %{sha: ^running, at: ^at}] =
+             Deploy.loaded_revisions()
+
+    assert {:ok, %{loaded: ^moved, live: ^moved, behind?: false}} = Deploy.status()
+
+    # A tree that isn't set up for deployment is left alone and the boot does not
+    # fail on it (DEPLOY-14): this is the call the runner's own start makes.
+    plain = Path.join(System.tmp_dir!(), "elia-boot-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(plain)
+    on_exit(fn -> File.rm_rf!(plain) end)
+
+    assert Deploy.record_boot(plain) == :ok
+    assert Deploy.loaded_revision(plain) == nil
+    assert Deploy.loaded_revisions(plain) == []
   end
 
   # DEPLOY-5, DEPLOY-8, HOT-3, HOT-4

@@ -31,7 +31,9 @@ defmodule Elia.Deploy.Runner do
   in the live tree's data dir (DEPLOY-23, `Elia.Deploy.last_deploy/1`), so the
   record outlives this process: a deploy that restarts the server still says
   what it did to the page that comes up afterwards. This process is that
-  record's only writer, so a step and a load are never written over each other.
+  record's only writer, so a step and a load are never written over each other —
+  the revision the server itself comes up on included, which it records at its
+  own start (DEPLOY-36).
 
   The operation itself is `Elia.Deploy.run/2` or `Elia.Deploy.rollback/3`, which
   return what `deploy/1` does: `{:ok, message}`, `{:tests_failed, output}` or
@@ -129,7 +131,21 @@ defmodule Elia.Deploy.Runner do
     # The operation runs in a linked process, so its crash reaches us as a
     # message rather than taking the runner down with it.
     Process.flag(:trap_exit, true)
-    {:ok, %{pid: nil, root: nil, records: %{}}}
+    {:ok, %{pid: nil, root: nil, records: %{}}, {:continue, :boot}}
+  end
+
+  # DEPLOY-36: the server's own start in the live tree runs what the tree has
+  # checked out, so the revision it comes up on is recorded here — the load no
+  # deploy makes, which a restart by hand or a crash `bin/serve` recovered from
+  # would otherwise leave reading as the older revision a deploy loaded long
+  # before it (DEPLOY-17). It goes straight to the record rather than through
+  # this process's own API, which would be a call to itself; a tree that isn't
+  # set up for deployment is left alone and a boot never fails on it
+  # (DEPLOY-14).
+  @impl true
+  def handle_continue(:boot, state) do
+    Deploy.record_boot(Workspace.runtime_root())
+    {:noreply, state}
   end
 
   @impl true
@@ -205,9 +221,10 @@ defmodule Elia.Deploy.Runner do
     revision = %{sha: sha, at: DateTime.utc_now(), by: by, mode: mode}
 
     # DEPLOY-25: `sha` is the revision the operation went to, so a deploy that
-    # loads says which one it loaded. A load by anyone else — a deploy run
-    # outside the runner, the record the server makes at boot (DEPLOY-17) —
-    # leaves an operation in flight as it is.
+    # loads says which one it loaded. A load by anyone else — a deploy a test
+    # runs by calling `Elia.Deploy.deploy/1` directly — leaves an operation in
+    # flight as it is. (A boot is not one of these: the runner writes that one
+    # itself, at its own start, DEPLOY-36.)
     running =
       if record.running && from == state.pid,
         do: %{record.running | sha: sha},
