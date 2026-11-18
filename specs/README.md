@@ -168,4 +168,4 @@ it.
 A plan is not a spec: it is a working document with no requirement IDs, for work
 whose requirements are written later.
 
-- [Sub-agents](plans/subagents.md) — the multi-phase plan `specs/subtasks.md` implements: phases 1 to 3 done, phase 4 (concurrent sub-tasks) and phase 5 (read-only children) still to come
+- [Sub-agents](plans/subagents.md) — the multi-phase plan `specs/subtasks.md` implements: phases 1 to 4 done, phase 5 (read-only children) still to come

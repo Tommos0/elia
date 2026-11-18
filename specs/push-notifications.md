@@ -159,9 +159,13 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 
 - `Elia.Push` — the VAPID key pair (PUSH-1, PUSH-25, generated with `:crypto`
   and kept in `Elia.Settings`), sending a payload to a subscription (PUSH-15,
-  PUSH-16, PUSH-17), and the test notification (PUSH-8). Encryption and the
-  VAPID JWT come from the `web_push` hex package (RFC 8291/8292); its Finch
-  pool is the one `Req` already brings.
+  PUSH-16, PUSH-17), and the test notification (PUSH-8). The POST to the
+  subscription's push service endpoint (RFC 8030) goes out through `Req`, the
+  library this project uses for HTTP.
+- `Elia.Push.Crypto` — the two RFCs' cryptography, local and with no dependency
+  of its own: the P-256 key pair, the ES256 VAPID JWT of RFC 8292 (PUSH-15) and
+  the `aes128gcm` payload encryption of RFC 8291 (PUSH-15), all through
+  `:crypto` and checked against the RFCs' own test vectors.
 - `Elia.Push.Subscriptions` — the stored subscriptions: add/replace-by-endpoint
   (PUSH-3), remove (PUSH-4, PUSH-7), remove-gone (PUSH-16), count (PUSH-7),
   each change applied as one update of the stored list (PUSH-26).
