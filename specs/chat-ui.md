@@ -254,7 +254,17 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-13** On a `{:reset, messages}` event the transcript is rebuilt from
   `messages`.
 - **UI-14** The transcript stays scrolled to the bottom as content arrives,
-  unless the user has scrolled more than 80px up.
+  until the reader moves it up themselves: a move of theirs (UI-95) turns the
+  following off for good — it comes back when they are within 8px of the end
+  again or press the jump-to-the-end control (UI-87), and not merely because the
+  position has drifted back inside a tolerance. Displacement that is not their
+  own — the content growing, a rounding, a re-render — does not turn it off:
+  while the following is on, content arriving keeps the list at its end as long
+  as it is less than 80px away from it. *Changed:* the position alone decided
+  before, so that 80px tolerance undid the reader's own scroll up — one that
+  left them within it was pulled back to the end by the content arriving next,
+  and staying up while output streamed came down to scrolling more than 80px at
+  a time.
 - **UI-87** The top of the chat page carries a jump-to-the-end control
   (`#jump-to-end`): a small button at the right of the context indicator
   (CTX-1), the transcript's own counterpart to it. Pressing it scrolls the
@@ -266,6 +276,12 @@ stream in, approves or denies tool calls, and switches between saved chats.
   transcript holds — pressing it on a chat with nothing in it scrolls nothing —
   and without its hook (a page whose assets were not rebuilt, HOT-8) it does
   nothing rather than leaving the page broken.
+- **UI-95** The transcript stops following its end (UI-14) the moment the reader
+  moves it up themselves — a wheel up, a finger on it, an upward key, or a press
+  on its own scrollbar — rather than when the browser reports the position
+  afterwards, so content arriving in the same frame is not followed. The press
+  is what counts for the scrollbar, so a click on it that scrolls nothing does
+  not leave the following off (UI-14).
 - **UI-73** The notice a session writes after a restart cut the turn short
   (INTR-3) renders as an error row (UI-12), not as a plain harness notice
   (UI-9), so a turn the app killed is not mistaken for one that ended normally.
@@ -754,9 +770,10 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
-  browser: Enter sending a message, the transcript at its end and the
-  jump-to-the-end button — UI-14, UI-21, UI-87; the message box's draft,
-  stored and restored per chat — UI-89; a browser test, so it runs with
+  browser: Enter sending a message, the transcript at its end, the reader's own
+  move up stopping the following and their return to the end starting it again,
+  and the jump-to-the-end button — UI-14, UI-21, UI-87, UI-95; the message box's
+  draft, stored and restored per chat — UI-89; a browser test, so it runs with
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and
   `test/elia_web/browser/interaction_feedback_test.exs` (a tool card and the

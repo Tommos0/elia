@@ -350,11 +350,15 @@ defmodule EliaWeb.ChatBrowserTest do
     |> assert_scrolled_to_end()
   end
 
-  # UI-94 (specs/chat-ui.md): the reader's own move up stops the following at the
+  # UI-95 (specs/chat-ui.md): the reader's own move up stops the following at the
   # moment they make it, whatever they make it with — and not a frame later,
   # when the browser reports the scroll position, which is where content still
-  # arriving in that frame used to pull the view back down.
-  test "the reader's own move up stops the transcript following (UI-94)", %{conn: conn} do
+  # arriving in that frame used to pull the view back down. UI-14: a move that is
+  # a little at a time, inside the 80px content arriving is allowed, holds too:
+  # read as the position alone, that tolerance put the following back on.
+  test "a move up, however small, stops the transcript following (UI-14, UI-95)", %{
+    conn: conn
+  } do
     for {what, move} <- scroll_up_moves() do
       id = long_chat()
 
@@ -364,32 +368,42 @@ defmodule EliaWeb.ChatBrowserTest do
         |> connected()
         |> assert_scrolled_to_end()
 
-      # UI-94: the move, and content landing before the browser has reported it.
-      # The move scrolls nothing of itself, so the input event is the only thing
-      # that can stop the following, and the appended element stands in for the
-      # message that arrives in that frame.
+      # UI-95: the move, and the browser's own report of where it left the
+      # transcript a frame later.
       conn =
         evaluate(conn, """
         (() => {
           const transcript = document.querySelector("#transcript-scroll")
           #{move}
-          const arriving = document.createElement("div")
-          arriving.style.height = "600px"
-          transcript.appendChild(arriving)
+          transcript.scrollTop = transcript.scrollTop - 40
+          transcript.dispatchEvent(new Event("scroll"))
         })()
         """)
 
+      # UI-14: 40px up, which is inside the 80px content arriving is allowed.
+      assert_gap(conn, 40)
+
+      # UI-14: and content arriving after that is not followed — the appended
+      # block stands in for the message that arrives in the same frame.
+      evaluate(conn, """
+      (() => {
+        const transcript = document.querySelector("#transcript-scroll")
+        const arriving = document.createElement("div")
+        arriving.style.height = "600px"
+        transcript.appendChild(arriving)
+      })()
+      """)
+
       evaluate(conn, scroll_gap(), fn gap ->
-        assert gap > 80,
-               "the transcript followed content arriving after #{what} (only #{gap}px away)"
+        assert gap > 600,
+               "the transcript followed content arriving after #{what} (#{gap}px from its end)"
       end)
     end
   end
 
-  # UI-94: and it is the reader's move that keeps a reply arriving afterwards
-  # from pulling the view down — the case with plenty of output in the
-  # transcript, where a scroll up would not hold.
-  test "a reply arriving after a move up is not followed (UI-94)", %{conn: conn} do
+  # UI-14, UI-95: and a reply streaming in afterwards leaves the transcript where
+  # the reader put it, rather than pulling it down as it arrives.
+  test "a reply arriving after a move up is not followed (UI-14, UI-95)", %{conn: conn} do
     id = long_chat()
 
     conn =
@@ -397,7 +411,7 @@ defmodule EliaWeb.ChatBrowserTest do
       |> visit("/c/#{id}")
       |> connected()
       |> assert_scrolled_to_end()
-      |> scroll_up_by_wheel()
+      |> scroll_up(40)
 
     FakeLLM.push(FakeLLM.assistant([Message.text(long_reply())]))
 
@@ -407,7 +421,40 @@ defmodule EliaWeb.ChatBrowserTest do
       |> press("#chat-input", "Enter")
       |> assert_has("#transcript", text: "Answer from the fake model.")
 
-    assert_scrolled_up(conn)
+    assert_held_up(conn)
+  end
+
+  # UI-14: coming back to the end starts the following again — the reader's own
+  # way back, the other being the jump-to-the-end button (UI-87) — so a reply
+  # arriving afterwards is followed.
+  test "coming back to the end starts the following again (UI-14)", %{conn: conn} do
+    id = long_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      |> assert_scrolled_to_end()
+      |> scroll_up(400)
+
+    assert_gap(conn, 400)
+
+    conn =
+      evaluate(conn, """
+      (() => {
+        const transcript = document.querySelector("#transcript-scroll")
+        transcript.scrollTop = transcript.scrollHeight
+        transcript.dispatchEvent(new Event("scroll"))
+      })()
+      """)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text(long_reply())]))
+
+    conn
+    |> type("#chat-input", "one more")
+    |> press("#chat-input", "Enter")
+    |> assert_has("#transcript", text: "Answer from the fake model.")
+    |> assert_scrolled_to_end()
   end
 
   # UI-87: the button is on any chat, and on one with nothing in it pressing it
@@ -538,37 +585,32 @@ defmodule EliaWeb.ChatBrowserTest do
   # more than the hook's 80px away from it (UI-14, UI-87).
   defp long_reply, do: "Answer from the fake model. " <> String.duplicate("a long line. ", 20)
 
-  # UI-94: each of the reader's own ways up, as the page hears it — a wheel up, a
-  # finger dragging the content down, an upward key, and a press on the
-  # transcript's own scrollbar, which is the element itself. Each is the body of
-  # a function the test wraps around it, with `transcript` in its scope.
+  # UI-95: each of the reader's own ways up, as the page hears it — a wheel up, a
+  # finger on the transcript, an upward key, and a press on its scrollbar, which
+  # is the element itself. Each is the body of a function the test wraps around
+  # it, with `transcript` in its scope.
   defp scroll_up_moves do
     [
       {"a wheel up",
        ~s|transcript.dispatchEvent(new WheelEvent("wheel", {deltaY: -120, bubbles: true}))|},
-      {"a finger dragging the content down",
-       """
-       const down = new Event("touchstart")
-       down.touches = [{clientY: 100}]
-       transcript.dispatchEvent(down)
-       const drag = new Event("touchmove")
-       drag.touches = [{clientY: 200}]
-       transcript.dispatchEvent(drag)
-       """},
+      {"a finger on it", ~s|transcript.dispatchEvent(new Event("touchstart", {bubbles: true}))|},
       {"an upward key",
        ~s|transcript.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true}))|},
-      {"a press on the scrollbar",
+      {"a press on its scrollbar",
        ~s|transcript.dispatchEvent(new MouseEvent("mousedown", {bubbles: true}))|}
     ]
   end
 
-  # UI-94: the reader moving up with the wheel, and nothing else: what the
-  # transcript's position does afterwards is the hook's own doing.
-  defp scroll_up_by_wheel(conn) do
+  # UI-95, UI-14: the reader moving up with the wheel, and the browser's own
+  # report of where that left the transcript a frame later — the pair the hook
+  # has to read as a move of theirs rather than as a position of its own.
+  defp scroll_up(conn, px) do
     evaluate(conn, """
     (() => {
       const transcript = document.querySelector("#transcript-scroll")
       transcript.dispatchEvent(new WheelEvent("wheel", {deltaY: -120, bubbles: true}))
+      transcript.scrollTop = transcript.scrollTop - #{px}
+      transcript.dispatchEvent(new Event("scroll"))
     })()
     """)
   end
@@ -586,6 +628,23 @@ defmodule EliaWeb.ChatBrowserTest do
   defp assert_scrolled_up(conn) do
     evaluate(conn, scroll_gap(), fn gap ->
       assert gap > 80, "the transcript is only #{gap}px from its end, not scrolled up"
+    end)
+  end
+
+  # UI-14: the following did not pull the transcript to its end — by the hook's
+  # own measure of being there — whatever content arrived after the reader's move
+  # up.
+  defp assert_held_up(conn) do
+    evaluate(conn, scroll_gap(), fn gap ->
+      assert gap > 8, "the following pulled the transcript back to its end (#{gap}px away)"
+    end)
+  end
+
+  # UI-14: where the reader's own move left the transcript, before any content
+  # arrives to change what stands between it and the end.
+  defp assert_gap(conn, px) do
+    evaluate(conn, scroll_gap(), fn gap ->
+      assert_in_delta gap, px, 2, "the transcript is #{gap}px from its end, not #{px}px"
     end)
   end
 
