@@ -76,6 +76,89 @@ defmodule Elia.AutoResumeTest do
 
   defp listed(id), do: Enum.find(Store.list(1000), &(&1.id == id)) || %{}
 
+  # STORE-30: what the chat's file holds, read without the app — which the
+  # restart below stops — in the shape `Elia.Store` writes it.
+  defp saved(id) do
+    :erlang.binary_to_term(File.read!(Path.join(Store.dir(), id <> ".term")), [:safe])
+  end
+
+  # SESS-12: the notice a session writes when the task its turn runs in dies.
+  defp crash?(%Message{} = message), do: Message.text_content(message) =~ "The harness crashed"
+
+  # DEPLOY-7: a restart stops the app and starts it again. The suite's own app is
+  # the one stopped, which is why this file is not async — and why the app is
+  # started again even when the test fails.
+  defp restart_app do
+    :ok = Application.stop(:elia)
+    {:ok, _apps} = Application.ensure_all_started(:elia)
+
+    on_exit(fn ->
+      if Process.whereis(Elia.Supervisor) == nil, do: Application.ensure_all_started(:elia)
+    end)
+  end
+
+  # The turn is running: its task is alive and inside the model call, which is
+  # where a restart finds it. Read from the snapshot rather than from a
+  # subscription, which would link this process to the app's PubSub (SESS-19) and
+  # so to the app the restart below stops.
+  defp await_running(id, tries \\ 500)
+
+  defp await_running(_id, 0), do: flunk("the turn never started")
+
+  defp await_running(id, tries) do
+    if Agent.snapshot(id).status == :running do
+      :ok
+    else
+      Process.sleep(10)
+      await_running(id, tries - 1)
+    end
+  end
+
+  # The turn's task is inside the model call, which is where a restart finds it.
+  defp await_request(tries \\ 500)
+
+  defp await_request(0), do: flunk("the model was never called")
+
+  defp await_request(tries) do
+    if FakeLLM.requests() == [] do
+      Process.sleep(10)
+      await_request(tries - 1)
+    else
+      :ok
+    end
+  end
+
+  # RESUME-1: the boot scan starts the session in its own process, so the test
+  # waits for it rather than starting one itself.
+  defp await_live(id, tries \\ 500)
+
+  defp await_live(_id, 0), do: false
+
+  defp await_live(id, tries) do
+    if Agent.live?(id) do
+      true
+    else
+      Process.sleep(20)
+      await_live(id, tries - 1)
+    end
+  end
+
+  # RESUME-2, RESUME-4: a resumed turn is recorded while it runs (INTR-1) and
+  # its record is cleared when it ends, so a chat with no record has finished
+  # carrying its turn on.
+  defp await_turn_end(id, tries \\ 1000)
+
+  defp await_turn_end(_id, 0), do: flunk("the chat never carried its turn on")
+
+  defp await_turn_end(id, tries) do
+    if Store.load_turn(id) == nil do
+      :ok
+    else
+      Process.sleep(20)
+      await_turn_end(id, tries - 1)
+    end
+  end
+
   # A chat that was running a turn when the app stopped: the record of the turn
   # is still saved with it (STORE-30, INTR-1).
   defp saved_turn(id, messages, opts \\ []) do
@@ -140,6 +223,49 @@ defmodule Elia.AutoResumeTest do
     assert Agent.live?(parent)
     assert Agent.live?(child)
     refute Agent.live?(untouched)
+  end
+
+  # INTR-5, RESUME-1, RESUME-2
+  test "a restart leaves the record of a running turn behind, and the next boot resumes it" do
+    resume_on()
+
+    id = Agent.new_id()
+    on_exit(fn -> stop_session(id) end)
+
+    # The turn's model call never comes back, so the turn is in flight while the
+    # app goes down; the turn after it is the one the resumed turn makes.
+    FakeLLM.push(fn _request, _on_event -> Process.sleep(:infinity) end)
+    FakeLLM.push(FakeLLM.assistant([Message.text("Carried on.")]))
+
+    {:ok, _pid} = Agent.ensure_started(id)
+    :ok = Agent.send_message(id, "run it")
+    :ok = await_running(id)
+    await_request()
+
+    # INTR-1, STORE-30: the record of the running turn is in the saved chat.
+    assert %{turn: %{id: _}} = saved(id)
+
+    # A restart, the way a deploy stops the app (DEPLOY-7).
+    restart_app()
+
+    # INTR-5: the app's shutdown stopped the chat before the task its turn runs
+    # in, so the turn was not ended as a crash: the record is still there, and
+    # the transcript says nothing about one.
+    assert %{turn: %{id: _}} = saved(id)
+    refute Enum.any?(saved(id).messages, &crash?/1)
+
+    # RESUME-1, RESUME-2: the boot scan starts the chat's session, which carries
+    # the turn on rather than telling the user to send a message.
+    assert await_live(id)
+    :ok = await_turn_end(id)
+
+    messages = Agent.snapshot(id).messages
+    assert Enum.any?(messages, &(Message.text_content(&1) =~ "Carrying on with it"))
+    refute Enum.any?(messages, &crash?/1)
+    assert messages |> List.last() |> Message.text_content() == "Carried on."
+
+    # RESUME-4: the resumed turn was an ordinary turn, and its record is gone.
+    assert Store.load_turn(id) == nil
   end
 
   # SUITE-10

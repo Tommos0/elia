@@ -140,6 +140,16 @@ its own output directory.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8) — unless the change is one you judge safe without a run, and then say
   in your last message why the skip was safe (`AGENTS.md`).
+- A suite run started from a chat's shell inherits **the running server's own
+  environment**, and two variables change what tests see there: `ELIA_SUPERVISED`
+  (DEPLOY-33, RESTART-12) makes the two deploy tests that expect a server nothing
+  would bring back fail, and `ELIA_ALLOWED_ORIGINS` makes the three
+  `test/elia_web/socket_origin_test.exs` cases fail, because the endpoint's
+  `check_origin` is then not `:conn` (SOCK-1). Five failures in partition 1, all
+  of them this one cause: run `env -u ELIA_SUPERVISED -u ELIA_ALLOWED_ORIGINS
+  bin/test` from such a shell. `settings_live_test.exs` says which server it is
+  about for itself (`unsupervised/0`); the deploy and socket-origin files don't
+  yet.
 - A partition can fail on a test that passes on its own. In this tree partition
   2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
   and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with

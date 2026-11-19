@@ -56,6 +56,14 @@ session for that chat is running (INTR-2).
   — unless it is resumed, when it is `working` again and its entry in the
   registry of running children is taken again (RESUME-7).
 
+- **INTR-5** The app's own shutdown never ends a turn: Elia stops the chats'
+  sessions before it stops the tasks their turns run in, so no session sees its
+  loop task die (SESS-12) while the app is going down and no stop is written
+  (STOP-5). The record a running turn wrote (INTR-1) stays in the saved chat, so
+  a chat — or a sub-task chat (SUBTASK-1) — the app was restarted during is
+  interrupted (INTR-2) and resumed at the next start (RESUME-1, RESUME-7) rather
+  than reported as a crash.
+
 ## Out of scope
 
 - Resuming or re-running the interrupted turn as such: automatic resume is
@@ -76,4 +84,5 @@ session for that chat is running (INTR-2).
 
 `test/elia/agent_test.exs` (INTR-1 to INTR-4), `test/elia/store_test.exs`
 (STORE-30, STORE-31), `test/elia_web/live/task_ui_test.exs` (UI-72),
-`test/elia_web/live/chat_live_test.exs` (UI-73).
+`test/elia_web/live/chat_live_test.exs` (UI-73), `test/elia/auto_resume_test.exs`
+(INTR-5, with RESUME-1 and RESUME-2).

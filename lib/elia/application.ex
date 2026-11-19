@@ -38,8 +38,13 @@ defmodule Elia.Application do
       Elia.Store.Cache,
       Elia.Store.Index,
       {Registry, keys: :unique, name: Elia.Agent.Registry},
-      {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
+      # INTR-5: before the sessions' supervisor, because a supervisor stops its
+      # children in the reverse of this list: the chats are stopped first, so a
+      # restart takes a running turn's task down with no session left to read it
+      # as a crash (SESS-12). The record the turn wrote stays in the saved chat
+      # for the next start to resume (STORE-30, RESUME-1).
       {Task.Supervisor, name: Elia.Agent.TaskSupervisor},
+      {DynamicSupervisor, name: Elia.Agent.Supervisor, strategy: :one_for_one},
       # TERM-1: a chat's terminal session is registered by chat id, so a chat
       # has one, and it runs under its own supervisor — a session that dies
       # takes its process tree with it (TERM-3) and leaves the rest alone.
