@@ -22,6 +22,11 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 
 - A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run the tests — `mix test`, or plain `mix precommit` (a command never inherits the server's `MIX_ENV`, ISOL-24) — before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5). A change you judge safe without a run — a docs, spec or comment edit — may skip it, with a line in your last message saying why the skip was safe (`AGENTS.md`).
 
+## Waiting on a sub-task
+
+- `await_task` can outlast the harness's own request: in one chat both `await_task` and `ask_user` came back as "the harness crashed while running this tool" at the boundary, while the sub-task itself carried on untouched (a turn's end, a stop or a crash doesn't end one — SUBTASK-16). Polling survives that: a `shell` call of `sleep 280`, then `list_chats` with `children: true` for its `status`, and its `report.md` beside `brief.md` when it reaches `done`. It costs a round trip per few minutes, and nothing is lost either way, since the child commits on its own branch.
+- Merging a child rewrites its commits, so after `git merge --ff-only chat/<child id>` and a rebase, `git branch -d chat/<child id>` refuses with "not fully merged": the child's branch tip is no longer an ancestor of yours. Check the work is in `master` (it is — the merge was a fast-forward) and delete with `-D`. Same for your own branch once `git push . HEAD:master` has landed it.
+
 ## Recovery
 
 - There is no checkpoint to roll back to (`specs/checkpoints.md`, retired): a chat's work is on its own branch, and a deploy refuses to load a tree whose suite or compile fails (DEPLOY-5, HOT-4). `/recover` is back for the failure that gate does not catch — a deploy that passes its suite and still leaves the UI unusable: plain HTML, no bundle and no JavaScript, putting the app back on a revision it has already run (RECOVER-10..RECOVER-15, DEPLOY-25, DEPLOY-26, `specs/recovery.md`).
