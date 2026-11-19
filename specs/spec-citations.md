@@ -124,9 +124,9 @@ viewer's), `assets/css/app.css` (the look of a citation, CITE-5).
 
 ## Tests
 
-`test/elia/specs_test.exs` (CITE-2, CITE-3, CITE-4) — which IDs a workspace
-defines, what each one's text is, the file and line each one is written at, and
-what a corpus that is edited or absent does.
+`test/elia/specs_test.exs` (CITE-2, CITE-3, CITE-4, CITE-10) — which IDs a
+workspace defines, what each one's text is, the file and line each one is
+written at, and what a corpus that is edited or absent does.
 `test/elia_web/markdown_test.exs` (CITE-1, CITE-3, CITE-5, CITE-6, CITE-10,
 CITE-11) — a citation in a reply: inline code, plain text, escaping, a code
 block, a link's text, and the tooltip's links.

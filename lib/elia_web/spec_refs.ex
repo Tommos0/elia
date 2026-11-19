@@ -100,9 +100,11 @@ defmodule EliaWeb.SpecRefs do
 
   # CITE-3, CITE-10, CITE-11: the tooltip's markup — the statement's own
   # characters, with the requirements it names as links, and after it the link to
-  # where it is written. The statement's own Markdown is characters, never
-  # markup, because `citation/3` escapes the whole of this — its own links
-  # included — as one attribute's value.
+  # where it is written. It is markup the browser parses, so everything in it
+  # that is not a link built here is escaped for *that* layer (`named/2`,
+  # `link/2`), and the whole of it is escaped once more as the attribute's own
+  # value (`citation/3`): two escapes, one per layer, so a statement holding `<`
+  # or an entity shows those characters and only its links are markup.
   defp tooltip(%{text: text, path: path, line: line}, context) do
     statement = named(text, context)
 
@@ -114,26 +116,31 @@ defmodule EliaWeb.SpecRefs do
 
   # CITE-11: a requirement the statement names is a link to its own file and
   # line, exactly as the requirement's own link is (CITE-10); a token the corpus
-  # does not define stays the statement's own text (CITE-1).
+  # does not define stays the statement's own text (CITE-1) — and so does the
+  # statement's text around them, escaped as the markup's own (CITE-3).
   defp named(statement, %{requirements: requirements} = context) do
     @id
     |> Regex.split(statement, include_captures: true, trim: true)
     |> Enum.map_join("", fn part ->
       case Map.get(requirements, part) do
         %{path: path, line: line} -> named_link(part, path, line, context)
-        _ -> part
+        _ -> escape(part)
       end
     end)
   end
 
   defp named_link(id, path, line, context) do
     case FileLinks.line_url(context.links, path, line) do
-      nil -> id
+      nil -> escape(id)
       href -> link(id, href)
     end
   end
 
-  defp link(label, href), do: ~s(<a href="#{href}" style="#{@link_style}">#{label}</a>)
+  # CITE-3: a link's own two parts are the markup layer's too — its label is text
+  # in it and its `href` an attribute of it, where a `&` of the query is an
+  # entity's start to a parser.
+  defp link(label, href),
+    do: ~s(<a href="#{escape(href)}" style="#{@link_style}">#{escape(label)}</a>)
 
   defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 end

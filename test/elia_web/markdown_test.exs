@@ -250,12 +250,28 @@ defmodule EliaWeb.MarkdownTest do
     assert html =~ "&amp;"
     assert html =~ "&quot;quote&quot;"
 
-    # CITE-13: the citation's `title` is the escaped statement, and so is the
-    # tooltip's own markup — whose only markup, escaped as the attribute's own
-    # value, is the link to where the requirement is written (CITE-10).
+    # CITE-13: the citation's `title` is the statement escaped as the attribute's
+    # own value — one escape, one layer — which is what a browser shows (CITE-2).
     statement = "One holding &lt;angle brackets&gt;, an &amp; and a &quot;quote&quot;."
     assert html =~ ~s(title="#{statement}")
-    assert html =~ ~s(data-tip="#{statement} &lt;a href=&quot;)
+
+    # CITE-3, CITE-9: the tooltip is escaped once per layer — the markup the
+    # browser parses it as, and the attribute it travels in — so what the browser
+    # reads from `data-tip` holds the statement escaped *for that parse*, and
+    # only the link to where the requirement is written (CITE-10) as markup. The
+    # `<angle brackets>`, the `&` and the quote are characters in it: taken as
+    # text, the tooltip is the statement itself.
+    tip =
+      doc("CITE-10", links())
+      |> LazyHTML.query("span.spec-cite")
+      |> LazyHTML.attribute("data-tip")
+      |> hd()
+
+    assert tip =~ "&lt;angle brackets&gt;"
+    assert tip =~ ~s(<a href="/files?chat=markdownchat1&amp;path=)
+
+    plain = ~s(One holding <angle brackets>, an & and a "quote". specs/#{@spec_file}:8)
+    assert LazyHTML.text(LazyHTML.from_fragment(tip)) == plain
   end
 
   # CITE-6: a code block is content, and so are a link's text and an image's alt
