@@ -156,6 +156,12 @@ stream in, approves or denies tool calls, and switches between saved chats.
   Deleting the chat that page belongs to (`/c/<id>/settings`,
   `/c/<id>/terminal`) leaves for `/chats` instead (UI-65, UI-77), as deleting
   the open chat does.
+- **UI-94** The drawer and its backdrop (UI-36, UI-91) are the page's lower
+  layers: the menus the header opens — the project switcher's
+  (`#project-menu`, PROJ-29) and the notification bell's (`#notifications-menu`,
+  NOTIF-6) — are drawn above both, so with the drawer open a menu the user is
+  choosing from is neither covered by the drawer nor dimmed by its backdrop, and
+  its entries stay pressable.
 - **UI-37** The header never overflows horizontally on narrow screens. Below
   the `sm` breakpoint the header buttons show only their icon (the label stays
   in the DOM for screen readers and as the control's `title`), with tighter
@@ -755,7 +761,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and
   `test/elia_web/browser/interaction_feedback_test.exs` (a tool card and the
-  pressed state at a phone width, UI-15, UI-20, UI-32).
+  pressed state at a phone width, UI-15, UI-20, UI-32; the header's project
+  menu above the chat list's drawer at a phone width, UI-94 — both browser
+  tests, so they run with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/markdown_test.exs` (UI-25 to UI-27), and
   `test/elia_web/time_ago_test.exs` (UI-34).
 - No test: UI-28 — the scroll box inside a long code block or a wide table is

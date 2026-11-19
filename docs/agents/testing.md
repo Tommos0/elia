@@ -85,7 +85,18 @@ Playwright.
   levels are logged as usual.
 - Keep them few and shallow: a browser run is seconds per test. Test outcomes
   in the LiveView suite where you can, and reach for a browser only for what
-  JavaScript and layout do (e.g. `#chat-input`'s Enter-to-send hook).
+  JavaScript and layout do (e.g. `#chat-input`'s Enter-to-send hook). What the
+  *browser* decides — which of two layers is on top — has no other witness:
+  `evaluate/4` with a function that returns `document.elementFromPoint` and
+  `getComputedStyle` is how `test/elia_web/browser/small_screen_layout_test.exs`
+  checks a stacking order (UI-94).
+- A test that changes the driver's own config must **merge** it:
+  `Application.put_env(:phoenix_test, :playwright, …)` replaces the whole
+  keyword list, taking the test helper's `assets_dir` (BROWSER-2) and
+  `config/test.exs`'s `screenshot_dir` with it — the driver then fails with
+  "Could not find Playwright in `./assets`", which reads like a broken install.
+  Read the list and `Keyword.put` into it, as `preview_test.exs` does. In
+  `browser_context_opts`, `color_scheme` is an atom (`:dark`), not a string.
 
 ### UI previews
 

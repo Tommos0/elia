@@ -14,7 +14,9 @@ defmodule EliaWeb.SmallScreenLayoutTest do
   wide enough to trip the layout. LOG-11 is a row's: a log entry's message must
   get a line of its own, not a column a character wide. UI-83 is a question
   card's: its question and the answer it got wrap, where every other card's text
-  is a command or a diff read by its columns (UI-15, UI-20).
+  is a command or a diff read by its columns (UI-15, UI-20). UI-94 is a
+  stacking order's: which of two layers is on top is the browser's answer, not
+  the server's (UI-36, UI-91).
   """
 
   use EliaWeb.BrowserCase
@@ -253,6 +255,119 @@ defmodule EliaWeb.SmallScreenLayoutTest do
       assert entry["overflow"] <= 0,
              "the entry's row overflows sideways by #{entry["overflow"]}px"
     end)
+  end
+
+  # UI-94: the menu's own centre, and what the browser draws there.
+  @menu_layering """
+  (drawer) => {
+    const menu = document.querySelector("#project-menu");
+    const panel = document.querySelector(drawer);
+    if (!menu || !panel) return {menu: !!menu, drawer: !!panel};
+
+    const box = menu.getBoundingClientRect();
+    const point = {x: box.left + box.width / 2, y: box.top + box.height / 2};
+    const top = document.elementFromPoint(point.x, point.y);
+    const panelBox = panel.getBoundingClientRect();
+    const style = getComputedStyle(panel);
+
+    return {
+      menu: true,
+      drawer: true,
+      point: {x: Math.round(point.x), y: Math.round(point.y)},
+      menuBox: {
+        left: Math.round(box.left),
+        right: Math.round(box.right),
+        top: Math.round(box.top),
+        bottom: Math.round(box.bottom)
+      },
+      panelBox: {
+        left: Math.round(panelBox.left),
+        right: Math.round(panelBox.right),
+        top: Math.round(panelBox.top),
+        bottom: Math.round(panelBox.bottom)
+      },
+      top: top ? top.id || top.tagName : null,
+      drawerShown: style.display !== "none" && panelBox.width > 0 && panelBox.height > 0,
+      drawerCoversPoint:
+        panelBox.left <= point.x && point.x <= panelBox.right &&
+        panelBox.top <= point.y && point.y <= panelBox.bottom,
+      onTop: top !== null && menu.contains(top)
+    };
+  }
+  """
+
+  # UI-94: the header's project switcher drops its menu over the page, and the
+  # chat list's drawer is a layer of that page — so the menu has to be above it,
+  # or the drawer hides the projects the user is choosing from (the drawer is
+  # 18rem wide on a 390px screen, and the menu starts at the page's own left
+  # edge). On the chat page the drawer is the list's small-screen shape (UI-36);
+  # on a page with no list of its own it is the drawer in the layout (UI-91).
+  # Both are the same layer under the same menu, so both are asked.
+  @tag browser_context_opts: @phone
+  test "the header's project menu is above the chat drawer (UI-94)", %{conn: conn} do
+    id = chat_in_harness()
+
+    for {path, drawer} <- [{"/c/#{id}", "#sidebar"}, {"/", "#chats-drawer"}] do
+      conn
+      |> visit(path)
+      |> click("#chats-toggle")
+      |> wait_for(drawer_open(drawer), "#{path}: the chat drawer to open")
+      |> click("#project-switcher")
+      |> wait_for(
+        "window.document.querySelector('#project-menu') !== null",
+        "#{path}: the project menu to open"
+      )
+      |> evaluate(@menu_layering, [is_function: true, arg: drawer], fn layering ->
+        assert layering["menu"] and layering["drawer"],
+               "#{path}: the menu or #{drawer} is not on the page: #{inspect(layering)}"
+
+        assert layering["drawerShown"], "#{path}: #{drawer} is not shown: #{inspect(layering)}"
+
+        # UI-94: the drawer really is under the menu, so the assertion below is
+        # a claim about the drawer rather than about empty space.
+        assert layering["drawerCoversPoint"],
+               "#{path}: #{drawer} does not reach the menu's own centre: #{inspect(layering)}"
+
+        assert layering["onTop"],
+               "#{path}: #{layering["top"]} is drawn over the project menu: " <>
+                 "#{inspect(layering)}"
+      end)
+    end
+  end
+
+  defp drawer_open(drawer) do
+    """
+    (() => {
+      const el = window.document.querySelector('#{drawer}');
+      return el !== null && getComputedStyle(el).display !== 'none';
+    })()
+    """
+  end
+
+  defp chat_in_harness do
+    id = Agent.new_id()
+    :ok = Store.save(id, [], project: "harness")
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
+
+  defp wait_for(conn, expression, message, timeout \\ 5_000) do
+    evaluate(
+      conn,
+      """
+      new Promise(resolve => {
+        const until = Date.now() + #{timeout}
+        const check = () => {
+          if (#{expression}) return resolve(true)
+          if (Date.now() > until) return resolve(false)
+          setTimeout(check, 25)
+        }
+        check()
+      })
+      """,
+      [timeout: timeout + 1_000],
+      fn reached -> assert reached, "#{message} (within #{timeout}ms)" end
+    )
   end
 
   defp refute_sideways_scroll(conn, selector) do

@@ -164,14 +164,18 @@ defmodule EliaWeb.Layouts do
 
   attr :menu, :boolean, default: false, doc: "whether the menu is open (PROJ-29)"
 
-  # PROJ-29, PROJ-30: the open project beside the logo — its name where the
-  # header used to show the app's own — and the menu it opens: every project,
+  # PROJ-29, PROJ-30, UI-94: the open project beside the logo — its name where
+  # the header used to show the app's own — and the menu it opens: every project,
   # the open one marked `data-open="true"`, and, below them, the entry to the
   # projects page (PROJ-23), where a project is created and deleted. Choosing a
   # project opens it and its chat list (PROJ-8, PROJ-28, UI-77). The control is
   # drawn like the settings page's pickers: the trigger asks to close while the
   # menu is open (so a press on it is not also a press outside), and the menu
-  # closes on Escape and on a press outside it.
+  # closes on Escape and on a press outside it. Its layer is the notification
+  # menu's (NOTIF-6), above the chat list's drawer and its backdrop (UI-36,
+  # UI-91): the menu drops from the header over the page, and the drawer — which
+  # is a layer of that page, at the same height as the menu's old one — would
+  # otherwise cover the projects the user is choosing from.
   defp project_switcher(assigns) do
     ~H"""
     <div class="relative flex min-w-0 items-center">
@@ -197,7 +201,7 @@ defmodule EliaWeb.Layouts do
         phx-click-away="close_projects"
         phx-window-keydown="close_projects"
         phx-key="Escape"
-        class="absolute top-full left-0 z-30 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
+        class="absolute top-full left-0 z-40 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
       >
         <.link
           :for={project <- @projects}

@@ -30,6 +30,17 @@ Files: styles in `assets/css/app.css`, JS in `assets/js/app.js`, shared componen
 - You can't reference an external `src` or `href` in the layouts. Import vendor dependencies into `app.js` or `app.css`.
 - **Never** write inline `<script>` tags in templates. Use a colocated hook (see `docs/agents/phoenix-liveview.md`). The one script written by hand is in the root layout's head (`components/layouts/root.html.heex`), which applies a preference while the page is parsed rather than after it: the theme, and the UI scale (CONF-30–CONF-35). A hook runs only once the bundle has loaded, so a preference applied there would be painted at the old value first and jump.
 
+## Layers
+
+Overlays have a fixed order (UI-94): the chat list's backdrop is `z-20`, the
+drawer (`#chats-drawer`, and the chat page's `#sidebar`) `z-30`, and the menus
+the header opens (`#project-menu`, `#notifications-menu`) `z-40` — so a menu a
+user is choosing from is above a drawer that is open at the same time, rather
+than behind it (which is how they are stacked in the tree: same `z-index`,
+later wins). The image viewer is the exception, `z-50` over the whole page
+(IMG). A new panel that must sit over the drawer goes above `z-30`; one that
+belongs under a header menu goes below `z-40`.
+
 ## Components and icons
 
 - Wrap LiveView templates in `<Layouts.app flash={@flash}>`. (`Layouts` is aliased in `lib/elia_web.ex`.) There's no auth, so no `current_scope` is passed.
