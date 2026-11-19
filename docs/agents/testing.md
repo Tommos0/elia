@@ -32,6 +32,14 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
   the store the suite shares it would resume the chats other tests left behind
   and start sessions that outlive the test that runs it.
 
+## Fixtures that name a tool
+
+- A test that renames a tool in a fixture has to follow it into the compaction
+  notes: `Elia.LLM.Compaction.input_summary/1` renders a `shell` call as
+  `$ <command>`, so the note for a `shell` result is
+  `[output elided by compaction: shell $ cat file2.txt. …]` — an assertion on it
+  needs the `$`, not just the tool name and the command.
+
 ## LiveView tests
 
 - Use `Phoenix.LiveViewTest` and `LazyHTML`.
