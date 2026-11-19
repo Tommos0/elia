@@ -58,6 +58,16 @@ chat is opened (FLINK-5).
   can't be browsed).
 - **EXPL-10** The app header has a "Files" link to `/files`.
 
+- **EXPL-27** A `line` query parameter names a line of the file in view: the
+  viewer marks that line and brings it into sight, so a link that names a file
+  and a line (CITE-10) opens the file where that line is. A `line` that is not a
+  positive whole number, that is past the text shown, or that comes with no text
+  in view — a previewed file has none (EXPL-23) — is ignored, and the file opens
+  as it otherwise would.
+- **EXPL-28** The line belongs to the file it was named with: opening another
+  file or directory leaves it out of the URL, so no file shows a line marked
+  that belongs to another one.
+
 - **EXPL-15** The page browses one project at a time: a `project` query
   parameter names it, and paths are relative to that project's folder
   (PROJ-22). `/files` with a missing or unknown id browses Elia's own project,
@@ -198,12 +208,14 @@ serves are the file's own.
 ## Implementation
 
 `Elia.Explorer` (path safety, listing, reading, language and preview detection),
-`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18, and the
-preview it shows, EXPL-22 - EXPL-26), `EliaWeb.FilesRawController` (the bytes a
+`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18, the
+preview it shows, EXPL-22 - EXPL-26, and the line in view, EXPL-27),
+`EliaWeb.FilesRawController` (the bytes a
 preview is made of, EXPL-24), `Elia.Deploy` (a chat's workspace, EXPL-17),
 `EliaWeb.FileLinks` (the links that
 open a chat's own workspace, FLINK),
-the `Highlight` hook in `assets/js/highlight.js`, and
+the `Highlight` hook in `assets/js/highlight.js` (EXPL-13, and EXPL-27's mark
+and scroll, after the highlighting so the mark survives it), and
 highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 
 ## Tests
@@ -215,9 +227,10 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 - `test/elia_web/live/files_live_test.exs` (the page, its breadcrumbs, the
   viewer and its refusals, the language attribute, the header link, the project
   and the chat in view, a project whose folder is a symlink, the preview per
-  kind and what it leaves out, a previewable path that can't be previewed —
+  kind and what it leaves out, a previewable path that can't be previewed, the
+  line in view and a line it can't use —
   EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to EXPL-21, EXPL-23, EXPL-25,
-  EXPL-26).
+  EXPL-26, EXPL-27, EXPL-28).
 - `test/elia_web/controllers/files_raw_test.exs` (the bytes of a previewed
   file, its content type and headers, the revalidation it answers, and every
   refusal — EXPL-1, EXPL-2, EXPL-22, EXPL-24).
