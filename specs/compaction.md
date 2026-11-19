@@ -146,8 +146,8 @@ where it once took every one of them.
   replaced by a one-line note naming the call and its input summary, with an
   explicit marker saying the output was elided and the tool should be re-run or
   the file re-read. Tool call *inputs* are not elided on their own — a call and
-  its result go together (COMPACT-4) and a `write_file`/`edit_file` input is the
-  record of what was written.
+  its result go together (COMPACT-4), and a call's input is the record of what
+  it asked for.
 - **COMPACT-16** Then whole old **steps** — an assistant message with its text
   and calls, and the tool results answering them — are dropped together, never a
   call without its result (COMPACT-4).

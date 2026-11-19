@@ -35,10 +35,11 @@ stays exactly as it was: plain text.
 - **FLINK-3** A mention may be relative to the chat's workspace or absolute: an
   absolute path inside it names the same file (PROJ-12, WS-1), and both link to
   the same relative page.
-- **FLINK-4** The card of a tool call whose input has a `path` (UI-15, a file
-  tool: FILE) links that path the same way, so the file an agent read, wrote or
-  deleted is one click from its card. The rest of the card is unchanged, and a
-  path FLINK-5 doesn't allow stays plain text.
+- **FLINK-4** The card of a tool call whose input has a `path` (UI-15 — `cd` is
+  one, and the file tools were the others until they retired, FILE) links that
+  path the same way, so a directory a chat moved into is one click from its
+  card. The rest of the card is unchanged, and a path FLINK-5 doesn't allow
+  stays plain text.
 
 ### When a mention becomes a link
 

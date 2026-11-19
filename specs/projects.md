@@ -71,9 +71,9 @@ list and the page agree about where the user is.
 ### The project folder is the workspace
 
 - **PROJ-12** The folder of a chat's project is the workspace root for that
-  chat's tools: `read_file`, `write_file` and `edit_file` resolve and classify
-  paths against it (WS-1–WS-3), `shell` runs there and its jail holds it
-  (ISOL-13), and folder-skill scripts get it in `ELIA_WORKSPACE` (FOLDER-7).
+  chat's tools: `shell` runs there and its jail holds it (ISOL-13, WD-9), `cd`
+  judges a path against it (WD-1, WD-5), and folder-skill scripts get it in
+  `ELIA_WORKSPACE` (FOLDER-7).
   There is no exception for Elia's own project: a chat in it works in that
   folder, which is the live tree (DEPLOY-1). A chat may `cd` into a directory
   inside it (WD-1), and it may make a git worktree of its own inside it

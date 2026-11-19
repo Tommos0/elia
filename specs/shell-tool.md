@@ -36,11 +36,13 @@ call takes.
 - **SHELL-7** The shell isn't sandboxed: an approved command can do anything,
   including get around the workspace policy. The approval prompt is the only
   safeguard.
-- **SHELL-8** The skill's instructions open by telling the model not to use
+- ~~**SHELL-8** The skill's instructions open by telling the model not to use
   the shell to read, create or edit files (`cat`, `sed`, `echo >`, scripts that
   rewrite files), or to find text in the tree (`grep` — `search_files` is the
   tool for that, FILE-24), but to use the file tools, which apply the workspace
-  policy. The `shell` tool's description says the same.
+  policy. The `shell` tool's description says the same.~~ Retired: there are no
+  file tools left to send file work to, and the instructions now send it the
+  other way (SHELL-15, FILE).
 - **SHELL-9** The skill's instructions and the `shell` tool's description say
   which shell runs commands (`bash -c` where bash is installed, POSIX `sh -c`
   otherwise) and warn that bash-only syntax (`${PIPESTATUS[0]}`, `[[ ... ]]`,
@@ -90,6 +92,14 @@ call takes.
   unsets the server's own `MIX_ENV` (ISOL-24), since a port's environment can
   only add to the one it inherits.
 
+- **SHELL-15** The shell is how the model works with files: the skill's
+  instructions and the `shell` tool's description don't send file work to
+  another tool (SHELL-8, FILE), and say that reading a file is a command whose
+  output the model reads, cut like any other output (SHELL-5); that finding text
+  in the tree is the shell's own search (`grep -n`, `rg`); and that creating,
+  editing and deleting a file is a command the user approves as it stands
+  (SHELL-1), so a change to a file is reviewed as the command that makes it.
+
 ## Configuration
 
 ```elixir
@@ -124,7 +134,7 @@ passes to a command, SHELL-14),
 
 - `test/elia/skills/shell_test.exs` (the clamped timeout and the rejected value,
   SHELL-10; the chat id the command is given, SHELL-14; the instructions and the
-  tool description — SHELL-8, SHELL-9).
+  tool description — SHELL-9, SHELL-15).
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
   ending at its deadline, a command whose waiting process exits being killed

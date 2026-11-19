@@ -144,7 +144,7 @@ it.
 | [Process priority](process-priority.md) | `PRIO` | Every process Elia spawns runs below the server's own CPU and I/O priority, so the UI and the agent loops stay responsive while a compile or a test suite runs |
 | [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: a chat's commands are confined to the project folder it works in, and the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [Terminal](terminal.md) | `TERM` | A chat's own terminal: a pty (tmux in control mode) with xterm.js in the browser, jailed and niced like a command, on `/c/:id/terminal` |
-| [File tools](file-tools.md) | `FILE` | `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `delete_file` |
+| [File tools](file-tools.md) | `FILE` | Retired: every file operation is a shell command (SHELL-15), so the six file tools are gone |
 | [Working directory](working-directory.md) | `WD` | A chat's working directory: what a relative path in the file tools and the `shell` call resolves against, changed with `cd` and saved with the chat |
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
 | [Checkpoints](checkpoints.md) | `CKPT` | Retired: a chat does its work in a worktree of its own, so a snapshot and rollback protect nothing git doesn't |

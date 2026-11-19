@@ -27,10 +27,6 @@ refused.
   | Tool | Approval | Who has it |
   | --- | --- | --- |
   | `shell` | always (SHELL-1) | both |
-  | `read_file`, `list_files` | path read (FILE-4, FILE-18) | both |
-  | `search_files` | path read (FILE-29) | both |
-  | `write_file`, `edit_file` | path write (FILE-5) | both |
-  | `delete_file` | path write (FILE-21) | both |
 | `spawn_task` | always (SUBTASK-2) | parent |
 | `await_task` | never (SUBTASK-27) | parent |
   | `terminal_start` | always (TERM-10, TERM-25) | both |
@@ -83,17 +79,15 @@ per-tool switch; it never loosens what a tool's own policy refuses.
   turning a tool off (UI-39) removes it from the set like any other (APPR-11),
   and the set is saved with the chat's first message (APPR-12, STORE-14).
 
-Auto-approving `shell`, `write_file`/`edit_file` or a script tool lets the
-model act in that chat without review. The UI says so next to the switch
-(UI-39).
+Auto-approving `shell` or a script tool lets the model act in that chat without
+review. The UI says so next to the switch (UI-39).
 
 A new chat starts with every approvable tool auto-approved (APPR-14), because
 the jail (ISOL-1) is what made the prompt the only safeguard for the tools that
-run processes. The jail doesn't cover the file tools, which run in the server,
-so in a new chat `write_file`/`edit_file`/`delete_file` on the workspace's core
-files (FILE-5, WS-1) and `read_file`/`list_files` outside the workspace (FILE-4)
-are approved without review as well; a chat that needs that review turns those
-switches off (UI-39).
+run processes. With the file tools retired (FILE) every file operation is a
+command, so `shell` is the one tool left that can change a file in the
+workspace, and in a new chat it is auto-approved like any other approvable tool;
+a chat that wants its commands reviewed turns that switch off (UI-39).
 
 ### The table
 
@@ -103,12 +97,11 @@ switches off (UI-39).
   name several tools, comma-separated, and may carry a note naming the
   requirement the row's facts come from. A folder skill's script tool has no
   fixed name and so has no row: it always needs approval (FOLDER-8).
-- **APPR-16** An approval cell in the APPR-7 table is one of `never`, `always`,
-  `path read` or `path write`: `never` is a tool that never needs approval,
-  `always` one that needs it for every call, `path read` one that needs none for
-  a path inside the workspace and approval for one outside it (FILE-4, FILE-18,
-  FILE-29), and `path write` one whose approval follows the path's class
-  (FILE-5, FILE-21).
+- **APPR-16** An approval cell in the APPR-7 table is either `never` or
+  `always`: `never` is a tool that never needs approval, and `always` one that
+  needs it for every call. The `path read` and `path write` kinds this
+  requirement used to allow retired with the file tools (FILE), since no tool
+  left judges a path for its approval.
 - **APPR-17** The APPR-7 table's third column says which chats a tool is offered
   to: `parent` for one only a chat that can spawn sub-tasks has, `child` for one
   only a sub-task chat has, and `both` for one every chat has (SUBTASK-1).
@@ -126,14 +119,13 @@ in the session when the loop asks for approval, so the loop is unchanged).
 
 `test/elia/tool_approval_test.exs` derives what a row claims from the tool
 itself, not from a second list: a tool whose approval is a function (APPR-1) is
-asked for its decision on a sample input inside the workspace, on one outside
-it, and on the same outside one with the jail on, so the row's kind (APPR-16)
-and the path policy the cell names come from the tool and cannot drift in their
-turn. A hand-written list would be a copy of the table, free to disagree with
-it. The role column (APPR-17) is derived the same way, from the built-in skills
-and the `task` skill a sub-task chat gets (SUBTASK-1), and the toolset comes
-from `config :elia, Elia.Skills, builtin:`, so a built-in skill or tool added
-later is compared without an entry in the test.
+asked for its decision on a sample input, so the row's kind (APPR-16) and the
+approval the cell names come from the tool and cannot drift in their turn. A
+hand-written list would be a copy of the table, free to disagree with it. The
+role column (APPR-17) is derived the same way, from the built-in skills and the
+`task` skill a sub-task chat gets (SUBTASK-1), and the toolset comes from
+`config :elia, Elia.Skills, builtin:`, so a built-in skill or tool added later
+is compared without an entry in the test.
 
 ## Tests
 
@@ -141,11 +133,8 @@ later is compared without an entry in the test.
   a step shown together and decided one at a time, nothing running until every
   one is decided, the result a denied call gets — APPR-1 to APPR-6).
 - `test/elia/tool_approval_test.exs` (every tool the built-in skills offer in the
-  APPR-7 table, the approval a row states against the one the tool declares, its
-  role against the toolset, and the path policy a `path read` or `path write`
-  cell names — APPR-7, APPR-15 to APPR-18).
-- `test/elia/self_modification_test.exs` (the file tools' policies on the paths
-  of each class, APPR-7).
+  APPR-7 table, the approval a row states against the one the tool declares and
+  its role against the toolset — APPR-7, APPR-15 to APPR-18).
 - `test/elia/auto_approve_test.exs` (the saved set, a chat's own set, what
   auto-approval replaces, a step all auto-approved, a tool turned on, the
   default set — APPR-8 to APPR-14).

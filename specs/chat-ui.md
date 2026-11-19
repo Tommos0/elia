@@ -304,9 +304,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
 - **UI-16** Status badges: Needs approval, Needs your answer (a call awaiting
   an answer, ASK-3), Answered, Approved, Running, Done, Failed (done with an
   error), Pending (anything else).
-- **UI-17** `write_file` and `edit_file` cards have a collapsible "Changes"
+- ~~**UI-17** `write_file` and `edit_file` cards have a collapsible "Changes"
   section (new content, or removed/added strings). It is expanded while the
-  call awaits approval.
+  call awaits approval.~~ Retired: there are no file-tool cards (FILE); a file is
+  changed by a `shell` call, whose card shows the command (UI-15).
 - **UI-18** A call awaiting approval shows Approve and Deny buttons
   (`#approve-<call_id>`, `#deny-<call_id>`).
 - ~~**UI-19** When a call awaiting approval writes a guarded file, or is a
@@ -530,9 +531,8 @@ with `list_chats` (HIST-2).
 - **UI-43** A `spawn_task` call renders as a tool call (UI-15): its summary is the
   task `title` from the call's input, since a spawn's input is mostly the
   `brief`, and its input is shown under it as a collapsible "Brief"
-  (`#task-brief-<call_id>`, expanded while the call awaits approval) — the same
-  kind of per-tool input view `write_file` shows for its content. It carries the
-  usual badge (UI-16) and approval buttons (UI-18) while it awaits approval.
+  (`#task-brief-<call_id>`, expanded while the call awaits approval). It carries
+  the usual badge (UI-16) and approval buttons (UI-18) while it awaits approval.
   Nothing else is drawn on it: the child's status and a link to the child chat
   are the retired UI-44, so the call never shows a status the child's own row
   doesn't (UI-46, UI-59). *Changed:* the card's status row, its "waiting for

@@ -91,9 +91,8 @@ live tree's saved chats are never touched.
   assistant reply with Markdown (heading, list, table, fenced code block, link),
   a `shell` tool call with its output, a failed tool call with its error output,
   and a reasoning block — the pieces a transcript renders (UI-8, UI-15, UI-16,
-  UI-20, UI-29). The reply mentions a file of the workspace in inline code and
-  the sample holds a `read_file` call for one, so the picture shows a linked
-  mention in a reply and on a tool card (FLINK-1, FLINK-4). It cites a
+  UI-20, UI-29). The reply mentions a file of the workspace in inline code, so
+  the picture shows a linked mention in a reply (FLINK-1). It cites a
   requirement of the workspace's own corpus, in inline code and in prose, so the
   picture shows a citation (CITE-1). It holds a
   `spawn_task` call with its brief too, so a picture shows a sub-task's call is

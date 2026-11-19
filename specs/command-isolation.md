@@ -144,7 +144,7 @@ genuinely needs the rest of the machine (ISOL-16).
   reads a command's output as a value takes that notice off first
   (`Elia.Shell.jail_skipped_notice/0`), so it never becomes part of a ref, a path
   or a count.
-- **ISOL-25** The file tools are confined to what the jail reaches (FILE-12,
+- ~~**ISOL-25** The file tools are confined to what the jail reaches (FILE-12,
   FILE-13): the trees a chat's commands can reach are the trees its file tools
   can read. What that is stays a property of the jail's profile (ISOL-13) and is
   asked for rather than reimplemented — `Elia.Shell.reachable?/2` says whether a
@@ -154,7 +154,9 @@ genuinely needs the rest of the machine (ISOL-16).
   decision (`Elia.Shell.wanted/1`: the chat's setting, ISOL-16, and the host's,
   ISOL-20) and not whether bubblewrap can build one (ISOL-12): a host that can't
   build the jail is still confined, and the chat's own setting is what turns the
-  confinement off. A caller with no chat gets the default, which is on (ISOL-15).
+  confinement off. A caller with no chat gets the default, which is on (ISOL-15).~~
+  Retired: there are no file tools, so nothing but a command is confined, and a
+  command's reach is the jail itself (ISOL-13, FILE).
 - **ISOL-26** The jail reaches the user-wide Playwright CLI, so a jailed
   `mix test --only real_browser` and `bin/preview` work (BROWSER-2): the npm
   global packages `$HOME/.local/lib/node_modules/playwright` and
@@ -277,12 +279,12 @@ is harmless.
 - **ISOL-18** The setting belongs to one chat. A sub-task starts with a copy of
   its parent's setting when it is spawned (SUBTASK-30) and its own from then on:
   changing either chat afterwards never affects the other.
-- **ISOL-19** Turning the jail off loosens the file tools and nothing else: with
-  the jail off the file tools may read outside the workspace again, with the
-  user's approval (FILE-12, FILE-4), and nothing else reaches further —
-  approval, the workspace policy's classes and the writes it refuses are
-  unchanged (WS-1, FILE-5), no tool is auto-approved, and turning it back on
-  affects only calls that come later — a command already running isn't killed.
+- **ISOL-19** Turning the jail off loosens what a command reaches and nothing
+  else: with the jail off a command runs on the whole machine (ISOL-20), where
+  jailed it reached its workspace and the toolchain (ISOL-13); approval is
+  unchanged (SHELL-1, APPR), the working directory and the workspace root are
+  unchanged (WD), no tool is auto-approved, and turning it back on affects only
+  calls that come later — a command already running isn't killed.
 - **ISOL-20** A host can turn the jail off for every chat (`config :elia,
   Elia.Shell, jail: false`), which is what a machine without bubblewrap does.
   A chat's own setting can only turn it off, never force it on where the host
@@ -402,12 +404,11 @@ bubblewrap is missing (ISOL-12).
 
 `Elia.Shell` (the bubblewrap argv, the one profile and what it holds, the
 environment allowlist, and
-what a jailed command can reach — ISOL-25; `run/2` takes `:jail`),
+what a jailed command can reach — ISOL-13; `run/2` takes `:jail`),
 `Elia.Terminal.Session` (a session's jail is the same argv),
 `Elia.Skills.Shell` (the chat id a command is given, `ELIA_CHAT_ID`, SHELL-14),
 `Elia.Skills.Folder`
 and `Elia.Harness` (pass the chat's setting from the tool context),
-`Elia.Skills.Files` (confines the file tools to the jail's reach, FILE-12),
 `Elia.Agent.Session` (the setting, its event, its save), `Elia.Store`
 (`save/3`'s `jail:`, `load_jail/1`), `Elia.Deploy` (spawns `git`
 through `Elia.Shell.run/2`, and the deploy's own fetch of the trunk's
@@ -428,7 +429,7 @@ lock, and `Elia.Deploy`'s worktree administration.
   the profile and what it holds, the environment allowlist, what a jailed
   command can reach, the fallback when bubblewrap is missing —
   ISOL-1 to ISOL-3, ISOL-5, ISOL-6, ISOL-8 to ISOL-10, ISOL-12 to ISOL-14,
-  ISOL-20, ISOL-24, ISOL-25).
+  ISOL-20, ISOL-24).
 - `test/elia/command_isolation_test.exs`
   (the settings path and `$HOME` absent, the browser cache and the user-wide
   Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
@@ -439,9 +440,10 @@ lock, and `Elia.Deploy`'s worktree administration.
 - `test/elia/deployment_test.exs` (the deploy's fetch, DEPLOY-18; the jail the
   deploy's own commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an
   fsmonitor the repository names not run by the harness's own git, ISOL-30).
-- `test/elia/self_modification_test.exs` (the file
-  tools' confinement, FILE-12, FILE-13; the classes it is confined by, ISOL-13,
-  ISOL-15, ISOL-16, ISOL-20, ISOL-25).
+- `test/elia/self_modification_test.exs` (the classes a path falls in, the
+  real location it is judged by, and a path with none — WS-1 to WS-3, WS-5 to
+  WS-8; that a class decides nothing about what a command may write, ISOL-13,
+  ISOL-15, ISOL-16, ISOL-20).
 - `test/elia/agent_test.exs` and `test/elia/tasks_test.exs` (the setting, what
   the tool context carries, and a child that inherits it — ISOL-15, ISOL-16,
   ISOL-18).

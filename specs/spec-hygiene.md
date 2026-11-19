@@ -121,7 +121,8 @@ Implementation).
     for the jail's own `/tmp` and pid namespace, which is `ISOL-2` and `ISOL-9`,
     and cites those.
   - `specs/checkpoints.md` cited `FILE-8` and `FOLDER-9` as retired checkpoint
-    behaviour; both are live requirements about `edit_file` and script-tool
+    behaviour; both are live requirements about `edit_file` (retired since, with
+    the file tools) and script-tool
     output. The sentence stops naming them (`SHELL-6` stays, being the retired
     one) — SPEC-15.
   - `specs/subtasks.md` and `specs/verification.md` put prose on the `Status:`

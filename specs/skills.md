@@ -97,8 +97,8 @@ the same instruction, so the skill held a second copy of it and nothing more.
   resolving out of the folder, into a protected location such as `.git` or
   `deps`, or that can't be resolved, adds no section and is logged as a warning
   (SKILL-11). The rule does not follow the chat's jail switch (ISOL-20), because
-  this read is never offered for the user's approval as `read_file` is (FILE-4),
-  so nothing else stands behind it.
+  this read is not a tool call the user approves, so nothing else stands behind
+  it.
 - **SKILL-18** What a refused instruction file holds never reaches the prompt:
   the warning names the path it refused and no part of the file's contents.
 
@@ -108,7 +108,6 @@ the same instruction, so the skill held a second copy of it and nothing more.
 config :elia, Elia.Skills,
   builtin: [
     Elia.Skills.Shell,
-    Elia.Skills.Files,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
     Elia.Skills.Terminal,

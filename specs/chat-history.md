@@ -6,10 +6,10 @@ The agent can look at chats other than the one it is running in: list them,
 read one's transcript, and search across them. Everything the user and the
 agent decided in an earlier chat — a path, a decision, what was already tried —
 is in that chat's saved file (STORE-1), and without a way to read it the agent
-either asks the user again or starts from nothing. Unjailed the file tools
-could open `.elia/sessions` (FILE-4), but those files are Erlang terms, not
-text (STORE-1), so what an unjailed chat can do is awkward; and with the jail on
-(ISOL-16) they are out of reach entirely (FILE-12, ISOL-6). These tools read the
+either asks the user again or starts from nothing. Unjailed a command could open
+`.elia/sessions`, but those files are Erlang terms, not text (STORE-1), so what
+an unjailed chat can do is awkward; and with the jail on (ISOL-16) they are out
+of reach entirely (ISOL-6). These tools read the
 saved chats through the harness instead — the way a parent reads a child chat's
 result with `await_task` (SUBTASK-27) — so a chat can consult the earlier ones
 whether or not it is jailed, and without a command or an approval prompt.
@@ -23,8 +23,8 @@ whether or not it is jailed, and without a command or an approval prompt.
   `chats` reaches it unchanged. Its instructions say what the three tools are
   for, that a chat id is the one in its URL (`/c/<id>`, UI-2), that the tools
   read Elia's own saved chats through the harness rather than through a command
-  or the file tools — so they work in a jailed chat too (ISOL-16, ISOL-25,
-  FILE-12), where `.elia/sessions` is out of reach and its files are Erlang
+  — so they work in a jailed chat too (ISOL-16, ISOL-13),
+  where `.elia/sessions` is out of reach and its files are Erlang
   terms rather than text anyway (STORE-1) — and that what they read is the chat
   as it was last saved (STORE-1), so a chat that is running now may not have its
   current turn in its file yet.

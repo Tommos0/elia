@@ -231,13 +231,14 @@ See `Elia.Skills.Folder` for the `tools.json` format. Tool input arrives in
 
 ## Guardrails
 
-- **Approval**: shell commands, script tools and writes outside `skills/` need
-  the user's approval. Writes under `skills/` don't. `.git`,
-  `_build`, `deps` and `.elia` can't be written by the file tools, and paths
-  outside the workspace are refused. With the jail on — the default — the file
-  tools reach the workspace and nothing else: reading outside it is refused too,
-  and so is a path that resolves through a symlink out of it, so they reach no
-  further than a jailed command does (FILE-12, FILE-13).
+- **Approval**: shell commands and script tools need the user's approval. A file
+  is read, searched, created, edited and deleted by a command, not by a tool of
+  its own (SHELL-15), so what stands behind a file change is that approval and
+  the jail: with the jail on — the default — a command reaches its workspace and
+  the toolchain and nothing else, so a path outside it, or one that resolves
+  through a symlink out of it, is beyond reach (ISOL-13). A jailed command can
+  still write its workspace's `.git` and `_build`, which the retired file tools
+  refused (FILE).
 - **Tests**: nothing runs the test suite for you at the end of a turn. The agent
   runs the tests itself — `mix test`, or plain `mix precommit` (no command
   inherits the server's `MIX_ENV`, so the alias's `preferred_envs` picks `test`,

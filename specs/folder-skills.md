@@ -33,7 +33,8 @@ itself.
   by `_`). `ELIA_WORKSPACE` holds the workspace root the skill was loaded from
   (PROJ-12).
 - **FOLDER-8** Script tools always need approval, because the agent can write
-  them without approval (WS-1).
+  them itself (a command in the workspace, SHELL-15), so a script it had just
+  written would otherwise run unapproved.
 - **FOLDER-9** A script tool's output and exit status are formatted like the
   shell tool's (SHELL-4).
 
