@@ -9,11 +9,11 @@ every chat, whether or not the user ever touched them, and it crowded the
 transcript on a phone. Each of those belongs to one chat and to no other, so
 each has a home on that chat's settings page, together with the settings the
 composer never showed at all (turn limits, [LIMIT](turn-limits.md), and the
-chat's compaction options, COMPACT-9). The chat page keeps one control that
-leads there, carrying the model's name, so what is answering is still visible
-while typing. The page is a detour from the conversation, so its single Save
-goes back to the chat when the chat accepts the values (CSET-11), where they
-show up; so does the Compact button (CSET-12).
+chat's compaction options, COMPACT-9). The chat page keeps one way in: the
+composer's chat menu (UI-97) shows the model in use, and holds the single entry
+that leads to that page. The page is a detour from the conversation, so its
+single Save goes back to the chat when the chat accepts the values (CSET-11),
+where they show up; so does the Compact button (CSET-12).
 
 ## Requirements
 
@@ -61,17 +61,22 @@ show up; so does the Compact button (CSET-12).
 ### The chat page
 
 - **CSET-8** The composer toolbar no longer holds the model picker, the
-  auto-approve button or the jail switch: it has a "Chat settings" link
-  (`#chat-settings-link`) to `/c/<id>/settings`, labelled with the selected
-  model's name (`#chat-settings-model`) and its provider badge, so the model in
-  use is still visible while typing, and the click that used to open the picker
-  now leads to where the picker lives.
+  auto-approve button or the jail switch: the chat's settings are one entry of
+  the composer's chat menu (UI-97), a "Chat settings" link
+  (`#chat-settings-link`) to `/c/<id>/settings`, and the menu shows the model
+  in use above it as text — the selected model's name (`#chat-settings-model`)
+  and its provider badge — so the click that used to open the picker now leads
+  to where the picker lives. *Changed:* the model's name used to sit in the
+  toolbar itself, in the link to the page, so what was answering was visible
+  while typing; the menu holds it now (UI-97).
 - **CSET-9** While a chat's jail is off, or the host has no jail at all, the
-  chat page still says so next to that link (`#jail-warning`,
-  `#jail-unavailable`), as ISOL-17 and UI-68 require: the warning belongs where
-  commands run, not only on a settings page.
-- **CSET-10** The Focus view toggle (UI-60) stays in the composer: it acts on
-  the transcript the user is reading, not on the chat's saved settings.
+  chat page still says so in its composer toolbar, beside the chat menu's
+  trigger (`#jail-warning`, `#jail-unavailable`) and never inside the menu —
+  which is shut most of the time — as ISOL-17 and UI-68 require: the warning
+  belongs where commands run, and in sight.
+- **CSET-10** The Focus view toggle (UI-60) stays in the composer toolbar,
+  outside the chat menu (UI-97): it acts on the transcript the user is reading,
+  not on the chat's saved settings.
 - **CSET-11** A Save (`#save-settings`) the chat accepts (CSET-7) returns to the
   chat (`/c/<id>`): the settings show up there (CSET-4) and the settings page
   was a detour. A save the chat rejects leaves the user on the page, with the
@@ -110,6 +115,7 @@ picker, the jail switch and the "Compact" button move to),
 CSET-7, CSET-11 to CSET-13), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
 `test/elia_web/live/jail_test.exs` (the moved controls),
-`test/elia_web/live/chat_live_test.exs` (the composer toolbar, CSET-8 to
+`test/elia_web/live/chat_live_test.exs` and
+`test/elia_web/live/chat_menu_test.exs` (the composer toolbar, CSET-8 to
 CSET-10), `test/elia_web/live/compaction_test.exs` (the moved Compact button,
 UI-54).

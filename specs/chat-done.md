@@ -57,10 +57,11 @@ on its own branch rather than landed on the trunk (SUBTASK-23, DONE-6).
 
 ### Marking it by hand
 
-- **DONE-4** Every open chat's composer toolbar — beside the "Focus" toggle
-  (UI-60) and the settings link — carries a done control (`#done-toggle`): a
-  button with `aria-pressed` that marks the chat done, and reopens it when it
-  is done. Its label says which one it does ("Mark done" while the chat isn't
+- **DONE-4** Every open chat's composer toolbar has a done control
+  (`#done-toggle`) — one entry of its chat menu (UI-97), while the "Focus"
+  toggle (UI-60) stays in the toolbar beside the menu — a button with
+  `aria-pressed` that marks the chat done, and reopens it when it is done. Its
+  label says which one it does ("Mark done" while the chat isn't
   done, "Reopen" while it is), so the state is readable without hovering, and
   it never needs a confirmation (DONE-9: nothing is lost by either). A task
   chat has it too, under its task header (UI-48), where it is how the task is

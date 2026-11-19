@@ -161,11 +161,11 @@ defmodule EliaWeb.InteractionFeedbackTest do
     conn = conn |> visit("/c/#{id}") |> connected()
 
     # FEED-7: the browser's own tab order decides, and whatever the keyboard
-    # reaches shows the ring — here a button of the composer's toolbar. That
-    # order is the markup's: the chat's settings link, then its terminal link,
-    # which TERM-19 puts beside it, then the Focus button — so the keyboard
-    # starts on the terminal link to arrive at Focus with one press.
-    conn = press(conn, "#chat-terminal-link", "Tab")
+    # reaches shows the ring — here the Focus button of the composer's toolbar.
+    # That order is the markup's: the chat menu's trigger (UI-97), then the
+    # Focus button — the jail warning between them is text, not a control — so
+    # the keyboard starts on the trigger to arrive at Focus with one press.
+    conn = press(conn, "#chat-menu-button", "Tab")
     reached = state(conn, "#view-toggle")
 
     assert js_get(reached, "focused"),

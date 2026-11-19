@@ -4,7 +4,7 @@ Status: Implemented
 
 The user picks which provider and model Elia talks to from a picker on the
 chat's settings page (CSET-5, `/c/<id>/settings`); the chat itself shows the
-model in use in the link to that page (CSET-8). Anthropic models come from the
+model in use in its chat menu (CSET-8, UI-97). Anthropic models come from the
 Anthropic integration; OpenRouter
 models are fetched from OpenRouter's catalog, so new models show up without a
 code change.
@@ -65,7 +65,7 @@ code change.
   selected model's name in a button
   (`#model-picker-button`), with a colour-coded badge naming its provider
   (`#selected-provider`). Clicking it opens a popover (`#model-picker`). The
-  chat page shows the same name in its link to that page (CSET-8).
+  chat page shows the same name in its chat menu (CSET-8, UI-97).
 - **MODEL-10** The popover has a search field (`#model-search`) that filters
   models by name or id, case-insensitively, and lists models grouped by
   provider. Each group has a sticky header (`#group-<key>`) with the

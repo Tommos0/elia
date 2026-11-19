@@ -123,6 +123,8 @@ defmodule EliaWeb.ChatLive do
         task: snapshot.task,
         parent_title: parent_title(snapshot.task),
         chats_open: false,
+        # UI-97: the composer toolbar's chat menu, shut until it is asked for.
+        menu_open: false,
         now: DateTime.utc_now(),
         # MSGAT-6: the transcript items that carry a stamp, by id, so the tick
         # can send one again when its relative text has moved on — a streamed
@@ -365,33 +367,95 @@ defmodule EliaWeb.ChatLive do
 
           <div class="border-t border-base-300 bg-base-100">
             <div class="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 pt-3 sm:px-6">
-              <%!-- CSET-8: the chat's own settings (model, auto-approval, jail,
-              limits, context) live on their own page; this link carries the
-              model in use, so what is answering is still visible here. --%>
-              <.link
-                navigate={~p"/c/#{@session_id}/settings"}
-                id="chat-settings-link"
-                title="This chat's model, auto-approval, jail, limits and context"
-                class="group flex max-w-full items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
+              <%!-- UI-97: this chat's own controls behind one trigger — the model
+              in use, its settings page (model, auto-approval, jail, limits,
+              context), its terminal and its done control — in a panel that
+              opens upward, since this bar sits at the bottom of the screen. --%>
+              <div
+                class="relative"
+                phx-click-away="close_menu"
+                phx-window-keydown="close_menu"
+                phx-key="Escape"
               >
-                <.icon name="hero-cog-6-tooth" class="size-3.5 shrink-0 opacity-70" />
-                <.provider_badge provider={@selection.provider} size="xs" />
-                <span id="chat-settings-model" class="truncate font-medium">
-                  {@selection.name}
-                </span>
-              </.link>
-              <%!-- TERM-19: this chat's terminal, where a shell or a terminal app
-              runs, next to the chat's own settings. --%>
-              <.link
-                navigate={~p"/c/#{@session_id}/terminal"}
-                id="chat-terminal-link"
-                title="Run a terminal app in this chat's workspace"
-                class="group flex items-center gap-1.5 rounded-lg border border-base-300 px-2.5 py-1 text-xs text-base-content/70 transition hover:border-base-content/20 hover:text-base-content"
-              >
-                <.icon name="hero-command-line" class="size-3.5 shrink-0 opacity-70" />
-                <span>Terminal</span>
-              </.link>
-              <%!-- CSET-9, ISOL-17: the jail belongs where commands run. --%>
+                <button
+                  type="button"
+                  id="chat-menu-button"
+                  phx-click="toggle_menu"
+                  aria-haspopup="true"
+                  aria-expanded={to_string(@menu_open)}
+                  title="This chat: its model, settings, terminal and done"
+                  class={[
+                    "grid size-7 shrink-0 place-items-center rounded-lg border transition",
+                    @menu_open && "border-primary/50 bg-primary/5 text-primary",
+                    !@menu_open &&
+                      "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+                  ]}
+                >
+                  <.icon name="hero-ellipsis-horizontal" class="size-4" />
+                </button>
+
+                <div
+                  :if={@menu_open}
+                  id="chat-menu"
+                  class="absolute bottom-full left-0 z-30 mb-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
+                >
+                  <%!-- CSET-8: the model in use, so what is answering is readable
+                  while the menu is open — as text, not as a control. --%>
+                  <div class="flex max-w-full items-center gap-1.5 border-b border-base-300 px-3 py-2 text-xs text-base-content/70">
+                    <.provider_badge provider={@selection.provider} size="xs" />
+                    <span id="chat-settings-model" class="truncate font-medium">
+                      {@selection.name}
+                    </span>
+                  </div>
+                  <div class="flex flex-col gap-0.5 p-1">
+                    <%!-- CSET-8: the chat's own settings live on their own page;
+                    this is the way there. --%>
+                    <.link
+                      navigate={~p"/c/#{@session_id}/settings"}
+                      id="chat-settings-link"
+                      title="This chat's model, auto-approval, jail, limits and context"
+                      class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+                    >
+                      <.icon name="hero-cog-6-tooth" class="size-3.5 shrink-0 opacity-70" />
+                      <span class="font-medium">Chat settings</span>
+                    </.link>
+                    <%!-- TERM-19: this chat's terminal, where a shell or a
+                    terminal app runs. --%>
+                    <.link
+                      navigate={~p"/c/#{@session_id}/terminal"}
+                      id="chat-terminal-link"
+                      title="Run a terminal app in this chat's workspace"
+                      class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+                    >
+                      <.icon name="hero-command-line" class="size-3.5 shrink-0 opacity-70" />
+                      <span class="font-medium">Terminal</span>
+                    </.link>
+                    <%!-- DONE-4, UI-79: mark this chat done, or reopen it. On a
+                    task chat the same control is what ends the task (DONE-3). --%>
+                    <button
+                      type="button"
+                      id="done-toggle"
+                      phx-click="toggle_done"
+                      aria-pressed={to_string(@done)}
+                      title={
+                        if @done,
+                          do: "Reopen this chat: a message continues it as before",
+                          else: "Mark this chat done: its work has landed and it needs nothing more"
+                      }
+                      class={[
+                        "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-base-200",
+                        @done && "text-success",
+                        !@done && "text-base-content/80 hover:text-base-content"
+                      ]}
+                    >
+                      <.icon name="hero-check-circle" class="size-3.5 shrink-0 opacity-70" />
+                      <span class="font-medium">{if @done, do: "Reopen", else: "Mark done"}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <%!-- CSET-9, ISOL-17: the jail belongs where commands run, and in
+              sight — a warning inside a shut menu is not a warning. --%>
               <span
                 :if={!@jail_available}
                 id="jail-unavailable"
@@ -402,7 +466,8 @@ defmodule EliaWeb.ChatLive do
               <span :if={@jail_available and !@jail} id="jail-warning" class="text-xs text-warning">
                 Not jailed: commands can read the settings database and your credentials.
               </span>
-              <%!-- UI-60: switch the transcript between full and compact. --%>
+              <%!-- UI-60, CSET-10: switch the transcript between full and
+              compact; it acts on what is being read, so it stays in the bar. --%>
               <button
                 type="button"
                 id="view-toggle"
@@ -423,28 +488,6 @@ defmodule EliaWeb.ChatLive do
               >
                 <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
-              </button>
-              <%!-- DONE-4, UI-79: mark this chat done, or reopen it. On a task
-              chat the same control is what ends the task (DONE-3). --%>
-              <button
-                type="button"
-                id="done-toggle"
-                phx-click="toggle_done"
-                aria-pressed={to_string(@done)}
-                title={
-                  if @done,
-                    do: "Reopen this chat: a message continues it as before",
-                    else: "Mark this chat done: its work has landed and it needs nothing more"
-                }
-                class={[
-                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
-                  @done && "border-success/50 bg-success/5 text-success",
-                  !@done &&
-                    "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
-                ]}
-              >
-                <.icon name="hero-check-circle" class="size-3.5 shrink-0 opacity-70" />
-                <span class="font-medium">{if @done, do: "Reopen", else: "Mark done"}</span>
               </button>
             </div>
             <%!-- UPLOAD-1: the attach control, a label around the picker so one
@@ -1980,6 +2023,17 @@ defmodule EliaWeb.ChatLive do
 
   def handle_event("toggle_context", _params, socket) do
     {:noreply, assign(socket, show_context: !socket.assigns.show_context)}
+  end
+
+  # UI-97: the composer toolbar's chat menu. A second press, a click outside it
+  # and Escape all shut it again; a page it leads to shuts it by leaving, and
+  # the done control (UI-79) leaves it open, since the user just read it.
+  def handle_event("toggle_menu", _params, socket) do
+    {:noreply, assign(socket, menu_open: !socket.assigns.menu_open)}
+  end
+
+  def handle_event("close_menu", _params, socket) do
+    {:noreply, assign(socket, menu_open: false)}
   end
 
   # DONE-4, DONE-5, UI-79: mark this chat done, or reopen it. Neither needs a

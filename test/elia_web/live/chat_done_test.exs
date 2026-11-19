@@ -24,12 +24,17 @@ defmodule EliaWeb.ChatDoneTest do
 
   defp saved(id, opts \\ []), do: Store.save(id, [Message.user(@text)], opts)
 
-  # DONE-4, DONE-5, DONE-2, UI-79, UI-80: the toolbar's control marks the chat
-  # done and the sidebar's icon for it follows, without a reload.
+  # DONE-4, UI-79, UI-97: the done control is one entry of the composer
+  # toolbar's chat menu, so the menu is opened before it is used.
+  defp open_menu(view), do: view |> element("#chat-menu-button") |> render_click()
+
+  # DONE-4, DONE-5, DONE-2, UI-79, UI-80: the menu's control marks the chat done
+  # and the sidebar's icon for it follows, without a reload.
   test "marking the chat done from the composer toolbar", %{conn: conn, id: id} do
     :ok = saved(id)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    open_menu(view)
 
     assert has_element?(view, "#done-toggle[aria-pressed=false]", "Mark done")
     assert has_element?(view, "#chat-status-#{id}[data-status='idle']")
@@ -54,6 +59,7 @@ defmodule EliaWeb.ChatDoneTest do
     :ok = saved(id, done: true)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    open_menu(view)
 
     assert has_element?(view, "#chat-status-#{id}[data-status='done']")
     assert has_element?(view, "#done-toggle[aria-pressed=true]", "Reopen")
@@ -66,6 +72,7 @@ defmodule EliaWeb.ChatDoneTest do
     :ok = saved(id)
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    open_menu(view)
     assert has_element?(view, "#done-toggle[aria-pressed=false]")
 
     assert {:ok, true} = Agent.set_done(id, true)
@@ -81,6 +88,7 @@ defmodule EliaWeb.ChatDoneTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("Carrying on.")]))
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    open_menu(view)
     assert has_element?(view, "#chat-status-#{id}[data-status='done']")
 
     view |> form("#chat-form", chat: %{text: "one more thing"}) |> render_submit()
@@ -100,6 +108,7 @@ defmodule EliaWeb.ChatDoneTest do
     :ok = saved(id, task: task, title: "Add the file")
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    open_menu(view)
 
     # UI-46, UI-48, DONE-2: a task chat's status is its own chat's — `idle` until
     # it is marked done — in the row and in the header alike.

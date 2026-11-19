@@ -152,7 +152,8 @@ setting the next one will use.
 
 - **TERM-19** `/c/:id/terminal` is the chat's terminal page: in the browser
   pipeline and the default `live_session`, like the app's other pages, shown
-  with the chat's title, and reachable from the chat.
+  with the chat's title, and reachable from the chat — the composer's chat
+  menu holds its link (`#chat-terminal-link`, UI-97).
 - **TERM-20** With no running session the page shows what would run — the
   default command (TERM-5) in an editable field, the workspace it runs in, and
   whether the jail is on (TERM-9) — with a Start button.

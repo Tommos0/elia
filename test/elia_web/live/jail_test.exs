@@ -39,16 +39,21 @@ defmodule EliaWeb.JailTest do
     assert has_element?(view, "#settings-auto-approve #auto-approve-button")
   end
 
-  # CSET-8: the composer keeps one link to that page, carrying the model in use,
-  # and no longer the picker, the auto-approve button or the switch.
-  test "the composer links to the settings page instead of holding the controls", %{
+  # CSET-8, UI-97: the composer's chat menu is the way to that page and shows
+  # the model in use, and the picker, the auto-approve button and the switch are
+  # not in the composer at all.
+  test "the composer's menu links to the settings page, carrying the model", %{
     conn: conn,
     id: id
   } do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
-    assert has_element?(view, "#chat-settings-link[href='/c/#{id}/settings']")
-    assert has_element?(view, "#chat-settings-model")
+    refute has_element?(view, "#chat-settings-link")
+
+    view |> element("#chat-menu-button") |> render_click()
+
+    assert has_element?(view, "#chat-menu #chat-settings-link[href='/c/#{id}/settings']")
+    assert has_element?(view, "#chat-menu #chat-settings-model")
     refute has_element?(view, "#model-picker-button")
     refute has_element?(view, "#auto-approve-button")
     refute has_element?(view, "#jail-toggle")
@@ -118,8 +123,8 @@ defmodule EliaWeb.JailTest do
     assert has_element?(view, "#jail-toggle[aria-checked='false']")
   end
 
-  # CSET-9, UI-68, ISOL-17: the chat page still says where commands run, next to
-  # its settings link, since that is where they run.
+  # CSET-9, UI-68, ISOL-17, UI-97: the chat page still says where commands run,
+  # beside the chat menu's trigger, since that is where they run.
   test "the chat page says when its commands run unjailed", %{conn: conn, id: id} do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
     refute has_element?(view, "#jail-warning")

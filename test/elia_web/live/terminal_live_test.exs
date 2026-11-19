@@ -19,11 +19,16 @@ defmodule EliaWeb.TerminalLiveTest do
     %{id: id}
   end
 
-  # TERM-19: the chat page is how the terminal is reached.
+  # TERM-19, UI-97: the chat page is how the terminal is reached — from the
+  # composer's chat menu, which holds its link.
   test "the chat page links to its terminal", %{conn: conn, id: id} do
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
-    assert has_element?(view, "#chat-terminal-link[href='/c/#{id}/terminal']")
+    refute has_element?(view, "#chat-terminal-link")
+
+    view |> element("#chat-menu-button") |> render_click()
+
+    assert has_element?(view, "#chat-menu #chat-terminal-link[href='/c/#{id}/terminal']")
   end
 
   # TERM-29: where tmux is missing the page says what is missing rather than

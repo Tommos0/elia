@@ -409,7 +409,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `{:settings, settings}` events (SESS-41) so every view of the chat stays in sync.
   Turning it off shows that commands can then read the settings database and
   the user's credentials (ISOL-16, ISOL-17), and while it is off the chat page
-  says so next to its settings link (CSET-9).
+  says so beside the chat menu's trigger (CSET-9).
 - **UI-68** When the host has no jail (ISOL-12, ISOL-20) the switch is disabled
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
@@ -424,8 +424,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   A command that compiles its worktree's dependencies is a tool call, and the
   transcript already shows it as running (FEED).
 
-- **UI-79** The composer toolbar (UI-60's "Focus" toggle, the settings link) has
-  a done control (`#done-toggle`) for every chat: a button whose
+- **UI-79** The composer toolbar has a done control (`#done-toggle`) for every
+  chat, one entry of its chat menu (UI-97): a button whose
   `aria-pressed` is `true` while the chat is done (DONE-1) and whose label says
   what clicking it does — "Mark done" while the chat isn't done, "Reopen" while
   it is — with a matching `title`. Clicking it marks the chat done or reopens it
@@ -436,6 +436,23 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (DONE-4): its task header (UI-48) keeps saying the task's own status, and the
   control is the chat's own bookkeeping (DONE-3), so it reads the same and
   behaves the same there.
+
+- **UI-97** The composer toolbar carries one chat menu: an icon-only trigger
+  (`#chat-menu-button`, with `aria-haspopup`, `aria-expanded` and a `title`
+  saying what it opens) that opens a panel (`#chat-menu`) **above** itself — a
+  drop-up, since that toolbar sits at the bottom of the screen, and no wider
+  than the phone's screen (UI-78) — and shuts it again on a second press, on a
+  click outside it, on Escape, and once a page it leads to is open. The panel
+  holds, in this order, the model in use as text (`#chat-settings-model`, its
+  provider badge and name, and no control of its own), the "Chat settings"
+  link (`#chat-settings-link` to `/c/<id>/settings`, CSET-8), the terminal
+  link (`#chat-terminal-link` to `/c/<id>/terminal`, TERM-19) and the done
+  control (`#done-toggle`, UI-79). The Focus view toggle (UI-60) and the jail
+  warning (CSET-9, `#jail-warning`, `#jail-unavailable`) stay outside it, in
+  the toolbar: one acts on what the user is reading, the other is a warning,
+  and neither is a setting — a warning inside a shut menu is not one.
+  *Changed:* the toolbar used to show the settings link, the terminal link and
+  the done control side by side, in every chat and at every width.
 
 ### Fitting the screen
 
@@ -762,6 +779,12 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   UI-44, UI-61, UI-62, UI-75, UI-76, UI-83).
 - `test/elia_web/live/chat_done_test.exs` (the toolbar control, the sidebar icon,
   UI-46, UI-79, UI-80).
+- `test/elia_web/live/chat_menu_test.exs` (the composer's chat menu: its
+  trigger, what it holds, and what stays outside it — UI-97), and
+  `test/elia_web/browser/chat_menu_test.exs` (the same menu's own bindings in a
+  real browser: the drop-up, a second press on the trigger, a click outside it
+  and Escape — UI-97; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` —
+  BROWSER-5).
 - `test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
   button, the pages that stay loaded, and a list that had no more to begin with —
   UI-2, UI-4, UI-65, UI-84, UI-85; the list holding one project's chats, PROJ-31).
