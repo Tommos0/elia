@@ -109,6 +109,20 @@ Playwright.
   (CITE-8) — a test must put the page where it wants it *before* the click
   (`evaluate/2` with a `scrollIntoView` or a `scrollTop`), or the click's own
   scroll races the thing it is checking.
+- `PhoenixTest.Playwright` has no `hover` and no touchscreen, so
+  `test/elia_web/browser/chat_browser_test.exs` drives both through the lower
+  binding: `PlaywrightEx.Frame.hover(frame_id, selector: …)` for the pointer
+  resting on an element (`unwrap/2` hands you the ids), and
+  `PlaywrightEx.Page.mouse_move(page_id, x: …, y: …)` for a move to a point,
+  which is what reaches a layer that takes no pointer of its own — an element
+  with `pointer-events: none` is never a Playwright click or hover target. A tap
+  is `evaluate/2` dispatching the events a finger sends: `pointerdown` and
+  `pointerup` with `pointerType: "touch"`, then the `click` the browser sends
+  after them.
+- A pointer sent to the point it already rests on reports nothing: no
+  `pointerover`, so a hook that opens on one does not open again. A test that
+  hovers the same element twice moves the pointer somewhere else in between
+  (`chat_browser_test.exs`'s `hover_citation/1`).
 - A test that changes the driver's own config must **merge** it:
   `Application.put_env(:phoenix_test, :playwright, …)` replaces the whole
   keyword list, taking the test helper's `assets_dir` (BROWSER-2) and
