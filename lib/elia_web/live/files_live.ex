@@ -74,6 +74,7 @@ defmodule EliaWeb.FilesLive do
        selected: file,
        viewer: viewer,
        raw: raw,
+       line: line(params, viewer),
        error: error,
        root_error: root_error,
        crumbs: crumbs(dir)
@@ -90,6 +91,26 @@ defmodule EliaWeb.FilesLive do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # EXPL-27: the line a link named, when the text in view has it. It is
+  # ignored otherwise — a `line` that isn't a positive whole number, one past
+  # the text shown (a truncated file's text is only what is shown), and one
+  # that comes with no text at all (a preview, a binary file, a directory) —
+  # so the file opens as it otherwise would. EXPL-28: it is never carried
+  # along, since `files_path/3` builds every other URL without it.
+  defp line(%{"line" => value}, %{content: content}) when is_binary(value) do
+    count = content |> lines() |> length()
+
+    with {number, ""} <- Integer.parse(value),
+         true <- number > 0,
+         true <- number <= count do
+      number
+    else
+      _ -> nil
+    end
+  end
+
+  defp line(_params, _viewer), do: nil
 
   # EXPL-9, EXPL-19: the fallback is the browsed root's own listing; a root that
   # can't be listed leaves an empty listing and the error to report.
@@ -400,6 +421,7 @@ defmodule EliaWeb.FilesLive do
                     phx-no-format
                     phx-hook="Highlight"
                     data-language={@language}
+                    data-line={@line}
                     class="whitespace-pre pr-6 pl-3"
                   >{@viewer.content}</div>
                 </div>

@@ -48,6 +48,11 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
 - **Never** assert against raw HTML. Prefer testing for key elements over text content, which changes.
 - Test outcomes, not implementation details. Start with simple "content exists" tests, then add interactions, in small isolated files.
 - `<.form>` and other components can render different HTML than you expect, so test against the actual output.
+- `assert_patch/2` compares the URL as the page's own links build it, and the
+  `~p` sigil percent-encodes a slash in a query value: a patch to a nested path
+  is `"/files?path=files_live_fixture%2Finner"`, so build the expectation with
+  `URI.encode_query/1` (`&"…?" <> URI.encode_query(%{path: path})`) rather than
+  by hand.
 - To debug a selector, narrow the output with `LazyHTML`:
 
       html = render(view)
@@ -123,6 +128,10 @@ Playwright.
   `pointerover`, so a hook that opens on one does not open again. A test that
   hovers the same element twice moves the pointer somewhere else in between
   (`chat_browser_test.exs`'s `hover_citation/1`).
+- `evaluate/2` hands back the `conn`, never the value: a value comes to you
+  through the function `evaluate/3` (or `/4`) takes, so capture it there rather
+  than by assignment. A JavaScript object arrives with **string** keys
+  (`view["marked"]`), not atoms.
 - A test that changes the driver's own config must **merge** it:
   `Application.put_env(:phoenix_test, :playwright, …)` replaces the whole
   keyword list, taking the test helper's `assets_dir` (BROWSER-2) and

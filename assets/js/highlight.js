@@ -48,8 +48,83 @@ function highlight(el) {
   }
 }
 
+// The class of the mark a named line gets (EXPL-27).
+const markClass = "file-line-mark"
+
+// EXPL-27: mark the line the server named in `data-line` and bring it into
+// sight. Both are the browser's own — the mark is a `span` over that line's
+// characters, and the scroll is the pane's — and both come after the
+// highlighting, which has replaced the element's markup by now.
+function mark(el) {
+  // A previous mark is not part of the server's text, so it goes first: a
+  // line that is no longer named (or a file with no line at all) keeps none.
+  el.querySelectorAll(`span.${markClass}`).forEach((span) => span.replaceWith(...span.childNodes))
+
+  const line = Number.parseInt(el.dataset.line ?? "", 10)
+  if (!Number.isInteger(line) || line < 1) return
+
+  const text = el.textContent
+  let start = 0
+
+  for (let n = 1; n < line; n++) {
+    const newline = text.indexOf("\n", start)
+    if (newline === -1) return
+    start = newline + 1
+  }
+
+  const end = text.indexOf("\n", start)
+  const span = wrap(el, start, end === -1 ? text.length : end)
+  if (span) span.scrollIntoView({block: "center"})
+}
+
+// Wraps the flat text's characters from `start` to `end` in a single `span` of
+// their own: the line may begin or end inside a token highlight.js wrapped, so
+// the range is built from the text nodes it falls in, and the tokens that
+// straddle it are cloned rather than flattened, keeping their colours. The text
+// itself is unchanged, so the line numbers still line up (EXPL-13).
+function wrap(el, start, end) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let offset = 0
+  let from = null
+  let to = null
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    const length = node.data.length
+
+    if (!from && start < offset + length) from = [node, start - offset]
+    if (from && end <= offset + length) {
+      to = [node, end - offset]
+      break
+    }
+
+    offset += length
+  }
+
+  if (!from || !to) return null
+
+  const range = document.createRange()
+  range.setStart(from[0], from[1])
+  range.setEnd(to[0], to[1])
+
+  const span = document.createElement("span")
+  span.className = markClass
+  span.appendChild(range.extractContents())
+  range.insertNode(span)
+
+  return span
+}
+
 export const Highlight = {
-  mounted() { highlight(this.el) },
-  // LiveView restores the server's plain text on patches, so run again.
-  updated() { highlight(this.el) },
+  mounted() {
+    highlight(this.el)
+    mark(this.el)
+  },
+  // LiveView restores the server's plain text on patches, so run again. The
+  // mark goes after the highlighting either way: highlight.js replaces the
+  // element's markup, and a mark applied before it would go with it (EXPL-27).
+  updated() {
+    highlight(this.el)
+    mark(this.el)
+  },
 }

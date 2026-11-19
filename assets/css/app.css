@@ -361,6 +361,15 @@
   cursor: zoom-in;
 }
 
+/* The line a link named, marked in the text viewer (EXPL-27). It is a `span`
+   over that line's characters, so the colour follows the daisyUI theme, and
+   the line's own text sits on top of it. */
+.file-line-mark {
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 18%, transparent);
+  border-radius: 2px;
+}
+
 /* Syntax highlighting for the file explorer (EXPL-14). highlight.js only adds
    `hljs-*` classes; the colours come from the daisyUI theme so they follow the
    light/dark toggle. */

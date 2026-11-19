@@ -10,6 +10,12 @@ defmodule EliaWeb.FilesLiveTest do
 
   defp in_root(path), do: Path.join(Workspace.root(), path)
 
+  # The URL a link like CITE-10's opens: the file and the line it names.
+  defp files_url(path, line), do: "/files?" <> URI.encode_query(%{path: path, line: line})
+
+  # A URL naming a path and nothing else, as the page's own links build it.
+  defp path_url(path), do: "/files?" <> URI.encode_query(%{path: path})
+
   setup do
     File.rm_rf!(in_root(@dir))
     File.mkdir_p!(in_root("#{@dir}/inner"))
@@ -133,6 +139,76 @@ defmodule EliaWeb.FilesLiveTest do
     {:ok, view, _} = live(conn, ~p"/files?path=#{"#{@dir}/huge.ex"}")
     assert has_element?(view, "#file-truncated")
     refute has_element?(view, "#file-content[data-language]")
+  end
+
+  # EXPL-27
+  test "marks the line a link names", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/hello.ex", line: "2"]}")
+
+    assert has_element?(view, "#file-content[data-line='2']")
+    # The server still sends the plain text; the mark is the hook's (EXPL-13).
+    refute render(element(view, "#file-content")) =~ "<span"
+    assert has_element?(view, "#file-content", "defmodule Hello do")
+  end
+
+  # EXPL-27: a line that isn't one of the text in view is ignored, and the file
+  # opens as it otherwise would.
+  test "a line it can't use is ignored", %{conn: conn} do
+    for line <- ["0", "-1", "1.5", "abc", "", "4", "2x"] do
+      {:ok, view, _} = live(conn, files_url("#{@dir}/hello.ex", line))
+
+      refute has_element?(view, "#file-content[data-line]"), line
+      assert has_element?(view, "#file-content", "defmodule Hello do"), line
+    end
+  end
+
+  # EXPL-27: a truncated file shows only its first part, so a line past that
+  # part is past the text shown.
+  test "a line past a truncated file's text is ignored", %{conn: conn} do
+    File.write!(in_root("#{@dir}/long.txt"), String.duplicate("x\n", 200_000))
+
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/long.txt", line: "10"]}")
+    assert has_element?(view, "#file-truncated")
+    assert has_element?(view, "#file-content[data-line='10']")
+
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/long.txt", line: "150000"]}")
+    refute has_element?(view, "#file-content[data-line]")
+  end
+
+  # EXPL-27: with no text in view there is no line to mark — a preview draws the
+  # file itself, a binary file has no text, and a directory is a listing.
+  test "a line with no text in view is ignored", %{conn: conn} do
+    File.write!(in_root("#{@dir}/shot.png"), <<137, 80, 78, 71, 13, 10, 26, 10>>)
+
+    for {path, element} <- [
+          {"#{@dir}/shot.png", "img#file-preview"},
+          {"#{@dir}/blob.bin", "#file-binary"},
+          {@dir, "#file-list"}
+        ] do
+      {:ok, view, _} = live(conn, files_url(path, "2"))
+
+      assert has_element?(view, element), path
+      refute has_element?(view, "#file-content"), path
+    end
+  end
+
+  # EXPL-28
+  test "another file or directory leaves the line out of the URL", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/hello.ex", line: "2"]}")
+    assert has_element?(view, "#file-content[data-line='2']")
+
+    view |> element("[data-entry='#{@dir}/inner']") |> render_click()
+    assert_patch(view, path_url("#{@dir}/inner"))
+
+    view |> element("#parent-dir") |> render_click()
+    assert_patch(view, path_url(@dir))
+
+    view |> element("[data-entry='#{@dir}/hello.ex']") |> render_click()
+    assert_patch(view, path_url("#{@dir}/hello.ex"))
+    refute has_element?(view, "#file-content[data-line]")
+
+    view |> element("#breadcrumbs a", "workspace") |> render_click()
+    assert_patch(view, "/files")
   end
 
   # EXPL-15, EXPL-16

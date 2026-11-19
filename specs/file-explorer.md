@@ -236,6 +236,9 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
   refusal — EXPL-1, EXPL-2, EXPL-22, EXPL-24).
 - `test/elia_web/browser/files_preview_test.exs` (a picture of the workspace
   drawn by a real headless Chromium — EXPL-23, EXPL-24, EXPL-26).
+- `test/elia_web/browser/files_line_test.exs` (the mark and the scroll a real
+  headless Chromium makes of the line a URL names, after the highlighting —
+  EXPL-27).
 - `test/elia_web/file_links_test.exs` (the paths a link may name, EXPL-1,
   EXPL-2, EXPL-6, EXPL-9).
 - `test/elia/preview_test.exs` (a path through a symlink refused, EXPL-2).
