@@ -72,4 +72,56 @@ defmodule EliaWeb.ChatTitleTest do
     assert has_element?(view, "#auto-approve-shell")
     refute has_element?(view, "#auto-approve-set_title")
   end
+
+  # UI-96, TITLE-1: the chat page carries the chat's title in a row of its own,
+  # above the context indicator (CTX-1) and below the app header.
+  test "the chat page shows the title above the context indicator", %{conn: conn, id: id} do
+    :ok = Store.save(id, [Message.user(@first)], title: "Chat titles")
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#chat-title", "Chat titles")
+    assert has_element?(view, "#chat-title[title='Chat titles']")
+
+    html = render(view)
+    {title_at, _} = :binary.match(html, ~s(id="chat-title"))
+    {indicator_at, _} = :binary.match(html, ~s(id="context-indicator"))
+    assert title_at < indicator_at
+  end
+
+  # UI-96: a chat with no title of its own shows the STORE-7 derivation, and the
+  # row follows the chat being named mid-turn (TITLE-4).
+  test "the title row shows the derived title and follows a new one", %{conn: conn, id: id} do
+    :ok = Store.save(id, [Message.user(@first)])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#chat-title", String.slice(@first, 0, 60))
+
+    assert {:ok, "Chat titles"} = Agent.set_title(id, "Chat titles")
+    assert has_element?(view, "#chat-title", "Chat titles")
+  end
+
+  # UI-96, TITLE-3: in a sub-task chat the title row sits below the task header
+  # (UI-48), and it is the chat's own title the spawn gave it.
+  test "a sub-task chat's title row is below its task header", %{conn: conn, id: id} do
+    parent = Agent.new_id()
+    on_exit(fn -> Store.delete(parent) end)
+    :ok = Store.save(parent, [Message.user("do the thing")])
+
+    :ok =
+      Store.save(id, [Message.user("on it")],
+        task: %{parent_id: parent, started_at: DateTime.utc_now()},
+        title: "A sub-task"
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#chat-title", "A sub-task")
+
+    html = render(view)
+    {task_at, _} = :binary.match(html, ~s(id="task-header"))
+    {title_at, _} = :binary.match(html, ~s(id="chat-title"))
+    assert task_at < title_at
+  end
 end

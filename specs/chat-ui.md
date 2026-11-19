@@ -276,6 +276,14 @@ stream in, approves or denies tool calls, and switches between saved chats.
   transcript holds — pressing it on a chat with nothing in it scrolls nothing —
   and without its hook (a page whose assets were not rebuilt, HOT-8) it does
   nothing rather than leaving the page broken.
+- **UI-96** The chat page carries the chat's title in a row of its own
+  (`#chat-title`) above the context indicator (CTX-1) and below the app header
+  — in a sub-task chat, below its task header (UI-48). It is the title the page
+  title shows (TITLE-1, UI-3): the chat's own stored title when it has one, else
+  the STORE-7 derivation from its first user message. It is one line, truncated
+  rather than wrapped, with the whole title in its `title` attribute, and it
+  follows the chat being named mid-turn (`{:title, title}`, TITLE-4, UI-74)
+  without a reload.
 - **UI-95** The transcript stops following its end (UI-14) the moment the reader
   moves it up themselves — a wheel up, a finger on it, an upward key, or a press
   on its own scrollbar — rather than when the browser reports the position
@@ -683,6 +691,10 @@ page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 CSET; the model picker, the auto-approve switches and the jail switch,
 UI-38, UI-39, UI-67, UI-68).
 
+The chat page's own title row (`#chat-title`, UI-96) is `EliaWeb.ChatLive`'s
+too: it draws the title the page title carries (TITLE-1), so the two cannot
+disagree.
+
 The chat list lives in one place: `EliaWeb.ChatList` draws it (the "New chat"
 button, the rows with their status indicators and delete
 buttons, the empty state and "Load more chats"), and its hook in the session's
@@ -730,7 +742,7 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - No test: UI-12 — that a session's notice and its error render inline as an info
   and an error row is asserted nowhere; the rows of the other kinds are (UI-9,
   UI-73, UI-81, UI-82).
-- `test/elia_web/live/chat_title_test.exs` (UI-3, UI-6, UI-33, UI-74, and the
+- `test/elia_web/live/chat_title_test.exs` (UI-3, UI-6, UI-33, UI-74, UI-96, and the
   stored title and `{:title, title}`), with
   `test/elia_web/live/page_title_test.exs` for the page title a chat gives the
   browser (UI-3).

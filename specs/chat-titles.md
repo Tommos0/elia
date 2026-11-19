@@ -24,12 +24,12 @@ expensive because of this feature.
 
 - **TITLE-1** A chat may have a title of its own, saved with it (STORE-32). It
   is the chat's title wherever a title is shown or listed — the sidebar row
-  (UI-4, UI-74), the page title (UI-3), the chat settings header — in place of
-  the STORE-7 derivation from the first user message. A chat without one lists
-  and displays exactly as before, so every chat saved before this feature, and
-  every chat the agent never names, is unchanged. The chat's `description`
-  (STORE-10) is not affected: hovering a row (UI-33) still shows the first user
-  message.
+  (UI-4, UI-74), the page title (UI-3), the chat page's own title row (UI-96),
+  the chat settings header — in place of the STORE-7 derivation from the first
+  user message. A chat without one lists and displays exactly as before, so
+  every chat saved before this feature, and every chat the agent never names,
+  is unchanged. The chat's `description` (STORE-10) is not affected: hovering
+  a row (UI-33) still shows the first user message.
 - **TITLE-2** A title is trimmed, its runs of whitespace collapsed to single
   spaces, and cut to 60 characters (the cut STORE-7 uses), so a long,
   multi-line or padded one can't break a sidebar row or a page title. A title
