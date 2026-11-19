@@ -49,7 +49,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(ask_user await_task cd delete_file edit_file list_chats list_files mark_done read_chat read_file reload_skills search_chats search_files set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger write_file)
+             ~w(ask_user await_task cd list_chats mark_done read_chat reload_skills search_chats set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger)
   end
 
   # LOOP-9, LOOP-11, SHELL-1, SESS-3: the call is approved before it runs
@@ -1256,18 +1256,14 @@ defmodule Elia.AgentTest do
       ~s([{"name": "greet", "description": "Say hi", "command": "echo hi $ELIA_ARG_NAME",
       "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}])
 
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{
-          "path" => "skills/greeter/SKILL.md",
-          "content" => skill_md
-        }),
-        FakeLLM.tool_call("w2", "write_file", %{
-          "path" => "skills/greeter/tools.json",
-          "content" => tools_json
-        })
-      ])
-    )
+    # SHELL-15: one command writes both files — the calls of a step run at the
+    # same time (LOOP-10), so two of them could not depend on each other.
+    command =
+      "mkdir -p skills/greeter && cat > skills/greeter/SKILL.md <<'EOF'\n" <>
+        skill_md <>
+        "\nEOF\ncat > skills/greeter/tools.json <<'EOF'\n" <> tools_json <> "\nEOF"
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("w1", "shell", %{"command" => command})]))
 
     FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("r1", "reload_skills", %{})]))
 
@@ -1277,8 +1273,13 @@ defmodule Elia.AgentTest do
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
 
+    # APPR-8: the extension's own shell commands are approved for this chat; the
+    # new script tool still asks.
+    :ok = Agent.set_auto_approve(id, "shell", true)
+
     :ok = Agent.send_message(id, "make a greeter skill")
-    # Extension writes and reload need no approval; the new script tool does.
+    # Writing the skill and reloading it need no approval; the new script tool
+    # does.
     await_status(id, :awaiting_approval)
     :ok = Agent.approve(id, "g1")
     await_status(id, :idle)
@@ -1898,10 +1899,11 @@ defmodule Elia.AgentTest do
     end
   end
 
-  # PROJ-12, FILE-1, FILE-4, LOOP-10, SESS-23
-  test "a chat's project folder is its workspace for the file tools" do
+  # PROJ-12, WD-1, WD-9, LOOP-10, SESS-23
+  test "a chat's project folder is its workspace" do
     dir = tmp_dir("files")
-    # APPR-14: an empty set, so the writes below still ask (this test approves one).
+    # APPR-14: an empty set, so the command below still asks (this test approves
+    # it), and the `cd` needs no approval at all (WD-6).
     id =
       start_project_session(other_project(dir),
         loop_opts: [llm: %{provider: FakeLLM}],
@@ -1910,8 +1912,8 @@ defmodule Elia.AgentTest do
 
     FakeLLM.push(
       FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => "notes.txt", "content" => "hello"}),
-        FakeLLM.tool_call("w2", "write_file", %{"path" => "../escape.txt", "content" => "no"})
+        FakeLLM.tool_call("c1", "shell", %{"command" => "pwd && echo hello > notes.txt"}),
+        FakeLLM.tool_call("c2", "cd", %{"path" => "."})
       ])
     )
 
@@ -1919,21 +1921,27 @@ defmodule Elia.AgentTest do
 
     :ok = Agent.send_message(id, "write it")
     await_status(id, :awaiting_approval)
-    :ok = Agent.approve(id, "w1")
+    :ok = Agent.approve(id, "c1")
     await_status(id, :idle)
 
-    # The relative path resolved against the project folder.
-    assert File.read!(Path.join(dir, "notes.txt")) == "hello"
-    refute File.exists?(Path.join(Path.dirname(dir), "escape.txt"))
+    # The command ran in the project folder, and its relative path resolved
+    # there.
+    assert File.read!(Path.join(dir, "notes.txt")) == "hello\n"
+    refute File.exists?(Path.join(Path.dirname(dir), "notes.txt"))
 
-    # A path outside the project folder is refused (WS-1, PROJ-12).
     [_, second] = FakeLLM.requests()
 
-    assert %Message{role: :tool, content: [%{is_error: false}, escape]} =
+    # PROJ-12, WD-9: `pwd` is the project's folder.
+    assert %Message{role: :tool, content: [%{is_error: false, content: out}, cd]} =
              List.last(second.messages)
 
-    assert %{is_error: true, content: content} = escape
-    assert content =~ "outside the workspace"
+    assert out =~ Elia.Workspace.real_location(dir)
+    assert out =~ "[exit: 0]"
+
+    # PROJ-12, WD-1: `cd` judges a path against that folder too, so `.` is
+    # inside it and needs no approval (WD-6).
+    assert %{is_error: false, content: "Working directory: ." <> _} = cd
+    assert File.read!(Path.join(dir, "notes.txt")) == "hello\n"
   end
 
   # SKILL-17, SKILL-18: the project instructions a request carries are the
@@ -2061,8 +2069,8 @@ defmodule Elia.AgentTest do
             %{
               type: :tool_call,
               id: "c#{n}",
-              name: "read_file",
-              input: %{"path" => "lib/file#{n}.ex"}
+              name: "shell",
+              input: %{"command" => "cat lib/file#{n}.ex"}
             }
           ]
         },
@@ -2585,14 +2593,14 @@ defmodule Elia.AgentTest do
         role: :assistant,
         content: [
           %{type: :reasoning, text: reasoning},
-          %{type: :tool_call, id: "c1", name: "read_file", input: %{"path" => "lib/a.ex"}}
+          %{type: :tool_call, id: "c1", name: "shell", input: %{"command" => "cat lib/a.ex"}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("c1", output)]},
       %Message{
         role: :assistant,
         content: [
-          %{type: :tool_call, id: "c2", name: "read_file", input: %{"path" => "lib/b.ex"}}
+          %{type: :tool_call, id: "c2", name: "shell", input: %{"command" => "cat lib/b.ex"}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("c2", "the newest output")]}
@@ -3393,12 +3401,12 @@ defmodule Elia.AgentTest do
                jail: false,
                effort: "low",
                limits: %{max_steps: 4},
-               auto_approve: %{"read_file" => true}
+               auto_approve: %{"shell" => true}
              })
 
     assert Elia.Store.load_jail(id) == false
     assert Elia.Store.load_effort(id) == "low"
     assert Elia.Store.load_limits(id).max_steps == 4
-    assert Elia.Store.load_auto_approve(id) == ["read_file"]
+    assert Elia.Store.load_auto_approve(id) == ["shell"]
   end
 end

@@ -45,8 +45,8 @@ defmodule Elia.Skills.ChatsTest do
     end
 
     # What it reads: Elia's own saved chats, by the id in a chat's URL, through
-    # the harness rather than a command or the file tools, so a jailed chat has
-    # it too, and it is read-only.
+    # the harness rather than a command, so a jailed chat has it too, and it is
+    # read-only.
     assert instructions =~ "/c/<id>"
     assert instructions =~ "jail"
     assert instructions =~ "saved chats through the harness"
@@ -211,8 +211,8 @@ defmodule Elia.Skills.ChatsTest do
               %{
                 type: :tool_call,
                 id: "c1",
-                name: "read_file",
-                input: %{"path" => "lib/elia/store.ex"}
+                name: "shell",
+                input: %{"command" => "cat lib/elia/store.ex"}
               }
             ]
           },
@@ -231,7 +231,7 @@ defmodule Elia.Skills.ChatsTest do
     assert text =~ "[messages 1-6 of 6]"
     assert text =~ "[1] user: What is in store.ex?"
     assert text =~ "[2] assistant: Looking."
-    assert text =~ ~s(  → read_file {"path":"lib/elia/store.ex"})
+    assert text =~ ~s(  → shell {"command":"cat lib/elia/store.ex"})
     assert text =~ "[3] tool: (no text)"
     assert text =~ "  ← [exit: 0] defmodule"
     assert text =~ "  ← [error] no such file"

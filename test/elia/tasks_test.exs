@@ -241,9 +241,9 @@ defmodule Elia.TasksTest do
   # done.
   defp writing_child(request) do
     cond do
-      results(request, "write_file") == [] ->
+      results(request, "shell") == [] ->
         reply([
-          FakeLLM.tool_call("w1", "write_file", %{"path" => "child_note.txt", "content" => "x\n"})
+          FakeLLM.tool_call("w1", "shell", %{"command" => "printf 'x\\n' > child_note.txt"})
         ])
 
       results(request, "mark_done") == [] ->
@@ -651,8 +651,8 @@ defmodule Elia.TasksTest do
     dir = external_repo()
 
     # SUBTASK-6: the child copies its parent's set, so this one writes without
-    # asking; the spawn itself still asks (APPR-14).
-    {parent, _project} = external_parent(dir, auto_approve: ["write_file"])
+    # asking (SHELL-1); the spawn itself still asks (APPR-14).
+    {parent, _project} = external_parent(dir, auto_approve: ["shell"])
 
     push_turns(router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &writing_child/1))
 

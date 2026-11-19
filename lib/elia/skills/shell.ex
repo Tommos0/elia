@@ -23,31 +23,36 @@ defmodule Elia.Skills.Shell do
   @impl true
   def instructions do
     """
-    Never use the shell to read, create or edit files (`cat`, `sed`, `echo >`, \
-    scripts that rewrite files), or to find text in the tree (`grep`): use the \
-    file tools, which apply the workspace policy — `search_files` returns the \
-    matched regions with their context, where a `grep -n` needs a `read_file` \
-    after it. Use the `shell` tool to run programs and inspect the machine. The \
-    user approves each command before it runs, so prefer one clear command over \
-    many small ones. Commands run non-interactively (stdin is empty) with \
-    `bash -c` where bash is installed, and POSIX `sh -c` otherwise, in the \
-    chat's working directory — the chat's project folder (PROJ-12) until the \
-    `cd` tool moves it (WD-1, WD-9), which changes what a relative path in a \
-    command names. Prefer POSIX constructs so a command works under either: \
-    bash-only syntax such as `${PIPESTATUS[0]}`, `[[ ... ]]`, arrays and \
-    `set -o pipefail` fails where the shell is `sh`. After a pipeline, `$?` is \
-    the status of its last command only, so a failing `mix test | tail` can look \
-    like a success.
+    The shell is how you work with files: there are no file tools, so read a \
+    file with a command (`cat` a short file, `sed -n '<first>,<last>p'` a \
+    range), find text in the tree with the shell's own search (`grep -n`, `rg`) \
+    rather than reading files one by one, and create, edit and delete a file \
+    with a command of its own — a heredoc (`<<'EOF'`, quoted so nothing is \
+    expanded), `sed -i` or `patch`. What a command prints is truncated like any \
+    other command's output when it is long, and a change to a file is reviewed \
+    as the command that makes it: the user approves the command as it stands, \
+    so make it one readable command that says what it changes, and edit the \
+    lines you have read rather than rewriting a file whole. Use the `shell` \
+    tool to run programs and inspect the machine as well. The user approves \
+    each command before it runs, so prefer one clear command over many small \
+    ones. Commands run non-interactively (stdin is empty) with `bash -c` where \
+    bash is installed, and POSIX `sh -c` otherwise, in the chat's working \
+    directory — the chat's project folder (PROJ-12) until the `cd` tool moves \
+    it (WD-1, WD-9), which changes what a relative path in a command names. \
+    Prefer POSIX constructs so a command works under either: bash-only syntax \
+    such as `${PIPESTATUS[0]}`, `[[ ... ]]`, arrays and `set -o pipefail` fails \
+    where the shell is `sh`. After a pipeline, `$?` is the status of its last \
+    command only, so a failing `mix test | tail` can look like a success.
 
     A command runs in a jail by default: a fresh mount namespace that holds the \
     workspace and the toolchain and nothing else. The settings database, the \
     saved conversations and the user's credentials (`~/.ssh`, \
     `~/.git-credentials`, `~/.config/gh`, `~/.netrc`) are not in it, so a \
-    command that can't find them is expected, not broken — and with the jail on \
-    the file tools can't reach them either (FILE-12), so a refusal there is the \
-    same policy, not a reason to look for another way in. In a chat whose jail \
-    the user turned off, commands run unjailed, on the whole machine, and \
-    reading outside the workspace with the file tools needs their approval.
+    command that can't find them is expected, not broken — with the jail on \
+    nothing reaches them, and that is the boundary rather than a reason to look \
+    for another way in. In a chat whose jail the user turned off, commands run \
+    unjailed, on the whole machine, and what an approved command reads or \
+    changes is the whole of it.
 
     A command also runs at a lower scheduling priority than the server, on the \
     CPU (`nice`) and on the disk (`ionice`), so a compile or a test suite \
@@ -68,11 +73,11 @@ defmodule Elia.Skills.Shell do
             "otherwise, and return its combined stdout/stderr and exit code. " <>
             "Prefer POSIX constructs: bash-only `${PIPESTATUS[0]}`, `[[ ... ]]`, " <>
             "arrays and `set -o pipefail` fail under `sh`. Long output is " <>
-            "truncated in the middle. Do not use this to read or edit files " <>
-            "(cat, sed, echo >, scripts) or to find text in the tree (grep): use " <>
-            "read_file, list_files, search_files, write_file, edit_file and " <>
-            "delete_file — search_files returns the matched regions with their " <>
-            "context, so a search needs no read_file after it. " <>
+            "truncated in the middle. " <>
+            "There are no file tools: read a file with `cat` or " <>
+            "`sed -n '<first>,<last>p'`, find text in the tree with `grep -n` or " <>
+            "`rg`, and create, edit or delete a file with a command of its own — " <>
+            "the command the user approves as it stands is what changes it. " <>
             "The command runs in a jail by default, which holds the workspace and " <>
             "the toolchain and nothing else: the settings database, the saved " <>
             "conversations and the user's credentials are not in it, so a command " <>

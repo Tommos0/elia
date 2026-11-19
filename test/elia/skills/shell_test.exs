@@ -12,23 +12,29 @@ defmodule Elia.Skills.ShellTest do
     assert output =~ "[exit: 3]"
   end
 
-  # SHELL-8, FILE-24
-  test "instructions and tool description send file work to the file tools" do
-    assert String.starts_with?(
-             Shell.instructions(),
-             "Never use the shell to read, create or edit"
-           )
-
-    assert Shell.instructions() =~ "file tools"
+  # SHELL-15: the shell is how the model works with files. The instructions and
+  # the description send file work to no other tool, and say how a file is read,
+  # how text is found and how a file is changed.
+  test "instructions and tool description send file work to the shell" do
     assert [%{description: description}] = Shell.tools()
 
-    assert description =~
-             "use read_file, list_files, search_files, write_file, edit_file and delete_file"
-
-    # FILE-24: finding text in the tree is `search_files`, not `grep`.
     for text <- [Shell.instructions(), description] do
+      # No tool left to send file work to.
+      refute text =~ "read_file"
+      refute text =~ "search_files"
+
+      # Reading a file is a command, and its output is truncated like any
+      # other command's when it is long (SHELL-5).
+      assert text =~ "cat"
+      assert text =~ "truncated"
+
+      # Finding text in the tree is the shell's own search.
       assert text =~ "grep"
-      assert text =~ "search_files"
+      assert text =~ "rg"
+
+      # Creating, editing and deleting a file is a command the user approves as
+      # it stands (SHELL-1).
+      assert text =~ "approve"
     end
   end
 

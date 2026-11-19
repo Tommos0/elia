@@ -616,7 +616,7 @@ defmodule EliaWeb.TaskUITest do
   # only the step limit ends (or pauses) the turn.
   defp push_repeating_tool_call(times) do
     fun = fn _request, _on_event ->
-      message = FakeLLM.assistant([FakeLLM.tool_call("c", "read_file", %{"path" => "mix.exs"})])
+      message = FakeLLM.assistant([FakeLLM.tool_call("c", "cd", %{"path" => "."})])
       {:ok, %{message: message, stop_reason: :tool_use, model: "fake", usage: %{}}}
     end
 

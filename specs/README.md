@@ -145,7 +145,7 @@ it.
 | [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: a chat's commands are confined to the project folder it works in, and the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [Terminal](terminal.md) | `TERM` | A chat's own terminal: a pty (tmux in control mode) with xterm.js in the browser, jailed and niced like a command, on `/c/:id/terminal` |
 | [File tools](file-tools.md) | `FILE` | Retired: every file operation is a shell command (SHELL-15), so the six file tools are gone |
-| [Working directory](working-directory.md) | `WD` | A chat's working directory: what a relative path in the file tools and the `shell` call resolves against, changed with `cd` and saved with the chat |
+| [Working directory](working-directory.md) | `WD` | A chat's working directory: what a relative path in a `shell` command resolves against, changed with `cd` and saved with the chat |
 | [Workspace policy](workspace-policy.md) | `WS` | Path classes: extension, core, protected, outside |
 | [Checkpoints](checkpoints.md) | `CKPT` | Retired: a chat does its work in a worktree of its own, so a snapshot and rollback protect nothing git doesn't |
 | [Test runs](verification.md) | `VERIFY` | Running `mix test` in the workspace: the deploy's gate calls `Elia.Harness.run_tests/3`, a chat runs the suite through the shell |

@@ -1,7 +1,7 @@
 defmodule Elia.WorkingDirectoryTest do
   @moduledoc """
   A chat's working directory (`specs/working-directory.md`): what a relative path
-  in the file tools and the `shell` call resolves against, the `cd` tool that
+  in a command run by the `shell` call resolves against, the `cd` tool that
   changes it, and the entry it saves with the chat (WD-1 to WD-12, STORE-46).
   """
   # Not async: a chat's session is a process of the app's supervision tree and
@@ -10,7 +10,6 @@ defmodule Elia.WorkingDirectoryTest do
 
   alias Elia.{Agent, FakeLLM}
   alias Elia.LLM.Message
-  alias Elia.Skills.Files
   alias Elia.Skills.Shell
 
   # WD-3, WD-5: the resolution itself, and where a directory may be.
@@ -58,7 +57,7 @@ defmodule Elia.WorkingDirectoryTest do
     Elia.Store.delete(id)
   end
 
-  ## What a relative path names (WD-1, WD-8, WD-9)
+  ## What a relative path names (WD-1, WD-9)
 
   # WD-1: a call's working directory is its workspace root until the chat has
   # one of its own, and the context it carries is what decides (WD-10).
@@ -72,31 +71,22 @@ defmodule Elia.WorkingDirectoryTest do
     assert Wd.of(%{}) == Elia.Workspace.root()
   end
 
-  # WD-8, WD-9, FILE-1, SHELL-2: the same relative path names a different file
-  # once the chat has moved, while what a result prints stays relative to the
-  # workspace root.
+  # WD-9, SHELL-2: the same relative path names a different file once the chat
+  # has moved.
   test "a relative path resolves against the working directory", %{dir: dir, lib: lib} do
     root_ctx = %{workspace: dir, jail: false}
     lib_ctx = %{workspace: dir, cwd: lib, jail: false}
 
     # In the workspace root: `top.txt` is here and `lib.txt` is not.
-    assert {:ok, "at the top\n"} = Files.read_file(%{"path" => "top.txt"}, root_ctx)
-    assert {:error, message} = Files.read_file(%{"path" => "lib.txt"}, root_ctx)
+    assert {:ok, "at the top\n\n[exit: 0]"} = Shell.run(%{"command" => "cat top.txt"}, root_ctx)
+    assert {:error, message} = Shell.run(%{"command" => "cat lib.txt"}, root_ctx)
     assert message =~ "lib.txt"
 
     # After `cd lib`: the same relative paths name other files.
-    assert {:ok, "in lib\n"} = Files.read_file(%{"path" => "lib.txt"}, lib_ctx)
-    assert {:ok, "at the top\n"} = Files.read_file(%{"path" => "../top.txt"}, lib_ctx)
+    assert {:ok, "in lib\n\n[exit: 0]"} = Shell.run(%{"command" => "cat lib.txt"}, lib_ctx)
+    assert {:ok, "at the top\n\n[exit: 0]"} = Shell.run(%{"command" => "cat ../top.txt"}, lib_ctx)
 
-    # WD-8: a result still names a path relative to the workspace root — so
-    # `lib/lib.txt` here, where the chat stands in `lib`.
-    assert {:ok, listing} = Files.list_files(%{}, lib_ctx)
-    assert String.starts_with?(listing, "[lib (1 entries)]")
-    assert listing =~ "lib/lib.txt"
-
-    assert {:ok, "[. (" <> _} = Files.list_files(%{}, root_ctx)
-
-    # SHELL-2, WD-9: a command runs in the working directory too.
+    # SHELL-2, WD-9: a command runs in the working directory.
     assert {:ok, out} = Shell.run(%{"command" => "ls"}, lib_ctx)
     assert out =~ "lib.txt"
     refute out =~ "top.txt"
@@ -256,20 +246,20 @@ defmodule Elia.WorkingDirectoryTest do
   ## A step at a time (WD-10)
 
   # WD-10: a `cd` takes effect from the next step — the calls of one step run at
-  # the same time (LOOP-10) — so a read beside it still resolves against the
-  # directory the step began in, and the read after it resolves against `lib`.
+  # the same time (LOOP-10) — so a command beside it still resolves against the
+  # directory the step began in, and the command after it resolves against `lib`.
   test "a cd moves the next step, not a call running beside it", %{dir: dir} do
     {id, _pid} = start_chat(dir)
 
     FakeLLM.push(
       FakeLLM.assistant([
         FakeLLM.tool_call("c1", "cd", %{"path" => "lib"}),
-        FakeLLM.tool_call("c2", "read_file", %{"path" => "top.txt"})
+        FakeLLM.tool_call("c2", "shell", %{"command" => "cat top.txt"})
       ])
     )
 
     FakeLLM.push(
-      FakeLLM.assistant([FakeLLM.tool_call("c3", "read_file", %{"path" => "lib.txt"})])
+      FakeLLM.assistant([FakeLLM.tool_call("c3", "shell", %{"command" => "cat lib.txt"})])
     )
 
     FakeLLM.push(FakeLLM.assistant([Message.text("Both read.")]))
@@ -282,11 +272,11 @@ defmodule Elia.WorkingDirectoryTest do
     # The `cd` ran and said where the chat now is (WD-3)…
     assert %{content: "Working directory: lib", is_error: false} = result(second, "c1")
 
-    # …and the read of its own step still resolved against the workspace root.
-    assert %{content: "at the top\n", is_error: false} = result(second, "c2")
+    # …and the command of its own step still resolved against the workspace root.
+    assert %{content: "at the top\n\n[exit: 0]", is_error: false} = result(second, "c2")
 
-    # The next step's read resolved against `lib`.
-    assert %{content: "in lib\n", is_error: false} = result(third, "c3")
+    # The next step's command resolved against `lib`.
+    assert %{content: "in lib\n\n[exit: 0]", is_error: false} = result(third, "c3")
 
     assert Agent.cwd(id) == Path.join(Wd.real_root(dir), "lib")
   end
@@ -303,8 +293,8 @@ defmodule Elia.WorkingDirectoryTest do
 
   # WD-11: the skill's instructions and the tool's description say what the
   # working directory is, that a relative path resolves against it and that `cd`
-  # changes it — and the `files` and `shell` skills say where their own relative
-  # paths resolve, since `cd` is not one of their tools.
+  # changes it — and the `shell` skill says that a command runs in it, since `cd`
+  # is not one of its tools.
   test "the instructions say what the working directory is and what cd does" do
     assert Elia.Skills.Workdir.name() == "workdir"
     [cd] = Elia.Skills.Workdir.tools()
@@ -324,12 +314,10 @@ defmodule Elia.WorkingDirectoryTest do
 
     assert Elia.Skills.Workdir.description() =~ "working directory"
 
-    # WD-11: `cd` is not a tool of theirs, so the file and shell skills say where
-    # their own relative paths resolve and where to change it.
-    for text <- [Files.instructions(), Shell.instructions()] do
-      assert text =~ "cd"
-      assert text =~ "working directory"
-    end
+    # WD-11, SHELL-2: `cd` is not a tool of the shell's, so the shell skill says
+    # where a command's relative paths resolve and where to change it.
+    assert Shell.instructions() =~ "cd"
+    assert Shell.instructions() =~ "working directory"
 
     [shell] = Shell.tools()
     assert shell.description =~ "working directory"

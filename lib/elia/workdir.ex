@@ -1,9 +1,9 @@
 defmodule Elia.Workdir do
   @moduledoc """
-  A chat's working directory (WD-1): the directory its file tool calls (FILE)
-  and its `shell` call (SHELL-2) resolve a relative path against. It starts as
-  the chat's workspace root and the `cd` tool changes it, so a chat can work
-  inside one part of a tree without repeating the prefix in every path.
+  A chat's working directory (WD-1): the directory its `shell` call (SHELL-2)
+  resolves a relative path against. It starts as the chat's workspace root and
+  the `cd` tool changes it, so a chat can work inside one part of a tree without
+  repeating the prefix in every path.
 
   It changes what a relative path names, never what a path is allowed to be:
   every path is still judged by its own class (`Elia.Workspace.classify/2`) and
@@ -80,7 +80,7 @@ defmodule Elia.Workdir do
   end
 
   # WS-8: a path inside the workspace that resolves out of it says where it
-  # goes, as the file tools' refusal does (FILE-39).
+  # goes, so the chat is told the outside directory it named.
   defp outside(abs, real) when real == abs, do: "#{abs} is outside the workspace."
   defp outside(abs, real), do: "#{abs} resolves to #{real}, outside the workspace."
 end

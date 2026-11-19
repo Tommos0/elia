@@ -321,77 +321,15 @@ defmodule Elia.ShellTest do
   end
 end
 
-defmodule Elia.ShellReachTest do
-  # ISOL-25: what a jailed command can reach is its workspace and nothing else —
-  # one tree, which is what the jail binds (ISOL-13) — and the file tools follow
-  # it (FILE-12) rather than reimplementing it. This is the reach, not a run, so
-  # it needs no bubblewrap (ISOL-12) — but it does write links in the scratch
-  # workspace, and `wanted?/1` is the host's setting, so the module doesn't run
-  # async.
+defmodule Elia.ShellJailSettingTest do
+  # ISOL-16, ISOL-20, ISOL-12: what a call wants, whatever bubblewrap can do.
+  # The module turns the host's setting on and off, so it doesn't run async.
   use ExUnit.Case, async: false
 
-  alias Elia.{Shell, Workspace}
+  alias Elia.Shell
 
-  setup do
-    live = Workspace.runtime_root()
-
-    worktree =
-      Path.join([live, "tmp", "worktrees", "reach-#{System.unique_integer([:positive])}"])
-
-    File.mkdir_p!(worktree)
-    on_exit(fn -> File.rm_rf!(worktree) end)
-    %{live: live, worktree: worktree}
-  end
-
-  # ISOL-25, ISOL-13: a chat's worktree reaches itself and nothing else of the
-  # live tree — no `deps`, which is its own copy now (DEPLOY-29), and no
-  # repository git directory, which the jail binds but the reach does not
-  # include.
-  test "a worktree reaches itself and nothing else of the live tree", %{
-    live: live,
-    worktree: worktree
-  } do
-    assert Shell.reachable?(Path.join(worktree, "lib/x.ex"), worktree)
-
-    refute Shell.reachable?(Path.join(live, "lib/elia/shell.ex"), worktree)
-    refute Shell.reachable?(Path.join([live, "deps", "req", "mix.exs"]), worktree)
-    refute Shell.reachable?(Path.join([live, ".git", "config"]), worktree)
-    refute Shell.reachable?(Path.join([live, ".elia", "sessions"]), worktree)
-    refute Shell.reachable?("/etc/passwd", worktree)
-  end
-
-  # ISOL-6: the live tree reaches itself, but not the `.elia` masked over it.
-  test "the live tree reaches itself, but not its .elia", %{live: live} do
-    assert Shell.reachable?(Path.join(live, "lib/elia/shell.ex"), live)
-    refute Shell.reachable?(Path.join([live, ".elia", "sessions"]), live)
-
-    # No profile keeps `.elia` in reach any more (ISOL-22): the harness makes no
-    # worktree there, and a chat makes its own in `tmp/worktrees` (DEPLOY-28).
-    refute Shell.reachable?(Path.join([live, ".elia", "worktrees"]), live)
-  end
-
-  # ISOL-4: another project's folder is bound on its own (PROJ-12).
-  test "another project's folder reaches no further than itself" do
-    project = Path.join(System.tmp_dir!(), "elia-project-#{System.unique_integer([:positive])}")
-    File.mkdir_p!(project)
-    on_exit(fn -> File.rm_rf!(project) end)
-
-    assert Shell.reachable?(Path.join(project, "mix.exs"), project)
-    refute Shell.reachable?(Path.join(Workspace.runtime_root(), "deps/req/mix.exs"), project)
-  end
-
-  # WS-5, ISOL-25: a link inside the workspace that points out of it reaches no
-  # further than the link does — the toolchain is bound for running a program,
-  # not for reading.
-  test "a link out of a workspace is not reachable", %{worktree: worktree} do
-    File.ln_s!("/etc", Path.join(worktree, "etc"))
-
-    refute Shell.reachable?(Path.join(worktree, "etc"), worktree)
-    refute Shell.reachable?(Path.join(worktree, "etc/passwd"), worktree)
-  end
-
-  # ISOL-16, ISOL-20, ISOL-12: the file tools follow this one (FILE-12), so what
-  # turns a confinement off is the chat's setting or the host's, not bubblewrap.
+  # ISOL-16, ISOL-20, ISOL-12: what turns a confinement off is the chat's
+  # setting or the host's, not bubblewrap.
   test "what wants a jail" do
     previous = Application.get_env(:elia, Elia.Shell)
     Application.put_env(:elia, Elia.Shell, jail: true)

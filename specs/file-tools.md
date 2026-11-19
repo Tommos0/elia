@@ -285,6 +285,6 @@ with: `Elia.Workspace.real_location/1` and the classes of WS-1, used by `cd`
 
 ## Tests
 
-Removed: `test/elia/skills/files_test.exs`, and the file-tool cases in
+Removed: the file tools' own test file, and the file-tool cases in
 `test/elia/self_modification_test.exs`, which keeps the workspace-policy tests
 (WS) it holds.

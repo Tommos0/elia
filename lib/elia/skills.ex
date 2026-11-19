@@ -169,9 +169,9 @@ defmodule Elia.Skills do
   # with where it goes and nothing of what it holds — the target is never opened,
   # so none of its contents can reach the prompt.
   #
-  # Unlike `read_file` (FILE-4, FILE-12) this rule does not follow the chat's
-  # jail switch: this read is never offered for the user's approval, so nothing
-  # else stands behind it.
+  # Unlike a folder skill's instruction file this rule does not follow the
+  # chat's jail switch: this read is never offered for the user's approval, so
+  # nothing else stands behind it.
   defp instruction_file(path, root) do
     case Elia.Workspace.real_location(path) do
       :unresolvable ->

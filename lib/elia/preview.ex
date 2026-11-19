@@ -220,10 +220,10 @@ defmodule Elia.Preview do
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply
   with the Markdown a transcript renders (UI-25) and a requirement it cites
   (CITE-1), a reasoning block (UI-29), the
-  `set_title` call that named the chat (TITLE-5, UI-74), a `read_file` call for a
-  file of the workspace (FLINK-4), a `shell` call with its
-  output and a failed one (UI-15, UI-16, UI-20), and a last user message
-  carrying uploaded files (UPLOAD-12).
+  `set_title` call that named the chat (TITLE-5, UI-74), a `cd` call whose path
+  its card links (FLINK-4), a `shell` call with its output and a failed one
+  (UI-15, UI-16, UI-20), and a last user message carrying uploaded files
+  (UPLOAD-12).
   """
   @spec sample_messages() :: [Message.t()]
   def sample_messages do
@@ -250,11 +250,13 @@ defmodule Elia.Preview do
             name: "set_title",
             input: %{"title" => @sample_title}
           },
+          # FLINK-4: a `cd` call is one whose input has a `path`, so its card
+          # links the directory the chat moved into.
           %{
             type: :tool_call,
             id: "call-preview-4",
-            name: "read_file",
-            input: %{"path" => "lib/elia/preview.ex"}
+            name: "cd",
+            input: %{"path" => "lib"}
           },
           %{
             type: :tool_call,
@@ -290,10 +292,7 @@ defmodule Elia.Preview do
         meta: %{at: minutes_ago(10)},
         content: [
           Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
-          Message.tool_result(
-            "call-preview-4",
-            "defmodule Elia.Preview do\n  # … and the file the card links (FLINK-4)\n"
-          ),
+          Message.tool_result("call-preview-4", "Working directory: lib"),
           Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]"),
           Message.tool_result(
             "call-preview-2",

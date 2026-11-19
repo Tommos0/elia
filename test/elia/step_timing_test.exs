@@ -213,7 +213,7 @@ defmodule Elia.StepTimingTest do
     test_pid = self()
 
     FakeLLM.push(
-      FakeLLM.assistant([FakeLLM.tool_call("c1", "read_file", %{"path" => "mix.exs"})])
+      FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "cat mix.exs"})])
     )
 
     # The second request is the turn still running: the first step's record is

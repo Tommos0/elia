@@ -17,8 +17,6 @@ defmodule Elia.LLM.Context do
       per skill
     * `:tools` "Tool definitions"
     * `:messages` "Messages" - children "User", "Assistant", "Reasoning"
-    * `:files` "Files" - `read_file`/`write_file`/`edit_file`/`list_files`/
-      `delete_file` calls & results
     * `:shell` "Shell" - `shell` calls & results
     * `:other_tools` "Other tools" - any other tool calls & results
     * `:adjustment` "Provider adjustment" - the gap to the provider's last
@@ -28,9 +26,8 @@ defmodule Elia.LLM.Context do
   alias Elia.LLM.{Message, Tokens}
   alias Elia.Skills
 
-  @file_tools ~w(read_file write_file edit_file list_files delete_file)
   @message_parts [user: "User", assistant: "Assistant", reasoning: "Reasoning"]
-  @tool_parts [files: "Files", shell: "Shell", other_tools: "Other tools"]
+  @tool_parts [shell: "Shell", other_tools: "Other tools"]
 
   # system/tools: the fixed buckets derived from skills; messages: message
   # count; names: tool_call_id => tool name, so results land with their call;
@@ -292,7 +289,6 @@ defmodule Elia.LLM.Context do
     end
   end
 
-  defp tool_bucket(name) when name in @file_tools, do: :files
   defp tool_bucket("shell"), do: :shell
   defp tool_bucket(_name), do: :other_tools
 end

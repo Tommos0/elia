@@ -115,49 +115,11 @@ defmodule Elia.Shell do
   Whether the call wants a jail: the caller's setting (ISOL-16) and the host's
   (ISOL-20), whether or not bubblewrap is installed (ISOL-12). `jailed?/1` is
   this with a jail that can actually be built.
-
-  A tool that runs no process — the file tools (FILE-12) — follows this one:
-  what turns a confinement off is the user's own setting, not a missing
-  bubblewrap.
   """
   @spec wanted?(keyword()) :: boolean()
   def wanted?(opts \\ []) do
     Keyword.get(opts, :jail) != false and
       Application.get_env(:elia, __MODULE__, [])[:jail] != false
-  end
-
-  @doc """
-  Whether a jailed command in `workspace` can reach the absolute path `abs`
-  (ISOL-25): the workspace it belongs to and nothing else — a jail binds one
-  tree (ISOL-13) — and never the `.elia` the live tree is masked with (ISOL-6).
-  Another project's folder reaches no further than itself, and neither does a
-  chat's worktree, whose jail holds its own tree.
-
-  Symlinks are followed (WS-5), so a link inside the workspace that points out
-  of it is not reachable either. The toolchain and `$HOME/.mix` (ISOL-4) are
-  bound too, but they are for running a program, not for reading, so they are
-  not part of this reach.
-  """
-  @spec reachable?(binary(), binary()) :: boolean()
-  def reachable?(abs, workspace) do
-    live = Workspace.real_location(Workspace.runtime_root())
-    workspace = Workspace.real_location(workspace)
-    abs = Workspace.real_location(abs)
-
-    cond do
-      # WS-6: a path with no real location is reachable by nothing.
-      :unresolvable in [live, workspace, abs] ->
-        false
-
-      not inside?(abs, workspace) ->
-        false
-
-      workspace == live ->
-        not inside?(abs, Path.join(live, ".elia"))
-
-      true ->
-        true
-    end
   end
 
   @doc """

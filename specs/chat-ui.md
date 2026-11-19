@@ -705,13 +705,12 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   their badges, the sidebar and its rows, a delete, the Markdown in a reply, and
   what `/chats` opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37,
   UI-45, UI-59, UI-63 to UI-66, UI-77).
-- No test: UI-5, UI-11, UI-13, UI-17, UI-22 to UI-24, UI-49 — no test in the
+- No test: UI-5, UI-11, UI-13, UI-22 to UI-24, UI-49 — no test in the
   tree asserts them: the sidebar's "No chats yet" state, the "Working" indicator
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding
-  the transcript, a write's "Changes" section, a message blank after trimming
-  being dropped, the input clearing after a send, the Stop button replacing the
-  send button, and the sidebar refreshing on a `{:task, …}` event and on a
-  chat's done flag changing.
+  the transcript, a message blank after trimming being dropped, the input
+  clearing after a send, the Stop button replacing the send button, and the
+  sidebar refreshing on a `{:task, …}` event and on a chat's done flag changing.
 - No test: UI-12 — that a session's notice and its error render inline as an info
   and an error row is asserted nowhere; the rows of the other kinds are (UI-9,
   UI-73, UI-81, UI-82).

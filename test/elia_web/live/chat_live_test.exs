@@ -560,8 +560,9 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#context-breakdown")
   end
 
-  # CTX-5: file and shell tool traffic lands in its own breakdown buckets.
-  test "context breakdown buckets files and shell from a saved chat", %{conn: conn} do
+  # CTX-5: shell traffic lands in the Shell bucket, every other tool in Other
+  # tools.
+  test "context breakdown buckets a tool call from a saved chat", %{conn: conn} do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
 
@@ -570,14 +571,14 @@ defmodule EliaWeb.ChatLiveTest do
       %Message{
         role: :assistant,
         content: [
-          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}},
+          %{type: :tool_call, id: "r1", name: "cd", input: %{"path" => "lib"}},
           %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "ls"}}
         ]
       },
       %Message{
         role: :tool,
         content: [
-          Message.tool_result("r1", "hello from notes"),
+          Message.tool_result("r1", "Working directory: lib"),
           Message.tool_result("s1", "lib\nREADME.md\n")
         ]
       },
@@ -590,7 +591,7 @@ defmodule EliaWeb.ChatLiveTest do
     view |> element("#context-indicator") |> render_click()
 
     html = render(view)
-    assert html =~ "Files"
+    assert html =~ "Other tools"
     assert html =~ "Shell"
     assert html =~ "User"
     assert html =~ "Assistant"
@@ -626,9 +627,9 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, "#transcript .markdown li strong", "item")
   end
 
-  # FLINK-1, FLINK-4: a file the agent mentions in a reply, and the path on a
-  # file tool's card, link to that file's own Files page — that of the workspace
-  # the chat works in (FLINK-5).
+  # FLINK-1, FLINK-4: a file the agent mentions in a reply, and the path on a tool
+  # call whose input carries one — a `cd` — link to that file's own Files page,
+  # that of the workspace the chat works in (FLINK-5).
   test "a mentioned file links to the Files page", %{conn: conn} do
     id = Agent.new_id()
     on_exit(fn -> Elia.Store.delete(id) end)
@@ -643,7 +644,7 @@ defmodule EliaWeb.ChatLiveTest do
         role: :assistant,
         content: [
           Message.text("It is in `#{file}`, at line 3. Not in `nowhere_file.txt`."),
-          %{type: :tool_call, id: "call-flink", name: "read_file", input: %{"path" => file}}
+          %{type: :tool_call, id: "call-flink", name: "cd", input: %{"path" => file}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("call-flink", "hi\n")]}

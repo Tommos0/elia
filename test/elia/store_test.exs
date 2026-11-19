@@ -29,8 +29,8 @@ defmodule Elia.StoreTest do
     :ok = Store.save(id, [Message.user("hi")])
     assert Store.load_auto_approve(id) == []
 
-    :ok = Store.save(id, [Message.user("hi")], auto_approve: ["shell", "edit_file"])
-    assert Store.load_auto_approve(id) == ["shell", "edit_file"]
+    :ok = Store.save(id, [Message.user("hi")], auto_approve: ["shell", "spawn_task"])
+    assert Store.load_auto_approve(id) == ["shell", "spawn_task"]
     assert [%Message{}] = Store.load(id)
 
     # An empty list leaves the key out, so turning the last tool off clears it.

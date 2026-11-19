@@ -176,14 +176,15 @@ defmodule Elia.PreviewTest do
       assistant = Enum.find(messages, &(&1.role == :assistant))
       assert Enum.any?(assistant.content, &(&1.type == :reasoning))
 
-      # TITLE-5, UI-74: the set_title call is one of them; FLINK-4: a read_file
-      # call for a file of the workspace is another, so its card links it;
-      # UI-43: a spawn_task call is a third, with its brief under it.
+      # TITLE-5, UI-74: the `set_title` call is one of them; FLINK-4: a `cd` call
+      # for a directory of the workspace is another, so its card links it;
+      # UI-43: a `spawn_task` call is a third, with its brief under it.
       assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 5
 
       assert Enum.any?(
                assistant.content,
-               &(&1.type == :tool_call and Map.get(&1, :name) == "read_file")
+               &(&1.type == :tool_call and Map.get(&1, :name) == "cd" and
+                   is_binary(&1.input["path"]))
              )
 
       # UI-43, SUBTASK-2: a spawn is a call like any other, with a briefing

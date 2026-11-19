@@ -4,11 +4,10 @@ defmodule Elia.AutoApproveTest do
   alias Elia.{Agent, FakeLLM, Store}
   alias Elia.LLM.Message
 
-  # APPR-13, APPR-14: every tool that can need approval in Elia's own project.
-  # APPR: what can need approval — every tool whose work is a change to the
-  # machine: the files, the shell, a sub-task, starting a terminal (TERM-25) and
-  # typing into one (TERM-32).
-  @approvable ~w(delete_file edit_file list_files read_file search_files shell spawn_task terminal_send terminal_start write_file)
+  # APPR-13, APPR-14: every tool that can need approval in Elia's own project
+  # (APPR-7): the shell, a sub-task, and a terminal started or typed into
+  # (TERM-25, TERM-32).
+  @approvable ~w(shell spawn_task terminal_send terminal_start)
 
   setup do
     start_supervised!(FakeLLM)
@@ -104,6 +103,41 @@ defmodule Elia.AutoApproveTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 5000)
 
+  # A chat whose skills are the project's plus one tool of `approval` (APPR-1)
+  # that returns `result` when it runs — for the tests whose subject is
+  # auto-approval rather than the tool (APPR-8 to APPR-11). It starts with an
+  # empty set, as the module's own chat does, so each test turns on what it
+  # means to.
+  defp start_with_tool(id, name, approval, result) do
+    {project, _errors} = Elia.Skills.for_project(nil)
+
+    tool = %Elia.Tool{
+      name: name,
+      description: "A test tool",
+      input_schema: %{"type" => "object", "properties" => %{}},
+      approval: approval,
+      run: fn _input, _ctx -> result end
+    }
+
+    skill = %Elia.Skill{
+      name: "test_tool",
+      description: "A test tool",
+      instructions: "Use the `#{name}` tool.",
+      tools: [tool]
+    }
+
+    {:ok, pid} =
+      Agent.ensure_started(id, loop_opts: [skills: [skill | project]], auto_approve: [])
+
+    on_exit(fn ->
+      DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+      Store.delete(id)
+    end)
+
+    Agent.subscribe(id)
+    pid
+  end
+
   defp shell_call(call_id, command),
     do: FakeLLM.tool_call(call_id, "shell", %{"command" => command})
 
@@ -135,7 +169,7 @@ defmodule Elia.AutoApproveTest do
 
   # APPR-8
   test "a tool that is not auto-approved still asks", %{id: id} do
-    :ok = Agent.set_auto_approve(id, "write_file", true)
+    :ok = Agent.set_auto_approve(id, "spawn_task", true)
 
     FakeLLM.push(FakeLLM.assistant([shell_call("c1", "echo ask")]))
     FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
@@ -146,36 +180,45 @@ defmodule Elia.AutoApproveTest do
     await_status(id, :idle)
   end
 
-  # APPR-9, STORE-8: `.elia` is a protected path, so the file tools can't write
-  # the harness's own data even where auto-approval is on.
-  test "auto-approval does not override a policy denial", %{id: id} do
-    :ok = Agent.set_auto_approve(id, "write_file", true)
+  # APPR-9, APPR-2: auto-approval only replaces the user's decision — a call the
+  # tool's own policy denies doesn't run and is refused with the policy's reason
+  # as its result, however the tool is switched.
+  test "auto-approval does not override a policy denial" do
+    id = Agent.new_id()
 
-    FakeLLM.push(
-      FakeLLM.assistant([
-        FakeLLM.tool_call("w1", "write_file", %{"path" => ".elia/nope", "content" => "x"})
-      ])
+    start_with_tool(
+      id,
+      "guarded_write",
+      fn _input, _ctx -> {:deny, "that path is protected"} end,
+      {:ok, "written"}
     )
 
+    :ok = Agent.set_auto_approve(id, "guarded_write", true)
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("w1", "guarded_write", %{})]))
     FakeLLM.push(FakeLLM.assistant([Message.text("Refused.")]))
 
     :ok = Agent.send_message(id, "write it")
     await_status(id, :idle)
 
+    refute_received {:agent, ^id, {:status, :awaiting_approval}}
     refute_received {:agent, ^id, {:tool_status, "w1", :approved}}
+
     [_, second] = FakeLLM.requests()
     assert %{is_error: true, content: content} = tool_result(second, "w1")
-    assert content =~ "protected"
+    assert content =~ "that path is protected"
   end
 
   # APPR-10
-  test "the remaining calls still wait when only some are auto-approved", %{id: id} do
+  test "the remaining calls still wait when only some are auto-approved" do
+    id = Agent.new_id()
+    start_with_tool(id, "waits", :required, {:ok, "ran"})
     :ok = Agent.set_auto_approve(id, "shell", true)
 
     FakeLLM.push(
       FakeLLM.assistant([
         shell_call("c1", "echo one"),
-        FakeLLM.tool_call("r1", "read_file", %{"path" => "/etc/hostname"})
+        FakeLLM.tool_call("r1", "waits", %{})
       ])
     )
 
@@ -192,16 +235,19 @@ defmodule Elia.AutoApproveTest do
 
     [_, second] = FakeLLM.requests()
     assert %{is_error: false} = tool_result(second, "c1")
-    assert %{is_error: false} = tool_result(second, "r1")
+    assert %{is_error: false, content: "ran"} = tool_result(second, "r1")
   end
 
   # APPR-11
-  test "turning auto-approval on approves that tool's pending calls", %{id: id} do
+  test "turning auto-approval on approves that tool's pending calls" do
+    id = Agent.new_id()
+    start_with_tool(id, "waits", :required, {:ok, "ran"})
+
     FakeLLM.push(
       FakeLLM.assistant([
         shell_call("c1", "echo one"),
         shell_call("c2", "echo two"),
-        FakeLLM.tool_call("r1", "read_file", %{"path" => "/etc/hostname"})
+        FakeLLM.tool_call("r1", "waits", %{})
       ])
     )
 
@@ -254,11 +300,11 @@ defmodule Elia.AutoApproveTest do
   test "only tools that can need approval can be switched on", %{id: id} do
     assert {:error, :not_approvable} = Agent.set_auto_approve(id, "reload_skills", true)
     assert {:error, :not_approvable} = Agent.set_auto_approve(id, "no_such_tool", true)
-    assert :ok = Agent.set_auto_approve(id, "read_file", true)
-    assert %{settings: %{auto_approve: ["read_file"]}} = Agent.snapshot(id)
+    assert :ok = Agent.set_auto_approve(id, "spawn_task", true)
+    assert %{settings: %{auto_approve: ["spawn_task"]}} = Agent.snapshot(id)
 
     # A name that is already on can always be turned off.
-    assert :ok = Agent.set_auto_approve(id, "read_file", false)
+    assert :ok = Agent.set_auto_approve(id, "spawn_task", false)
     assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
   end
 
@@ -268,12 +314,12 @@ defmodule Elia.AutoApproveTest do
 
     :ok = Agent.set_auto_approve(id, "shell", true)
     assert_receive {:agent, ^id, {:settings, %{auto_approve: ["shell"]}}}
-    :ok = Agent.set_auto_approve(id, "edit_file", true)
-    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["edit_file", "shell"]}}}
+    :ok = Agent.set_auto_approve(id, "spawn_task", true)
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["shell", "spawn_task"]}}}
     :ok = Agent.set_auto_approve(id, "shell", false)
-    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["edit_file"]}}}
+    assert_receive {:agent, ^id, {:settings, %{auto_approve: ["spawn_task"]}}}
 
-    assert %{settings: %{auto_approve: ["edit_file"]}} = Agent.snapshot(id)
+    assert %{settings: %{auto_approve: ["spawn_task"]}} = Agent.snapshot(id)
   end
 
   # APPR-12, SESS-16, STORE-14, STORE-15

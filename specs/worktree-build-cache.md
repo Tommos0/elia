@@ -64,7 +64,7 @@ off. The chat makes that copy itself now (DEPLOY-29).
   goes (DEPLOY-10) and stays a protected path for the file tools (WS-1).~~
   Retired: the copy lives in the worktree the chat made and goes when the chat
   removes that worktree once its work is merged (DEPLOY-28); `_build` is still a
-  protected path for the file tools (WS-1).
+  protected path (WS-1).
 
 ## Out of scope
 

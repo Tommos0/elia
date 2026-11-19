@@ -112,7 +112,8 @@ always sends the plain text, so the socket payload doesn't grow.
 
 ## Out of scope
 
-- Editing, creating, deleting or uploading files (use the agent's file tools).
+- Editing, creating, deleting or uploading files (the agent does that with a
+  shell command, SHELL-15).
 - Search, images and Markdown rendering. Highlighting covers a fixed set of
   languages only.
 - Access control: like Sessions and System, anyone who can reach the app can

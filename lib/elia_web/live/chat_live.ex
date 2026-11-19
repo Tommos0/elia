@@ -1451,8 +1451,9 @@ defmodule EliaWeb.ChatLive do
       </div>
       <%!-- UI-83: a question is prose, so its card's text wraps; every other
       card keeps the sideways scroll that keeps a command's columns readable.
-      FLINK-4: a file tool's card links its path, when the Files page could
-      show it (FLINK-5); every other card's summary is text, as before. --%>
+      FLINK-4: a card whose input has a `path` links it — `cd` is the tool that
+      has one — when the Files page could show it (FLINK-5); every other card's
+      summary is text, as before. --%>
       <pre class={[
         "px-3 py-2 font-mono text-xs leading-relaxed",
         if(@item.name == "ask_user",
@@ -1523,27 +1524,6 @@ defmodule EliaWeb.ChatLive do
         </summary>
         <div class="max-h-96 overflow-auto whitespace-pre-wrap bg-base-200/40 px-3 py-2 text-xs leading-relaxed">
           {@item.input["brief"]}
-        </div>
-      </details>
-      <details
-        :if={detail = tool_detail(@item)}
-        open={@item.status == :awaiting_approval}
-        class="group/detail border-t border-base-300"
-      >
-        <summary class="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs text-base-content/60 hover:text-base-content">
-          <.icon name="hero-chevron-right" class="size-3 transition group-open/detail:rotate-90" />
-          Changes
-        </summary>
-        <div class="max-h-96 overflow-auto font-mono text-xs leading-relaxed">
-          <pre
-            :for={{kind, text} <- detail}
-            class={[
-              "whitespace-pre-wrap px-3 py-1.5",
-              kind == :removed && "bg-error/10 text-error",
-              kind == :added && "bg-success/10",
-              kind == :content && "bg-base-200/40"
-            ]}
-          >{text}</pre>
         </div>
       </details>
       <div
@@ -1771,9 +1751,6 @@ defmodule EliaWeb.ChatLive do
 
   defp tool_icon("shell"), do: "hero-command-line"
 
-  defp tool_icon(name) when name in ~w(read_file write_file edit_file list_files delete_file),
-    do: "hero-document-text"
-
   defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
   defp tool_icon("ask_user"), do: "hero-chat-bubble-left-right"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
@@ -1796,14 +1773,6 @@ defmodule EliaWeb.ChatLive do
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
   defp tool_summary(%{input: input}), do: Jason.encode!(input, pretty: true)
-
-  defp tool_detail(%{name: "write_file", input: %{"content" => content}}), do: [content: content]
-
-  defp tool_detail(%{name: "edit_file", input: %{"old_string" => old, "new_string" => new}}) do
-    [removed: old, added: new]
-  end
-
-  defp tool_detail(_item), do: nil
 
   # UI-75: the choices of a question, in the order given, without an empty one
   # (which would be a button with no label).
@@ -1958,7 +1927,7 @@ defmodule EliaWeb.ChatLive do
 
   # UPLOAD-6 - UPLOAD-10: every attached file is written into the chat's own
   # workspace — the one the Files page shows this chat (FLINK-5), so an upload
-  # is where the agent's own tools (FILE) and the user both look for it
+  # is where the agent's own commands and the user both look for it
   # (PROJ-12) — in the order it was attached, and the message names the paths.
   # A file that cannot be written is reported and stops the send (UPLOAD-9); a
   # file still on its way is waited for rather than sent away with nothing to
@@ -2424,21 +2393,6 @@ defmodule EliaWeb.ChatLive do
 
   defp step(%{name: "shell", input: %{"command" => command}}),
     do: {"Running", "run", "`#{short(command)}`"}
-
-  defp step(%{name: "read_file", input: %{"path" => path}}),
-    do: {"Reading", "read", short(path)}
-
-  defp step(%{name: "write_file", input: %{"path" => path}}),
-    do: {"Writing", "write", short(path)}
-
-  defp step(%{name: "edit_file", input: %{"path" => path}}),
-    do: {"Editing", "edit", short(path)}
-
-  defp step(%{name: "list_files", input: %{"path" => path}}),
-    do: {"Listing", "list", short(path)}
-
-  defp step(%{name: "delete_file", input: %{"path" => path}}),
-    do: {"Deleting", "delete", short(path)}
 
   defp step(%{name: "spawn_task", input: %{"title" => title}}) when is_binary(title),
     do: {"Starting", "start", "the sub-task “#{short(title)}”"}

@@ -2,7 +2,7 @@
 
 Status: Implemented
 
-The agent names files constantly: a path in a reply, the path on a file tool's
+The agent names files constantly: a path in a reply, the path on a tool call's
 card. A named file is usually something the user wants to look at, and the Files
 page (EXPL) can show any of them. So the transcript turns such a mention into a
 link to that file's own page, making a file the agent read, wrote or changed one

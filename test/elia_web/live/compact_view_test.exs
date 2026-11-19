@@ -45,7 +45,7 @@ defmodule EliaWeb.CompactViewTest do
         role: :assistant,
         content: [
           %{type: :reasoning, text: "I should read the file"},
-          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}},
+          %{type: :tool_call, id: "r1", name: "shell", input: %{"command" => "cat notes.txt"}},
           Message.text("All read.")
         ]
       },
@@ -84,7 +84,7 @@ defmodule EliaWeb.CompactViewTest do
         role: :assistant,
         content: [
           Message.text(" "),
-          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}}
+          %{type: :tool_call, id: "r1", name: "shell", input: %{"command" => "cat notes.txt"}}
         ]
       }),
       Message.stamp(%Message{role: :tool, content: [Message.tool_result("r1", "contents")]}),

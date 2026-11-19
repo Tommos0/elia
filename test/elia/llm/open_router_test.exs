@@ -276,7 +276,7 @@ defmodule Elia.LLM.OpenRouterTest do
           %{type: :reasoning, text: "other", raw: {Elia.LLM.Anthropic, %{"type" => "thinking"}}},
           %{type: :opaque, raw: {Elia.LLM.Anthropic, %{"type" => "fallback"}}},
           %{type: :tool_call, id: "c1", name: "shell", input: %{"command" => "ls"}},
-          %{type: :tool_call, id: "c2", name: "read_file", input: %{"path" => "a"}}
+          %{type: :tool_call, id: "c2", name: "cd", input: %{"path" => "a"}}
         ]
       },
       %Message{

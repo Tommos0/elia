@@ -134,7 +134,7 @@ defmodule Elia.DeploymentTest do
   end
 
   # DEPLOY-1: a chat in Elia's own project works in the live tree itself — the
-  # harness makes no worktree for it, so its file tools and its `mix test` run
+  # harness makes no worktree for it, so its commands and its `mix test` run
   # there, and a chat that changes code makes itself a worktree first (DEPLOY-28).
   defp chat(project \\ Projects.harness()) do
     id = Agent.new_id()

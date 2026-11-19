@@ -28,7 +28,7 @@ defmodule Elia.LLM.ContextTest do
         content: [
           %{type: :text, text: String.duplicate("hi ", 20)},
           %{type: :reasoning, text: String.duplicate("hmm ", 10)},
-          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "a.txt"}}
+          %{type: :tool_call, id: "r1", name: "shell", input: %{"command" => "cat a.txt"}}
         ]
       },
       %Message{
@@ -64,7 +64,6 @@ defmodule Elia.LLM.ContextTest do
     assert Map.has_key?(by_id, :system)
     assert Map.has_key?(by_id, :tools)
     assert Map.has_key?(by_id, :messages)
-    assert Map.has_key?(by_id, :files)
     assert Map.has_key?(by_id, :shell)
     refute Map.has_key?(by_id, :other_tools)
   end
@@ -183,30 +182,26 @@ defmodule Elia.LLM.ContextTest do
              Enum.at(Context.breakdown(context).buckets, 2)
   end
 
-  # CTX-5: file tools count under Files, shell under Shell.
-  test "file and shell tool calls and results land in their own buckets" do
+  # CTX-5: `shell` calls and results count under Shell, any other tool under
+  # Other tools.
+  test "shell calls land in Shell and every other tool in Other tools" do
     messages = [
       %Message{
         role: :assistant,
         content: [
-          %{
-            type: :tool_call,
-            id: "w1",
-            name: "write_file",
-            input: %{"path" => "a", "content" => "x"}
-          },
           %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => "echo x"}},
-          %{type: :tool_call, id: "l1", name: "list_files", input: %{"path" => "lib"}},
-          %{type: :tool_call, id: "d1", name: "delete_file", input: %{"path" => "a"}}
+          %{type: :tool_call, id: "s2", name: "shell", input: %{"command" => "ls"}},
+          %{type: :tool_call, id: "c1", name: "cd", input: %{"path" => "lib"}},
+          %{type: :tool_call, id: "t1", name: "spawn_task", input: %{"title" => "a job"}}
         ]
       },
       %Message{
         role: :tool,
         content: [
-          %{type: :tool_result, tool_call_id: "w1", content: "wrote a", is_error: false},
           %{type: :tool_result, tool_call_id: "s1", content: "x", is_error: false},
-          %{type: :tool_result, tool_call_id: "l1", content: "lib/", is_error: false},
-          %{type: :tool_result, tool_call_id: "d1", content: "Deleted a", is_error: false}
+          %{type: :tool_result, tool_call_id: "s2", content: "lib\n", is_error: false},
+          %{type: :tool_result, tool_call_id: "c1", content: "Working directory: lib"},
+          %{type: :tool_result, tool_call_id: "t1", content: "started", is_error: false}
         ]
       }
     ]
@@ -214,10 +209,15 @@ defmodule Elia.LLM.ContextTest do
     breakdown = Context.build(messages, skills())
     by_id = Map.new(breakdown.buckets, &{&1.id, &1})
 
-    assert %{count: 6, label: "Files"} = by_id.files
-    assert %{count: 2, label: "Shell"} = by_id.shell
-    assert by_id.files.tokens > 0
+    assert %{count: 4, label: "Shell"} = by_id.shell
+    assert %{count: 4, label: "Other tools"} = by_id.other_tools
     assert by_id.shell.tokens > 0
+    assert by_id.other_tools.tokens > 0
+
+    # CTX-4: the panel's buckets are the system prompt, the tool definitions, the
+    # messages and these two, with the adjustment only when there is one.
+    assert Enum.map(breakdown.buckets, & &1.id) ==
+             [:system, :tools, :messages, :shell, :other_tools]
   end
 
   # CTX-5: results without a known call fall back to Other tools.

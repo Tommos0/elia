@@ -18,8 +18,8 @@ defmodule Elia.LLM.CompactionTest do
             %{
               type: :tool_call,
               id: "c#{n}",
-              name: "read_file",
-              input: %{"path" => "file#{n}.txt"}
+              name: "shell",
+              input: %{"command" => "cat file#{n}.txt"}
             }
           ]
         },
@@ -47,8 +47,8 @@ defmodule Elia.LLM.CompactionTest do
           %{
             type: :tool_call,
             id: "c#{n}",
-            name: "read_file",
-            input: %{"path" => "file#{n}.txt"}
+            name: "shell",
+            input: %{"command" => "cat file#{n}.txt"}
           }
         ]
       },
@@ -71,8 +71,8 @@ defmodule Elia.LLM.CompactionTest do
           %{
             type: :tool_call,
             id: "c#{n}-#{k}",
-            name: "read_file",
-            input: %{"path" => "file#{n}-#{k}.txt"}
+            name: "shell",
+            input: %{"command" => "cat file#{n}-#{k}.txt"}
           }
         ]
       },
@@ -440,13 +440,13 @@ defmodule Elia.LLM.CompactionTest do
       Enum.filter(view.messages, &(&1.role == :tool))
 
     assert result.content =~ "output elided by compaction"
-    assert result.content =~ "read_file"
+    assert result.content =~ "shell"
     assert result.content =~ "file1.txt"
     assert view.statuses[2].status == :truncated
     assert view.statuses[2].blocks[0] == :elided
     assert view.elided > 0
     # The call input is not elided on its own (COMPACT-15).
-    assert [%{type: :tool_call, input: %{"path" => "file1.txt"}} | _] =
+    assert [%{type: :tool_call, input: %{"command" => "cat file1.txt"}} | _] =
              Enum.at(view.messages, view.head + 1).content
   end
 
@@ -757,7 +757,7 @@ defmodule Elia.LLM.CompactionTest do
     assert Enum.any?(view.messages, fn
              %Message{role: :tool, content: [%{content: content}]} ->
                content =~ "output elided by compaction"
-               content =~ "read_file file2.txt"
+               content =~ "shell $ cat file2.txt"
 
              _ ->
                false
@@ -901,8 +901,8 @@ defmodule Elia.LLM.CompactionTest do
             %{
               type: :tool_call,
               id: "c#{n}",
-              name: "read_file",
-              input: %{"path" => "file#{n}.txt"}
+              name: "shell",
+              input: %{"command" => "cat file#{n}.txt"}
             }
           ]
         },
@@ -928,8 +928,8 @@ defmodule Elia.LLM.CompactionTest do
             %{
               type: :tool_call,
               id: "c#{n}",
-              name: "read_file",
-              input: %{"path" => "file#{n}.txt"}
+              name: "shell",
+              input: %{"command" => "cat file#{n}.txt"}
             }
           ]
         },
@@ -1000,7 +1000,7 @@ defmodule Elia.LLM.CompactionTest do
         role: :assistant,
         content: [
           %{type: :reasoning, text: huge},
-          %{type: :tool_call, id: "c1", name: "read_file", input: %{"path" => "a.txt"}}
+          %{type: :tool_call, id: "c1", name: "shell", input: %{"command" => "cat a.txt"}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("c1", result)]},
@@ -1008,7 +1008,7 @@ defmodule Elia.LLM.CompactionTest do
         role: :assistant,
         content: [
           %{type: :reasoning, text: small},
-          %{type: :tool_call, id: "c2", name: "read_file", input: %{"path" => "b.txt"}}
+          %{type: :tool_call, id: "c2", name: "shell", input: %{"command" => "cat b.txt"}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("c2", small)]}

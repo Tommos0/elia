@@ -114,18 +114,15 @@ defmodule EliaWeb.FileLinksTest do
   end
 
   # FLINK-4: a tool card's path gets the same link — and only its `path` does.
+  # `cd` is the tool left that carries one; the file tools are retired.
   test "a tool call's path is a mention, its command is not", %{links: links} do
     expected = "/files?chat=#{@chat}&path=#{@dir}%2Fnote.txt"
 
-    for name <- ~w(read_file write_file edit_file list_files delete_file) do
-      item = %{name: name, input: %{"path" => "#{@dir}/note.txt"}}
-      assert FileLinks.card_url(links, item) == expected, name
-    end
+    assert FileLinks.card_url(links, %{name: "cd", input: %{"path" => "#{@dir}/note.txt"}}) ==
+             expected
 
-    assert FileLinks.card_url(links, %{
-             name: "read_file",
-             input: %{"path" => "#{@dir}/missing.txt"}
-           }) == nil
+    assert FileLinks.card_url(links, %{name: "cd", input: %{"path" => "#{@dir}/missing.txt"}}) ==
+             nil
 
     assert FileLinks.card_url(links, %{
              name: "shell",
@@ -134,7 +131,6 @@ defmodule EliaWeb.FileLinksTest do
 
     assert FileLinks.card_url(links, %{name: "spawn_task", input: %{"title" => "A task"}}) == nil
 
-    assert FileLinks.card_url(nil, %{name: "read_file", input: %{"path" => "#{@dir}/note.txt"}}) ==
-             nil
+    assert FileLinks.card_url(nil, %{name: "cd", input: %{"path" => "#{@dir}/note.txt"}}) == nil
   end
 end

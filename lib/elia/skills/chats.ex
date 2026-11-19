@@ -8,8 +8,8 @@ defmodule Elia.Skills.Chats do
 
   They read Elia's own saved chats (STORE-1) through the harness — no command
   is run and no approval is asked — so they work in a chat whose jail is on too
-  (HIST-1, ISOL-16), where `.elia/sessions` is out of reach of the shell and the
-  file tools (FILE-12, ISOL-6).
+  (HIST-1, ISOL-16), where `.elia/sessions` is out of reach of a command
+  (ISOL-6).
   """
 
   @behaviour Elia.Skill
@@ -61,12 +61,11 @@ defmodule Elia.Skills.Chats do
     one whose title does not.
 
     A chat is named by its id, the one in its URL (`/c/<id>`). The tools read \
-    Elia's own saved chats through the harness — not with a command and not \
-    with the file tools — so they work in a chat whose jail is on too: \
-    `.elia/sessions` is out of reach of both there, and its files are Erlang \
-    terms rather than text in any case. They only read: nothing you do with \
-    them changes a chat, no session is started for a chat you read, and none \
-    of them asks for approval.
+    Elia's own saved chats through the harness — not with a command — so they \
+    work in a chat whose jail is on too: `.elia/sessions` is out of a \
+    command's reach there, and its files are Erlang terms rather than text in \
+    any case. They only read: nothing you do with them changes a chat, no \
+    session is started for a chat you read, and none of them asks for approval.
 
     What you read is the chat as it was last saved, so a chat that is running \
     now may not have its current turn in its file yet. Start with \

@@ -29,12 +29,11 @@ defmodule EliaWeb.AutoApproveTest do
   test "a new chat shows every switch on and the count", %{conn: conn, id: id} do
     {:ok, view, _html} = settings(conn, id)
 
-    assert has_element?(view, "#auto-approve-count", "10")
+    assert has_element?(view, "#auto-approve-count", "4")
 
     open_popover(view)
 
-    for tool <-
-          ~w(shell read_file write_file edit_file list_files search_files delete_file spawn_task terminal_start terminal_send) do
+    for tool <- ~w(shell spawn_task terminal_start terminal_send) do
       assert has_element?(view, "#auto-approve-#{tool}[aria-checked='true']")
     end
   end
@@ -77,7 +76,7 @@ defmodule EliaWeb.AutoApproveTest do
     {:ok, view, _html} = settings(conn, id)
     open_popover(view)
 
-    for tool <- ~w(shell read_file write_file edit_file list_files delete_file) do
+    for tool <- ~w(shell spawn_task terminal_start terminal_send) do
       assert has_element?(view, "#auto-approve-#{tool}[role='switch'][aria-checked='false']")
     end
 
@@ -96,15 +95,15 @@ defmodule EliaWeb.AutoApproveTest do
 
     view |> element("#auto-approve-shell") |> render_click()
     assert has_element?(view, "#auto-approve-shell[aria-checked='true']")
-    assert has_element?(view, "#auto-approve-write_file[aria-checked='false']")
+    assert has_element?(view, "#auto-approve-spawn_task[aria-checked='false']")
     assert has_element?(view, "#auto-approve-count", "1")
     assert %{settings: %{auto_approve: ["shell"]}} = Agent.snapshot(id)
 
-    view |> element("#auto-approve-write_file") |> render_click()
+    view |> element("#auto-approve-spawn_task") |> render_click()
     assert has_element?(view, "#auto-approve-count", "2")
 
     view |> element("#auto-approve-shell") |> render_click()
-    view |> element("#auto-approve-write_file") |> render_click()
+    view |> element("#auto-approve-spawn_task") |> render_click()
     assert has_element?(view, "#auto-approve-shell[aria-checked='false']")
     refute has_element?(view, "#auto-approve-count")
     assert %{settings: %{auto_approve: []}} = Agent.snapshot(id)
@@ -130,13 +129,13 @@ defmodule EliaWeb.AutoApproveTest do
 
   # UI-38, APPR-12
   test "a chat that already auto-approves tools shows them when opened", %{conn: conn, id: id} do
-    :ok = Elia.Store.save(id, [Message.user("hi")], auto_approve: ["edit_file"])
+    :ok = Elia.Store.save(id, [Message.user("hi")], auto_approve: ["terminal_start"])
 
     {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#auto-approve-count", "1")
 
     open_popover(view)
-    assert has_element?(view, "#auto-approve-edit_file[aria-checked='true']")
+    assert has_element?(view, "#auto-approve-terminal_start[aria-checked='true']")
     assert has_element?(view, "#auto-approve-shell[aria-checked='false']")
   end
 
@@ -171,7 +170,7 @@ defmodule EliaWeb.AutoApproveTest do
 
     view |> element("#auto-approve-shell") |> render_click()
     assert has_element?(view, "#auto-approve-state-shell", "On")
-    assert has_element?(view, "#auto-approve-state-write_file", "Off")
+    assert has_element?(view, "#auto-approve-state-spawn_task", "Off")
 
     view |> element("#auto-approve-shell") |> render_click()
     assert has_element?(view, "#auto-approve-state-shell", "Off")

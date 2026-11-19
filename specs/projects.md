@@ -197,7 +197,7 @@ PROJ-12).
 
 `Elia.Projects`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
-`Elia.Skills.Files`, `Elia.Skills.Shell`,
+`Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
 `EliaWeb.ProjectsLive`, `EliaWeb.ChatLive`, `EliaWeb.ChatList`,
 `EliaWeb.FilesLive`,

@@ -38,7 +38,7 @@ defmodule EliaWeb.CompactionTest do
             type: :reasoning,
             text: "thinking about the notes " <> String.duplicate("ponder ", 4000)
           },
-          %{type: :tool_call, id: "r1", name: "read_file", input: %{"path" => "notes.txt"}}
+          %{type: :tool_call, id: "r1", name: "shell", input: %{"command" => "cat notes.txt"}}
         ]
       },
       %Message{role: :tool, content: [Message.tool_result("r1", "the notes, at length")]},

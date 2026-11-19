@@ -75,7 +75,8 @@ defmodule Elia.Workspace do
   where it would land.
 
   The classes of `classify/2` are decided on the path as written; a caller that
-  must not be fooled by a link compares real locations (FILE-13).
+  must not be fooled by a link compares real locations itself (WD-5, SKILL-17,
+  FLINK-5).
 
   At most `#{@max_link_depth}` links are followed for one path; a path that needs
   more — a longer chain, or a loop — is `:unresolvable` (WS-6).

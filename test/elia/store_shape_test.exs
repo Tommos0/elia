@@ -98,7 +98,7 @@ defmodule Elia.StoreShapeTest do
   defp option("model"),
     do: [model: %{provider: "openrouter", model: "vendor/m", name: "Vendor M"}]
 
-  defp option("auto_approve"), do: [auto_approve: ["shell", "edit_file"]]
+  defp option("auto_approve"), do: [auto_approve: ["shell", "spawn_task"]]
   defp option("project_id"), do: [project: "proj-1"]
 
   defp option("task"),

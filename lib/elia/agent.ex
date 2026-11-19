@@ -176,9 +176,9 @@ defmodule Elia.Agent do
 
   @doc """
   The chat's working directory (WD-1): an absolute path inside the chat's
-  workspace (PROJ-12) that its file tool calls (FILE-1) and its `shell` call
-  (SHELL-2) resolve a relative path against. It is the workspace root until the
-  `cd` tool changes it (WD-3).
+  workspace (PROJ-12) that a command run by its `shell` call (SHELL-2) resolves
+  a relative path against. It is the workspace root until the `cd` tool changes
+  it (WD-3).
   """
   @spec cwd(binary()) :: binary()
   def cwd(id), do: GenServer.call(Session.via(id), :cwd)

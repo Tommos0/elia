@@ -48,9 +48,9 @@ defmodule Elia.Agent.Session do
     # there with its working directory (WD-1).
     :workspace,
     # The chat's working directory (WD-1): an absolute path inside `workspace`
-    # that its file tool calls and its `shell` call resolve relative paths
-    # against, or `nil` while it is the workspace root itself (WD-7). It is
-    # saved with the chat (STORE-46), so it outlives the process (WD-2).
+    # that its `shell` call resolves relative paths against, or `nil` while it
+    # is the workspace root itself (WD-7). It is saved with the chat (STORE-46),
+    # so it outlives the process (WD-2).
     :cwd,
     :task,
     # The turn this session is running: `%{id, started_at}` while one is in

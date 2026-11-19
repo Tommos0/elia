@@ -62,8 +62,9 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-4** Valid chat ids are 1–64 characters from `[A-Za-z0-9_-]`. Save
   only accepts valid ids; load and delete reject invalid ones.
 - **STORE-5** New ids are 12-character URL-safe random strings.
-- **STORE-8** `.elia/` is git-ignored and can't be written by the file tools
-  (WS-3).
+- **STORE-8** `.elia/` is git-ignored, and it is out of the agent's reach: the
+  protected class refuses it (WS-1) and a jailed command never sees it, the
+  live tree's jail masking it over (ISOL-6).
 - **STORE-13** Loading a chat replaces invalid UTF-8 in its text and tool
   results as in LLM-32, so a chat saved with such bytes can still be opened.
   Provider raw blocks stay exact (LLM-6).
