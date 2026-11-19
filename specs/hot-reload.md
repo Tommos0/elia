@@ -67,6 +67,17 @@ user's.
   tests failed, or one that changed no child, says nothing extra. The list of
   children is one function, so what the server starts and what the reload
   compares can never drift apart.
+- **HOT-11** A reload loads what the tree's own compile has changed since the
+  server last loaded it, whoever ran that compile: the deploy's front-end step
+  compiles the live tree in a command of its own (DEPLOY-19) and a deploy's
+  steps are jailed (ISOL-13), so that compile is one the server's Mix listener
+  never hears — Mix's cross-process pubsub rendezvous is a file in the command's
+  own `/tmp` — and a compile in the server would then find nothing stale and
+  load nothing, leaving the tree stale until a restart (HOT-5). So the app's
+  modules whose compiled files are newer than this server's own start are purged
+  before the reload's compile, which loads them; a reload of a tree that has
+  compiled nothing since the server started purges nothing. As with any reload,
+  a process still inside the code it replaces is not kept.
 
 ## Implementation
 
@@ -78,14 +89,17 @@ each UI change rather than for a module: its first instance is the image
 viewer's markup (`specs/image-viewer.md`, IMG-7). HOT-10 is
 `Elia.Application.children/0` (the one child list), `Elia.Deploy.load/2`'s
 comparison of it with the running supervisor (`Elia.Deploy.changed_children/1`)
-and the notice it adds (`Elia.Deploy.restart_notice/1`).
+and the notice it adds (`Elia.Deploy.restart_notice/1`). HOT-11 is
+`Elia.Deploy.reload_now/2`'s purge of the modules the tree compiled since the
+server started, before it reloads.
 
 ## Tests
 
 - `test/elia/deployment_test.exs` (the deploy, hot reload included: available
   only with Mix loaded, the suite it always runs first, the rollback when it
   fails, the tree it loads, the compile error, the children the running server
-  lacks — HOT-2 to HOT-7, HOT-10).
+  lacks, the modules a reload purges and the ones it leaves — HOT-2 to HOT-7,
+  HOT-10, HOT-11).
 - `test/elia_web/live/settings_live_test.exs` (the page's hot-reload control,
   and a deploy that outlives the page that started it — HOT-2, HOT-5, HOT-7,
   HOT-9, DEPLOY-15).

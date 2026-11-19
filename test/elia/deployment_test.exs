@@ -56,6 +56,23 @@ defmodule Elia.DeploymentTest do
     commit(tree, subject)
   end
 
+  # A module compiled into `ebin` and loaded, the way the tree's own compile
+  # leaves one (HOT-11). Returns the module and the path of its beam file.
+  defp scratch_module(ebin, name) do
+    module = Module.concat([__MODULE__, name])
+
+    [{^module, beam}] =
+      Code.compile_string("""
+      defmodule #{inspect(module)} do
+        def name, do: :#{Macro.underscore(name)}
+      end
+      """)
+
+    path = Path.join(ebin, "#{module}.beam")
+    File.write!(path, beam)
+    {module, path}
+  end
+
   # DEPLOY-28: the worktree a chat makes for itself inside the live tree — the
   # harness makes none — removed again at the end of the test.
   defp new_worktree do
@@ -1018,6 +1035,34 @@ defmodule Elia.DeploymentTest do
     # about a restart.
     assert message =~ "Recompiled and reloaded"
     refute message =~ "restart"
+  end
+
+  # HOT-11: a reload loads what the tree's own compile changed, even though that
+  # compile happened in a command of its own — the deploy's front-end step,
+  # jailed (ISOL-13) — whose `{:modules_compiled, …}` this server's Mix listener
+  # never hears. So the modules whose compiled files are newer than this
+  # server's start are purged, and the reload's own compile then loads them. A
+  # test run compiles nothing while it runs, so the purge is pointed at a
+  # scratch ebin rather than the app's own.
+  test "a reload purges the modules the tree compiled since the server started (HOT-11)" do
+    ebin = Path.join(Elia.TestRun.tmp_dir(), "purge-ebin")
+    File.mkdir_p!(ebin)
+
+    # Two modules loaded in this VM, each with the beam the tree would have
+    # written for it: one the tree compiled before this server started, one it
+    # compiled after.
+    {before, before_beam} = scratch_module(ebin, "CompiledBefore")
+    {since, _since_beam} = scratch_module(ebin, "CompiledSince")
+    # A time well before this server started.
+    File.touch!(before_beam, System.os_time(:second) - 86_400)
+
+    assert :code.is_loaded(before)
+    assert :code.is_loaded(since)
+
+    assert Deploy.purge_recompiled(ebin) == [since]
+
+    refute :code.is_loaded(since)
+    assert :code.is_loaded(before)
   end
 
   # HOT-10

@@ -7,6 +7,12 @@ defmodule Elia.Application do
 
   @impl true
   def start(_type, _args) do
+    # HOT-11: when this server started, in wall-clock time, so a hot reload can
+    # tell the modules the tree has compiled since — `:erlang.system_info/1`'s
+    # start time is a monotonic counter, not a clock, and cannot be compared
+    # with a file's own time.
+    :persistent_term.put({Elia.Deploy, :started_at}, System.system_time(:second))
+
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Elia.Supervisor]

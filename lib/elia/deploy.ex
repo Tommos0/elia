@@ -1304,6 +1304,12 @@ defmodule Elia.Deploy do
   end
 
   defp reload_now(root, by) do
+    # HOT-11: the tree this reload compiles was already compiled by the deploy's
+    # own front-end step (DEPLOY-19), in a command of its own and jailed
+    # (ISOL-13), so this server's Mix listener never heard it and a compile here
+    # would find nothing stale. Purge what that compile wrote first.
+    purge_recompiled()
+
     case loader().(EliaWeb.Endpoint) do
       :ok ->
         Elia.Skills.reload()
@@ -1316,6 +1322,64 @@ defmodule Elia.Deploy do
         {:error, "Compilation failed:\n" <> Elia.Shell.truncate(output, 20_000)}
     end
   end
+
+  @doc """
+  Purges the app's own modules the tree has compiled since this server started,
+  and returns them (HOT-11).
+
+  A deploy's front-end step compiles the live tree before the load step runs
+  (DEPLOY-19), and a deploy's steps are jailed (ISOL-13): the compile's
+  `{:modules_compiled, …}` never reaches this server's Mix listener, because
+  Mix's cross-process pubsub rendezvous is a file in the command's own `/tmp`
+  and not this process's. The load step's own compile would therefore find
+  nothing stale and load nothing (HOT-5), leaving the tree stale until a restart
+  — so the modules that compile wrote are purged here, and the reload's compile
+  loads them. It is what Phoenix's own reloader falls back to when no Mix
+  listener is started at all.
+
+  `ebin` is a parameter so a test can point this at a scratch directory instead
+  of the app's own build.
+  """
+  @spec purge_recompiled(Path.t() | nil) :: [module()]
+  def purge_recompiled(ebin \\ nil) do
+    started = started_at()
+
+    for beam <- Path.wildcard(Path.join(ebin || app_ebin(), "*.beam")),
+        compiled_since?(beam, started) do
+      module = beam |> Path.basename(".beam") |> String.to_atom()
+      :code.purge(module)
+      :code.delete(module)
+      module
+    end
+  end
+
+  # When this server started, in seconds, which `Elia.Application.start/2`
+  # records (HOT-11). A reload in a VM that never started the app — a script
+  # driving `Elia.Deploy` — has purged nothing newer than its own start.
+  defp started_at do
+    :persistent_term.get({__MODULE__, :started_at}, System.system_time(:second))
+  end
+
+  # The app this server runs, compiled where `Mix.Project` says — the path
+  # Phoenix's own reloader purges from (HOT-11).
+  defp app_ebin, do: Path.join(Mix.Project.app_path(Mix.Project.config()), "ebin")
+
+  # A beam file's own time is when the tree compiled it, and both sides are
+  # Unix seconds, so a file's time and the clock's agree. `File.stat/1` gives
+  # the time the shape this Elixir's `File.Stat` carries.
+  defp compiled_since?(beam, started) do
+    case File.stat(beam) do
+      {:ok, %File.Stat{mtime: mtime}} -> unix_seconds(mtime) > started
+      _ -> false
+    end
+  end
+
+  # :calendar's epoch is year 0, Unix time's is 1970.
+  defp unix_seconds({{_, _, _}, {_, _, _}} = erl_datetime),
+    do: :calendar.datetime_to_gregorian_seconds(erl_datetime) - 62_167_219_200
+
+  defp unix_seconds(%NaiveDateTime{} = naive),
+    do: NaiveDateTime.diff(naive, ~N[1970-01-01 00:00:00])
 
   defp loader do
     Application.get_env(:elia, __MODULE__, [])[:load] || (&Phoenix.CodeReloader.reload/1)
