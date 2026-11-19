@@ -55,6 +55,10 @@ defmodule Elia.Application do
       # it was made from are unchanged. After the store's cache, which is the
       # same idea for a saved chat (STORE-45).
       Elia.Specs.Cache,
+      # FUNC-4: the definitions a workspace's own source holds, kept while the
+      # files they were made from are unchanged — the same idea for the code a
+      # function mention links, as the corpus above is for a citation (CITE-4).
+      Elia.Source.Cache,
       # PUSH-13, PUSH-14: which chats have a visible page, and PUSH-11, PUSH-12:
       # the notifications sent when one needs the user.
       Elia.Push.Viewers,

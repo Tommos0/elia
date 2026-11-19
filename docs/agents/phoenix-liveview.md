@@ -62,3 +62,26 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 - Build forms with `to_form/2` in the LiveView, then `<.form for={@form} id="...">` and `<.input field={@form[:field]} />`.
 - From params: `to_form(params)`, or `to_form(params, as: :user)` to nest. The map needs string keys.
 - **Never** pass a changeset to the template, use `<.form let={f}>`, or use `Phoenix.HTML.form_for`. This project has no Ecto, so forms are normally built from params.
+
+## The transcript's Markdown
+
+Assistant text is rendered by `EliaWeb.Markdown.to_html/2`
+(`lib/elia_web/markdown.ex`): it parses the text once with MDEx and runs three
+passes over the AST before rendering — `EliaWeb.FunctionLinks` (an Elixir
+function mention becomes the Files page at its definition's line, FUNC),
+`EliaWeb.FileLinks` (a path mention, FLINK) and `EliaWeb.SpecRefs` (a cited
+requirement's tooltip, CITE). Each takes a `%MDEx.Document{}` and returns one,
+and each resolves its mentions in a chat's context, `%{chat_id, root}` (a
+`EliaWeb.FileLinks.t()`); with no context a pass does nothing.
+
+- A new kind of mention is another such pass, added to the chain in `to_html/2`.
+  Order matters: the file pass replaces an inline code span with a link, and the
+  later passes leave a `%MDEx.Link{}` alone.
+- Splice real nodes (`%MDEx.Link{}`, `%MDEx.Text{}`, `%MDEx.Code{}`), not an
+  `%MDEx.Raw{}` holding HTML: a later pass walks nodes and never looks inside a
+  raw string, so markup spliced as raw is not visited again. Raw is for text
+  *inside* a code span, where there are no nodes to have.
+- The renderer escapes a `%MDEx.Text{}` literal itself, so a label may hold `<`
+  or `&`; it encodes nothing, so build a URL with `URI.encode_query/1`. A file's
+  page at a line is `EliaWeb.FileLinks.line_url/3`
+  (`/files?chat=<id>&path=<path>&line=<n>`, EXPL-27).

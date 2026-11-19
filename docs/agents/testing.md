@@ -40,6 +40,20 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
   `[output elided by compaction: shell $ cat file2.txt. …]` — an assertion on it
   needs the `$`, not just the tool name and the command.
 
+## Fixtures that are source code
+
+- A fixture that has to contain a backslash — a default argument
+  (`def plain(a, b \\ 1)`), a regex, an escaped character — is written with
+  `~S"""`, never `"""`: in a plain Elixir string `\\` is *one* backslash, so
+  the file the test writes is not the source it looks like, and
+  `Code.string_to_quoted/1` fails on it. A shell heredoc (`cat > f <<'EOF'`)
+  passes `\\` through unchanged; an Elixir string does not.
+- A probe script or fixture written to `/tmp` in one `shell` call is gone in the
+  next — every call gets its own `/tmp` and pid namespace (ISOL-2) — so write it
+  and run it in the same command. `MIX_ENV=test mix run --no-start <script>` is
+  the quick way to push something through the real pipeline (a render, an index)
+  without a test.
+
 ## LiveView tests
 
 - Use `Phoenix.LiveViewTest` and `LazyHTML`.

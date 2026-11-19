@@ -28,6 +28,27 @@ defmodule EliaWeb.MarkdownTest do
     root
   end
 
+  @func_dir "markdown_funcs_fixture"
+
+  @sample ~S"""
+  defmodule Sample do
+    def run(a, b \\ 1), do: {a, b}
+  end
+  """
+
+  # FUNC-4: a mention resolves in the chat's own workspace (PROJ-12), so the
+  # definitions are a module of this test's scratch workspace.
+  defp source_root do
+    root = Path.join(Workspace.root(), @func_dir)
+    File.rm_rf!(root)
+    File.mkdir_p!(Path.join(root, "lib"))
+    File.write!(Path.join(root, "lib/sample.ex"), @sample)
+    on_exit(fn -> File.rm_rf!(root) end)
+    root
+  end
+
+  defp func_href, do: "/files?chat=markdownchat1&path=#{@func_dir}%2Flib%2Fsample.ex&line=2"
+
   @spec_file "cite_markdown_fixture.md"
 
   # CITE-4: a citation resolves in the chat's own workspace, so its corpus is a
@@ -188,6 +209,57 @@ defmodule EliaWeb.MarkdownTest do
            |> URI.decode_query()
            |> Map.get("path") ==
              "#{@dir}/x<b>y.ex"
+  end
+
+  # FUNC-1, FUNC-2, FUNC-3, FUNC-8: an Elixir function a reply mentions becomes
+  # a link to the line its definition is written at (FUNC-4) — in an inline code
+  # span and in the prose alike, with `Elixir.` naming the same module — while an
+  # arity the workspace doesn't define stays plain text.
+  test "links the functions a reply mentions" do
+    source_root()
+
+    doc =
+      doc(
+        "`Sample.run/1` and Sample.run/2 and Elixir.Sample.run/1, not `Sample.run/0`.",
+        links()
+      )
+
+    # FUNC-8: the code span keeps its own element, so the mention still reads as
+    # code, and its label is the agent's own text.
+    assert doc |> LazyHTML.query("a") |> LazyHTML.attribute("href") ==
+             [func_href(), func_href(), func_href()]
+
+    assert [code] = doc |> LazyHTML.query("a code") |> Enum.to_list()
+    assert LazyHTML.text(code) == "Sample.run/1"
+    # FUNC-4: an arity the workspace doesn't define is no link at all.
+    assert LazyHTML.text(doc) =~ "Sample.run/0"
+  end
+
+  # FUNC-1: a code block is content, and a link's text and an image's alt text
+  # are left alone — a mention is the reply's own text.
+  test "a code block, a link and an image hold no function mention" do
+    source_root()
+
+    doc =
+      doc("```\nSample.run/1\n```\n\n[`Sample.run/1`](/files) ![Sample.run/1](/x.png)\n", links())
+
+    assert doc |> LazyHTML.query("pre a") |> Enum.count() == 0
+    assert LazyHTML.text(LazyHTML.query(doc, "pre")) == "Sample.run/1\n"
+    assert LazyHTML.attribute(LazyHTML.query(doc, "a"), "href") == ["/files"]
+    assert doc |> LazyHTML.query("a a") |> Enum.count() == 0
+    assert doc |> LazyHTML.query("img a") |> Enum.count() == 0
+  end
+
+  # FUNC-7: the mention adds no markup — the label is the agent's own characters,
+  # escaped, so what a reply writes around one is text (UI-27).
+  test "escapes a function mention's own text" do
+    source_root()
+
+    doc = doc("`<b>Sample.run/1</b>` and <b>raw</b>", links())
+
+    assert doc |> LazyHTML.query("b") |> Enum.count() == 0
+    assert LazyHTML.text(LazyHTML.query(doc, "code")) == "<b>Sample.run/1</b>"
+    assert LazyHTML.attribute(LazyHTML.query(doc, "code a"), "href") == [func_href()]
   end
 
   # CITE-1, CITE-2, CITE-5: a requirement ID a reply cites carries that

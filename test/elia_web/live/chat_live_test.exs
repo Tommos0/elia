@@ -661,6 +661,60 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#transcript .markdown a code", "nowhere_file.txt")
   end
 
+  # FUNC-1, FUNC-4: an Elixir function the agent mentions in a reply links to
+  # the line its definition is written at, in the workspace the chat works in —
+  # while the text streams into the draft (UI-10) and once the message is saved
+  # (UI-8) — and an arity the workspace doesn't define stays plain text.
+  test "a mentioned function links to its definition", %{conn: conn} do
+    id = Agent.new_id()
+    test_pid = self()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    file = "chat_live_function_fixture.ex"
+
+    File.write!(
+      Path.join(Workspace.root(), file),
+      "defmodule ChatFixture do\n  def go(a), do: a\nend\n"
+    )
+
+    on_exit(fn -> File.rm!(Path.join(Workspace.root(), file)) end)
+
+    FakeLLM.push(fn _request, on_event ->
+      on_event.({:text_delta, "It is `ChatFixture.go/1`, not ChatFixture.go/2."})
+      send(test_pid, {:streamed, self()})
+      receive do: (:finish -> :ok)
+
+      {:ok,
+       %{
+         message:
+           FakeLLM.assistant([Message.text("It is `ChatFixture.go/1`, not ChatFixture.go/2.")]),
+         stop_reason: :end_turn,
+         model: "fake",
+         usage: %{}
+       }}
+    end)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "where is it?"}) |> render_submit()
+    assert_receive {:streamed, llm}, 5000
+    _ = :sys.get_state(view.pid)
+
+    href = "/files?chat=#{id}&path=#{file}&line=2"
+
+    # FUNC-1, FUNC-8, UI-10: the mention in the streaming draft links, and still
+    # reads as code.
+    assert has_element?(view, "#draft .markdown a[href='#{href}'] code", "ChatFixture.go/1")
+
+    send(llm, :finish)
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    # FUNC-1, UI-8: and so does the saved message.
+    assert has_element?(view, "#transcript .markdown a[href='#{href}'] code", "ChatFixture.go/1")
+    refute has_element?(view, "#transcript .markdown a", "ChatFixture.go/2")
+  end
+
   # CITE-1: a requirement the reply cites carries that requirement's own text as
   # a tooltip — while the text streams into the draft (UI-10) and once the
   # message is saved (UI-8) — read from the corpus the chat's own workspace

@@ -120,6 +120,7 @@ it.
 | [Log viewer](log-viewer.md) | `LOG` | In-memory capture of the server's logs, on a `/logs` page |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser: a text viewer and a preview for what the browser renders itself (images, PDF, video, audio), and a file opens at the line a link names |
 | [File links](file-links.md) | `FLINK` | A file the agent mentions in a reply or on a tool card links to the Files page |
+| [Function links](function-links.md) | `FUNC` | An Elixir function the agent names in a reply links to the line its definition is written at, in the Files page |
 | [Spec citations](spec-citations.md) | `CITE` | A requirement ID an assistant message cites shows that requirement's own text on hover and on a tap, with a link to where it is written and to the requirements it names |
 | [File uploads](file-uploads.md) | `UPLOAD` | The composer's attach control: a file the user picks is written into the chat's own workspace, and the message names it |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |

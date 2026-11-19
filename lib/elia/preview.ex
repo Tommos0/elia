@@ -333,7 +333,8 @@ defmodule Elia.Preview do
 
     ## What changed
 
-    - a new `Elia.Preview` module with the preview's file names and path safety
+    - a new `Elia.Preview` module, whose `Elia.Preview.file_name/2` names a
+      picture's file, with the preview's path safety
     - a route that serves a preview's images, and only those
 
     | Piece | Where |
