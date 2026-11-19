@@ -114,6 +114,25 @@ defmodule Elia.ExplorerTest do
     assert Explorer.language(".gitignore") == nil
   end
 
+  # EXPL-22
+  test "names the preview a file has, and the content type it is served as" do
+    assert Explorer.preview("a/shot.PNG") == {:image, "image/png"}
+    assert Explorer.preview("shot.jpeg") == {:image, "image/jpeg"}
+    assert Explorer.preview("logo.svg") == {:image, "image/svg+xml"}
+    assert Explorer.preview("paper.pdf") == {:pdf, "application/pdf"}
+    assert Explorer.preview("clip.webm") == {:video, "video/webm"}
+    assert Explorer.preview("clip.mov") == {:video, "video/quicktime"}
+    assert Explorer.preview("voice.ogg") == {:audio, "audio/ogg"}
+    assert Explorer.preview("voice.m4a") == {:audio, "audio/mp4"}
+
+    # A file nothing previews, a text file with an image's name in the middle,
+    # and a path with no extension.
+    assert Explorer.preview("notes.txt") == nil
+    assert Explorer.preview("a/shot.png.txt") == nil
+    assert Explorer.preview("LICENSE") == nil
+    assert Explorer.preview("src/lib.ex") == nil
+  end
+
   # EXPL-15: every function takes the folder it works against, and paths outside
   # it are refused.
   test "browses a project folder and refuses paths outside it" do

@@ -402,4 +402,104 @@ defmodule EliaWeb.FilesLiveTest do
     refute has_element?(view, "#file-error")
     refute has_element?(view, "[data-entry]")
   end
+
+  # EXPL-23, EXPL-26: a picture is a picture, not its bytes shown as text, and
+  # its header links to the file's own URL.
+  test "previews an image instead of showing its text", %{conn: conn} do
+    File.write!(in_root("#{@dir}/shot.png"), <<137, 80, 78, 71, 13, 10, 26, 10>>)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/shot.png"]}")
+
+    url = ~p"/files/raw?#{%{path: "#{@dir}/shot.png"}}"
+
+    assert has_element?(view, "img#file-preview[src='#{url}']")
+    assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
+    assert has_element?(view, "#file-path", "#{@dir}/shot.png")
+    assert has_element?(view, "#file-header", "8 B")
+    refute has_element?(view, "#file-content")
+    refute has_element?(view, "#file-gutter")
+    refute has_element?(view, "#file-binary")
+    # EXPL-23: no line count for a picture.
+    refute has_element?(view, "#file-header", "line")
+  end
+
+  # EXPL-22, EXPL-23: every kind the browser renders itself gets its own element.
+  test "previews a PDF, a video and an audio file", %{conn: conn} do
+    for {file, element} <- [
+          {"paper.pdf", "iframe#file-preview"},
+          {"clip.mp4", "video#file-preview[controls]"},
+          {"voice.mp3", "audio#file-preview[controls]"}
+        ] do
+      File.write!(in_root("#{@dir}/#{file}"), "not really what it says")
+
+      {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/#{file}"]}")
+
+      url = ~p"/files/raw?#{%{path: "#{@dir}/#{file}"}}"
+
+      assert has_element?(view, element <> "[src='#{url}']"), file
+      refute has_element?(view, "#file-content"), file
+    end
+  end
+
+  # EXPL-23: an SVG is a picture here, so its source is no longer the text view.
+  test "previews an SVG rather than its markup", %{conn: conn} do
+    File.write!(in_root("#{@dir}/logo.svg"), ~s(<svg xmlns="http://www.w3.org/2000/svg"/>))
+
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/logo.svg"]}")
+
+    assert has_element?(view, "img#file-preview")
+    refute has_element?(view, "#file-content")
+  end
+
+  # EXPL-23: the read cap is not applied to a preview — nothing is read.
+  test "previews a file far larger than the read cap", %{conn: conn} do
+    File.write!(in_root("#{@dir}/big.png"), String.duplicate("x", 400_000))
+
+    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/big.png"]}")
+
+    assert has_element?(view, "img#file-preview")
+    refute has_element?(view, "#file-truncated")
+    refute has_element?(view, "#file-binary")
+  end
+
+  # EXPL-25: a previewable path the page can't show is EXPL-9's message, so the
+  # page never points the browser at a URL that would be a 404.
+  test "a previewable path that can't be previewed shows the path message", %{conn: conn} do
+    File.ln_s!(in_root("#{@dir}/hello.ex"), in_root("#{@dir}/link.png"))
+
+    for path <- ["#{@dir}/nope.png", "#{@dir}/link.png", ".git/objects/shot.png"] do
+      {:ok, view, _} = live(conn, ~p"/files?#{[path: path]}")
+      assert has_element?(view, "#file-error"), path
+      refute has_element?(view, "#file-preview"), path
+      refute has_element?(view, "#file-preview-open"), path
+    end
+  end
+
+  # EXPL-15, EXPL-17, EXPL-24, EXPL-26: a preview's URL carries the workspace
+  # the page browses, so the route serves that same file.
+  test "a preview's URL names the project and the chat in view", %{conn: conn} do
+    folder = in_root("#{@dir}/project")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    File.write!(Path.join(folder, "logo.png"), <<137, 80, 78, 71>>)
+    {:ok, project} = Projects.create("Previews", folder)
+    chat = Elia.Agent.new_id()
+    :ok = Elia.Store.save(chat, [], project: project.id, title: "The picture")
+
+    on_exit(fn ->
+      Elia.Store.delete(chat)
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id, path: "logo.png"}}")
+
+    project_url = ~p"/files/raw?#{%{project: project.id, path: "logo.png"}}"
+    assert has_element?(view, "img#file-preview[src='#{project_url}']")
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat, path: "logo.png"}}")
+    chat_url = ~p"/files/raw?#{%{chat: chat, path: "logo.png"}}"
+    assert has_element?(view, "img#file-preview[src='#{chat_url}']")
+    assert has_element?(view, "#file-preview-open[href='#{chat_url}']")
+  end
 end

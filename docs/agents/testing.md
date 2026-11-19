@@ -91,6 +91,11 @@ Playwright.
 - Console errors and page errors fail the test that caused them
   (`EliaWeb.BrowserJsLogger`), so a broken hook doesn't pass quietly. Lower
   levels are logged as usual.
+- `EliaWeb.BrowserCase` gives you the page, not a LiveView: there is no
+  `has_element?` and no verified route (`~p`), so a test uses `assert_has/3` and
+  builds a URL as a string (`"/files?" <> URI.encode_query(%{path: path})`) —
+  `EliaWeb.ConnCase` is what brings those helpers, and a browser test that
+  `use`s it instead of `BrowserCase` loses the console-error check (BROWSER-8).
 - Keep them few and shallow: a browser run is seconds per test. Test outcomes
   in the LiveView suite where you can, and reach for a browser only for what
   JavaScript and layout do (e.g. `#chat-input`'s Enter-to-send hook). What the

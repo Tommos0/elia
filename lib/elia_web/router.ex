@@ -31,6 +31,15 @@ defmodule EliaWeb.Router do
     get "/:chat_id/:file", PreviewController, :show
   end
 
+  # The bytes a preview of the Files page is made of (EXPL-24): outside the
+  # browser pipeline like the images above, since it serves a file rather than
+  # a document — a PDF is framed by the page, which the secure browser headers
+  # would refuse — and `EliaWeb.FilesRawController` sets its own cache,
+  # content-type and policy headers.
+  scope "/files", EliaWeb do
+    get "/raw", FilesRawController, :show
+  end
+
   scope "/", EliaWeb do
     pipe_through :browser
 

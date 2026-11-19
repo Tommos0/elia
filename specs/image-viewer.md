@@ -66,8 +66,9 @@ entry to the browser history, which is what lets the back button close it too.
 - Opening the image file itself in a new tab or downloading it: the viewer is
   the whole answer to "too small to read", and saving the picture is the
   browser's own long-press or right-click.
-- Images outside the transcript: the file explorer shows files as plain text
-  (EXPL-14), and video is not an image.
+- Images outside the transcript: the Files page previews an image of its own,
+  in the page rather than over the chat (EXPL-22 - EXPL-26), and video is not an
+  image.
 
 ## Implementation
 

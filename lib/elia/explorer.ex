@@ -126,6 +126,88 @@ defmodule Elia.Explorer do
     ".formatter.exs" => "elixir"
   }
 
+  # EXPL-22: what the browser renders of a file itself, by extension, with the
+  # content type it is served as (EXPL-24). A file that isn't here is shown as
+  # text (EXPL-8).
+  @previews %{
+    ".png" => {:image, "image/png"},
+    ".jpg" => {:image, "image/jpeg"},
+    ".jpeg" => {:image, "image/jpeg"},
+    ".gif" => {:image, "image/gif"},
+    ".webp" => {:image, "image/webp"},
+    ".avif" => {:image, "image/avif"},
+    ".bmp" => {:image, "image/bmp"},
+    ".ico" => {:image, "image/vnd.microsoft.icon"},
+    ".svg" => {:image, "image/svg+xml"},
+    ".pdf" => {:pdf, "application/pdf"},
+    ".mp4" => {:video, "video/mp4"},
+    ".m4v" => {:video, "video/mp4"},
+    ".webm" => {:video, "video/webm"},
+    ".ogv" => {:video, "video/ogg"},
+    ".mov" => {:video, "video/quicktime"},
+    ".mp3" => {:audio, "audio/mpeg"},
+    ".wav" => {:audio, "audio/wav"},
+    ".ogg" => {:audio, "audio/ogg"},
+    ".oga" => {:audio, "audio/ogg"},
+    ".m4a" => {:audio, "audio/mp4"},
+    ".flac" => {:audio, "audio/flac"},
+    ".aac" => {:audio, "audio/aac"},
+    ".opus" => {:audio, "audio/opus"},
+    ".weba" => {:audio, "audio/webm"}
+  }
+
+  @type preview_kind :: :image | :pdf | :video | :audio
+
+  @type preview :: %{
+          path: String.t(),
+          file: String.t(),
+          kind: preview_kind(),
+          type: String.t(),
+          size: non_neg_integer(),
+          mtime: non_neg_integer()
+        }
+
+  @doc """
+  The preview a path has — `{:image | :pdf | :video | :audio, content_type}` —
+  from its extension, ignoring case (EXPL-22), or `nil` for a file the page
+  shows as text.
+  """
+  @spec preview(String.t()) :: {preview_kind(), String.t()} | nil
+  def preview(path) do
+    Map.get(@previews, path |> Path.extname() |> String.downcase())
+  end
+
+  @doc """
+  The preview of the file at `rel` under `root`, once it is one the page may
+  show (EXPL-25): a previewable (EXPL-22) regular file of the workspace, reached
+  without a symlink (EXPL-1, EXPL-2), with the content type to serve it as and
+  the size and modification time the route revalidates by (EXPL-24). Anything
+  else is `{:error, :no_preview}` for a path nothing previews, or the same
+  refusal reading it would give (EXPL-5).
+  """
+  @spec preview_file(String.t(), String.t()) :: {:ok, preview()} | {:error, error() | :no_preview}
+  def preview_file(rel, root \\ Workspace.root()) do
+    case preview(rel) do
+      nil ->
+        {:error, :no_preview}
+
+      {kind, type} ->
+        with {:ok, abs} <- safe_path(rel, root),
+             {:ok, :file} <- type_of(abs, :directory, root),
+             {:ok, stat} <- File.stat(abs, time: :posix) |> posix() do
+          {:ok,
+           %{
+             path: Workspace.relative(abs, root),
+             file: abs,
+             kind: kind,
+             type: type,
+             size: stat.size,
+             mtime: stat.mtime
+           }}
+        end
+    end
+  end
+
   @doc """
   The highlight.js language for a file path, from its base name or extension
   (EXPL-11), or `nil` when unknown.

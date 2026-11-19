@@ -1,11 +1,13 @@
 defmodule EliaWeb.FilesLive do
   @moduledoc """
-  Read-only workspace browser: a directory listing next to a plain-text file
-  viewer. See `specs/file-explorer.md`.
+  Read-only workspace browser: a directory listing next to a viewer that shows a
+  text file as text and previews what the browser renders itself (EXPL-22 - EXPL-26).
+  See `specs/file-explorer.md`.
   """
   use EliaWeb, :live_view
 
   alias Elia.{Explorer, Store, SystemStats, Workspace}
+  alias EliaWeb.FilesScope
 
   @highlight_max 128 * 1024
 
@@ -17,7 +19,7 @@ defmodule EliaWeb.FilesLive do
   # EXPL-6, EXPL-9, EXPL-15, EXPL-17, EXPL-19
   @impl true
   def handle_params(params, _uri, socket) do
-    {project, chat} = viewed(params)
+    {project, chat} = FilesScope.viewed(params)
     root = project.folder
     path = normalize(root, params["path"])
 
@@ -28,12 +30,22 @@ defmodule EliaWeb.FilesLive do
         {:error, reason} -> {"", nil, reason}
       end
 
+    # EXPL-8, EXPL-23: a file the browser renders itself is previewed rather
+    # than read as text, and EXPL-25 refuses that when the file can't be shown.
     {viewer, error} =
-      case file && Explorer.read(file, root) do
+      case file && view(file, root) do
         nil -> {nil, error}
-        {:ok, data} -> {data, nil}
+        {:ok, viewer} -> {viewer, nil}
         {:error, :binary} -> {{:binary, file}, nil}
         {:error, reason} -> {nil, reason}
+      end
+
+    # EXPL-24, EXPL-26: the URL the browser fetches a preview from, which the
+    # page's own parameters carry so the route serves the file it browsed.
+    raw =
+      case viewer do
+        {:preview, preview} -> raw_path(project, preview.path, chat)
+        _ -> nil
       end
 
     # The listing is read again after the viewer so that a vanished directory
@@ -61,10 +73,22 @@ defmodule EliaWeb.FilesLive do
        entries: entries,
        selected: file,
        viewer: viewer,
+       raw: raw,
        error: error,
        root_error: root_error,
        crumbs: crumbs(dir)
      )}
+  end
+
+  # EXPL-8, EXPL-22, EXPL-25: a file the browser renders itself is a preview,
+  # which the page shows once the same check the route serves by has confirmed
+  # it is a file of this workspace; every other file is read as text.
+  defp view(file, root) do
+    case Explorer.preview_file(file, root) do
+      {:ok, preview} -> {:ok, {:preview, preview}}
+      {:error, :no_preview} -> Explorer.read(file, root)
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # EXPL-9, EXPL-19: the fallback is the browsed root's own listing; a root that
@@ -75,32 +99,6 @@ defmodule EliaWeb.FilesLive do
       {:error, reason} -> {"", [], reason}
     end
   end
-
-  # EXPL-17: with a chat in view its own workspace is browsed, and the project
-  # in view is that chat's (PROJ-9, PROJ-12); a `chat` that isn't a saved chat
-  # is ignored and EXPL-15 decides.
-  defp viewed(params) do
-    chat = chat(params["chat"])
-    project = (chat && project_of(chat)) || project(params["project"])
-    {project, chat}
-  end
-
-  # EXPL-17: a chat in view is a saved chat, or nothing.
-  defp chat(id) do
-    if is_binary(id) and Store.exists?(id), do: id
-  end
-
-  # PROJ-9: a chat without a project belongs to Elia's own.
-  defp project_of(chat) do
-    case Store.load_project(chat) do
-      nil -> Elia.Projects.harness()
-      id -> Elia.Projects.get(id) || Elia.Projects.harness()
-    end
-  end
-
-  # EXPL-15: a missing or unknown project id browses Elia's own project.
-  defp project(nil), do: Elia.Projects.harness()
-  defp project(id), do: Elia.Projects.get(id) || Elia.Projects.harness()
 
   # EXPL-16, EXPL-18: switch the browsed project, keeping the current path when
   # it exists in the new project (it falls back to that project's root
@@ -163,13 +161,22 @@ defmodule EliaWeb.FilesLive do
   # EXPL-15, EXPL-17: the default project's links stay param-free, so the URLs
   # are stable; a chat in view is named instead of its project, which the page
   # takes from the chat (EXPL-18).
+  defp scope_params(project, chat) do
+    params = if project.harness? or chat, do: %{}, else: %{project: project.id}
+    if chat, do: Map.put(params, :chat, chat), else: params
+  end
+
   defp files_path(project, path, chat) do
-    params = %{}
-    params = if project.harness? or chat, do: params, else: Map.put(params, :project, project.id)
-    params = if chat, do: Map.put(params, :chat, chat), else: params
+    params = scope_params(project, chat)
     params = if path == "", do: params, else: Map.put(params, :path, path)
 
     if params == %{}, do: ~p"/files", else: ~p"/files?#{params}"
+  end
+
+  # EXPL-24, EXPL-26: the route that serves a preview's bytes takes the same
+  # parameters as the page, so it serves the file the page is showing.
+  defp raw_path(project, path, chat) do
+    ~p"/files/raw?#{Map.put(scope_params(project, chat), :path, path)}"
   end
 
   defp lines(content) do
@@ -206,22 +213,33 @@ defmodule EliaWeb.FilesLive do
     if File.dir?(project.folder), do: project.name, else: project.name <> " (unavailable)"
   end
 
+  # EXPL-8, EXPL-23: a preview has no text, so it has no line count, gutter or
+  # language to prepare either.
+  defp text_assigns(assigns) do
+    case assigns.viewer do
+      %{content: content} ->
+        count = content |> lines() |> length()
+
+        assign(assigns,
+          line_count: count,
+          gutter: gutter(count),
+          language: language(assigns.viewer)
+        )
+
+      {:preview, preview} ->
+        assign(assigns, preview: preview, line_count: 0, gutter: "", language: nil)
+
+      _ ->
+        assign(assigns, line_count: 0, gutter: "", language: nil)
+    end
+  end
+
   @impl true
   def render(assigns) do
     assigns =
-      case assigns.viewer do
-        %{content: content} ->
-          count = content |> lines() |> length()
-
-          assign(assigns,
-            line_count: count,
-            gutter: gutter(count),
-            language: language(assigns.viewer)
-          )
-
-        _ ->
-          assign(assigns, line_count: 0, gutter: "", language: nil)
-      end
+      assigns
+      |> assign(preview: nil)
+      |> text_assigns()
 
     ~H"""
     <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
@@ -351,6 +369,9 @@ defmodule EliaWeb.FilesLive do
                 <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
                 {error_message(@error)}
               </div>
+            <% @preview -> %>
+              <.file_header path={@preview.path} size={@preview.size} url={@raw} />
+              <.preview_pane preview={@preview} url={@raw} />
             <% match?({:binary, _}, @viewer) -> %>
               <.file_header path={elem(@viewer, 1)} />
               <p id="file-binary" class="m-6 text-sm text-base-content/60">
@@ -403,6 +424,7 @@ defmodule EliaWeb.FilesLive do
   attr :path, :string, required: true
   attr :size, :integer, default: nil
   attr :lines, :integer, default: nil
+  attr :url, :string, default: nil
 
   defp file_header(assigns) do
     ~H"""
@@ -411,10 +433,70 @@ defmodule EliaWeb.FilesLive do
       class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-base-300 px-4 py-2.5"
     >
       <h1 id="file-path" class="min-w-0 truncate font-mono text-sm font-medium">{@path}</h1>
-      <p :if={@size} class="text-xs text-base-content/50">
-        {SystemStats.format_bytes(@size)} · {@lines} {if @lines == 1, do: "line", else: "lines"}
+      <p class="flex items-center gap-3 text-xs text-base-content/50">
+        <span :if={@size}>
+          {SystemStats.format_bytes(@size)}
+          <span :if={@lines}>
+            · {@lines} {if @lines == 1, do: "line", else: "lines"}
+          </span>
+        </span>
+        <%!-- EXPL-26: the file's own URL, for a page of its own or a save. --%>
+        <.link
+          :if={@url}
+          id="file-preview-open"
+          href={@url}
+          target="_blank"
+          rel="noreferrer"
+          class="flex items-center gap-1 hover:text-base-content"
+        >
+          <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> Open
+        </.link>
       </p>
     </header>
     """
   end
+
+  attr :preview, :map, required: true
+  attr :url, :string, required: true
+
+  # EXPL-23: what the browser renders itself, in place of the text view. An
+  # image fits the pane without being enlarged past its own size; the others
+  # fill it with the browser's own controls.
+  defp preview_pane(assigns) do
+    ~H"""
+    <div id="file-preview-pane" class={pane_class(@preview.kind)}>
+      <img
+        :if={@preview.kind == :image}
+        id="file-preview"
+        src={@url}
+        alt={Path.basename(@preview.path)}
+        class="max-h-full max-w-full"
+      />
+      <iframe
+        :if={@preview.kind == :pdf}
+        id="file-preview"
+        src={@url}
+        title={@preview.path}
+        class="h-full w-full border-0"
+      ></iframe>
+      <video
+        :if={@preview.kind == :video}
+        id="file-preview"
+        src={@url}
+        controls
+        class="max-h-full max-w-full"
+      ></video>
+      <audio
+        :if={@preview.kind == :audio}
+        id="file-preview"
+        src={@url}
+        controls
+        class="w-full"
+      ></audio>
+    </div>
+    """
+  end
+
+  defp pane_class(:pdf), do: "min-h-0 flex-1"
+  defp pane_class(_kind), do: "grid min-h-0 flex-1 place-items-center overflow-auto p-4"
 end
