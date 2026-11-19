@@ -209,6 +209,9 @@ its own output directory.
   `test/elia/shell_test.exs`'s process-group ones are the usual suspects there —
   and for a partition whose failures you can't name: re-run, and say what you
   re-ran.
+  The deployment test `test/elia/deployment_test.exs` did the same: partition 1
+  saw one revision where it expected two (`Elia.DeploymentTest`, DEPLOY-36), and
+  the test passed alone and on the next `mix precommit`.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run
