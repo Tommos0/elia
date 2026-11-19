@@ -90,6 +90,12 @@ Playwright.
   `evaluate/4` with a function that returns `document.elementFromPoint` and
   `getComputedStyle` is how `test/elia_web/browser/small_screen_layout_test.exs`
   checks a stacking order (UI-94).
+- Playwright **scrolls an element into view as part of clicking it**, and the
+  page sees that scroll. Where something in the page reacts to a scroll — the
+  transcript's own following (UI-14), or the citation popover a scroll closes
+  (CITE-8) — a test must put the page where it wants it *before* the click
+  (`evaluate/2` with a `scrollIntoView` or a `scrollTop`), or the click's own
+  scroll races the thing it is checking.
 - A test that changes the driver's own config must **merge** it:
   `Application.put_env(:phoenix_test, :playwright, …)` replaces the whole
   keyword list, taking the test helper's `assets_dir` (BROWSER-2) and
@@ -108,6 +114,13 @@ a Markdown image link per picture, which the chat renders at
 is shown before it is deployed. `test/elia_web/browser/preview_test.exs` is the
 run itself, tagged `:preview` and excluded like these tests, so it never starts
 a browser during `mix test`.
+
+A preview navigates and waits; it never clicks, hovers or types (out of scope in
+`specs/ui-preview.md`). A picture of something a *click* opens — a citation's
+popover (CITE-7), the image viewer (IMG-1) — is therefore taken by hand, from
+the browser layer: a throwaway `:preview`-tagged test that visits the page,
+`click`s, and `screenshot`s into `ELIA_PREVIEW_DIR`, which `bin/preview` uses as
+its own output directory.
 
 ## Running
 

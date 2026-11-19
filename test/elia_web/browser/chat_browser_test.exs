@@ -11,7 +11,7 @@ defmodule EliaWeb.ChatBrowserTest do
 
   use EliaWeb.BrowserCase
 
-  alias Elia.{Agent, FakeLLM, Store}
+  alias Elia.{Agent, FakeLLM, Store, Workspace}
   alias Elia.LLM.Message
 
   setup do
@@ -68,6 +68,94 @@ defmodule EliaWeb.ChatBrowserTest do
     |> press("#chat-input", "Enter")
     |> assert_has("#transcript", text: "hello from a real browser")
     |> assert_has("#transcript", text: "Answer from the fake model.")
+  end
+
+  # CITE-5, CITE-7 - CITE-9 (specs/spec-citations.md): a citation carries the
+  # requirement's own text in its `title` — and a touch screen never sees one,
+  # since no browser shows a `title` on a tap, which is why tapping one did
+  # nothing. So a tap shows the text in the popover instead, beside the
+  # citation, and this layer is where that lives: the popover is the browser's
+  # own DOM, filled and placed by the `.SpecTip` hook (CITE-9).
+  test "a tap shows a citation's requirement, and what closes it", %{conn: conn} do
+    id = citation_chat()
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+
+    # CITE-9: the server renders it hidden, and empty — nothing of the text is
+    # on the page until a tap puts it there.
+    refute_has(conn, "#spec-tip")
+    assert_tip_text(conn, "")
+
+    # CITE-9: LiveView never patches it, so a patch cannot empty it out from
+    # under an open popover (IMG-8 covers that mechanism for the image viewer).
+    evaluate(conn, "document.querySelector('#spec-tip').getAttribute('phx-update')", fn value ->
+      assert value == "ignore", "the popover is LiveView's to patch"
+    end)
+
+    # CITE-5: the citation is no control — it goes nowhere and has nothing for
+    # the keyboard to act on.
+    refute_has(conn, "a.spec-cite")
+    refute_has(conn, "button.spec-cite")
+
+    # CITE-5, CITE-7: a tap on it shows the requirement's own text.
+    conn =
+      conn
+      |> click("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+
+    # CITE-5: and it is still not a navigation: the chat is still the page.
+    assert_path(conn, "/c/#{id}")
+
+    # CITE-7: beside the citation that was tapped, inside the screen.
+    assert_beside_the_citation(conn)
+
+    # CITE-8: a second tap on the same citation closes it, and so does a tap
+    # that lands on the text beside the marked span — which is not the citation.
+    conn = conn |> click("#transcript .spec-cite") |> refute_has("#spec-tip")
+
+    # CITE-8: a tap anywhere else closes it too.
+    conn =
+      conn
+      |> click("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> click("#chat-input")
+      |> refute_has("#spec-tip")
+
+    # CITE-8: so does Escape.
+    conn =
+      conn
+      |> click("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> press("#chat-input", "Escape")
+      |> refute_has("#spec-tip")
+
+    # CITE-8: so does a scroll of the transcript — the popover would otherwise
+    # sit over content it no longer belongs to.
+    conn =
+      conn
+      |> click("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> scroll_transcript_up()
+      |> refute_has("#spec-tip")
+
+    # CITE-8: and so does the citation leaving the page, which is what a message
+    # re-rendered without it does (UI-10 — a streaming draft when the reply
+    # lands). This is the last thing this test does to the citation. The
+    # transcript goes back to its end first: a scroll is one of the ways the
+    # popover closes, and Playwright scrolls a citation into view before it taps
+    # it, so a citation left off the screen would be closed by its own tap.
+    conn =
+      conn
+      |> scroll_transcript_to_end()
+      |> click("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> remove_citation()
+      |> refute_has("#spec-tip")
+
+    assert_path(conn, "/c/#{id}")
   end
 
   # IMG-1 - IMG-4 (specs/image-viewer.md): an image in the transcript opens in the
@@ -552,6 +640,110 @@ defmodule EliaWeb.ChatBrowserTest do
     on_exit(fn -> Store.delete(id) end)
     id
   end
+
+  # CITE-4, CITE-7: a chat whose reply cites a requirement its own workspace's
+  # corpus defines — `specs/*.md` of the folder the chat works in (CITE-4,
+  # PROJ-12) — and long enough for the transcript to have somewhere to scroll
+  # (CITE-8).
+  defp citation_chat do
+    specs = Path.join(Workspace.root(), "specs")
+    File.mkdir_p!(specs)
+    fixture = Path.join(specs, "browser_cite_fixture.md")
+
+    File.write!(
+      fixture,
+      "# Fixture\n\n## Requirements\n\n- **TAPPY-1** A requirement a tap can read.\n"
+    )
+
+    on_exit(fn ->
+      File.rm(fixture)
+      if File.ls(specs) == {:ok, []}, do: File.rmdir(specs)
+    end)
+
+    id = Agent.new_id()
+
+    before =
+      for n <- 1..12 do
+        Message.user("Message #{n}: " <> String.duplicate("a long line of text. ", 6))
+      end
+
+    reply = %Message{
+      role: :assistant,
+      content: [Message.text("See `TAPPY-1` for it.")]
+    }
+
+    :ok = Store.save(id, before ++ [reply])
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
+
+  # CITE-9: what the popover holds — the browser put it there, since the server
+  # renders the element with no text of its own (its markup's own indentation is
+  # all it has, so a whitespace-only reading is the empty one).
+  defp assert_tip_text(conn, text) do
+    evaluate(conn, "document.querySelector('#spec-tip').textContent", fn held ->
+      assert String.trim(held) == String.trim(text), "the popover reads #{inspect(held)}"
+    end)
+  end
+
+  # CITE-7: the popover is beside the citation it belongs to — over that
+  # citation's own column on screen, and either just above it or just below it —
+  # while staying inside the screen on both counts, so a citation at the top of
+  # the transcript reads as well as one at the bottom.
+  defp assert_beside_the_citation(conn) do
+    evaluate(
+      conn,
+      """
+      (() => {
+        const cite = document.querySelector("#transcript .spec-cite").getBoundingClientRect()
+        const tip = document.querySelector("#spec-tip").getBoundingClientRect()
+        return {
+          overlap: Math.round(Math.min(cite.right, tip.right) - Math.max(cite.left, tip.left)),
+          gap: Math.round(Math.min(Math.abs(tip.bottom - cite.top), Math.abs(tip.top - cite.bottom))),
+          box: {left: tip.left, right: tip.right, top: tip.top, bottom: tip.bottom},
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
+      })()
+      """,
+      fn seen ->
+        box = seen["box"]
+
+        assert seen["overlap"] > 0,
+               "the popover is not over the citation's own column: #{inspect(seen)}"
+
+        assert seen["gap"] <= 12,
+               "the popover is #{seen["gap"]}px away from the citation: #{inspect(seen)}"
+
+        assert box["left"] >= 0 and box["right"] <= seen["width"],
+               "the popover is off the side of the screen: #{inspect(seen)}"
+
+        assert box["top"] >= 0 and box["bottom"] <= seen["height"],
+               "the popover is off the top or bottom of the screen: #{inspect(seen)}"
+      end
+    )
+  end
+
+  # CITE-8: the reader scrolling the transcript, which is nothing to do with the
+  # popover and closes it all the same.
+  defp scroll_transcript_up(conn),
+    do: evaluate(conn, "document.querySelector('#transcript-scroll').scrollTop = 0")
+
+  # Back to the transcript's end, which is where a reader who taps the last
+  # message's citation is (and where Playwright finds it without scrolling).
+  defp scroll_transcript_to_end(conn) do
+    evaluate(conn, """
+    (() => {
+      const transcript = document.querySelector("#transcript-scroll")
+      transcript.scrollTop = transcript.scrollHeight
+    })()
+    """)
+  end
+
+  # CITE-8: the citation leaving the page, which is what a message re-rendered
+  # without it does (UI-10).
+  defp remove_citation(conn),
+    do: evaluate(conn, "document.querySelector('#transcript .spec-cite').remove()")
 
   # The page is only interactive once the LiveView socket connected and its hooks
   # mounted; LiveView puts `phx-connected` on its own container then.

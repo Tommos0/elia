@@ -559,6 +559,25 @@ defmodule EliaWeb.ChatLive do
             </div>
           </div>
         </div>
+        <%!-- CITE-7 - CITE-9: the requirement's text a citation is tapped for.
+        A touch screen has no hover, and no browser shows a `title` on a tap,
+        so the text is shown here instead — beside the citation the tap landed
+        on, over the page. The server renders it empty and hidden, `.SpecTip`
+        fills and places it, and LiveView never patches it (CITE-9), exactly as
+        the image viewer below. Its closed state and its look are its own
+        markup (`style`), never a rule in assets/css: a page can render this
+        markup while it still holds the stylesheet from before the change
+        (HOT-8, IMG-7), and a rule that page never loaded is no rule at all.
+        CITE-8: it takes no tap — a tap in its place reaches what is behind
+        it. --%>
+        <div
+          id="spec-tip"
+          phx-hook=".SpecTip"
+          phx-update="ignore"
+          role="tooltip"
+          style="display: none; position: fixed; z-index: 60; max-width: min(22rem, calc(100vw - 1.5rem)); padding: 0.5rem 0.75rem; border: 1px solid var(--color-base-300, #d4d4d8); border-radius: 0.5rem; background-color: var(--color-base-100, #fff); color: var(--color-base-content, #18181b); font-size: 0.75rem; line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 10px 25px rgb(0 0 0 / 0.18)"
+        >
+        </div>
         <%!-- IMG-1 - IMG-8: an image in the transcript opens here, over the chat
         (specs/image-viewer.md), so a click never leaves the page and the back
         button closes the viewer rather than the app. The server renders it
@@ -969,6 +988,100 @@ defmodule EliaWeb.ChatLive do
             this.viewer.removeAttribute("src")
             this.viewer.alt = ""
             if (!left) history.back()
+          }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SpecTip">
+        // CITE-7 - CITE-9 (specs/spec-citations.md): a citation (`span.spec-cite`)
+        // in an assistant message — the saved transcript or the streaming draft
+        // — carries the requirement's own text in its `title`, which a pointer
+        // reads and a touch screen never sees: no browser shows a `title` on a
+        // tap, so tapping one did nothing at all. This is what a tap has
+        // instead: the same text, in the popover #spec-tip, beside the citation
+        // it belongs to. A delegated listener leaves the message's markup alone,
+        // so LiveView's patching never fights it — as the image viewer's does
+        // (IMG-1, IMG-6).
+        //
+        // CITE-7: the text is the citation's own `title` (CITE-2), which the
+        // server escaped (CITE-3) and which is set here as `textContent`, so a
+        // requirement holding markup shows it as characters, never as elements.
+        export default {
+          mounted() {
+            // CITE-8: the citation the popover is showing, or null when it is
+            // closed. The DOM says whether it is open (its own `display`), so
+            // this is only the anchor to compare a tap against.
+            this.anchor = null
+
+            this.onClick = event => {
+              const target = event.target instanceof Element ? event.target : null
+              const cite = target && target.closest(".spec-cite")
+              // CITE-8: a tap on anything else — the citation's own text
+              // included, when the tap lands beside the marked span — closes it.
+              if (!cite || cite === this.anchor) return this.close()
+              this.open(cite)
+            }
+            document.addEventListener("click", this.onClick)
+
+            // CITE-8: a scroll leaves the popover over content it no longer
+            // belongs to. Captured, since a scroll event does not bubble: the
+            // transcript's own scrolling is the element's, not the document's.
+            this.onScroll = () => this.close()
+            document.addEventListener("scroll", this.onScroll, true)
+
+            this.onKey = event => {
+              if (event.key === "Escape") this.close()
+            }
+            window.addEventListener("keydown", this.onKey)
+
+            // CITE-8: the citation itself going — a message re-rendered without
+            // it, which is what a streaming draft is when the reply lands (UI-10)
+            // — takes the popover with it, so no text outlives what it was about.
+            this.watcher = new MutationObserver(() => {
+              if (this.anchor && !this.anchor.isConnected) this.close()
+            })
+            this.watcher.observe(document.body, {childList: true, subtree: true})
+          },
+
+          destroyed() {
+            document.removeEventListener("click", this.onClick)
+            document.removeEventListener("scroll", this.onScroll, true)
+            window.removeEventListener("keydown", this.onKey)
+            this.watcher.disconnect()
+          },
+
+          // CITE-7: shown beside the citation, over the page, while the message
+          // itself is untouched.
+          open(cite) {
+            this.el.textContent = cite.getAttribute("title") || ""
+            this.el.style.display = "block"
+            this.anchor = cite
+            this.place(cite)
+          },
+
+          close() {
+            if (!this.anchor) return
+
+            this.el.style.display = "none"
+            this.anchor = null
+          },
+
+          // CITE-7: above the citation when there is room on screen and below it
+          // otherwise, and inside the viewport on either count, so a citation at
+          // the top of the transcript reads as well as one at the bottom.
+          place(cite) {
+            if (!this.el.offsetHeight) return
+
+            const box = cite.getBoundingClientRect()
+            const tip = this.el.getBoundingClientRect()
+            const margin = 8
+            const above = box.top - tip.height - margin
+
+            const top = above >= margin ? above : box.bottom + margin
+            const centred = box.left + box.width / 2 - tip.width / 2
+            const most = window.innerWidth - tip.width - margin
+
+            this.el.style.top = `${Math.max(top, margin)}px`
+            this.el.style.left = `${Math.min(Math.max(centred, margin), Math.max(most, margin))}px`
           }
         }
       </script>
