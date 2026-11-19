@@ -559,17 +559,21 @@ defmodule EliaWeb.ChatLive do
             </div>
           </div>
         </div>
-        <%!-- CITE-7 - CITE-9: the requirement's text a citation is tapped for.
-        A touch screen has no hover, and no browser shows a `title` on a tap,
-        so the text is shown here instead — beside the citation the tap landed
-        on, over the page. The server renders it empty and hidden, `.SpecTip`
-        fills and places it, and LiveView never patches it (CITE-9), exactly as
-        the image viewer below. Its closed state and its look are its own
-        markup (`style`), never a rule in assets/css: a page can render this
-        markup while it still holds the stylesheet from before the change
-        (HOT-8, IMG-7), and a rule that page never loaded is no rule at all.
-        CITE-8: it takes no tap — a tap in its place reaches what is behind
-        it. --%>
+        <%!-- CITE-7 - CITE-12: the requirement's text a citation is shown for —
+        while the pointer rests on it, and on a tap, which is what a touch screen
+        has instead of a hover. The server renders it empty and hidden, `.SpecTip`
+        fills it with the citation's own markup (CITE-3, CITE-9) and places it,
+        and LiveView never patches it, exactly as the image viewer below. Its
+        closed state and its look are its own markup (`style`), never a rule in
+        assets/css: a page can render this markup while it still holds the
+        stylesheet from before the change (HOT-8, IMG-7), and a rule that page
+        never loaded is no rule at all.
+
+        CITE-8, CITE-12: it takes no tap — a tap in its place reaches what is
+        behind it, which is what `pointer-events: none` here does — while its own
+        links do take the pointer, which each of them says for itself
+        (`EliaWeb.SpecRefs`), so a link in it can be clicked and the tooltip's
+        text can be reached through. --%>
         <div
           id="spec-tip"
           phx-hook=".SpecTip"
@@ -1004,37 +1008,106 @@ defmodule EliaWeb.ChatLive do
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SpecTip">
-        // CITE-7 - CITE-9 (specs/spec-citations.md): a citation (`span.spec-cite`)
-        // in an assistant message — the saved transcript or the streaming draft
-        // — carries the requirement's own text in its `title`, which a pointer
-        // reads and a touch screen never sees: no browser shows a `title` on a
-        // tap, so tapping one did nothing at all. This is what a tap has
-        // instead: the same text, in the popover #spec-tip, beside the citation
-        // it belongs to. A delegated listener leaves the message's markup alone,
-        // so LiveView's patching never fights it — as the image viewer's does
-        // (IMG-1, IMG-6).
+        // CITE-7 - CITE-13 (specs/spec-citations.md): a citation
+        // (`span.spec-cite`) in an assistant message — the saved transcript or
+        // the streaming draft — shows the requirement's own text in the popover
+        // #spec-tip beside it: while the pointer rests on the citation, and on a
+        // tap, which is what a touch screen has instead of a hover. It is the
+        // app's own rather than the browser's `title` because it carries links
+        // (CITE-10, CITE-11): to the requirement's own file and line, and to
+        // every requirement its statement names. A delegated listener leaves the
+        // message's markup alone, so LiveView's patching never fights it — as
+        // the image viewer's does (IMG-1, IMG-6).
         //
-        // CITE-7: the text is the citation's own `title` (CITE-2), which the
-        // server escaped (CITE-3) and which is set here as `textContent`, so a
-        // requirement holding markup shows it as characters, never as elements.
+        // CITE-3, CITE-9: the tooltip's markup is the server's own, built and
+        // escaped there (`EliaWeb.SpecRefs`), and travels on the citation as
+        // `data-tip`. It goes into the popover as `innerHTML` — the one place
+        // markup from the page is taken as markup, which is safe because the
+        // server wrote it and escaped everything in it but its own links.
         export default {
           mounted() {
             // CITE-8: the citation the popover is showing, or null when it is
             // closed. The DOM says whether it is open (its own `display`), so
-            // this is only the anchor to compare a tap against.
+            // this is only the anchor to compare against.
             this.anchor = null
 
-            this.onClick = event => {
+            // CITE-7, CITE-12: the gap `place` leaves between the tooltip and
+            // its citation, which is also the pointer's way from one to the
+            // other.
+            this.gap = 8
+
+            // CITE-8: whether the pointer last went down as a finger. A tap
+            // arrives as a `click` — the browser sends one after `touchend` —
+            // and a tap is the one press that toggles; see `onPress`.
+            this.touch = false
+
+            // CITE-13: the browser's own tooltip must not show beside the app's,
+            // so no citation keeps its `title` while this hook runs. A page whose
+            // bundle never loaded keeps it, and it is the text such a page shows
+            // (CITE-2, CITE-3).
+            this.stripTitles()
+
+            // CITE-7, CITE-12: the pointer resting on a citation shows the text a
+            // tap shows. A touch pointer has no hover of its own — its
+            // `pointerover` would open the popover and the `click` that follows
+            // in the same tap would close it again, which is the bug the popover
+            // exists to fix — so hovering is the mouse's and the pen's.
+            this.onOver = event => {
+              if (event.pointerType === "touch") return
+
+              const target = event.target instanceof Element ? event.target : null
+              if (!target) return
+
+              const cite = target.closest(".spec-cite")
+              if (cite) return this.open(cite)
+
+              // CITE-12: a pointer over the tooltip itself, or on its way into
+              // it from the citation, is no reason to close it.
+              if (target.closest("#spec-tip") || this.nearTheTip(event)) return
+
+              this.close()
+            }
+            document.addEventListener("pointerover", this.onOver)
+
+            // CITE-8: the pointer leaving the citation and the tooltip closes
+            // it, the pointer's own way from one to the other excepted, which is
+            // CITE-12. A finger never leaves: a touch screen closes the tooltip
+            // with a second tap, or with a tap anywhere else.
+            this.onOut = event => {
+              if (event.pointerType === "touch") return
+              if (!this.anchor) return
+
+              const target = event.target instanceof Element ? event.target : null
+              const to = event.relatedTarget instanceof Element ? event.relatedTarget : null
+              if (!target) return
+
+              if (to && (this.el.contains(to) || to.closest(".spec-cite"))) return
+              if (this.nearTheTip(event)) return
+
+              this.close()
+            }
+            document.addEventListener("pointerout", this.onOut)
+
+            // CITE-8: a tap on a citation already showing its text closes it,
+            // and a tap or a click anywhere else closes it too. A click with the
+            // pointer resting on the citation is not that tap: what is on screen
+            // came from the pointer alone (CITE-7), and a click leaves it there.
+            this.onPress = event => {
               const target = event.target instanceof Element ? event.target : null
               const cite = target && target.closest(".spec-cite")
-              // CITE-8: a tap on anything else — the citation's own text
-              // included, when the tap lands beside the marked span — closes it.
-              if (!cite || cite === this.anchor) return this.close()
+              if (!cite) return this.close()
+              if (cite === this.anchor && this.touch) return this.close()
+
               this.open(cite)
             }
-            document.addEventListener("click", this.onClick)
+            document.addEventListener("click", this.onPress)
 
-            // CITE-8: a scroll leaves the popover over content it no longer
+            this.onDown = event => {
+              this.touch = event.pointerType === "touch"
+            }
+            document.addEventListener("pointerdown", this.onDown)
+
+            // CITE-8: a scroll leaves the tooltip over content it no longer
             // belongs to. Captured, since a scroll event does not bubble: the
             // transcript's own scrolling is the element's, not the document's.
             this.onScroll = () => this.close()
@@ -1047,24 +1120,59 @@ defmodule EliaWeb.ChatLive do
 
             // CITE-8: the citation itself going — a message re-rendered without
             // it, which is what a streaming draft is when the reply lands (UI-10)
-            // — takes the popover with it, so no text outlives what it was about.
-            this.watcher = new MutationObserver(() => {
+            // — takes the tooltip with it, so no text outlives what it was about.
+            // CITE-13: a citation arriving, or a `title` landing on one again,
+            // loses it as it does, which is the streaming draft too.
+            this.watcher = new MutationObserver(records => {
               if (this.anchor && !this.anchor.isConnected) this.close()
+              if (records.some(record => this.retitles(record))) this.stripTitles()
             })
-            this.watcher.observe(document.body, {childList: true, subtree: true})
+            this.watcher.observe(document.body, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ["title"]
+            })
           },
 
           destroyed() {
-            document.removeEventListener("click", this.onClick)
+            document.removeEventListener("pointerover", this.onOver)
+            document.removeEventListener("pointerout", this.onOut)
+            document.removeEventListener("click", this.onPress)
+            document.removeEventListener("pointerdown", this.onDown)
             document.removeEventListener("scroll", this.onScroll, true)
             window.removeEventListener("keydown", this.onKey)
             this.watcher.disconnect()
           },
 
-          // CITE-7: shown beside the citation, over the page, while the message
-          // itself is untouched.
+          // CITE-13: no citation carries the browser's own tooltip while this
+          // hook runs.
+          stripTitles() {
+            for (const cite of document.querySelectorAll(".spec-cite[title]")) {
+              cite.removeAttribute("title")
+            }
+          },
+
+          // CITE-13: whether a mutation put a `title` on a citation — the
+          // attribute itself, or a citation that arrived carrying one.
+          retitles(record) {
+            if (record.type === "attributes") return record.target.matches(".spec-cite")
+
+            for (const node of record.addedNodes) {
+              if (node.nodeType !== 1) continue
+              if (node.matches(".spec-cite[title]") || node.querySelector(".spec-cite[title]")) {
+                return true
+              }
+            }
+
+            return false
+          },
+
+          // CITE-7, CITE-9: filled with the citation's own markup (CITE-3), shown
+          // beside it, over the page, while the message itself is untouched.
           open(cite) {
-            this.el.textContent = cite.getAttribute("title") || ""
+            if (cite !== this.anchor) this.el.innerHTML = cite.dataset.tip || ""
+
             this.el.style.display = "block"
             this.anchor = cite
             this.place(cite)
@@ -1074,7 +1182,26 @@ defmodule EliaWeb.ChatLive do
             if (!this.anchor) return
 
             this.el.style.display = "none"
+            this.el.innerHTML = ""
             this.anchor = null
+          },
+
+          // CITE-12: whether the pointer is on its way from the citation into
+          // the tooltip, or on the tooltip itself. The tooltip takes no pointer
+          // of its own (CITE-8), so a point over it is a point over the page
+          // behind it — and the gap `place` leaves between the two, the pointer's
+          // way across, is within this box too, by the width of that gap.
+          nearTheTip(event) {
+            return this.near(this.el.getBoundingClientRect(), event)
+          },
+
+          near(box, event) {
+            return (
+              event.clientX >= box.left - this.gap &&
+              event.clientX <= box.right + this.gap &&
+              event.clientY >= box.top - this.gap &&
+              event.clientY <= box.bottom + this.gap
+            )
           },
 
           // CITE-7: above the citation when there is room on screen and below it
@@ -1085,7 +1212,7 @@ defmodule EliaWeb.ChatLive do
 
             const box = cite.getBoundingClientRect()
             const tip = this.el.getBoundingClientRect()
-            const margin = 8
+            const margin = this.gap
             const above = box.top - tip.height - margin
 
             const top = above >= margin ? above : box.bottom + margin

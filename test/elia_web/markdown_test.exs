@@ -45,6 +45,7 @@ defmodule EliaWeb.MarkdownTest do
     - **CITE-9** A requirement with `code` in it, and a second
       line that the tooltip joins.
     - **CITE-10** One holding <angle brackets>, an & and a "quote".
+    - **CITE-11** One naming CITE-8 and CITE-9, with CITE-77 too.
     """)
 
     on_exit(fn ->
@@ -53,6 +54,13 @@ defmodule EliaWeb.MarkdownTest do
     end)
 
     dir
+  end
+
+  # CITE-10, CITE-11: the Files page a citation's link opens — the requirement's
+  # own spec file and line, in the chat's workspace (FLINK-5, EXPL-27).
+  defp cite_href(line) do
+    path = URI.encode_www_form("specs/#{@spec_file}")
+    "/files?chat=markdownchat1&path=#{path}&line=#{line}"
   end
 
   # UI-25
@@ -184,7 +192,9 @@ defmodule EliaWeb.MarkdownTest do
 
   # CITE-1, CITE-2, CITE-5: a requirement ID a reply cites carries that
   # requirement's own text as a tooltip — in an inline code span and in the
-  # prose alike — while the citation stays the agent's own text.
+  # prose alike — while the citation stays the agent's own text. CITE-13: the
+  # `title` keeps the plain statement, which is what a page whose bundle never
+  # loaded shows.
   test "cites a requirement with its own text as a tooltip" do
     spec_root()
 
@@ -201,6 +211,33 @@ defmodule EliaWeb.MarkdownTest do
     assert LazyHTML.text(LazyHTML.query(doc, "code")) == "CITE-9"
   end
 
+  # CITE-10, CITE-11, CITE-12: the tooltip a citation carries links the
+  # requirement's own spec file and line and every requirement its statement
+  # names, and a token the corpus does not define stays the statement's own text
+  # (CITE-1). CITE-12: a link in it takes the pointer, where the tooltip around
+  # it takes none (CITE-8).
+  test "the tooltip links the requirement's file and line, and what it names" do
+    spec_root()
+
+    tip =
+      doc("CITE-11", links())
+      |> LazyHTML.query("span.spec-cite")
+      |> LazyHTML.attribute("data-tip")
+      |> hd()
+
+    anchors = tip |> LazyHTML.from_fragment() |> LazyHTML.query("a")
+
+    # CITE-10: the requirement's own link is its file and line. CITE-11: each
+    # requirement the statement names is a link to its own.
+    assert anchors |> Enum.map(&LazyHTML.text/1) == ["CITE-8", "CITE-9", "specs/#{@spec_file}:9"]
+    assert LazyHTML.attribute(anchors, "href") == [cite_href(5), cite_href(6), cite_href(9)]
+
+    assert LazyHTML.text(LazyHTML.from_fragment(tip)) ==
+             "One naming CITE-8 and CITE-9, with CITE-77 too. specs/#{@spec_file}:9"
+
+    assert anchors |> LazyHTML.attribute("style") |> Enum.all?(&(&1 =~ "pointer-events: auto"))
+  end
+
   # CITE-3: the citation and its tooltip are escaped, so a requirement holding
   # markup adds none of it to the message (UI-27).
   test "escapes a citation and its tooltip" do
@@ -212,6 +249,13 @@ defmodule EliaWeb.MarkdownTest do
     assert html =~ "&lt;angle brackets&gt;"
     assert html =~ "&amp;"
     assert html =~ "&quot;quote&quot;"
+
+    # CITE-13: the citation's `title` is the escaped statement, and so is the
+    # tooltip's own markup — whose only markup, escaped as the attribute's own
+    # value, is the link to where the requirement is written (CITE-10).
+    statement = "One holding &lt;angle brackets&gt;, an &amp; and a &quot;quote&quot;."
+    assert html =~ ~s(title="#{statement}")
+    assert html =~ ~s(data-tip="#{statement} &lt;a href=&quot;)
   end
 
   # CITE-6: a code block is content, and so are a link's text and an image's alt

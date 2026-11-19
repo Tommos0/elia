@@ -14,6 +14,10 @@ defmodule EliaWeb.ChatBrowserTest do
   alias Elia.{Agent, FakeLLM, Store, Workspace}
   alias Elia.LLM.Message
 
+  # CITE-4, CITE-10: the spec a citation's chat has in its own workspace's corpus,
+  # which is also the file a citation's link names.
+  @cite_spec "browser_cite_fixture.md"
+
   setup do
     start_supervised!(FakeLLM)
     :ok
@@ -70,13 +74,14 @@ defmodule EliaWeb.ChatBrowserTest do
     |> assert_has("#transcript", text: "Answer from the fake model.")
   end
 
-  # CITE-5, CITE-7 - CITE-9 (specs/spec-citations.md): a citation carries the
-  # requirement's own text in its `title` — and a touch screen never sees one,
-  # since no browser shows a `title` on a tap, which is why tapping one did
-  # nothing. So a tap shows the text in the popover instead, beside the
-  # citation, and this layer is where that lives: the popover is the browser's
-  # own DOM, filled and placed by the `.SpecTip` hook (CITE-9).
-  test "a tap shows a citation's requirement, and what closes it", %{conn: conn} do
+  # CITE-5, CITE-7 - CITE-13 (specs/spec-citations.md): a citation shows the
+  # requirement's own text in the app's own tooltip — the pointer resting on it
+  # shows it, and so does a tap, which is what a touch screen has instead of a
+  # hover. The tooltip carries links (CITE-10 - CITE-12), which is why it is the
+  # app's own rather than the browser's `title` (CITE-13), and this layer is
+  # where that lives: the tooltip is the browser's own DOM, filled and placed by
+  # the `.SpecTip` hook (CITE-9).
+  test "a citation shows its requirement on a hover and a tap, with its links", %{conn: conn} do
     id = citation_chat()
 
     conn =
@@ -85,14 +90,14 @@ defmodule EliaWeb.ChatBrowserTest do
       |> connected()
 
     # CITE-9: the server renders it hidden, and empty — nothing of the text is
-    # on the page until a tap puts it there.
+    # on the page until a hover or a tap puts it there.
     refute_has(conn, "#spec-tip")
     assert_tip_text(conn, "")
 
     # CITE-9: LiveView never patches it, so a patch cannot empty it out from
-    # under an open popover (IMG-8 covers that mechanism for the image viewer).
+    # under an open tooltip (IMG-8 covers that mechanism for the image viewer).
     evaluate(conn, "document.querySelector('#spec-tip').getAttribute('phx-update')", fn value ->
-      assert value == "ignore", "the popover is LiveView's to patch"
+      assert value == "ignore", "the tooltip is LiveView's to patch"
     end)
 
     # CITE-5: the citation is no control — it goes nowhere and has nothing for
@@ -100,62 +105,130 @@ defmodule EliaWeb.ChatBrowserTest do
     refute_has(conn, "a.spec-cite")
     refute_has(conn, "button.spec-cite")
 
-    # CITE-5, CITE-7: a tap on it shows the requirement's own text.
+    # CITE-13: no citation carries the browser's own `title` while the hook runs
+    # — it would show beside the app's tooltip — and CITE-5: the citation's own
+    # text is the label the message was written with.
+    assert_citation_titles(conn, [nil])
+    assert_has(conn, "#transcript .spec-cite", text: "TAPPY-1")
+
+    # CITE-7: the pointer resting on it shows the requirement's own text.
     conn =
       conn
-      |> click("#transcript .spec-cite")
-      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
+
+    # CITE-7: beside the citation that was hovered, inside the screen.
+    assert_beside_the_citation(conn)
+
+    # CITE-8, CITE-12: the tooltip takes no pointer of its own — a pointer in
+    # its place reaches what is behind it — while its own links do.
+    assert_pointer_through_the_tooltip(conn)
 
     # CITE-5: and it is still not a navigation: the chat is still the page.
     assert_path(conn, "/c/#{id}")
 
-    # CITE-7: beside the citation that was tapped, inside the screen.
-    assert_beside_the_citation(conn)
+    # CITE-10, CITE-11: its links are where the requirement is written and the
+    # requirement its statement names.
+    assert_tip_links(conn, id)
 
-    # CITE-8: a second tap on the same citation closes it, and so does a tap
-    # that lands on the text beside the marked span — which is not the citation.
-    conn = conn |> click("#transcript .spec-cite") |> refute_has("#spec-tip")
-
-    # CITE-8: a tap anywhere else closes it too.
+    # CITE-12: the pointer's way from the citation into the tooltip keeps it
+    # open. The tooltip takes no pointer of its own (CITE-8), so that way is over
+    # the page behind it, and the move is the test's own for the same reason.
     conn =
       conn
-      |> click("#transcript .spec-cite")
-      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> move_over_the_tooltip()
+      |> assert_has("#spec-tip", text: tip_text())
+
+    # CITE-12: and so does the pointer resting on one of its links, which is
+    # what makes a link clickable.
+    conn =
+      conn
+      |> hover("#spec-tip a:nth-of-type(2)")
+      |> assert_has("#spec-tip", text: tip_text())
+
+    # CITE-8: the pointer leaving the citation and the tooltip closes it.
+    conn =
+      conn
+      |> leave_the_citation()
+      |> refute_has("#spec-tip")
+
+    # CITE-7: a tap shows it too, which is what a touch screen has instead of a
+    # hover. Playwright's bindings here expose no touchscreen, so the test sends
+    # the events a finger sends.
+    conn =
+      conn
+      |> tap_element("#transcript .spec-cite")
+      |> assert_has("#spec-tip", text: tip_text())
+
+    # CITE-8: a second tap on the same citation closes it. A mouse click is not
+    # that tap — what is on screen came from the pointer resting (CITE-7), and a
+    # click leaves it there — so the second tap is the test's own too.
+    conn = conn |> tap_element("#transcript .spec-cite") |> refute_has("#spec-tip")
+
+    # CITE-8: a click anywhere else closes it.
+    conn =
+      conn
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
       |> click("#chat-input")
       |> refute_has("#spec-tip")
 
     # CITE-8: so does Escape.
     conn =
       conn
-      |> click("#transcript .spec-cite")
-      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
       |> press("#chat-input", "Escape")
       |> refute_has("#spec-tip")
 
-    # CITE-8: so does a scroll of the transcript — the popover would otherwise
+    # CITE-8: so does a scroll of the transcript — the tooltip would otherwise
     # sit over content it no longer belongs to.
     conn =
       conn
-      |> click("#transcript .spec-cite")
-      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
       |> scroll_transcript_up()
       |> refute_has("#spec-tip")
 
     # CITE-8: and so does the citation leaving the page, which is what a message
     # re-rendered without it does (UI-10 — a streaming draft when the reply
-    # lands). This is the last thing this test does to the citation. The
-    # transcript goes back to its end first: a scroll is one of the ways the
-    # popover closes, and Playwright scrolls a citation into view before it taps
-    # it, so a citation left off the screen would be closed by its own tap.
+    # lands). The transcript goes back to its end first: a scroll is one of the
+    # ways the tooltip closes, and Playwright scrolls a citation into view before
+    # it moves the pointer onto it, so a citation left off the screen would be
+    # closed by its own hover.
     conn =
       conn
       |> scroll_transcript_to_end()
-      |> click("#transcript .spec-cite")
-      |> assert_has("#spec-tip", text: "A requirement a tap can read.")
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
       |> remove_citation()
       |> refute_has("#spec-tip")
 
     assert_path(conn, "/c/#{id}")
+
+    # CITE-12: a link in the tooltip is followed by a click — the Files page for
+    # the requirement's own file and line (CITE-10) in the chat's workspace
+    # (FLINK-5, EXPL-27). What the line itself does on that page is EXPL-27's;
+    # here the file it shows is what is asserted.
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      |> hover_citation()
+      |> assert_has("#spec-tip", text: tip_text())
+      |> click("#spec-tip a:nth-of-type(2)")
+
+    assert_path(conn, "/files",
+      query_params: %{
+        "chat" => id,
+        "path" => "specs/#{@cite_spec}",
+        "line" => "5"
+      }
+    )
+
+    conn
+    |> assert_has("#file-path", text: "specs/#{@cite_spec}")
+    |> assert_has("#file-content", text: "A requirement a tap can read, naming TAPPY-2.")
   end
 
   # IMG-1 - IMG-4 (specs/image-viewer.md): an image in the transcript opens in the
@@ -700,18 +773,20 @@ defmodule EliaWeb.ChatBrowserTest do
     id
   end
 
-  # CITE-4, CITE-7: a chat whose reply cites a requirement its own workspace's
-  # corpus defines — `specs/*.md` of the folder the chat works in (CITE-4,
-  # PROJ-12) — and long enough for the transcript to have somewhere to scroll
-  # (CITE-8).
+  # CITE-4, CITE-7, CITE-10, CITE-11: a chat whose reply cites a requirement its
+  # own workspace's corpus defines — `specs/*.md` of the folder the chat works in
+  # (CITE-4, PROJ-12), whose statement names a second requirement (CITE-11) — and
+  # long enough for the transcript to have somewhere to scroll (CITE-8).
   defp citation_chat do
     specs = Path.join(Workspace.root(), "specs")
     File.mkdir_p!(specs)
-    fixture = Path.join(specs, "browser_cite_fixture.md")
+    fixture = Path.join(specs, @cite_spec)
 
     File.write!(
       fixture,
-      "# Fixture\n\n## Requirements\n\n- **TAPPY-1** A requirement a tap can read.\n"
+      "# Fixture\n\n## Requirements\n\n" <>
+        "- **TAPPY-1** A requirement a tap can read, naming TAPPY-2.\n" <>
+        "- **TAPPY-2** The one TAPPY-1 names.\n"
     )
 
     on_exit(fn ->
@@ -736,16 +811,160 @@ defmodule EliaWeb.ChatBrowserTest do
     id
   end
 
-  # CITE-9: what the popover holds — the browser put it there, since the server
+  # CITE-8, CITE-12: what a pointer lands on at the tooltip's own place. Its
+  # links take the pointer (CITE-12) and the tooltip itself does not (CITE-8),
+  # which is what `pointer-events` on each says; the point taken for the tooltip
+  # is in its own padding, where the two differ.
+  defp assert_pointer_through_the_tooltip(conn) do
+    evaluate(
+      conn,
+      """
+      (() => {
+        const tip = document.querySelector("#spec-tip")
+        const box = tip.getBoundingClientRect()
+        const link = tip.querySelector("a[href]")
+        const linkBox = link.getBoundingClientRect()
+
+        const behind = document.elementFromPoint(box.left + 4, box.top + 4)
+        const onLink = document.elementFromPoint(
+          linkBox.left + linkBox.width / 2,
+          linkBox.top + linkBox.height / 2
+        )
+
+        return {
+          behind: behind !== null && behind.closest("#spec-tip") === null,
+          link: onLink !== null && onLink.closest("a") === link
+        }
+      })()
+      """,
+      fn pointer ->
+        assert pointer["behind"], "a pointer in the tooltip's place reaches the tooltip"
+        assert pointer["link"], "a pointer on one of its links does not reach it"
+      end
+    )
+  end
+
+  # CITE-9: what the tooltip holds — the browser put it there, since the server
   # renders the element with no text of its own (its markup's own indentation is
   # all it has, so a whitespace-only reading is the empty one).
   defp assert_tip_text(conn, text) do
     evaluate(conn, "document.querySelector('#spec-tip').textContent", fn held ->
-      assert String.trim(held) == String.trim(text), "the popover reads #{inspect(held)}"
+      assert String.trim(held) == String.trim(text), "the tooltip reads #{inspect(held)}"
     end)
   end
 
-  # CITE-7: the popover is beside the citation it belongs to — over that
+  # CITE-2, CITE-10: what the tooltip reads — the requirement's own statement, and
+  # after it the link to where it is written, whose label is its text too.
+  defp tip_text do
+    "A requirement a tap can read, naming TAPPY-2. specs/#{@cite_spec}:5"
+  end
+
+  # CITE-13: what each citation in the transcript carries as its `title` — the
+  # browser's own tooltip, which the hook strips while it runs, and which a page
+  # whose bundle never loaded keeps (CITE-2, CITE-3).
+  defp assert_citation_titles(conn, titles) do
+    evaluate(
+      conn,
+      "[...document.querySelectorAll('#transcript .spec-cite')].map(c => c.getAttribute('title'))",
+      fn seen -> assert seen == titles, "the citations carry #{inspect(seen)}" end
+    )
+  end
+
+  # CITE-10, CITE-11: the tooltip's links, as the Files page URL for the chat's
+  # own workspace (FLINK-5, EXPL-27): the requirement's own file and line, and
+  # the same for the requirement its statement names.
+  defp assert_tip_links(conn, chat_id) do
+    path = URI.encode_www_form("specs/#{@cite_spec}")
+
+    evaluate(
+      conn,
+      """
+      (() => {
+        return [...document.querySelectorAll("#spec-tip a")]
+          .map(a => [a.textContent, a.getAttribute("href")])
+      })()
+      """,
+      fn links ->
+        assert links == [
+                 ["TAPPY-2", "/files?chat=#{chat_id}&path=#{path}&line=6"],
+                 ["specs/#{@cite_spec}:5", "/files?chat=#{chat_id}&path=#{path}&line=5"]
+               ],
+               "the tooltip's links are #{inspect(links)}"
+      end
+    )
+  end
+
+  # CITE-7, CITE-8: the pointer coming to rest on the citation — the move that
+  # shows the tooltip. The pointer is taken off it first: a pointer that is
+  # already on the citation reports no move when it is sent there again, and the
+  # tooltip would stay shut.
+  defp hover_citation(conn), do: conn |> leave_the_citation() |> hover("#transcript .spec-cite")
+
+  # CITE-8: the pointer taken off the citation and off the tooltip, which is what
+  # closes it (CITE-12) — the page's own corner, which is neither.
+  defp leave_the_citation(conn) do
+    unwrap(conn, fn %{page_id: page_id} ->
+      {:ok, _} = PlaywrightEx.Page.mouse_move(page_id, x: 2, y: 2, timeout: 5_000)
+    end)
+  end
+
+  # CITE-7: the pointer resting on an element. The bindings here have no `hover`
+  # of their own, so this is the frame's, which scrolls the element into view and
+  # moves the mouse onto it as Playwright's own does.
+  defp hover(conn, selector) do
+    unwrap(conn, fn %{frame_id: frame_id} ->
+      {:ok, _} = PlaywrightEx.Frame.hover(frame_id, selector: selector, timeout: 5_000)
+    end)
+  end
+
+  # CITE-7, CITE-8: a tap, as the browser sends one for a finger — a touch
+  # pointer going down and up on the element, and the click that follows it. No
+  # touchscreen is reachable from these bindings, so the test sends the events
+  # itself; what makes a tap a tap, and not the click a mouse sends, is the
+  # pointer's own type (CITE-8).
+  defp tap_element(conn, selector) do
+    evaluate(conn, """
+    (() => {
+      const target = document.querySelector(#{inspect(selector)})
+      const box = target.getBoundingClientRect()
+      const at = {
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+        bubbles: true
+      }
+      target.dispatchEvent(new PointerEvent("pointerdown", {...at, pointerType: "touch"}))
+      target.dispatchEvent(new PointerEvent("pointerup", {...at, pointerType: "touch"}))
+      target.dispatchEvent(new MouseEvent("click", at))
+    })()
+    """)
+  end
+
+  # CITE-12: the pointer moved onto the tooltip itself. The tooltip takes no
+  # pointer of its own (CITE-8), so the move is a raw one — Playwright's own
+  # hover checks that the element it moves to is the one that receives the event,
+  # and this one does not — and the point is parked in the test process, where
+  # `evaluate/3` runs its function.
+  defp move_over_the_tooltip(conn) do
+    evaluate(
+      conn,
+      """
+      (() => {
+        const box = document.querySelector("#spec-tip").getBoundingClientRect()
+        return {x: box.left + box.width / 2, y: box.top + box.height / 2}
+      })()
+      """,
+      &Process.put(:elia_tip_point, &1)
+    )
+
+    point = Process.get(:elia_tip_point)
+
+    unwrap(conn, fn %{page_id: page_id} ->
+      {:ok, _} =
+        PlaywrightEx.Page.mouse_move(page_id, x: point["x"], y: point["y"], timeout: 5_000)
+    end)
+  end
+
+  # CITE-7: the tooltip is beside the citation it belongs to — over that
   # citation's own column on screen, and either just above it or just below it —
   # while staying inside the screen on both counts, so a citation at the top of
   # the transcript reads as well as one at the bottom.
@@ -769,22 +988,22 @@ defmodule EliaWeb.ChatBrowserTest do
         box = seen["box"]
 
         assert seen["overlap"] > 0,
-               "the popover is not over the citation's own column: #{inspect(seen)}"
+               "the tooltip is not over the citation's own column: #{inspect(seen)}"
 
         assert seen["gap"] <= 12,
-               "the popover is #{seen["gap"]}px away from the citation: #{inspect(seen)}"
+               "the tooltip is #{seen["gap"]}px away from the citation: #{inspect(seen)}"
 
         assert box["left"] >= 0 and box["right"] <= seen["width"],
-               "the popover is off the side of the screen: #{inspect(seen)}"
+               "the tooltip is off the side of the screen: #{inspect(seen)}"
 
         assert box["top"] >= 0 and box["bottom"] <= seen["height"],
-               "the popover is off the top or bottom of the screen: #{inspect(seen)}"
+               "the tooltip is off the top or bottom of the screen: #{inspect(seen)}"
       end
     )
   end
 
   # CITE-8: the reader scrolling the transcript, which is nothing to do with the
-  # popover and closes it all the same.
+  # tooltip and closes it all the same.
   defp scroll_transcript_up(conn),
     do: evaluate(conn, "document.querySelector('#transcript-scroll').scrollTop = 0")
 

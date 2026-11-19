@@ -21,7 +21,7 @@ defmodule Elia.Specs.Cache do
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   @doc "The corpus for `root` when its files still have `identity`, else `nil`."
-  @spec fetch(binary(), term()) :: %{binary() => binary()} | nil
+  @spec fetch(binary(), term()) :: %{binary() => Elia.Specs.requirement()} | nil
   def fetch(root, identity) do
     case :ets.lookup(@table, root) do
       [{^root, ^identity, requirements}] -> requirements
@@ -31,7 +31,7 @@ defmodule Elia.Specs.Cache do
     ArgumentError -> nil
   end
 
-  @spec put(binary(), term(), %{binary() => binary()}) :: :ok
+  @spec put(binary(), term(), %{binary() => Elia.Specs.requirement()}) :: :ok
   def put(root, identity, requirements) do
     :ets.insert(@table, {root, identity, requirements})
     :ok

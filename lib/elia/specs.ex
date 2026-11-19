@@ -1,7 +1,8 @@
 defmodule Elia.Specs do
   @moduledoc """
   The spec corpus a workspace holds (`specs/spec-citations.md`): the requirement
-  IDs its `specs/*.md` define, and what each one says (CITE-1, CITE-2).
+  IDs its `specs/*.md` define, what each one says (CITE-1, CITE-2), and where it
+  is written — its spec file and the line it starts on (CITE-10).
 
   A chat's corpus is the one its own workspace has (CITE-4, PROJ-12) — the same
   workspace a file mention resolves in (FLINK-5) — so a citation shows the
@@ -19,10 +20,17 @@ defmodule Elia.Specs do
   # paragraphs stay with the requirement they belong to.
   @entry ~r/^- (~~)?\*\*([A-Z]+)-(\d+)\*\*(.*?)(?=\n(?:- |#|\S)|\z)/ms
 
-  @doc """
-  Every requirement the workspace `root` holds, by ID (CITE-1, CITE-2).
+  @typedoc """
+  A requirement as the corpus holds it (CITE-10): what it says (CITE-2), the spec
+  file it is written in relative to the workspace root, and the 1-based line its
+  own entry starts on.
   """
-  @spec requirements(binary()) :: %{binary() => binary()}
+  @type requirement :: %{text: binary(), path: binary(), line: pos_integer()}
+
+  @doc """
+  Every requirement the workspace `root` holds, by ID (CITE-1, CITE-2, CITE-10).
+  """
+  @spec requirements(binary()) :: %{binary() => requirement()}
   def requirements(root) when is_binary(root) do
     files = files(root)
     stamps = for path <- files, do: {path, stamp(path)}
@@ -37,14 +45,27 @@ defmodule Elia.Specs do
   end
 
   @doc """
+  The requirement `id` as `root`'s corpus holds it (CITE-10), or `nil` when no
+  spec there defines it (CITE-4).
+  """
+  @spec requirement(binary(), binary()) :: requirement() | nil
+  def requirement(root, id) when is_binary(root) and is_binary(id),
+    do: Map.get(requirements(root), id)
+
+  @doc """
   What the requirement `id` says in `root`'s corpus, or `nil` when no spec there
   defines it (CITE-4).
   """
   @spec text(binary(), binary()) :: binary() | nil
-  def text(root, id) when is_binary(root) and is_binary(id), do: Map.get(requirements(root), id)
+  def text(root, id) when is_binary(root) and is_binary(id) do
+    case requirement(root, id) do
+      %{text: text} -> text
+      nil -> nil
+    end
+  end
 
   defp read(root, files, stamps) do
-    requirements = files |> Enum.flat_map(&entries/1) |> Map.new()
+    requirements = files |> Enum.flat_map(&entries(root, &1)) |> Map.new()
     Cache.put(root, stamps, {System.system_time(:second), requirements})
     requirements
   end
@@ -64,16 +85,34 @@ defmodule Elia.Specs do
     end
   end
 
-  defp entries(path) do
+  # CITE-10: each entry also carries where it is written — its spec file, as the
+  # workspace root sees it, and the line it starts on — which is what a citation
+  # links to (CITE-10, CITE-11). The entry's own bullet is the first character of
+  # that line, so the newlines before the entry's offset are the lines above it.
+  defp entries(root, path) do
     case File.read(path) do
       {:ok, content} ->
-        for [_, retired, prefix, number, text] <- Regex.scan(@entry, content) do
-          {"#{prefix}-#{number}", statement(text, retired)}
+        file = Path.relative_to(path, root)
+
+        for [{offset, _length} | groups] <- Regex.scan(@entry, content, return: :index) do
+          [retired, prefix, number, text] = Enum.map(groups, &captured(content, &1))
+
+          {"#{prefix}-#{number}",
+           %{text: statement(text, retired), path: file, line: line_at(content, offset)}}
         end
 
       _ ->
         []
     end
+  end
+
+  # What a capture group matched, or `""` for a group that took no part in the
+  # match — the `~~` of a retirement, which an entry need not have.
+  defp captured(_content, {-1, _length}), do: ""
+  defp captured(content, {offset, length}), do: binary_part(content, offset, length)
+
+  defp line_at(content, offset) do
+    content |> binary_part(0, offset) |> :binary.matches("\n") |> length() |> Kernel.+(1)
   end
 
   # CITE-2: the entry's own markers are not part of the statement — not the

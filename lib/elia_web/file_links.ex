@@ -55,6 +55,24 @@ defmodule EliaWeb.FileLinks do
   def card_url(_links, _item), do: nil
 
   @doc """
+  The Files page URL for `path` at `line` (CITE-10) — what a citation's tooltip
+  links to — or `nil` when the Files page could not show the path (FLINK-5).
+
+  FLINK-2 leaves a *mention*'s line suffix out of its link, which is the file's
+  page; this is the other way round, for a link whose whole point is the line
+  (CITE-10), and it builds on the same URL so that both name the same page.
+  """
+  @spec line_url(t() | nil, String.t(), pos_integer()) :: String.t() | nil
+  def line_url(nil, _path, _line), do: nil
+
+  def line_url(%{} = links, path, line) when is_binary(path) and is_integer(line) do
+    case url(links, path) do
+      nil -> nil
+      url -> url <> "&line=" <> Integer.to_string(line)
+    end
+  end
+
+  @doc """
   The document with every mention in it linked (FLINK-1). A path inside a
   fenced code block is content, not a mention; the text of a link, and an
   image's alt text, are left alone, so no link lands inside another.

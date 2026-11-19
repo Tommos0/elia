@@ -35,10 +35,12 @@ defmodule Elia.SpecsTest do
     root
   end
 
-  # CITE-1, CITE-2: the corpus is every `specs/*.md` entry, and each one's text is
-  # the spec's own — its line wrapping collapsed, the entry's own markers left
-  # out, and a retirement's reason kept (SPEC-5).
-  test "reads a workspace's corpus, with each requirement's own text" do
+  # CITE-1, CITE-2, CITE-10: the corpus is every `specs/*.md` entry, each one's
+  # text is the spec's own — its line wrapping collapsed, the entry's own markers
+  # left out, and a retirement's reason kept (SPEC-5) — and each one carries the
+  # spec file and the line it is written at, which is what a citation links to
+  # (CITE-10, CITE-11).
+  test "reads a workspace's corpus, with each requirement's own text and where it is written" do
     root =
       corpus(%{
         "alpha.md" => @alpha,
@@ -46,18 +48,40 @@ defmodule Elia.SpecsTest do
       })
 
     assert Specs.requirements(root) == %{
-             "ALPHA-1" =>
-               "The first requirement, which the spec writes across two lines and with " <>
-                 "`code` and **emphasis** in it.",
-             "ALPHA-2" => "The second one. Its second paragraph stays with it.",
-             "ALPHA-3" => "A retired one Retired: it was replaced (ALPHA-2).",
-             "ALPHA-4" => ~s(One holding <brackets>, an & and a "quote".),
-             "BETA-1" => "Something else."
+             "ALPHA-1" => %{
+               text:
+                 "The first requirement, which the spec writes across two lines and with " <>
+                   "`code` and **emphasis** in it.",
+               path: "specs/alpha.md",
+               line: 9
+             },
+             "ALPHA-2" => %{
+               text: "The second one. Its second paragraph stays with it.",
+               path: "specs/alpha.md",
+               line: 11
+             },
+             "ALPHA-3" => %{
+               text: "A retired one Retired: it was replaced (ALPHA-2).",
+               path: "specs/alpha.md",
+               line: 15
+             },
+             "ALPHA-4" => %{
+               text: ~s(One holding <brackets>, an & and a "quote".),
+               path: "specs/alpha.md",
+               line: 16
+             },
+             "BETA-1" => %{
+               text: "Something else.",
+               path: "specs/beta.md",
+               line: 5
+             }
            }
 
     assert Specs.text(root, "BETA-1") == "Something else."
+    assert Specs.requirement(root, "BETA-1").line == 5
     # CITE-1: an ID the corpus does not define has nothing to show.
     assert Specs.text(root, "GAMMA-1") == nil
+    assert Specs.requirement(root, "GAMMA-1") == nil
   end
 
   # CITE-4: what the corpus holds as it is read — a spec that is edited, added or
@@ -102,20 +126,28 @@ defmodule Elia.SpecsTest do
     assert Specs.requirements(root) == %{}
   end
 
-  # CITE-1, CITE-2, CITE-4: the tree's own corpus, read whole — every requirement
-  # of every spec, with the spec's own text and nothing of the entry's markup.
+  # CITE-1, CITE-2, CITE-4, CITE-10: the tree's own corpus, read whole — every
+  # requirement of every spec, with the spec's own text and nothing of the
+  # entry's markup, and with the file and line it is really written at.
   test "reads the tree's own corpus" do
-    requirements = Specs.requirements(Path.expand("../..", __DIR__))
+    root = Path.expand("../..", __DIR__)
+    requirements = Specs.requirements(root)
 
     assert Map.has_key?(requirements, "SPEC-1")
     assert Map.has_key?(requirements, "CITE-1")
     assert map_size(requirements) > 500
 
-    for {id, text} <- requirements do
+    for {id, %{text: text, path: path, line: line}} <- requirements do
       assert String.match?(id, ~r/^[A-Z]+-\d+$/), id
       assert text != "", id
       assert text == String.trim(text), id
       refute text =~ "\n", id
+
+      # CITE-10: the spec file is one the workspace holds, and that line is the
+      # one the requirement's own entry starts on.
+      assert File.exists?(Path.join(root, path)), id
+      written = Path.join(root, path) |> File.read!() |> String.split("\n") |> Enum.at(line - 1)
+      assert written =~ "**#{id}**", "#{path}:#{line}"
     end
   end
 end
