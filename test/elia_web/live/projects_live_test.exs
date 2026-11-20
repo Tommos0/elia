@@ -10,6 +10,8 @@ defmodule EliaWeb.ProjectsLiveTest do
     on_exit(fn ->
       File.rm(Projects.path())
       Elia.Settings.delete(:default_project)
+      # The projects root a test set (PROJ-32).
+      Elia.Settings.delete(:projects_root)
     end)
 
     :ok
@@ -49,44 +51,109 @@ defmodule EliaWeb.ProjectsLiveTest do
     assert has_element?(view, "#project-#{project.id} #delete-project-#{project.id}")
   end
 
-  # PROJ-23
-  test "creates a project from a name and a folder", %{conn: conn} do
-    dir = make_dir("create")
+  # PROJ-23, PROJ-39: the form takes a name; the folder is made under the
+  # projects root, as a repository (PROJ-34 - PROJ-36).
+  test "creates a project from a name", %{conn: conn} do
+    root = make_dir("create")
+    :ok = Projects.set_root(root)
     {:ok, view, _html} = live(conn, ~p"/projects")
 
-    view |> form("#new-project", project: %{name: "Fresh", folder: dir}) |> render_submit()
+    assert has_element?(view, "#projects-root-path", Path.expand(root))
+
+    view
+    |> form("#new-project", project: %{name: "Fresh"})
+    |> render_submit()
 
     project = Enum.find(Projects.list(), &(&1.name == "Fresh"))
     assert project
-    assert project.folder == Path.expand(dir)
+    assert project.folder == Path.join(Path.expand(root), "fresh")
+    assert File.dir?(Path.join(project.folder, ".git"))
     assert has_element?(view, "#project-#{project.id}", "Fresh")
+    assert has_element?(view, "#flash-info", "Created Fresh.")
     refute has_element?(view, "#project-error")
   end
 
-  # PROJ-23: a folder that isn't a directory shows the error and adds nothing.
-  test "creating with a bad folder shows an error and adds nothing", %{conn: conn} do
+  # PROJ-39: a folder that is already there holds something, so nothing is made
+  # and the error is shown.
+  test "creating with a folder already there shows an error and adds nothing", %{conn: conn} do
+    root = make_dir("taken")
+    :ok = Projects.set_root(root)
+    File.mkdir_p!(Path.join(root, "fresh"))
+    File.write!(Path.join([root, "fresh", "note.txt"]), "mine")
     before = length(Projects.list())
     {:ok, view, _html} = live(conn, ~p"/projects")
 
     view
-    |> form("#new-project", project: %{name: "Nope", folder: "/definitely/not/here"})
+    |> form("#new-project", project: %{name: "Fresh"})
     |> render_submit()
 
     assert has_element?(view, "#project-error")
     assert has_element?(view, "#new-project #project-error")
     assert length(Projects.list()) == before
+    assert File.read!(Path.join([root, "fresh", "note.txt"])) == "mine"
   end
 
-  # PROJ-23: a blank name is rejected too.
+  # PROJ-39: a blank name is rejected too.
   test "creating with a blank name shows an error and adds nothing", %{conn: conn} do
-    dir = make_dir("blank")
+    :ok = Projects.set_root(make_dir("blank"))
     before = length(Projects.list())
     {:ok, view, _html} = live(conn, ~p"/projects")
 
-    view |> form("#new-project", project: %{name: "  ", folder: dir}) |> render_submit()
+    view |> form("#new-project", project: %{name: "  "}) |> render_submit()
 
     assert has_element?(view, "#project-error")
     assert length(Projects.list()) == before
+  end
+
+  # PROJ-40: the page shows the projects root and sets it, and a blank one is
+  # refused and leaves the stored root alone.
+  test "shows and sets the projects root", %{conn: conn} do
+    dir = make_dir("root")
+    {:ok, view, _html} = live(conn, ~p"/projects")
+
+    assert has_element?(view, "#projects-root-path", Path.expand("~/elia-projects"))
+
+    view |> form("#projects-root-form", root: %{folder: dir}) |> render_submit()
+
+    assert Projects.root() == Path.expand(dir)
+    assert has_element?(view, "#projects-root-path", Path.expand(dir))
+    assert has_element?(view, "#flash-info", "Projects root saved.")
+    refute has_element?(view, "#projects-root-error")
+
+    view |> form("#projects-root-form", root: %{folder: "  "}) |> render_submit()
+
+    assert has_element?(view, "#projects-root-error")
+    assert has_element?(view, "#projects-root-form #projects-root-error")
+    assert Projects.root() == Path.expand(dir)
+  end
+
+  # PROJ-41: a creation whose repository was not set up names the project and
+  # says so, rather than reporting a plain success (PROJ-38).
+  test "a creation without a repository says so", %{conn: conn} do
+    root = make_dir("norepo")
+    :ok = Projects.set_root(root)
+
+    # A `git` that fails, first on the PATH.
+    bin = make_dir("norepo-bin")
+    File.write!(Path.join(bin, "git"), "#!/bin/sh\nexit 1\n")
+    File.chmod!(Path.join(bin, "git"), 0o755)
+    path = System.get_env("PATH")
+    System.put_env("PATH", bin <> ":" <> path)
+    on_exit(fn -> System.put_env("PATH", path) end)
+
+    {:ok, view, _html} = live(conn, ~p"/projects")
+
+    view
+    |> form("#new-project", project: %{name: "No Repo"})
+    |> render_submit()
+
+    project = Enum.find(Projects.list(), &(&1.name == "No Repo"))
+    assert project
+    assert has_element?(view, "#project-#{project.id}", "No Repo")
+    # The message names the project and says the repository is not there (the
+    # apostrophe is escaped in the markup, so this reads the element's text).
+    assert has_element?(view, "#flash-error", "No Repo")
+    assert has_element?(view, "#flash-error", "git repository")
   end
 
   # PROJ-23: deleting asks for confirmation and removes the project.

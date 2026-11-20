@@ -2,6 +2,10 @@ defmodule Elia.Projects do
   @moduledoc """
   The registry of project folders Elia works in (PROJ-1 - PROJ-8).
 
+  A project can also be made from its name alone: that creates a folder of its
+  own under the projects root and leaves it a git repository with one commit
+  (PROJ-32 - PROJ-38).
+
   A project is a named folder on disk; every chat belongs to one. Elia's own
   project (id `harness`, folder `Elia.Workspace.root/0`) is never stored: it is
   synthesised on every read and always listed first. The others live as one
@@ -15,6 +19,8 @@ defmodule Elia.Projects do
   @version 1
   @harness_id "harness"
   @default_key :default_project
+  @projects_root_key :projects_root
+  @default_root "~/elia-projects"
 
   @type t :: %{
           id: binary(),
@@ -67,15 +73,96 @@ defmodule Elia.Projects do
         {:error, :not_a_directory}
 
       true ->
-        project = %{
-          id: Agent.new_id(),
-          name: String.trim(name),
-          folder: Path.expand(folder),
-          harness?: false
-        }
-
+        project = new_project(name, folder)
         save([project | read()])
         {:ok, project}
+    end
+  end
+
+  @doc """
+  PROJ-32, PROJ-33: the projects root — the folder `create/1` makes a project's
+  own folder in. It is `Elia.Settings`' `:projects_root`, so it survives a
+  restart and is never committed, and `~/elia-projects` when none is stored.
+  """
+  @spec root() :: binary()
+  def root do
+    case Settings.get(@projects_root_key) do
+      value when is_binary(value) and value != "" -> Path.expand(value)
+      _none -> Path.expand(@default_root)
+    end
+  end
+
+  @doc """
+  PROJ-33: stores the projects root, trimmed and expanded, so `~` and a relative
+  path resolve to a folder. A blank value is `{:error, :blank_root}` and leaves
+  the stored root alone.
+  """
+  @spec set_root(binary()) :: :ok | {:error, :blank_root}
+  def set_root(folder) do
+    case trimmed(folder) do
+      "" ->
+        {:error, :blank_root}
+
+      value ->
+        Settings.put(@projects_root_key, Path.expand(value))
+        :ok
+    end
+  end
+
+  @doc """
+  PROJ-34: the folder `create/1` makes for a project's name — the name
+  lowercased, every run of characters that are neither letters nor digits
+  replaced by `-`, and leading and trailing `-` removed — under the projects
+  root. A name that leaves no folder is `nil`.
+  """
+  @spec folder_for(binary()) :: binary() | nil
+  def folder_for(name) when is_binary(name) do
+    folder =
+      name
+      |> String.trim()
+      |> String.downcase()
+      |> String.replace(~r/[^\p{L}\p{N}]+/u, "-")
+      |> String.trim("-")
+
+    if folder == "", do: nil, else: Path.join(root(), folder)
+  end
+
+  def folder_for(_name), do: nil
+
+  @doc """
+  PROJ-34 - PROJ-38: makes a project from its name alone, in a folder of its own
+  under the projects root (`folder_for/1`). The folder is created with its
+  parents, and is left a git repository with one commit: a `README.md` naming the
+  project and an `AGENTS.md` for the chats that will work there, each written
+  when the folder has no such file, committed together as the initial commit.
+
+  A folder that is already there and holds anything is
+  `{:error, :folder_exists}` — creation never writes into a folder that is not
+  the one it makes — a folder that couldn't be made is `{:error, :folder_failed}`,
+  and neither saves a project (PROJ-6). Whatever stops the folder becoming that
+  repository — no git, git refusing to initialize or to commit, a file that can't
+  be written — does not fail the creation: the folder, what it holds and the
+  project are still made, and it is returned as `{:ok, project, :no_repository}`.
+  """
+  @spec create(binary()) ::
+          {:ok, t()}
+          | {:ok, t(), :no_repository}
+          | {:error, :blank_name | :folder_exists | :folder_failed}
+  def create(name) do
+    case folder_for(name) do
+      nil ->
+        {:error, :blank_name}
+
+      folder ->
+        with :ok <- make_folder(folder) do
+          project = new_project(name, folder)
+          save([project | read()])
+
+          case setup_repository(folder, project.name) do
+            :ok -> {:ok, project}
+            {:error, _reason} -> {:ok, project, :no_repository}
+          end
+        end
     end
   end
 
@@ -162,6 +249,132 @@ defmodule Elia.Projects do
   end
 
   defp blank?(name), do: not is_binary(name) or String.trim(name) == ""
+
+  defp trimmed(folder) when is_binary(folder), do: String.trim(folder)
+  defp trimmed(_folder), do: ""
+
+  defp new_project(name, folder) do
+    %{
+      id: Agent.new_id(),
+      name: String.trim(name),
+      folder: Path.expand(folder),
+      harness?: false
+    }
+  end
+
+  # PROJ-35: the folder, with its parents, so a projects root that is not there
+  # yet is made as well. A folder that is there and holds anything is not one to
+  # write into; one that is there and holds nothing is used, so a creation whose
+  # folder was left behind by a failed attempt can be repeated.
+  defp make_folder(folder) do
+    case File.ls(folder) do
+      {:ok, []} ->
+        :ok
+
+      {:ok, _entries} ->
+        {:error, :folder_exists}
+
+      {:error, _reason} ->
+        if File.mkdir_p(folder) == :ok, do: :ok, else: {:error, :folder_failed}
+    end
+  end
+
+  # PROJ-36, PROJ-38: the repository with its one commit, or whatever stopped it.
+  defp setup_repository(folder, name) do
+    with :ok <- ensure_file(Path.join(folder, "README.md"), readme(name)),
+         :ok <- ensure_file(Path.join(folder, "AGENTS.md"), agents(name)),
+         :ok <- ensure_repository(folder) do
+      commit(folder)
+    end
+  end
+
+  defp ensure_repository(folder) do
+    if File.dir?(Path.join(folder, ".git")), do: :ok, else: git(folder, ["init", "-q"])
+  end
+
+  defp commit(folder) do
+    with :ok <- git(folder, ["add", "-A"]) do
+      git(folder, ["commit", "-m", "Initial commit"], identity(folder))
+    end
+  end
+
+  # PROJ-37: git's own identity where the machine has one, and one derived from
+  # the machine's user where it has none, so the initial commit is never refused
+  # for want of an identity.
+  defp identity(folder) do
+    case git_output(folder, ["config", "user.email"]) do
+      "" ->
+        user = System.get_env("USER") || System.get_env("LOGNAME") || "user"
+        name = String.capitalize(user)
+
+        [
+          {"GIT_AUTHOR_NAME", name},
+          {"GIT_AUTHOR_EMAIL", "#{user}@#{hostname()}"},
+          {"GIT_COMMITTER_NAME", name},
+          {"GIT_COMMITTER_EMAIL", "#{user}@#{hostname()}"}
+        ]
+
+      _email ->
+        []
+    end
+  end
+
+  defp hostname do
+    case :inet.gethostname() do
+      {:ok, host} -> List.to_string(host)
+      _error -> "localhost"
+    end
+  end
+
+  # PROJ-36: written only when the folder has no such file.
+  defp ensure_file(path, contents) do
+    case File.write(path, contents, [:exclusive]) do
+      :ok -> :ok
+      {:error, :eexist} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp readme(name), do: "# #{name}\n\nA project Elia works in.\n"
+
+  defp agents(name) do
+    """
+    # #{name}
+
+    Instructions for the chats that work in this project: what it is, how to
+    build, test and run it, and anything a chat here should always or never do.
+    Every chat in this project is given this file, on top of Elia's own
+    instructions (PROJ-15).
+    """
+  end
+
+  # git, run in the new folder. No git at all, and a git that fails, are both an
+  # error the creation turns into `:no_repository` (PROJ-38).
+  defp git(folder, args, env \\ []) do
+    case System.find_executable("git") do
+      nil ->
+        {:error, :no_git}
+
+      executable ->
+        case System.cmd(executable, args, cd: folder, env: env, stderr_to_stdout: true) do
+          {_output, 0} -> :ok
+          {output, _status} -> {:error, output}
+        end
+    end
+  end
+
+  defp git_output(folder, args) do
+    case System.find_executable("git") do
+      nil ->
+        ""
+
+      executable ->
+        case System.cmd(executable, args, cd: folder, stderr_to_stdout: true) do
+          {output, 0} -> String.trim(output)
+          _other -> ""
+        end
+    end
+  end
 
   # Only projects other than Elia's own are stored (PROJ-2): the ones read here.
   defp read do

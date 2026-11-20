@@ -126,10 +126,9 @@ list and the page agree about where the user is.
 ### The interface
 
 - **PROJ-23** `/projects` lists every project with its name, folder and number
-  of chats (`#project-<id>`), a form to create one from a name and a folder
-  (`#new-project`), and a delete button (`#delete-project-<id>`) for every
-  project except Elia's. Creating with a folder that isn't a directory shows
-  the error and adds nothing; deleting asks for confirmation.
+  of chats (`#project-<id>`), a form to create one from a name (`#new-project`),
+  and a delete button (`#delete-project-<id>`) for every project except Elia's.
+  Deleting asks for confirmation.
 - ~~**PROJ-24** The chat sidebar groups chats by project: a header per project
   (`#project-header-<id>`) with the project's name and a "New chat" button
   (`#new-chat-<id>`) starting a chat in it (PROJ-26), and that project's chats
@@ -169,6 +168,55 @@ list and the page agree about where the user is.
   — rather than for creating alone. The header itself carries no "Projects" link
   (PROJ-25).
 
+### Creating a project by its name
+
+- **PROJ-32** The projects root is the folder Elia makes a project's own folder
+  in: `Elia.Projects.root/0` is `Elia.Settings`' `:projects_root` (CONF-1), and
+  `~/elia-projects` when none is stored. It survives a restart and is never
+  committed (CONF-4).
+- **PROJ-33** `Elia.Projects.set_root/1` stores the projects root, trimmed and
+  expanded, so `~` and a relative path resolve to a folder; a blank value is
+  `{:error, :blank_root}` and leaves the stored root alone.
+- **PROJ-34** `Elia.Projects.create/1` takes a project's name alone and makes it
+  in the folder the projects root names for it (PROJ-32): the folder's name is
+  the project's name lowercased, with every run of characters that are neither
+  letters nor digits replaced by `-` and leading and trailing `-` removed. A
+  blank name, and a name whose folder comes out empty, are
+  `{:error, :blank_name}`.
+- **PROJ-35** The folder is created with its parents, so a projects root that is
+  not there yet is made as well. A folder that is already there and holds
+  anything is `{:error, :folder_exists}` — creation never writes into a folder
+  that is not the one it makes — a folder that couldn't be made is
+  `{:error, :folder_failed}`, and neither saves a project (PROJ-6). A folder
+  that is there and holds nothing is used, so creating again after a failed
+  attempt works.
+- **PROJ-36** The new folder is a git repository with one commit: `git init`
+  where the folder has no repository, a `README.md` naming the project and an
+  `AGENTS.md` for the chats that will work there, each written only when the
+  folder has no such file, and the two committed as the initial commit.
+- **PROJ-37** The initial commit uses the machine's git identity; where git has
+  none configured, creation supplies one derived from the machine's user, so
+  creating a project does not fail for want of a git identity.
+- **PROJ-38** Whatever stops the new folder becoming a repository with one
+  commit — no git on the machine, git refusing to initialize the repository or
+  to commit, a file that can't be written — does not fail the creation: the
+  folder, what it holds and the project are still made, and `create/1` returns
+  them as `{:ok, project, :no_repository}` rather than `{:ok, project}`
+  (PROJ-41).
+- **PROJ-39** The projects page's form (`#new-project`) takes a name and nothing
+  else: creating makes the project's folder under the projects root (PROJ-32,
+  PROJ-34), and the page shows that root beside the form (PROJ-40). Each error
+  it can get reads as a message in `#project-error` — `:blank_name`,
+  `:folder_exists` and `:folder_failed` — and nothing is added to the listing.
+- **PROJ-40** The page shows the projects root and sets it: `#projects-root-path`
+  holds it, an input (`#projects-root-input`) with a save button
+  (`#save-project-root`) stores what the input holds (PROJ-33) and the page then
+  shows the new root; a blank entry is shown in `#projects-root-error` and
+  leaves the stored root alone.
+- **PROJ-41** A creation whose repository was not set up (PROJ-38) says so in
+  the flash: the project is named and the page says its git repository was not
+  set up, rather than reporting a plain success.
+
 ## Out of scope
 
 - The deploy workflow applies to Elia's own project only (PROJ-14): a chat in
@@ -179,6 +227,14 @@ list and the page agree about where the user is.
 - The Files page's project picker (EXPL-16) browses one project without opening
   it: browsing another project's files leaves the open project, the header and
   the chat list where they are.
+- Creating a project by its name (PROJ-34 to PROJ-38) makes a folder and a
+  repository and nothing else: no remote, no branch chosen, no dependency and no
+  scaffolding beyond `README.md` and `AGENTS.md`, and a folder that is already
+  there is never adopted (PROJ-35). Attaching a project to a folder that is
+  already there — `Elia.Projects.create/2` (PROJ-6) — is not something the
+  interface offers: the page makes a folder of its own.
+- Creating a project is something the interface does. The agent has no tool for
+  it, and `Elia.Projects.create/1` is not reachable from a chat.
 
 ## Stored data
 
@@ -193,9 +249,18 @@ an older version says what it said. Nor does a chat's saved `project_id`
 project when its session loaded, which is now stated for a view too (PROJ-9,
 PROJ-12).
 
+The projects root is one new key of the settings database (PROJ-32, PROJ-33):
+the database holds keys and values, and one written before this change has no
+value under `:projects_root`, which reads as the default root — so this too is
+backward compatible, with nothing to migrate. The registry file keeps its shape:
+a project made from a name is an ordinary project by PROJ-1, saved with the same
+fields in the same file (PROJ-2), and the folder it made is a folder like any
+other, so a project created this way and one attached to an existing folder are
+indistinguishable afterwards.
+
 ## Implementation
 
-`Elia.Projects`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
+`Elia.Projects`, `Elia.Settings`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
 `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
@@ -208,7 +273,9 @@ PROJ-12).
 - `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
   Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`,
   `chats_of/1` and the project a chat belongs to, a
-  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27, PROJ-31).
+  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27, PROJ-31; the
+  projects root and creating from a name, with the folder it makes, its errors,
+  the repository and its initial commit and identity — PROJ-32 to PROJ-38).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
   PROJ-3, PROJ-13, PROJ-14, PROJ-22).
@@ -219,7 +286,9 @@ PROJ-12).
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
-- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23).
+- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23;
+  creating from a name, the projects root control and what the page says after
+  a creation whose repository was not set up — PROJ-39 to PROJ-41).
 - `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).

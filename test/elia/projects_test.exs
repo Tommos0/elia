@@ -3,13 +3,16 @@ defmodule Elia.ProjectsTest do
 
   alias Elia.{Projects, Settings, Workspace}
 
-  # Same key Elia.Projects stores the default under (PROJ-8).
+  # Same keys Elia.Projects stores the default and the projects root under
+  # (PROJ-8, PROJ-32).
   @default_key :default_project
+  @root_key :projects_root
 
   setup do
     on_exit(fn ->
       File.rm(Projects.path())
       Settings.delete(@default_key)
+      Settings.delete(@root_key)
     end)
 
     :ok
@@ -174,10 +177,205 @@ defmodule Elia.ProjectsTest do
     assert Projects.chat_project_id(%{}, ids) == "harness"
   end
 
+  # PROJ-32, PROJ-33: the projects root is a setting — so it survives a restart
+  # and is never committed — and `~/elia-projects` until it is set.
+  test "the projects root is stored, and refused when blank" do
+    assert Projects.root() == Path.expand("~/elia-projects")
+
+    dir = tmp_dir("root")
+    assert :ok = Projects.set_root(dir)
+    assert Projects.root() == Path.expand(dir)
+    assert Settings.get(@root_key) == Path.expand(dir)
+
+    # Trimmed, and `~` and a relative path resolve to a folder.
+    assert :ok = Projects.set_root("  " <> dir <> "  ")
+    assert Projects.root() == Path.expand(dir)
+
+    assert {:error, :blank_root} = Projects.set_root("   ")
+    assert {:error, :blank_root} = Projects.set_root(nil)
+    assert Projects.root() == Path.expand(dir)
+  end
+
+  # PROJ-34: a name alone, made a folder of its own under the projects root.
+  test "create/1 makes a project in a folder of its own" do
+    root = tmp_dir("create")
+    :ok = Projects.set_root(root)
+
+    assert {:ok, project} = Projects.create("My App")
+    assert project.name == "My App"
+    assert project.folder == Path.join(Path.expand(root), "my-app")
+    assert File.dir?(project.folder)
+    assert Projects.get(project.id) == project
+    refute project.harness?
+
+    # Nothing is saved for a name that leaves no folder name.
+    before = length(Projects.list())
+    assert {:error, :blank_name} = Projects.create("   ")
+    assert {:error, :blank_name} = Projects.create("!!!")
+    assert {:error, :blank_name} = Projects.create("")
+    assert length(Projects.list()) == before
+  end
+
+  # PROJ-34: the folder is the name, lowercased and kept to letters and digits.
+  test "the folder a name makes is its lowercased letters and digits" do
+    root = Path.expand(tmp_dir("folder"))
+    :ok = Projects.set_root(root)
+
+    assert Projects.folder_for("My  App!") == Path.join(root, "my-app")
+    assert Projects.folder_for("Café Olé") == Path.join(root, "café-olé")
+    assert Projects.folder_for("  --2 Fast 2 Furious-- ") == Path.join(root, "2-fast-2-furious")
+    assert Projects.folder_for("!!!") == nil
+    assert Projects.folder_for(nil) == nil
+  end
+
+  # PROJ-35: the folder is made with its parents, a folder that is there and
+  # holds anything is never written into, and one that can't be made is an error
+  # that saves nothing.
+  test "create/1 makes the folder, never writing into one that is taken" do
+    root = tmp_dir("exists")
+    nested = Path.join([root, "deep", "deeper"])
+    :ok = Projects.set_root(nested)
+
+    # The projects root itself is made, parents and all.
+    assert {:ok, project} = Projects.create("Fresh")
+    assert project.folder == Path.join(nested, "fresh")
+
+    # A folder that already holds something.
+    taken = Path.join(nested, "taken")
+    File.mkdir_p!(taken)
+    File.write!(Path.join(taken, "note.txt"), "mine")
+    assert {:error, :folder_exists} = Projects.create("Taken")
+    refute Enum.any?(Projects.list(), &(&1.name == "Taken"))
+    assert File.read!(Path.join(taken, "note.txt")) == "mine"
+
+    # One that holds nothing is used, so a failed attempt can be repeated.
+    empty = Path.join(nested, "empty")
+    File.mkdir_p!(empty)
+    assert {:ok, project} = Projects.create("Empty")
+    assert project.folder == empty
+
+    # A root that can't be made: its parent is a file.
+    file = Path.join(root, "file")
+    File.write!(file, "not a folder")
+    :ok = Projects.set_root(Path.join(file, "under"))
+    assert {:error, :folder_failed} = Projects.create("Nope")
+    refute Enum.any?(Projects.list(), &(&1.name == "Nope"))
+  end
+
+  # PROJ-36: the new folder is a git repository with one commit, holding the
+  # README and AGENTS starters.
+  test "create/1 leaves the folder a repository with one commit" do
+    root = tmp_dir("repo")
+    :ok = Projects.set_root(root)
+
+    assert {:ok, project} = Projects.create("Repo")
+    assert File.dir?(Path.join(project.folder, ".git"))
+    assert File.read!(Path.join(project.folder, "README.md")) =~ "# Repo"
+    assert File.read!(Path.join(project.folder, "AGENTS.md")) =~ "# Repo"
+
+    assert [commit] = commits(project.folder)
+    assert commit.message == "Initial commit"
+    assert Enum.sort(commit.files) == ["AGENTS.md", "README.md"]
+  end
+
+  # PROJ-37: git with no identity configured still gets the initial commit.
+  test "the initial commit is made where git has no identity" do
+    root = tmp_dir("identity")
+    :ok = Projects.set_root(root)
+
+    # A git configuration with nothing in it: no `user.email`, no `user.name`.
+    config = Path.join(root, "empty-gitconfig")
+    File.write!(config, "")
+    System.put_env("GIT_CONFIG_GLOBAL", config)
+    System.put_env("GIT_CONFIG_NOSYSTEM", "1")
+
+    on_exit(fn ->
+      System.delete_env("GIT_CONFIG_GLOBAL")
+      System.delete_env("GIT_CONFIG_NOSYSTEM")
+    end)
+
+    assert {:ok, project} = Projects.create("Anonymous")
+    assert [%{message: "Initial commit"}] = commits(project.folder)
+  end
+
+  # PROJ-38: whatever stops the folder becoming a repository does not fail the
+  # creation — the folder, its files and the project are still made.
+  test "a git that is not there leaves the project made, without a repository" do
+    root = tmp_dir("nogit")
+    :ok = Projects.set_root(root)
+    bin = Path.join(root, "empty-bin")
+    File.mkdir_p!(bin)
+    without_git(bin)
+
+    assert {:ok, project, :no_repository} = Projects.create("No Git")
+    assert File.dir?(project.folder)
+    assert File.read!(Path.join(project.folder, "README.md")) =~ "# No Git"
+    assert File.read!(Path.join(project.folder, "AGENTS.md")) =~ "# No Git"
+    refute File.exists?(Path.join(project.folder, ".git"))
+    assert Projects.get(project.id) == project
+  end
+
+  test "a git that refuses leaves the project made, without a repository" do
+    root = tmp_dir("badgit")
+    :ok = Projects.set_root(root)
+    bin = Path.join(root, "bin")
+    File.mkdir_p!(bin)
+    stub_git(bin)
+    without_git(bin)
+
+    assert {:ok, project, :no_repository} = Projects.create("Bad Git")
+    assert File.dir?(project.folder)
+    assert Projects.get(project.id) == project
+  end
+
   # A saved chat in a project, `nil` for Elia's own (PROJ-9).
   defp chat_in(project) do
     id = Elia.Agent.new_id()
     :ok = Elia.Store.save(id, [Elia.LLM.Message.user("hi")], project: project)
     id
+  end
+
+  # A folder of its own for a test, removed afterwards.
+  defp tmp_dir(name) do
+    path =
+      Path.join(System.tmp_dir!(), "elia-projects-#{name}-#{System.unique_integer([:positive])}")
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+    on_exit(fn -> File.rm_rf!(path) end)
+    path
+  end
+
+  # The commits of a folder's repository, newest first: each one's subject and
+  # the files it touched.
+  defp commits(folder) do
+    folder
+    |> git(["log", "--format=@@%s", "--name-only"])
+    |> String.split("@@", trim: true)
+    |> Enum.map(fn entry ->
+      [message | files] = entry |> String.split("\n", trim: true) |> Enum.map(&String.trim/1)
+      %{message: message, files: files}
+    end)
+  end
+
+  defp git(folder, args) do
+    {output, 0} =
+      System.cmd(System.find_executable("git"), args, cd: folder, stderr_to_stdout: true)
+
+    output
+  end
+
+  # A PATH holding only `bin`: no git to find. Restored afterwards.
+  defp without_git(bin) do
+    path = System.get_env("PATH")
+    System.put_env("PATH", bin)
+    on_exit(fn -> System.put_env("PATH", path) end)
+  end
+
+  # A `git` that fails, first on the PATH.
+  defp stub_git(bin) do
+    stub = Path.join(bin, "git")
+    File.write!(stub, "#!/bin/sh\nexit 1\n")
+    File.chmod!(stub, 0o755)
   end
 end
