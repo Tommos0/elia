@@ -186,6 +186,14 @@ is shown before it is deployed. `test/elia_web/browser/preview_test.exs` is the
 run itself, tagged `:preview` and excluded like these tests, so it never starts
 a browser during `mix test`.
 
+A picture is only as tall as the viewport, `full_page: true` included: the app
+shell has a height of its own and the transcript scrolls inside it (UI-78), so
+what has been scrolled below the pane is not in the picture — raise
+`ELIA_PREVIEW_HEIGHT` to bring a card low in a long transcript into frame. A
+picture of a `<details>` that is shut is taken by temporarily rendering it
+`open` for the run and reverting that edit afterwards, which `git status
+--porcelain` in the worktree then says nothing about.
+
 A preview navigates and waits; it never clicks, hovers or types (out of scope in
 `specs/ui-preview.md`). A picture of something a *click* opens — a citation's
 popover (CITE-7), the image viewer (IMG-1) — is therefore taken by hand, from
