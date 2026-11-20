@@ -229,7 +229,10 @@ its own output directory.
   a run that fails a handful of tests at once under load —
   `test/elia/shell_test.exs`'s process-group ones are the usual suspects there —
   and for a partition whose failures you can't name: re-run, and say what you
-  re-ran.
+  re-ran. `Elia.TerminalTest`'s "leaves no tmux server and no socket" is one of
+  these too: tmux keeps its sockets in `/tmp/tmux-<uid>/` for the whole user
+  rather than in the run's own temp directory, so the test can see one a
+  concurrent run's terminal is using, and the file passes when run alone.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run
