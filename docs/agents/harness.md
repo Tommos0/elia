@@ -70,3 +70,25 @@ Prefer a folder skill over changing Elixir code.
 4. Tool input arrives in `$ELIA_INPUT` (JSON) and `$ELIA_ARG_<FIELD>`. Never splice it into the command.
 
 Folder skills don't need a spec. Built-in skills live in `lib/elia/skills/` and do.
+
+## Measuring search cost
+
+`search_chats` is dominated by the index, not the disk. `Elia.Store.Index.term/1`
+(`lib/elia/store/index.ex`) folds the whole index table and runs `String.contains?`
+on every token of every indexed chat, once per query term, so one search costs the
+whole corpus however rare its query is — an absent term measures the same as a
+present one. Measured on a synthetic history, with an index built the way
+`specs/chat-search.md` (SEARCH-1 to SEARCH-6) describes: 300 chats / 19 MB → ~0.5 s
+per term, 3.0 s to build the index cold and 0.08 s to refresh it warm; 600 chats /
+37 MB → ~1.1 s per term, 9.8 s cold and 0.3 s warm (a plain `:ets.foldl` over the
+table with no work in it is ~20 % of that, so the substring test over every token
+is the rest).
+
+To re-measure, in a chat's own worktree: generate chats with `Elia.Store.save/3`
+against a `:runtime_root` of your own under `System.tmp_dir!()`, then time
+`Elia.Store.Index.refresh/1`, `Index.term/1` and `Elia.Skills.Chats.tools()`
+through its `search_chats` run. Run it with `mix run --no-start`: plain `mix run`
+starts the app and binds the endpoint port the live server already holds, and the
+script must then start what it needs itself — `:telemetry`, then `Elia.Store.Cache`
+and `Elia.Store.Index` by hand, since without them the cache never hits and a warm
+search decodes every chat again.
