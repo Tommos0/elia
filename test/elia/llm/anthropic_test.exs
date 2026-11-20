@@ -250,6 +250,45 @@ defmodule Elia.LLM.AnthropicTest do
            ] = Anthropic.encode_messages(history)
   end
 
+  # VISION-8, VISION-14: the picture a look put in a result is sent beside that
+  # result's own block, in the same message, as the API's own image block.
+  test "encodes a result's picture beside the result" do
+    history = [
+      %Message{
+        role: :assistant,
+        content: [%{type: :tool_call, id: "c1", name: "view_image", input: %{"path" => "s.png"}}]
+      },
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("c1", "Looked at s.png."),
+          %{type: :image, media_type: "image/png", data: "aGk=", path: "s.png"}
+        ]
+      }
+    ]
+
+    assert [
+             %{
+               "role" => "assistant",
+               "content" => [%{"type" => "tool_use", "id" => "c1"}]
+             },
+             %{
+               "role" => "user",
+               "content" => [
+                 %{"type" => "tool_result", "tool_use_id" => "c1"},
+                 %{
+                   "type" => "image",
+                   "source" => %{
+                     "type" => "base64",
+                     "media_type" => "image/png",
+                     "data" => "aGk="
+                   }
+                 }
+               ]
+             }
+           ] = Anthropic.encode_messages(history)
+  end
+
   test "maps refusals and API errors" do
     stub_stream(self(), [
       %{"type" => "message_start", "message" => %{"model" => "claude-opus-5-5"}},

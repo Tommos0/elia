@@ -178,8 +178,10 @@ defmodule Elia.PreviewTest do
 
       # TITLE-5, UI-74: the `set_title` call is one of them; FLINK-4: a `cd` call
       # for a directory of the workspace is another, so its card links it;
-      # UI-43: a `spawn_task` call is a third, with its brief under it.
-      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 5
+      # UI-43: a `spawn_task` call is a third, with its brief under it;
+      # VISION-16: a `view_image` call is one whose card shows the picture it
+      # looked at.
+      assert Enum.count(assistant.content, &(&1.type == :tool_call)) == 6
 
       assert Enum.any?(
                assistant.content,
@@ -204,7 +206,16 @@ defmodule Elia.PreviewTest do
 
       results = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.flat_map(& &1.content)
       assert Enum.count(results, & &1.is_error) == 1
-      assert Enum.count(results, &(not &1.is_error)) == 4
+      assert Enum.count(results, &(not &1.is_error)) == 5
+
+      # VISION-12, VISION-16: the look's result records the picture's path, media
+      # type and size, which is what the card renders the picture from and what
+      # the request counts (VISION-10).
+      assert %{image: %{path: picture, media_type: "image/png", size: size}} =
+               Enum.find(results, &(&1.tool_call_id == "call-preview-6"))
+
+      assert File.regular?(Path.join(File.cwd!(), picture))
+      assert size == File.stat!(Path.join(File.cwd!(), picture)).size
 
       # SNAP-6, SNAP-10: the `shell` call's result carries the pair of snapshots
       # bracketing it, so its card shows the files the call changed and their

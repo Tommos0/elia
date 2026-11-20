@@ -39,6 +39,7 @@ refused.
   | `cd` | never (WD-6) | both |
   | `reload_skills`, `update_ledger` | never | both |
   | `ask_user` | never (ASK-1) | both |
+  | `view_image` | never (VISION-12) | both |
 
 ### Auto-approval
 

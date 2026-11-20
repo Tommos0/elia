@@ -450,6 +450,41 @@ defmodule Elia.LLM.CompactionTest do
              Enum.at(view.messages, view.head + 1).content
   end
 
+  # VISION-9: a tool result compaction took out of the request view is not sent,
+  # so the picture it recorded a look at is not sent either — the history keeps
+  # the path and the view keeps the note that stands in for it (COMPACT-15).
+  test "a look's picture goes when its result does" do
+    messages = history(1..3) |> put_look(2) |> put_look(6)
+
+    view = Compaction.view(messages, %Compaction{level: 2, covered: 4})
+
+    [elided, kept | _] = Enum.filter(view.messages, &(&1.role == :tool))
+
+    # Turn 1's result is cold: the note stands in for it, and its picture is gone
+    # with it, so the request built from this view carries no picture (VISION-9).
+    refute Map.has_key?(List.first(elided.content), :image)
+    assert List.first(elided.content).content =~ "output elided by compaction"
+    assert view.statuses[2].blocks[0] == :elided
+
+    # Turn 2's result is still sent, so its path is still recorded and the
+    # request carries that picture.
+    assert %{image: %{path: "s.png"}} = List.first(kept.content)
+
+    # And the history itself is untouched: the path is what is saved (VISION-15).
+    assert %{image: %{path: "s.png"}} =
+             messages |> Enum.at(6) |> Map.fetch!(:content) |> List.first()
+  end
+
+  # A look at `path` on the result at `index` of a history: the shape the loop
+  # saves (VISION-12).
+  defp put_look(messages, index) do
+    [%{type: :tool_result} = result] = Enum.at(messages, index).content
+
+    looked = Map.put(result, :image, %{path: "s.png", media_type: "image/png", size: 16})
+
+    List.replace_at(messages, index, %Message{role: :tool, content: [looked]})
+  end
+
   # COMPACT-16
   test "whole old turns are dropped, oldest first" do
     messages = history(1..4)

@@ -91,6 +91,53 @@ defmodule Elia.LLM.ContextTest do
            |> Map.fetch!(:tokens) == Tokens.estimate_message(other)
   end
 
+  # VISION-10: the picture a look put in a result (VISION-12, VISION-14) is
+  # counted at the same fixed estimate, with the tool that made the call, from
+  # the path the result recorded — the estimate reads no file.
+  test "a look's picture counts in the tool's own bucket" do
+    look = %Message{
+      role: :tool,
+      content: [
+        %{
+          type: :tool_result,
+          tool_call_id: "c1",
+          content: "Looked at uploads/shot.png.",
+          is_error: false,
+          image: %{path: "uploads/shot.png", media_type: "image/png", size: 16}
+        }
+      ]
+    }
+
+    plain = %Message{
+      role: :tool,
+      content: [
+        %{
+          type: :tool_result,
+          tool_call_id: "c1",
+          content: "Looked at uploads/shot.png.",
+          is_error: false
+        }
+      ]
+    }
+
+    assert Tokens.estimate_message(look) == Tokens.estimate_message(plain) + 1500
+
+    # It is counted once, with the tool that made the call (CTX-9).
+    breakdown = Context.build([look], skills())
+    assert breakdown.total == Enum.sum(Enum.map(breakdown.buckets, &bucket_tokens(&1)))
+
+    assert %{id: :other_tools, tokens: tokens} =
+             Enum.find(breakdown.buckets, &(&1.id == :other_tools))
+
+    assert tokens == Tokens.estimate_message(look)
+
+    # VISION-14: the request that carries the picture counts it once, not twice —
+    # the picture block in it is the same picture the result recorded, and the
+    # breakdown counts the result's own block (CTX-1).
+    sent = %Message{look | content: look.content ++ [%{type: :image, media_type: "image/png"}]}
+    assert Context.build([sent], skills()).total == Context.build([look], skills()).total
+  end
+
   # CTX-4: the system bucket lists agent instructions and one child per skill.
   test "system bucket has an agent-instructions child and one child per skill" do
     breakdown = Context.build([], skills())

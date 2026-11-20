@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLive do
 
   alias Elia.Agent
   alias Elia.LLM
-  alias Elia.LLM.{Compaction, Context, Message}
+  alias Elia.LLM.{Compaction, Context, Images, Message}
   alias EliaWeb.{ChatList, ChatStatus, FileLinks}
 
   # UPLOAD-2: what one message may carry. The browser refuses a file over either
@@ -972,12 +972,14 @@ defmodule EliaWeb.ChatLive do
 
             // IMG-6: a delegated listener (rather than wrapping the images)
             // leaves the transcript's markup alone, so DOM patching never
-            // fights it. It takes an image wherever Markdown put it — a saved
-            // message or a streaming draft, which is outside the transcript's
-            // stream — and leaves an image inside a link to its link (IMG-1).
+            // fights it. It takes an image wherever the transcript put it — in
+            // Markdown, a saved message or a streaming draft, which is outside
+            // the transcript's own stream, and the picture a card looked at
+            // (VISION-16) — and leaves an image inside a link to its link
+            // (IMG-1).
             this.onClick = event => {
               const img = event.target instanceof HTMLImageElement ? event.target : null
-              if (!img || !img.closest(".markdown") || img.closest("a")) return
+              if (!img || !img.closest(".markdown, [data-transcript-image]") || img.closest("a")) return
               this.open(img)
             }
             document.addEventListener("click", this.onClick)
@@ -1643,6 +1645,7 @@ defmodule EliaWeb.ChatLive do
     # FLINK-4: resolved once per render — the path a card links, if any.
     assigns = assign(assigns, tool_link: EliaWeb.FileLinks.card_url(assigns.links, assigns.item))
     assigns = assign(assigns, snapshot: snapshot_view(assigns.item))
+    assigns = assign(assigns, picture: picture_view(assigns.links, assigns.item))
 
     ~H"""
     <div class={[
@@ -1702,6 +1705,22 @@ defmodule EliaWeb.ChatLive do
         href={@tool_link}
         class="underline decoration-dotted underline-offset-2 transition hover:decoration-solid"
       >{tool_summary(@item)}</a><span :if={is_nil(@tool_link)}>{tool_summary(@item)}</span></pre>
+      <%!-- VISION-16: a call that looked at a picture (VISION-12) shows the
+      picture itself, served from the chat's own workspace, and a press opens it
+      in the viewer like any other picture of the transcript (IMG-1). The
+      attribute is what the `.ZoomImage` hook delegates on. --%>
+      <div
+        :if={@picture}
+        id={"image-#{@item.call_id}"}
+        class="border-t border-base-300 bg-base-200/40 px-3 py-2"
+      >
+        <img
+          src={@picture.url}
+          alt={@picture.path}
+          data-transcript-image
+          class="max-h-96 w-auto rounded-lg border border-base-300"
+        />
+      </div>
       <%!-- UI-75, ASK-4, ASK-6: a question, answered with one click or in the
       user's own words. It goes when the answer does. --%>
       <div
@@ -1982,6 +2001,19 @@ defmodule EliaWeb.ChatLive do
 
   defp snapshot_label([_one]), do: "1 file changed"
   defp snapshot_label(files), do: "#{length(files)} files changed"
+
+  # VISION-16: the picture a call looked at (VISION-12), read from the chat's own
+  # workspace through the route that serves a preview's bytes (EXPL-24), so the
+  # transcript shows the look was of that picture and no other. A card whose
+  # file the route would not serve carries no picture rather than a broken one.
+  defp picture_view(links, item) do
+    with %{path: path} = image <- Map.get(item, :image),
+         url when is_binary(url) <- EliaWeb.FileLinks.raw_url(links, path) do
+      Map.put(image, :url, url)
+    else
+      _none -> nil
+    end
+  end
 
   defp request_id(%{kind: :tool, call_id: id}), do: "call-#{id}"
   defp request_id(%{index: index, block: block}) when is_integer(block), do: "m#{index}-#{block}"
@@ -2831,13 +2863,18 @@ defmodule EliaWeb.ChatLive do
               elided: status.elided
           }
 
-          put_call(socket, %{
+          # VISION-16: the picture the call looked at rides on its own result,
+          # as the pair of snapshots does (SNAP-7), so the card renders it from a
+          # call just made and from the saved chat alike.
+          put_call(
+            socket,
             call
-            | output: result.content,
-              is_error: result.is_error,
-              snapshot: Map.get(result, :snapshot),
-              status: :done
-          })
+            |> Map.put(:output, result.content)
+            |> Map.put(:is_error, result.is_error)
+            |> Map.put(:snapshot, Map.get(result, :snapshot))
+            |> Map.put(:image, Images.looked_at(result))
+            |> Map.put(:status, :done)
+          )
 
         _ ->
           socket

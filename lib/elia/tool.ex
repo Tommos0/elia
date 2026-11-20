@@ -4,7 +4,11 @@ defmodule Elia.Tool do
 
   `run` receives the decoded input map (and, for arity 2, a context map with
   `:session_id` and `:turn_id`) and returns `{:ok, output}` or
-  `{:error, output}`; both outputs are strings sent back to the model.
+  `{:error, output}`; both outputs are strings sent back to the model. Either
+  may carry a third element instead — `{:ok, output, facts}` — the facts about
+  the call that ride on its own tool result and are never sent to a model: the
+  picture a look at a file recorded (`Elia.LLM.Images`, VISION-12) and the
+  snapshot pair the loop brackets the call with (SNAP-6).
 
   `approval` is `:required`, `:never`, or a function of `(input, ctx)`
   returning one of those or `{:deny, reason}`. Calls that need approval
@@ -15,7 +19,14 @@ defmodule Elia.Tool do
   `ctx[:answer]` when it runs (LOOP-21, ASK-1).
   """
 
-  @type result :: {:ok, binary()} | {:error, binary()}
+  @type facts :: map()
+
+  @type result ::
+          {:ok, binary()}
+          | {:error, binary()}
+          | {:ok, binary(), facts()}
+          | {:error, binary(), facts()}
+
   @type decision :: :required | :never | {:deny, binary()}
 
   @type t :: %__MODULE__{

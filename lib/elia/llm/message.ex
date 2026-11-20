@@ -9,7 +9,7 @@ defmodule Elia.LLM.Message do
     * `%{type: :tool_call, id: binary, name: binary, input: map}`
     * `%{type: :tool_result, tool_call_id: binary, content: binary, is_error: boolean}`
     * `%{type: :image, media_type: binary, data: binary, path: binary}` - a picture
-      read from the chat's workspace as the request is built (VISION); the bytes
+      read from the chat's workspace as the request is built (VISION-14); the bytes
       are base64 and nothing of it is stored
     * `%{type: :opaque}` - a provider-specific block with no neutral meaning
 
@@ -112,9 +112,10 @@ defmodule Elia.LLM.Message do
 
   def text(text), do: %{type: :text, text: text}
 
-  # SNAP-6: a tool may hand back facts about its call to save beside its result
-  # — a `shell` call's snapshot pair — which the providers' encoders never send
-  # (LLM-6, LLM-32), and a block saved without them reads as it always did.
+  # SNAP-6, VISION-12: a tool may hand back facts about its call to save beside
+  # its result — a `shell` call's snapshot pair, and the `image` a look at a
+  # picture recorded — which the providers' encoders never send (LLM-6, LLM-32),
+  # and a block saved without them reads as it always did.
   def tool_result(tool_call_id, content, is_error \\ false, facts \\ %{}) do
     # LLM-32: tools can return raw bytes, which can't be JSON-encoded.
     %{

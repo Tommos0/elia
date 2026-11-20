@@ -122,6 +122,9 @@ defmodule Elia.Agent.Loop do
         # ISOL-15: the chat's jail setting, so a tool jails its call according
         # to the chat it runs in; nil (no chat) means the default, which is on.
         jail: opts[:jail],
+        # VISION-4, VISION-7, VISION-13: whether this turn's model accepts
+        # images, so a look at one is refused where it accepts none.
+        vision: Keyword.get(opts, :llm, %{})[:vision] == true,
         loop_opts: opts
       },
       llm_opts: Keyword.get(opts, :llm, %{})
@@ -481,11 +484,12 @@ defmodule Elia.Agent.Loop do
   defp request_messages(ctx, history),
     do: Compaction.view(history, ctx.compaction).messages
 
-  # VISION-1, VISION-3, VISION-9: the pictures a message carries are read from
-  # the chat's workspace as the request is built, and again at every step, so a
-  # message that stays in the view keeps sending its image — while the history
-  # itself keeps the paths and no picture. A model that accepts none (VISION-4)
-  # is sent the messages exactly as they are.
+  # VISION-3, VISION-9, VISION-14: the pictures the tool results in the request
+  # recorded a look at (VISION-12) are read from the chat's workspace as the
+  # request is built, and again at every step, so a result that stays in the view
+  # keeps sending its picture — while the history itself keeps the paths and no
+  # picture (VISION-15). A model that accepts none (VISION-4) is sent the
+  # messages exactly as they are.
   defp with_images(ctx, messages),
     do: Images.attach(messages, ctx.workspace, ctx.llm_opts[:vision] == true)
 
@@ -736,30 +740,36 @@ defmodule Elia.Agent.Loop do
     dir = snapshot_dir(call, context)
     before = dir && Elia.Snapshot.current(dir)
 
-    {output, is_error} =
+    # VISION-12: a tool may return facts about its call — the picture a look
+    # recorded — which ride on the call's own tool result and are never sent to
+    # a model (LLM-6, LLM-32).
+    {output, is_error, facts} =
       try do
         case Tool.call(tool, call.input, context) do
-          {:ok, output} -> {output, false}
-          {:error, output} -> {output, true}
+          {:ok, output} -> {output, false, %{}}
+          {:ok, output, facts} -> {output, false, facts}
+          {:error, output} -> {output, true, %{}}
+          {:error, output, facts} -> {output, true, facts}
         end
       rescue
-        e -> {"Tool crashed: " <> Exception.message(e), true}
+        e -> {"Tool crashed: " <> Exception.message(e), true, %{}}
       catch
         # LOOP-26: an exit (a `GenServer.call` that times out, or whose server
         # is gone) or a throw is the call's own failure too, not the step's.
-        kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true}
+        kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true, %{}}
       end
 
     # SNAP-6: the pair the call is bracketed by rides on that call's own tool
-    # result, which the chat saves and reads back (SNAP-7); the result's text
-    # stays the command's output and exit status, which is what the model is
-    # sent (SNAP-8). SNAP-9: where no pair can be taken — a directory that is no
-    # git work tree, or a git that fails or times out — the call's result is the
-    # same one it would have had without a snapshot at all.
+    # result beside the call's own facts (VISION-12), which the chat saves and
+    # reads back (SNAP-7); the result's text stays the command's output and exit
+    # status, which is what the model is sent (SNAP-8). SNAP-9: where no pair can
+    # be taken — a directory that is no git work tree, or a git that fails or
+    # times out — the call's result is the same one it would have had without a
+    # snapshot at all.
     facts =
       case dir && Elia.Snapshot.record(dir, before) do
-        nil -> %{}
-        pair -> %{snapshot: pair}
+        nil -> facts
+        pair -> Map.put(facts, :snapshot, pair)
       end
 
     send(ctx.session, {:loop_tool_status, call.id, :done})

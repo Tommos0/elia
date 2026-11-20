@@ -55,6 +55,29 @@ defmodule EliaWeb.FileLinks do
   def card_url(_links, _item), do: nil
 
   @doc """
+  The URL that serves `path`'s own bytes in the chat's workspace (EXPL-24) —
+  where a card shows the picture a call looked at (VISION-16) — or `nil` when no
+  route would serve it: a path that is no previewable file of the workspace
+  (EXPL-25), so a card never carries a `src` into a 404.
+
+  The route a chat's links name takes the chat's own workspace from the chat's
+  id (EXPL-17), exactly as the Files page does (FLINK-5).
+  """
+  @spec raw_url(t() | nil, String.t() | nil) :: String.t() | nil
+  def raw_url(nil, _path), do: nil
+  def raw_url(_links, path) when not is_binary(path), do: nil
+
+  def raw_url(%{chat_id: chat_id, root: root}, path) do
+    case Explorer.preview_file(path, root) do
+      {:ok, %{kind: :image, path: served}} ->
+        "/files/raw?" <> URI.encode_query([{"chat", chat_id}, {"path", served}])
+
+      _not_served ->
+        nil
+    end
+  end
+
+  @doc """
   The Files page URL for `path` at `line` (CITE-10) — what a citation's tooltip
   links to — or `nil` when the Files page could not show the path (FLINK-5).
 

@@ -251,6 +251,164 @@ defmodule EliaWeb.ChatLiveTest do
     assert LazyHTML.attribute(viewer, "src") == []
   end
 
+  # VISION-16: the card of a call that looked at a picture (VISION-12) shows the
+  # picture itself, served from the chat's own workspace through the route a
+  # preview's bytes come from (EXPL-24), and the `.ZoomImage` hook delegates on
+  # it like any other picture of the transcript (IMG-1, IMG-6).
+  test "a look's card shows the picture it read", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-vision")
+    File.mkdir_p!(Path.join(root, "uploads"))
+    File.write!(Path.join(root, "uploads/shot.png"), <<0x89, "PNG\r\n", 0x1A, "\n">> <> "body")
+    {:ok, project} = Projects.create("Pictures", root)
+
+    id = Agent.new_id()
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Projects.delete(project.id)
+      Elia.Store.delete(id)
+    end)
+
+    :ok =
+      Elia.Store.save(
+        id,
+        [
+          Message.user("what does it show?"),
+          %Message{
+            role: :assistant,
+            content: [
+              %{
+                type: :tool_call,
+                id: "c1",
+                name: "view_image",
+                input: %{"path" => "uploads/shot.png"}
+              }
+            ]
+          },
+          %Message{
+            role: :tool,
+            content: [
+              Message.tool_result("c1", "Looked at uploads/shot.png.", false, %{
+                image: %{path: "uploads/shot.png", media_type: "image/png", size: 20}
+              })
+            ]
+          }
+        ],
+        project: project.id
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    document = view |> render() |> LazyHTML.from_fragment()
+
+    assert [picture] = document |> LazyHTML.query("#items-call-c1 img") |> Enum.to_list()
+
+    assert LazyHTML.attribute(picture, "src") == [
+             "/files/raw?chat=#{id}&path=uploads%2Fshot.png"
+           ]
+
+    assert LazyHTML.attribute(picture, "alt") == ["uploads/shot.png"]
+    # VISION-16: the attribute the viewer's delegated listener takes.
+    assert LazyHTML.attribute(picture, "data-transcript-image") == [""]
+
+    # The picture is not a markdown one, so the card is where the viewer gets it.
+    assert [] == LazyHTML.query(document, ".markdown img") |> Enum.to_list()
+
+    # IMG-6: the listener is on the viewer, and takes an image wherever the
+    # transcript put it.
+    assert [hook] =
+             document |> LazyHTML.query("#image-lightbox") |> LazyHTML.attribute("phx-hook")
+
+    assert hook =~ "ZoomImage"
+  end
+
+  # VISION-16: the card shows the picture of a call just made, in the running
+  # turn — the same card the saved chat renders.
+  test "a look's card shows the picture in a live turn", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-vision-live")
+    File.mkdir_p!(root)
+    File.write!(Path.join(root, "shot.png"), <<0x89, "PNG\r\n", 0x1A, "\n">> <> "body")
+    {:ok, project} = Projects.create("Live pictures", root)
+
+    id = Agent.new_id()
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Projects.delete(project.id)
+      Elia.Store.delete(id)
+    end)
+
+    :ok = Elia.Store.save(id, [], project: project.id)
+
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("c1", "view_image", %{"path" => "shot.png"})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("A picture.")]))
+
+    # VISION-4, VISION-7: the turn's model accepts pictures, which is what the
+    # look is refused without.
+    {:ok, _pid} = Agent.ensure_started(id, loop_opts: [llm: %{provider: FakeLLM, vision: true}])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "look at shot.png"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    assert has_element?(view, "#items-call-c1 img[src='/files/raw?chat=#{id}&path=shot.png']")
+    assert has_element?(view, "#items-call-c1 img[data-transcript-image]")
+  end
+
+  # VISION-16: a card whose file the route would not serve — a path that left the
+  # workspace, one that is gone, one that is no previewable file (EXPL-25) —
+  # carries no picture rather than a broken one.
+  test "a look's card shows nothing for a picture that can't be served", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-live-vision-gone")
+    File.mkdir_p!(root)
+    {:ok, project} = Projects.create("No pictures", root)
+
+    id = Agent.new_id()
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Projects.delete(project.id)
+      Elia.Store.delete(id)
+    end)
+
+    looks =
+      for {call, path} <- [
+            {"c1", "uploads/gone.png"},
+            {"c2", "../outside.png"},
+            {"c3", "uploads/"}
+          ] do
+        [
+          %Message{
+            role: :assistant,
+            content: [
+              %{type: :tool_call, id: call, name: "view_image", input: %{"path" => path}}
+            ]
+          },
+          %Message{
+            role: :tool,
+            content: [
+              Message.tool_result(call, "Looked at #{path}.", false, %{
+                image: %{path: path, media_type: "image/png", size: 20}
+              })
+            ]
+          }
+        ]
+      end
+
+    :ok = Elia.Store.save(id, [Message.user("look") | List.flatten(looks)], project: project.id)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    for call <- ~w(c1 c2 c3) do
+      assert has_element?(view, "#items-call-#{call}")
+      refute has_element?(view, "#items-call-#{call} img")
+    end
+  end
+
   # UI-34: each sidebar chat shows its start time, and the text keeps up with the clock.
   test "sidebar chats show a relative start time that refreshes", %{conn: conn} do
     id = Agent.new_id()

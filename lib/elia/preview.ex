@@ -46,6 +46,12 @@ defmodule Elia.Preview do
   # carries rather than working links to them.
   @sample_uploads ["uploads/transcript.png", "uploads/report.pdf"]
 
+  # VISION-16: the picture the sample chat's look read, and a file of the tree
+  # the preview runs in (PREVIEW-2), so the card shows the picture itself rather
+  # than a path that leads nowhere.
+  @sample_picture "priv/static/images/icon-512.png"
+  @sample_picture_bytes 3571
+
   # PREVIEW-16: the chats seeded beyond the chat list's first page (UI-4), with
   # a fixed id each for the same reason as the sample chat's.
   @page_count 30
@@ -295,6 +301,14 @@ defmodule Elia.Preview do
             name: "cd",
             input: %{"path" => "lib"}
           },
+          # VISION-12, VISION-16: a look at a picture is an ordinary tool call
+          # whose card shows the picture it read.
+          %{
+            type: :tool_call,
+            id: "call-preview-6",
+            name: "view_image",
+            input: %{"path" => @sample_picture}
+          },
           %{
             type: :tool_call,
             id: "call-preview-1",
@@ -333,6 +347,23 @@ defmodule Elia.Preview do
         content: [
           Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
           Message.tool_result("call-preview-4", "Working directory: lib"),
+          # VISION-12, VISION-16: the look records the path it read, which is
+          # what its card renders the picture from; the sample writes that shape
+          # rather than reading the file (PREVIEW-10).
+          Message.tool_result(
+            "call-preview-6",
+            "Looked at #{@sample_picture} (image/png, " <>
+              "#{Elia.SystemStats.format_bytes(@sample_picture_bytes)}); its picture is sent " <>
+              "with this result.",
+            false,
+            %{
+              image: %{
+                path: @sample_picture,
+                media_type: "image/png",
+                size: @sample_picture_bytes
+              }
+            }
+          ),
           # SNAP-6, SNAP-10: a `shell` call's result carries the pair of
           # snapshots bracketing it, so its card lists the files the call
           # changed and their diff. The pair is the sample's own: a preview

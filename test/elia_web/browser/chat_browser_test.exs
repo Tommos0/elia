@@ -263,6 +263,46 @@ defmodule EliaWeb.ChatBrowserTest do
     assert_path(conn, "/c/#{id}")
   end
 
+  # VISION-16: the picture a call's card shows (VISION-12) is served from the
+  # chat's own workspace and opens in the viewer like any picture of the
+  # transcript — the `.ZoomImage` hook delegates on the card's image too (IMG-6).
+  test "a look's picture opens in the viewer", %{conn: conn} do
+    root = Path.join(Workspace.root(), "chat-browser-vision")
+    File.mkdir_p!(Path.join(root, "uploads"))
+    File.write!(Path.join(root, "uploads/shot.png"), <<0x89, "PNG\r\n", 0x1A, "\n">> <> "body")
+    {:ok, project} = Elia.Projects.create("Pictures", root)
+
+    id = look_chat(project)
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      Elia.Projects.delete(project.id)
+    end)
+
+    src = "/files/raw?chat=#{id}&path=uploads%2Fshot.png"
+
+    conn =
+      conn
+      |> visit("/c/#{id}")
+      |> connected()
+      |> refute_has("#image-lightbox")
+      # The picture is the card's, not the Markdown's.
+      |> assert_has("#items-call-c1 img[src='#{src}']")
+      |> click("#items-call-c1 img")
+      |> assert_has("#image-lightbox")
+      |> assert_has("#image-lightbox-image[src='#{src}'][alt='uploads/shot.png']")
+
+    # IMG-1: opening it is not a navigation away.
+    assert_path(conn, "/c/#{id}")
+
+    # IMG-4: the back button closes it, as it does for any picture.
+    conn
+    |> evaluate("history.back()")
+    |> refute_has("#image-lightbox")
+
+    assert_path(conn, "/c/#{id}")
+  end
+
   # IMG-3, IMG-5: the viewer's own close button, the backdrop and Escape all close
   # it — and IMG-4: closing it that way goes back over the entry opening it
   # pushed, so the back button afterwards does what it did before.
@@ -776,6 +816,39 @@ defmodule EliaWeb.ChatBrowserTest do
                "the jump-to-the-end button is off the top or bottom: #{inspect(box)}"
       end
     )
+  end
+
+  # VISION-12, VISION-16: a chat in `project` whose `view_image` call looked at a
+  # picture of its own workspace, as the loop saves it.
+  defp look_chat(project) do
+    id = Agent.new_id()
+    path = "uploads/shot.png"
+
+    :ok =
+      Store.save(
+        id,
+        [
+          Message.user("what does it show?"),
+          %Message{
+            role: :assistant,
+            content: [
+              %{type: :tool_call, id: "c1", name: "view_image", input: %{"path" => path}}
+            ]
+          },
+          %Message{
+            role: :tool,
+            content: [
+              Message.tool_result("c1", "Looked at #{path}.", false, %{
+                image: %{path: path, media_type: "image/png", size: 20}
+              })
+            ]
+          }
+        ],
+        project: project.id
+      )
+
+    on_exit(fn -> Store.delete(id) end)
+    id
   end
 
   # IMG-1: a chat with a picture in an assistant message. It is one of the app's

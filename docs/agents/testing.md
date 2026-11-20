@@ -254,3 +254,9 @@ its own output directory.
   suite (DEPLOY-5) — is `Elia.Harness.run_tests/3`: it hands `mix test` a
   per-test `--timeout` and runs under `config :elia, Elia.Harness, timeout: 600`
   by default (VERIFY-1, VERIFY-8, VERIFY-9).
+- In the test env `Elia.Workspace.root()` is the run's own scratch workspace
+  (SUITE-1), not the tree you are in — so a test that wants a file of the tree
+  has to set `:workspace` itself, as the preview's setup does with `File.cwd!()`
+  (PREVIEW-2), and a `MIX_ENV=test mix run -e` probe sees that scratch workspace
+  too, which makes a `File.exists?` on a tree path come back false for a reason
+  that is not a bug.

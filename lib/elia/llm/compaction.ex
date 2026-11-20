@@ -1180,7 +1180,11 @@ defmodule Elia.LLM.Compaction do
       |> Enum.reduce({[], %{}, 0}, fn {block, i}, {content, blocks, elided} ->
         if block.type == :tool_result and i in blocks_to_go and not block_pinned?(pins, i) do
           note = elision_note(Map.get(calls, block.tool_call_id))
-          kept = %{block | content: note}
+
+          # VISION-9: the picture a result recorded a look at goes with the
+          # result — an elided result is not sent, so its picture is not sent
+          # either, and the history keeps the path it recorded (VISION-15).
+          kept = block |> Map.put(:content, note) |> Map.delete(:image)
           gone = max(Tokens.estimate_block(block) - Tokens.estimate_block(kept), 0)
           {[kept | content], Map.put(blocks, i, :elided), elided + gone}
         else

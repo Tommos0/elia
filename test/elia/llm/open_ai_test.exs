@@ -114,6 +114,39 @@ defmodule Elia.LLM.OpenAITest do
            ] = OpenRouter.encode_messages(history)
   end
 
+  # VISION-8, VISION-14: the tool message keeps its own `tool` message, and the
+  # picture a look put in its result becomes the user message that follows it —
+  # one part per image, the result's text carried by the `tool` message.
+  test "encodes a result's picture as the user message that follows it" do
+    history = [
+      %Message{
+        role: :assistant,
+        content: [%{type: :tool_call, id: "c1", name: "view_image", input: %{"path" => "s.png"}}]
+      },
+      %Message{
+        role: :tool,
+        content: [
+          Message.tool_result("c1", "Looked at s.png."),
+          %{type: :image, media_type: "image/png", data: "aGk=", path: "s.png"}
+        ]
+      }
+    ]
+
+    assert [
+             %{"role" => "assistant", "tool_calls" => [%{"id" => "c1"}]},
+             %{"role" => "tool", "tool_call_id" => "c1", "content" => "Looked at s.png."},
+             %{
+               "role" => "user",
+               "content" => [
+                 %{
+                   "type" => "image_url",
+                   "image_url" => %{"url" => "data:image/png;base64,aGk="}
+                 }
+               ]
+             }
+           ] = OpenRouter.encode_messages(history)
+  end
+
   # LLM-36, LOCAL-10: one decoder too, so an error code that names no status is
   # read the same way for both — the service's sentence as a plain error.
   test "both read a code that is not a status the same way" do
