@@ -44,6 +44,22 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - Not needed for `skills/**` (use `reload_skills`) or for tests and docs.
 - A UI change — a template, `assets/css/`, a hook — can be seen *before* it is deployed: `bin/preview` in the chat's workspace screenshots its own code in a real headless browser, in the test env, and prints a Markdown image link per page (PREVIEW, `specs/ui-preview.md`). Nothing is deployed, no API key is involved and no live data is read; the pictures land in the gitignored `tmp/preview/`, and the running app serves a chat's own ones at `/preview/<chat id>/<file>` (PREVIEW-7). Paste the links into a reply to show the user. Preview in dark mode at a mobile width by default: `ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview …` (PREVIEW-3, PREVIEW-13). `/settings`'s Deployment section renders only on a tree set up for deployment (CONF-19, DEPLOY-14), and a chat's own worktree is on `chat/<id>` rather than `live` — so a preview of `/settings` shows that section's warning and no deploy control at all. A picture of that section needs a live tree of its own: a throwaway preview test that points `:runtime_root` at `LiveTree.create/0`, clicks `#deployment summary` and screenshots it, deleted before the commit (a picture the chat wants to keep goes in the live tree's own `tmp/preview/`, which is served after a worktree is removed, PREVIEW-7).
 
+## Editing a file
+
+There are no file tools, so a change is a `shell` command (SHELL-15). Two
+things that cost a round trip each:
+
+- `/tmp` belongs to the call, not to the chat: a scratch file written in one
+  `shell` call is gone by the next (`ISOL-2`, `specs/command-isolation.md`), so
+  write a patch and apply it in the *same* command — never in two.
+- A hand-written unified diff is easy to get wrong, and `patch` reports it
+  badly: `malformed patch` is your line counts, `Hunk #N FAILED` is your
+  context, and a multi-hunk patch stops at the first hunk it cannot place,
+  leaving the rest silently out. For a multi-line block, prefer an
+  exact-string replacement that fails when the text matches zero times or
+  twice — `python3 - <<'PY'` with `assert s.count(old) == 1`, which is in the
+  jail — and check the result with `git diff`.
+
 ## Adding a skill
 
 Prefer a folder skill over changing Elixir code.
