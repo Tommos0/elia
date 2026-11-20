@@ -24,8 +24,8 @@ how much of it the provider served from its prompt cache.
   instructions),
   the tool definitions, and every message of the **request view** (COMPACT-2):
   user text, assistant text, reasoning, tool calls and tool results, plus the
-  summary, ledger and elision marker compaction puts at its head, and the images
-  a message's attachments carry (VISION-10). Each text or
+  summary, ledger and elision marker compaction puts at its head, and the pictures
+  a request carries (VISION-10). Each text or
   payload belongs to exactly one bucket, so the bucket totals sum to the overall
   estimate (which includes the provider adjustment, CTX-10, when there is one).
 - **CTX-4** Clicking the indicator toggles a breakdown panel (`#context-breakdown`)
