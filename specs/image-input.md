@@ -65,11 +65,11 @@ a model that cannot see pictures is asked exactly what it is asked today.
   (COMPACT) takes its image with it.
 - **VISION-10** The context estimate counts each picture a request will carry
   (CTX-3) at a fixed estimate per image, in the bucket of the message that
-  carries it (CTX-4) — the User bucket for an attachment (UPLOAD-11), the Other
-  tools bucket for a result that recorded a look (VISION-12) — so the breakdown
-  still sums to the total. It is counted from the path alone — the estimate
-  reads no file — so the pictures count whether or not the request ends up
-  sending them (VISION-4, VISION-5).
+  carries it (CTX-4) — the Other tools bucket for a result that recorded a look
+  (VISION-12) — so the breakdown still sums to the total. It is counted from the
+  path alone — the estimate reads no file — so a picture counts whether or not
+  the request ends up sending it (VISION-4, VISION-5). An attachment no look
+  asked for costs nothing, since no request carries it (VISION-15).
 - **VISION-11** A choice whose catalog cannot be read is still made: the
   selection carries no capability, and the provider's own answer applies until
   that model is chosen again (VISION-7).
@@ -173,8 +173,8 @@ looked — VISION-16).
   resolves to without a fetch, the one a model chosen from a cold cache records,
   and the choice a catalog that cannot be read still makes — VISION-7,
   VISION-11).
-- `test/elia/llm/context_test.exs` (a picture counted in the bucket of the
-  message that carries it, so the breakdown still sums to the total —
-  VISION-10).
+- `test/elia/llm/context_test.exs` (a picture a look recorded counted in the
+  Other tools bucket, an attachment that no look asked for costing nothing, and
+  the breakdown still summing to the total — VISION-10).
 - `test/elia_web/live/chat_live_test.exs` (the card of a call that looked: the
   picture itself, and it opens in the image viewer — VISION-16).

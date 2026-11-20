@@ -68,15 +68,16 @@ defmodule Elia.LLM.ContextTest do
     refute Map.has_key?(by_id, :other_tools)
   end
 
-  # VISION-10: an image a message carries is counted at a fixed estimate per
-  # image, in that message's own User bucket, from its path alone — the estimate
-  # reads no file — so the breakdown still sums to the total.
-  test "an image attachment counts in the User bucket" do
+  # VISION-10, VISION-15: an attachment that no look asked for costs nothing —
+  # no request carries it — however its path is named, and the estimate is still
+  # the cheap fold it is (CTX-8), so the breakdown sums to the total.
+  test "an attachment no look asked for costs nothing" do
     image = Message.user("look at this", ["uploads/shot.png"])
     other = Message.user("look at this", ["uploads/note.txt"])
 
-    # The two messages differ only in the format their path names.
-    assert Tokens.estimate_message(image) == Tokens.estimate_message(other) + 1500
+    # The two differ only in the format their path names, and neither carries a
+    # picture the request would send.
+    assert Tokens.estimate_message(image) == Tokens.estimate_message(other)
 
     breakdown = Context.build([image], skills())
     assert breakdown.total == Enum.sum(Enum.map(breakdown.buckets, &bucket_tokens(&1)))
@@ -84,11 +85,6 @@ defmodule Elia.LLM.ContextTest do
     messages = Enum.find(breakdown.buckets, &(&1.id == :messages))
     assert %{id: :user, tokens: tokens} = Enum.find(messages.children, &(&1.id == :user))
     assert tokens == Tokens.estimate_message(image)
-
-    # A file that isn't an image counts as its path line alone.
-    assert Enum.find(Context.build([other], skills()).buckets, &(&1.id == :messages)).children
-           |> Enum.find(&(&1.id == :user))
-           |> Map.fetch!(:tokens) == Tokens.estimate_message(other)
   end
 
   # VISION-10: the picture a look put in a result (VISION-12, VISION-14) is

@@ -57,14 +57,6 @@ defmodule Elia.LLM.Images do
     |> Enum.map(fn {message, index} -> put_images(message, Map.get(taken, index, [])) end)
   end
 
-  @doc """
-  Whether a path names an image format by its extension (VISION-2), which is what
-  a context estimate counts without reading the file (VISION-10).
-  """
-  @spec attachment?(String.t() | term()) :: boolean()
-  def attachment?(path) when is_binary(path), do: media_type(path) != nil
-  def attachment?(_path), do: false
-
   @doc "The media type a path's extension names, or `nil` (VISION-2)."
   @spec media_type(String.t() | term()) :: String.t() | nil
   def media_type(path) when is_binary(path),

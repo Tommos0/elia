@@ -44,26 +44,11 @@ defmodule Elia.LLM.Tokens do
 
   def estimate_content(_content), do: 0
 
+  # VISION-10, VISION-15: a message is sized by the blocks it carries, so a
+  # picture the request will send counts and an attachment no look asked for
+  # costs nothing — the fold stays cheap, reading no file (CTX-8).
   @spec estimate_message(Message.t()) :: non_neg_integer()
-  def estimate_message(%Message{content: content} = message),
-    do: estimate_content(content) + attachment_tokens(content, message)
-
-  # VISION-15: the files a message's attachments name are only paths — no
-  # picture is sent for them — so what a message carries is counted from those
-  # paths, without reading a file, which keeps the estimate the cheap fold it is
-  # (CTX-8). A message that already carries image blocks — the request the loop
-  # builds (VISION-14) — counts those blocks instead, so nothing is counted
-  # twice.
-  defp attachment_tokens(content, message) do
-    if Enum.any?(content, &(&1.type == :image)) do
-      0
-    else
-      message
-      |> Message.attachments()
-      |> Enum.count(&Elia.LLM.Images.attachment?/1)
-      |> Kernel.*(@image_tokens)
-    end
-  end
+  def estimate_message(%Message{content: content}), do: estimate_content(content)
 
   @doc "Estimated tokens for a single content block (text, reasoning, call, result)."
   @spec estimate_block(map()) :: non_neg_integer()

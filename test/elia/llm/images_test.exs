@@ -32,10 +32,6 @@ defmodule Elia.LLM.ImagesTest do
     assert Images.media_type("notes.txt") == nil
     assert Images.media_type("photo.heic") == nil
     assert Images.media_type("no-extension") == nil
-
-    assert Images.attachment?("uploads/shot.PNG")
-    refute Images.attachment?("uploads/notes.md")
-    refute Images.attachment?(nil)
   end
 
   # VISION-3: a picture is read from the chat's workspace as the request is
