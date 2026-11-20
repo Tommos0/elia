@@ -14,6 +14,9 @@ no context. The harness does this for every call in every chat, which is why
 no instruction to show a diff is needed anywhere.
 A diff a card shows is highlighted as a diff by the file viewer's own client
 hook, so its lines are told apart by colour (SNAP-13).
+Each file a card lists is opened on its own, a toggle per file rather than one
+diff for the whole call: it shows that file's own part of the pair's diff and
+the lines that part adds and removes (SNAP-15, SNAP-16).
 
 ## Requirements
 
@@ -27,10 +30,12 @@ hook, so its lines are told apart by colour (SNAP-13).
 - **SNAP-8** The pair changes nothing else about a call: its result content is the command's output and exit status, which is what the model is sent.
 - **SNAP-9** A working directory that is not in a git work tree, and a snapshot that fails or takes longer than `timeout`, leave the call's own result unchanged and unblocked: the call records no pair.
 - **SNAP-10** The chat shows a call's changed files — each path with its status, as added, modified, deleted or renamed — when the call's pair differs, and shows no files when it does not.
-- **SNAP-11** Opening that list shows the pair's diff, which the pair carries, cut at `max_diff` characters with a marker saying it was cut.
+- **SNAP-11** The pair carries its diff, which a card shows, cut at `max_diff` characters with a marker saying it was cut.
 - **SNAP-12** A pair's files and diff are read from its two snapshots when the call finishes and saved with the pair, so a call's card shows what it changed after later calls have moved the tree on, and reads no git of its own.
 - **SNAP-13** The card shows a diff's lines told apart by colour: the element carries the file viewer's client hook (EXPL-13) with the language `diff` named on it, so a file header, a hunk header, an added line and a removed line each read as themselves.
 - **SNAP-14** An added line and a removed line of a diff the card shows carry a tinted background besides their colour, which comes from the daisyUI theme variables (EXPL-14), so both follow the light/dark toggle.
+- **SNAP-15** Each file a call's card lists is a toggle of its own: opening it shows the part of the pair's diff that changes that path and no other file's lines, and a file the pair's diff holds no part of has no toggle.
+- **SNAP-16** Each file a call's card lists shows how many lines its own part of the pair's diff adds to it and removes from it, counted from that part.
 
 ## Configuration
 
@@ -59,8 +64,10 @@ changes (SNAP-1).
 
 ## Implementation
 
-`Elia.Snapshot` takes a snapshot, answers a tree's newest snapshot, and reads a
-pair's changed files and diff with `git`. The agent loop brackets each `shell`
+`Elia.Snapshot` takes a snapshot, answers a tree's newest snapshot, reads a
+pair's changed files and diff with `git`, and cuts the diff it carries into each
+file's own part with the lines that part adds and removes (`files_with_diffs/1`,
+SNAP-15, SNAP-16). The agent loop brackets each `shell`
 call with the pair (`Elia.Agent.Loop`), which rides on that call's tool result
 and is saved with the chat; the chat's tool card renders it
 (`lib/elia_web/live/chat_live.ex`), whose diff the file viewer's own `Highlight` hook
@@ -69,10 +76,10 @@ a preview shows the card (PREVIEW-10).
 
 ## Tests
 
-- `test/elia/snapshot_test.exs` — SNAP-1 to SNAP-5, SNAP-11, SNAP-12
+- `test/elia/snapshot_test.exs` — SNAP-1 to SNAP-5, SNAP-11, SNAP-12, SNAP-15, SNAP-16
 - `test/elia/agent_test.exs` — SNAP-6, SNAP-8, SNAP-9
 - `test/elia/store_test.exs` — SNAP-7
-- `test/elia_web/live/chat_live_test.exs` — SNAP-10, SNAP-11, SNAP-13
+- `test/elia_web/live/chat_live_test.exs` — SNAP-10, SNAP-11, SNAP-13, SNAP-15, SNAP-16
 - No test: SNAP-14 — the tint comes from the daisyUI theme variables in
   `assets/css/app.css`, which a reviewer reads rather than a test.
 - `test/elia/preview_test.exs` — SNAP-6, SNAP-10, through the sample chat a

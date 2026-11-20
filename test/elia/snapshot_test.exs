@@ -167,4 +167,67 @@ defmodule Elia.SnapshotTest do
     assert Snapshot.record(dir, nil) == nil
     refute Snapshot.current(Path.join(dir, "missing"))
   end
+
+  # SNAP-15: each of a pair's files is answered with its own part of the pair's
+  # diff — the lines that change that path and no other file's.
+  test "a pair answers each file's own part of its diff", %{tree: tree} do
+    write(tree, "one.txt", "one\n")
+    write(tree, "two.txt", "two\n")
+    from = Snapshot.current(tree)
+
+    write(tree, "one.txt", "one changed\n")
+    write(tree, "two.txt", "two\nmore\n")
+    pair = Snapshot.record(tree, from)
+
+    by_path = Map.new(Snapshot.files_with_diffs(pair), &{&1.path, &1})
+
+    assert by_path["one.txt"].diff =~ "-one"
+    assert by_path["one.txt"].diff =~ "+one changed"
+    refute by_path["one.txt"].diff =~ "more"
+
+    assert by_path["two.txt"].diff =~ "+more"
+    refute by_path["two.txt"].diff =~ "one changed"
+  end
+
+  # SNAP-15: a file the pair's diff holds no part of has no part of its own, so
+  # the card gives it no toggle.
+  test "a file the diff holds no part of has none", %{tree: tree} do
+    write(tree, "a.txt", "old\n")
+    write(tree, "b.txt", "old\n")
+    from = Snapshot.current(tree)
+
+    write(tree, "a.txt", "new\n")
+    write(tree, "b.txt", "new\n")
+    pair = Snapshot.record(tree, from)
+
+    # As a cut at `max_diff` inside the second file's header would leave it
+    # (SNAP-11): the first file names itself, the second does not.
+    cut = %{pair | diff: String.split(pair.diff, "diff --git a/b.txt") |> hd()}
+    by_path = Map.new(Snapshot.files_with_diffs(cut), &{&1.path, &1})
+
+    assert by_path["a.txt"].diff =~ "+new"
+    assert by_path["b.txt"].diff == nil
+    assert by_path["b.txt"].added == 0
+    assert by_path["b.txt"].removed == 0
+  end
+
+  # SNAP-16: each file is answered with how many lines its own part of the diff
+  # adds and removes, counted from that part.
+  test "a pair counts the lines each file's part adds and removes", %{tree: tree} do
+    write(tree, "cut.txt", "a\nb\nc\n")
+    write(tree, "kept.txt", "kept\n")
+    LiveTree.commit(tree, "a file to cut a line from")
+    from = Snapshot.current(tree)
+
+    write(tree, "cut.txt", "a\nc\n")
+    write(tree, "new.txt", "one\ntwo\n")
+    pair = Snapshot.record(tree, from)
+
+    by_path = Map.new(Snapshot.files_with_diffs(pair), &{&1.path, &1})
+
+    assert by_path["cut.txt"].added == 0
+    assert by_path["cut.txt"].removed == 1
+    assert by_path["new.txt"].added == 2
+    assert by_path["new.txt"].removed == 0
+  end
 end

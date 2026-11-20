@@ -1,7 +1,7 @@
 defmodule EliaWeb.ChatLive do
   use EliaWeb, :live_view
 
-  alias Elia.Agent
+  alias Elia.{Agent, Snapshot}
   alias Elia.LLM
   alias Elia.LLM.{Compaction, Context, Images, Message}
   alias EliaWeb.{ChatList, ChatStatus, FileLinks}
@@ -1835,13 +1835,14 @@ defmodule EliaWeb.ChatLive do
           ]
         }>{@item.output}</pre>
       </details>
-      <%!-- SNAP-10, SNAP-11: the files the call changed, and the pair's diff,
-      both read from the snapshots the call was bracketed by (SNAP-12), so a
-      card still shows what it did after later calls have moved the tree on.
-      The files are there to be read; the diff is long, so it is one click, and
-      it is coloured as a diff by the file viewer's own hook, whose colours come
-      from the theme, so its lines are told apart in either one (SNAP-13,
-      SNAP-14). --%>
+      <%!-- SNAP-10, SNAP-11, SNAP-15, SNAP-16: the files the call changed and
+      their diff, read from the snapshots the call was bracketed by (SNAP-12),
+      so a card still shows what it did after later calls have moved the tree
+      on. Each file is a toggle of its own, showing its own part of the pair's
+      diff with the lines it adds and removes; a diff is long, so it is one
+      click, and it is coloured as a diff by the file viewer's own hook, whose
+      colours come from the theme, so its lines are told apart in either one
+      (SNAP-13, SNAP-14). --%>
       <div
         :if={@snapshot.files != []}
         id={"snapshot-#{@item.call_id}"}
@@ -1851,21 +1852,31 @@ defmodule EliaWeb.ChatLive do
           <.icon name="hero-document-magnifying-glass" class="size-3" />{@snapshot.label}
         </div>
         <ul class="mt-1 space-y-0.5 font-mono">
-          <li :for={file <- @snapshot.files}>
-            <span class="text-base-content/60">{file.status}</span> {file.path}
+          <li :for={{file, index} <- Enum.with_index(@snapshot.files)}>
+            <details :if={file.diff} class="group">
+              <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
+                <.icon
+                  name="hero-chevron-right"
+                  class="size-3 shrink-0 transition group-open:rotate-90"
+                />
+                <span class="shrink-0">{file.status}</span>
+                <span class="min-w-0 flex-1 truncate text-base-content/80">{file.path}</span>
+                <span class="shrink-0 text-success">+{file.added}</span>
+                <span class="shrink-0 text-error">-{file.removed}</span>
+              </summary>
+              <pre
+                id={"diff-#{@item.call_id}-#{index}"}
+                phx-hook="Highlight"
+                data-language="diff"
+                class="snapshot-diff mt-1 max-h-96 overflow-auto whitespace-pre font-mono"
+              >{file.diff}</pre>
+            </details>
+            <div :if={is_nil(file.diff)} class="flex items-center gap-1">
+              <span class="text-base-content/60">{file.status}</span>
+              <span class="min-w-0 truncate">{file.path}</span>
+            </div>
           </li>
         </ul>
-        <details class="group mt-1">
-          <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
-            <.icon name="hero-chevron-right" class="size-3 transition group-open:rotate-90" />Show diff
-          </summary>
-          <pre
-            id={"diff-#{@item.call_id}"}
-            phx-hook="Highlight"
-            data-language="diff"
-            class="snapshot-diff mt-1 max-h-96 overflow-auto whitespace-pre font-mono"
-          >{@snapshot.diff}</pre>
-        </details>
       </div>
     </div>
     """
@@ -1983,7 +1994,8 @@ defmodule EliaWeb.ChatLive do
     """
   end
 
-  # SNAP-10, SNAP-11: a call's changed files and the pair's diff, both read from
+  # SNAP-10, SNAP-11, SNAP-15, SNAP-16: a call's changed files with each one's
+  # own part of the pair's diff and the lines it adds and removes, all read from
   # the snapshots the call was bracketed by and saved with the chat, rather than
   # from the working tree, which a later call has moved on (SNAP-12). A pair
   # that changed nothing has no list at all, and a call saved without a pair
@@ -1992,10 +2004,10 @@ defmodule EliaWeb.ChatLive do
   defp snapshot_view(item) do
     case Map.get(item, :snapshot) do
       %{files: [_ | _] = files} = pair ->
-        %{files: files, diff: pair.diff, label: snapshot_label(files)}
+        %{files: Snapshot.files_with_diffs(pair), label: snapshot_label(files)}
 
       _none ->
-        %{files: [], diff: nil, label: nil}
+        %{files: [], label: nil}
     end
   end
 

@@ -1486,6 +1486,41 @@ defmodule EliaWeb.ChatLiveTest do
     end)
   end
 
+  # SNAP-15: each file the card lists is a toggle of its own — opening it shows
+  # the part of the pair's diff that changes that file and no other file's
+  # lines — and no diff for the call as a whole.
+  test "each file's own diff opens on its own", %{conn: conn} do
+    with_empty_store(fn ->
+      {:ok, view, html} = live(conn, ~p"/c/#{snapshot_chat(pair_with_two_changes())}")
+
+      assert has_element?(view, "#diff-c1-0[phx-hook=Highlight][data-language=diff]")
+      assert has_element?(view, "#diff-c1-1[phx-hook=Highlight][data-language=diff]")
+      refute html =~ "Show diff"
+
+      one = view |> element("#diff-c1-0") |> render()
+      two = view |> element("#diff-c1-1") |> render()
+
+      assert one =~ "+new one"
+      refute one =~ "and more"
+      assert two =~ "+and more"
+      refute two =~ "new one"
+    end)
+  end
+
+  # SNAP-16: each file the card lists shows how many lines its own part of the
+  # diff adds and removes.
+  test "each file shows its added and removed lines", %{conn: conn} do
+    with_empty_store(fn ->
+      {:ok, _view, html} = live(conn, ~p"/c/#{snapshot_chat(pair_with_two_changes())}")
+
+      # one.txt: one line out, one line in. two.txt: two lines in, none out.
+      assert html =~ ">+1</span>"
+      assert html =~ ">-1</span>"
+      assert html =~ ">+2</span>"
+      assert html =~ ">-0</span>"
+    end)
+  end
+
   # SNAP-10: a pair that changed nothing, and a call saved without a pair at all
   # (SNAP-7), show no files.
   test "a call that changed nothing shows no files", %{conn: conn} do
@@ -1523,8 +1558,21 @@ defmodule EliaWeb.ChatLiveTest do
     with_empty_store(fn ->
       {:ok, view, _html} = live(conn, ~p"/c/#{snapshot_chat(pair_with_a_change())}")
 
-      assert has_element?(view, "#diff-c1[phx-hook=Highlight][data-language=diff]")
+      assert has_element?(view, "#diff-c1-0[phx-hook=Highlight][data-language=diff]")
     end)
+  end
+
+  # A pair of snapshots with two files changed between them: one line out and
+  # one in for the first, two lines in for the second (SNAP-15, SNAP-16).
+  defp pair_with_two_changes do
+    tree = Elia.LiveTree.create()
+    on_exit(fn -> Elia.LiveTree.remove(tree) end)
+    File.write!(Path.join(tree, "one.txt"), "old one\n")
+    File.write!(Path.join(tree, "two.txt"), "keep\n")
+    from = Elia.Snapshot.current(tree)
+    File.write!(Path.join(tree, "one.txt"), "new one\n")
+    File.write!(Path.join(tree, "two.txt"), "keep\nmore\nand more\n")
+    Elia.Snapshot.record(tree, from)
   end
 
   # A pair of snapshots with one file changed between them (SNAP-6).

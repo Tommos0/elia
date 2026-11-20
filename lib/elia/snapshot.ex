@@ -64,6 +64,95 @@ defmodule Elia.Snapshot do
 
   def record(_dir, _from), do: nil
 
+  ## A pair's diff, per file
+
+  @doc """
+  Each of a pair's files with its own part of the pair's diff: `%{status:,
+  path:, diff:, added:, removed:}` per file, where a file the diff holds no
+  part of has `diff: nil` and no lines of its own (SNAP-15, SNAP-16). Both come
+  from the diff the pair carries, so a chat saved before this reads it too and
+  no git is read.
+  """
+  @spec files_with_diffs(map()) :: [map()]
+  def files_with_diffs(%{files: files, diff: diff}) do
+    parts = parts(diff || "", files)
+
+    files
+    |> Enum.with_index()
+    |> Enum.map(fn {file, index} -> Map.merge(file, change(parts, file.path, index)) end)
+  end
+
+  def files_with_diffs(_pair), do: []
+
+  defp change(parts, path, index) do
+    case part_for(parts, path, index) do
+      nil -> %{diff: nil, added: 0, removed: 0}
+      part -> %{diff: part.text, added: part.added, removed: part.removed}
+    end
+  end
+
+  # SNAP-15: a part is the chunk of the diff that changes one path — the one
+  # whose header names it — or, where the cut at `max_diff` left the header
+  # unreadable (SNAP-11), the chunk at the same position, which is what is left
+  # of that file's own part. A file neither names has no part.
+  defp part_for(parts, path, index) do
+    Enum.find(parts, &(&1.path == path)) ||
+      case Enum.at(parts, index) do
+        %{path: nil} = part -> part
+        _other -> nil
+      end
+  end
+
+  # A part runs from a `diff --git ` line to the one before the next. What comes
+  # before the first such line is a part too, with no path of its own: it is
+  # what a cut inside the first header left behind.
+  defp parts(diff, files) do
+    paths = Enum.map(files, & &1.path)
+
+    diff
+    |> String.split("\n")
+    |> Enum.chunk_while([], &chunk/2, fn acc -> {:cont, Enum.reverse(acc), []} end)
+    |> Enum.map(fn lines ->
+      %{
+        text: Enum.join(lines, "\n"),
+        path: named_path(hd(lines), paths),
+        added: count(lines, "+"),
+        removed: count(lines, "-")
+      }
+    end)
+  end
+
+  defp chunk(line, acc) do
+    cond do
+      acc == [] -> {:cont, [line]}
+      String.starts_with?(line, "diff --git ") -> {:cont, Enum.reverse(acc), [line]}
+      true -> {:cont, [line | acc]}
+    end
+  end
+
+  # The path a part's header names: git writes `diff --git a/<old> b/<new>`, so
+  # it is the longest of the pair's paths the header ends in ` b/<path>` with.
+  defp named_path(header, paths) do
+    with true <- String.starts_with?(header, "diff --git ") do
+      paths
+      |> Enum.filter(&String.ends_with?(header, " b/" <> &1))
+      |> Enum.sort_by(&byte_size/1)
+      |> List.last()
+    else
+      _none -> nil
+    end
+  end
+
+  # SNAP-16: the lines of one part that a patch adds and removes. Only what
+  # comes after the part's first hunk header counts, so its own `---` and `+++`
+  # lines are not lines it adds or removes, and a part with fewer than one hunk
+  # — a mode change, a binary file — counts none.
+  defp count(lines, prefix) do
+    lines
+    |> Enum.drop_while(&(not String.starts_with?(&1, "@@")))
+    |> Enum.count(&String.starts_with?(&1, prefix))
+  end
+
   ## Taking one
 
   defp take_now(root) do
