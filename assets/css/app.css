@@ -435,3 +435,14 @@
 .hljs-strong {
   font-weight: 600;
 }
+
+/* SNAP-14: a `shell` call's card tints the lines the call added and removed, on
+   top of the colours the diff highlighting gives them (SNAP-13). Both come from
+   the daisyUI theme variables, so they follow the light/dark toggle. */
+.snapshot-diff .hljs-addition {
+  background: color-mix(in oklab, var(--color-success) 14%, transparent);
+}
+
+.snapshot-diff .hljs-deletion {
+  background: color-mix(in oklab, var(--color-error) 14%, transparent);
+}

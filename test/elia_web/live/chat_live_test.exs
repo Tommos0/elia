@@ -1358,6 +1358,17 @@ defmodule EliaWeb.ChatLiveTest do
     end)
   end
 
+  # SNAP-13: the card shows the diff coloured as a diff — the file viewer's own
+  # hook, named the `diff` language — so an added line, a removed line and the
+  # headers are told apart by colour.
+  test "the card shows its diff highlighted as a diff", %{conn: conn} do
+    with_empty_store(fn ->
+      {:ok, view, _html} = live(conn, ~p"/c/#{snapshot_chat(pair_with_a_change())}")
+
+      assert has_element?(view, "#diff-c1[phx-hook=Highlight][data-language=diff]")
+    end)
+  end
+
   # A pair of snapshots with one file changed between them (SNAP-6).
   defp pair_with_a_change do
     tree = Elia.LiveTree.create()

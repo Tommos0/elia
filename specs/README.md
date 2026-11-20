@@ -142,7 +142,7 @@ it.
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
-| [Shell snapshots](shell-snapshots.md) | `SNAP` | Every `shell` call is bracketed by a git snapshot of its tree, so the chat shows the files it changed and their diff |
+| [Shell snapshots](shell-snapshots.md) | `SNAP` | Every `shell` call is bracketed by a git snapshot of its tree, so the chat shows the files it changed and their diff, highlighted |
 | [Process priority](process-priority.md) | `PRIO` | Every process Elia spawns runs below the server's own CPU and I/O priority, so the UI and the agent loops stay responsive while a compile or a test suite runs |
 | [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: a chat's commands are confined to the project folder it works in, and the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [Terminal](terminal.md) | `TERM` | A chat's own terminal: a pty (tmux in control mode) with xterm.js in the browser, jailed and niced like a command, on `/c/:id/terminal` |

@@ -1792,7 +1792,10 @@ defmodule EliaWeb.ChatLive do
       <%!-- SNAP-10, SNAP-11: the files the call changed, and the pair's diff,
       both read from the snapshots the call was bracketed by (SNAP-12), so a
       card still shows what it did after later calls have moved the tree on.
-      The files are there to be read; the diff is long, so it is one click. --%>
+      The files are there to be read; the diff is long, so it is one click, and
+      it is coloured as a diff by the file viewer's own hook, whose colours come
+      from the theme, so its lines are told apart in either one (SNAP-13,
+      SNAP-14). --%>
       <div
         :if={@snapshot.files != []}
         id={"snapshot-#{@item.call_id}"}
@@ -1810,7 +1813,12 @@ defmodule EliaWeb.ChatLive do
           <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
             <.icon name="hero-chevron-right" class="size-3 transition group-open:rotate-90" />Show diff
           </summary>
-          <pre class="mt-1 max-h-96 overflow-auto whitespace-pre font-mono">{@snapshot.diff}</pre>
+          <pre
+            id={"diff-#{@item.call_id}"}
+            phx-hook="Highlight"
+            data-language="diff"
+            class="snapshot-diff mt-1 max-h-96 overflow-auto whitespace-pre font-mono"
+          >{@snapshot.diff}</pre>
         </details>
       </div>
     </div>

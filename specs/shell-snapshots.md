@@ -12,6 +12,8 @@ travels on the call's own tool result, saved with the chat; what the model is
 sent stays the command's output and exit status, so a snapshot costs the agent
 no context. The harness does this for every call in every chat, which is why
 no instruction to show a diff is needed anywhere.
+A diff a card shows is highlighted as a diff by the file viewer's own client
+hook, so its lines are told apart by colour (SNAP-13).
 
 ## Requirements
 
@@ -27,6 +29,8 @@ no instruction to show a diff is needed anywhere.
 - **SNAP-10** The chat shows a call's changed files — each path with its status, as added, modified, deleted or renamed — when the call's pair differs, and shows no files when it does not.
 - **SNAP-11** Opening that list shows the pair's diff, which the pair carries, cut at `max_diff` characters with a marker saying it was cut.
 - **SNAP-12** A pair's files and diff are read from its two snapshots when the call finishes and saved with the pair, so a call's card shows what it changed after later calls have moved the tree on, and reads no git of its own.
+- **SNAP-13** The card shows a diff's lines told apart by colour: the element carries the file viewer's client hook (EXPL-13) with the language `diff` named on it, so a file header, a hunk header, an added line and a removed line each read as themselves.
+- **SNAP-14** An added line and a removed line of a diff the card shows carry a tinted background besides their colour, which comes from the daisyUI theme variables (EXPL-14), so both follow the light/dark toggle.
 
 ## Configuration
 
@@ -59,7 +63,8 @@ changes (SNAP-1).
 pair's changed files and diff with `git`. The agent loop brackets each `shell`
 call with the pair (`Elia.Agent.Loop`), which rides on that call's tool result
 and is saved with the chat; the chat's tool card renders it
-(`lib/elia_web/live/chat_live.ex`). `Elia.Preview`'s sample chat carries one, so
+(`lib/elia_web/live/chat_live.ex`), whose diff the file viewer's own `Highlight` hook
+colours as a diff (EXPL-13, EXPL-14). `Elia.Preview`'s sample chat carries one, so
 a preview shows the card (PREVIEW-10).
 
 ## Tests
@@ -67,6 +72,8 @@ a preview shows the card (PREVIEW-10).
 - `test/elia/snapshot_test.exs` — SNAP-1 to SNAP-5, SNAP-11, SNAP-12
 - `test/elia/agent_test.exs` — SNAP-6, SNAP-8, SNAP-9
 - `test/elia/store_test.exs` — SNAP-7
-- `test/elia_web/live/chat_live_test.exs` — SNAP-10, SNAP-11
+- `test/elia_web/live/chat_live_test.exs` — SNAP-10, SNAP-11, SNAP-13
+- No test: SNAP-14 — the tint comes from the daisyUI theme variables in
+  `assets/css/app.css`, which a reviewer reads rather than a test.
 - `test/elia/preview_test.exs` — SNAP-6, SNAP-10, through the sample chat a
   preview seeds
