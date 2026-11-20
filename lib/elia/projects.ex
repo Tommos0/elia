@@ -21,11 +21,26 @@ defmodule Elia.Projects do
   @default_key :default_project
   @projects_root_key :projects_root
   @default_root "~/elia-projects"
+  @color_key :harness_project_color
+
+  # PROJ-42: the colours a project can be. A project stores a name; the hex is
+  # what the interface paints, and each one is dark enough to take white text.
+  @palette [
+    %{name: "indigo", hex: "#4f46e5"},
+    %{name: "sky", hex: "#0369a1"},
+    %{name: "teal", hex: "#0f766e"},
+    %{name: "emerald", hex: "#047857"},
+    %{name: "amber", hex: "#b45309"},
+    %{name: "orange", hex: "#c2410c"},
+    %{name: "rose", hex: "#e11d48"},
+    %{name: "violet", hex: "#7c3aed"}
+  ]
 
   @type t :: %{
           id: binary(),
           name: binary(),
           folder: binary(),
+          color: binary() | nil,
           harness?: boolean()
         }
 
@@ -50,7 +65,13 @@ defmodule Elia.Projects do
   """
   @spec harness() :: t()
   def harness do
-    %{id: @harness_id, name: "Elia", folder: Workspace.runtime_root(), harness?: true}
+    %{
+      id: @harness_id,
+      name: "Elia",
+      folder: Workspace.runtime_root(),
+      color: stored_color_name(Settings.get(@color_key)),
+      harness?: true
+    }
   end
 
   @doc "The project with `id`, or `nil` (PROJ-5)."
@@ -76,6 +97,50 @@ defmodule Elia.Projects do
         project = new_project(name, folder)
         save([project | read()])
         {:ok, project}
+    end
+  end
+
+  @doc "The colours a project can be: a name, and the hex it is painted in (PROJ-42)."
+  @spec palette() :: [%{name: binary(), hex: binary()}]
+  def palette, do: @palette
+
+  @doc """
+  A project's colour (PROJ-43): the palette entry its `color` names, else the one
+  its name derives (PROJ-42, `auto_color/1`). Every project has one, Elia's own
+  included.
+  """
+  @spec color(map()) :: %{name: binary(), hex: binary()}
+  def color(project), do: find_color(Map.get(project, :color)) || auto_color(project)
+
+  @doc """
+  The palette entry a project's name derives (PROJ-43): the same name always
+  gives the same one, so a project keeps its colour across a restart and one whose
+  stored colour the palette no longer holds still has one.
+  """
+  @spec auto_color(map()) :: %{name: binary(), hex: binary()}
+  def auto_color(project) do
+    name = String.downcase(Map.get(project, :name) || "")
+    Enum.at(@palette, :erlang.phash2(name, length(@palette)))
+  end
+
+  @doc """
+  Stores a palette colour on a project and returns it as `{:ok, project}`
+  (PROJ-44); `nil` clears it, so the project goes back to the colour its name
+  derives (PROJ-43). A name the palette does not hold is
+  `{:error, :unknown_color}` and stores nothing.
+  """
+  @spec set_color(map(), binary() | nil) :: {:ok, map()} | {:error, :unknown_color}
+  def set_color(%{id: @harness_id}, color) do
+    with {:ok, name} <- palette_name(color) do
+      store_harness_color(name)
+      {:ok, harness()}
+    end
+  end
+
+  def set_color(project, color) do
+    with {:ok, name} <- palette_name(color) do
+      save(Enum.map(read(), &put_color(&1, project.id, name)))
+      {:ok, Map.put(project, :color, name)}
     end
   end
 
@@ -258,6 +323,9 @@ defmodule Elia.Projects do
       id: Agent.new_id(),
       name: String.trim(name),
       folder: Path.expand(folder),
+      # PROJ-1, PROJ-42: a new project stores no colour, so it wears the one its
+      # name derives.
+      color: nil,
       harness?: false
     }
   end
@@ -383,7 +451,7 @@ defmodule Elia.Projects do
          true <- is_list(projects) do
       projects
       |> Enum.filter(&valid?/1)
-      |> Enum.map(&Map.put(&1, :harness?, false))
+      |> Enum.map(&normalise/1)
     else
       _ -> []
     end
@@ -395,6 +463,48 @@ defmodule Elia.Projects do
   end
 
   defp valid?(_project), do: false
+
+  # A project read from the file takes its colour as the palette holds it: one
+  # written before the field existed, and one naming a colour the palette no
+  # longer holds, both read as `nil` — the colour the name derives (PROJ-2,
+  # PROJ-43).
+  defp normalise(project) do
+    project
+    |> Map.put(:harness?, false)
+    |> Map.update(:color, nil, &stored_color_name/1)
+  end
+
+  defp put_color(stored, id, name) do
+    if stored.id == id, do: Map.put(stored, :color, name), else: stored
+  end
+
+  # A palette name, or `nil` for anything the palette does not hold.
+  defp stored_color_name(name) do
+    case find_color(name) do
+      %{name: name} -> name
+      _unknown -> nil
+    end
+  end
+
+  defp palette_name(nil), do: {:ok, nil}
+
+  defp palette_name(name) when is_binary(name) do
+    case find_color(name) do
+      %{name: name} -> {:ok, name}
+      _unknown -> {:error, :unknown_color}
+    end
+  end
+
+  defp palette_name(_other), do: {:error, :unknown_color}
+
+  defp find_color(name) when is_binary(name), do: Enum.find(@palette, &(&1.name == name))
+  defp find_color(_none), do: nil
+
+  # Elia's own project is never stored in the registry (PROJ-3), so its colour
+  # lives in the settings database, where the default project is kept too
+  # (PROJ-8).
+  defp store_harness_color(nil), do: Settings.delete(@color_key)
+  defp store_harness_color(name), do: Settings.put(@color_key, name)
 
   defp save(projects) do
     File.mkdir_p!(Workspace.data_dir())

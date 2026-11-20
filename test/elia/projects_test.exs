@@ -3,16 +3,19 @@ defmodule Elia.ProjectsTest do
 
   alias Elia.{Projects, Settings, Workspace}
 
-  # Same keys Elia.Projects stores the default and the projects root under
-  # (PROJ-8, PROJ-32).
+  # The keys Elia.Projects keeps its own state under: the default project
+  # (PROJ-8), the projects root (PROJ-32) and Elia's own project's colour
+  # (PROJ-44).
   @default_key :default_project
   @root_key :projects_root
+  @color_key :harness_project_color
 
   setup do
     on_exit(fn ->
       File.rm(Projects.path())
       Settings.delete(@default_key)
       Settings.delete(@root_key)
+      Settings.delete(@color_key)
     end)
 
     :ok
@@ -326,6 +329,100 @@ defmodule Elia.ProjectsTest do
     assert {:ok, project, :no_repository} = Projects.create("Bad Git")
     assert File.dir?(project.folder)
     assert Projects.get(project.id) == project
+  end
+
+  # PROJ-42: the palette is fixed — each entry a lowercase name and the hex the
+  # interface paints it in.
+  test "palette/0 is the colours a project can be" do
+    palette = Projects.palette()
+
+    assert palette == Projects.palette()
+    assert length(palette) > 1
+    assert Enum.uniq_by(palette, & &1.name) == palette
+
+    assert Enum.all?(palette, fn
+             %{name: name, hex: hex} ->
+               name == String.downcase(name) and hex =~ ~r/^#[0-9a-f]{6}$/
+
+             _other ->
+               false
+           end)
+  end
+
+  # PROJ-43: a project's colour is the palette entry it stores, else the one its
+  # name derives — the same name always deriving the same one.
+  test "color/1 resolves a project's colour, deriving one from its name" do
+    {:ok, project} = Projects.create("Widgets", Workspace.root())
+
+    # A new project stores none, and the one its name derives is a palette
+    # entry.
+    assert project.color == nil
+    assert Projects.color(project) == Projects.auto_color(project)
+    assert Projects.color(project) in Projects.palette()
+
+    # What it stores is what it wears.
+    assert {:ok, stored} = Projects.set_color(project, "rose")
+    assert Projects.color(stored).name == "rose"
+    assert Projects.color(stored) == Enum.find(Projects.palette(), &(&1.name == "rose"))
+
+    # The same name derives the same colour, whatever the project's id, and a
+    # project without a colour at all still has one.
+    assert Projects.auto_color(%{project | id: "anotherid12"}) == Projects.auto_color(project)
+    assert Projects.color(Map.delete(project, :color)) == Projects.auto_color(project)
+
+    # A stored name the palette does not hold falls back to the derived one.
+    assert Projects.color(%{project | color: "chartreuse"}) == Projects.auto_color(project)
+
+    # Elia's own project has one like any other.
+    assert Projects.color(Projects.harness()) in Projects.palette()
+  end
+
+  # PROJ-44: set_color/2 stores a palette colour, `nil` clears it, and a name the
+  # palette does not hold stores nothing. Elia's own project takes one too, and
+  # the registry never holds it (PROJ-3).
+  test "set_color/2 stores a colour, clears it with nil" do
+    {:ok, project} = Projects.create("Widgets", Workspace.root())
+
+    assert {:ok, updated} = Projects.set_color(project, "teal")
+    assert updated.color == "teal"
+    assert Projects.get(project.id).color == "teal"
+    refute Projects.get(project.id) == project
+
+    assert {:ok, cleared} = Projects.set_color(Projects.get(project.id), nil)
+    assert cleared.color == nil
+    assert Projects.get(project.id).color == nil
+    assert Projects.color(Projects.get(project.id)) == Projects.auto_color(project)
+
+    assert {:error, :unknown_color} = Projects.set_color(Projects.get(project.id), "chartreuse")
+    assert {:error, :unknown_color} = Projects.set_color(Projects.get(project.id), 42)
+    assert Projects.get(project.id).color == nil
+
+    # Elia's own project is not in the registry, so its colour is kept where its
+    # other state is (PROJ-8).
+    assert {:ok, harness} = Projects.set_color(Projects.harness(), "violet")
+    assert harness.color == "violet"
+    assert Projects.harness().color == "violet"
+    assert Projects.get("harness").color == "violet"
+
+    assert {:ok, _cleared} = Projects.set_color(Projects.harness(), nil)
+    assert Projects.harness().color == nil
+  end
+
+  # PROJ-2, PROJ-43: a registry written before the field existed — and one naming
+  # a colour the palette does not hold — reads as a project with no colour, which
+  # is the one its name derives. Nothing to migrate.
+  test "a project written without a colour reads as the one its name derives" do
+    write_registry([%{id: "oldproject1", name: "Old", folder: "/x"}])
+
+    assert [%{id: "harness"}, project] = Projects.list()
+    assert project.color == nil
+    assert Projects.color(project) == Projects.auto_color(project)
+    assert Projects.color(project) in Projects.palette()
+
+    write_registry([%{id: "oldproject1", name: "Old", folder: "/x", color: "chartreuse"}])
+
+    assert [%{id: "harness"}, project] = Projects.list()
+    assert project.color == nil
   end
 
   # A saved chat in a project, `nil` for Elia's own (PROJ-9).

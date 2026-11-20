@@ -13,15 +13,20 @@ the chat list holds its chats and no other project's, and the switcher in the
 header changes it. Opening a chat opens that chat's project, so the header, the
 list and the page agree about where the user is.
 
+Every project has a colour — one the user picks from a palette, or the one its
+name gives it — and the app's own badge at the top left is painted in the open
+project's (PROJ-42, PROJ-46).
+
 ## Requirements
 
 ### The registry
 
-- **PROJ-1** A project is `%{id, name, folder, harness?}`: an id of 12
+- **PROJ-1** A project is `%{id, name, folder, color, harness?}`: an id of 12
   URL-safe characters (STORE-5), a non-blank `name` (trimmed on save), the
   absolute path of a directory `folder` — one that exists when the project is
-  created (PROJ-6) and may be gone later (PROJ-27) — and `harness?` true only
-  for Elia's own project.
+  created (PROJ-6) and may be gone later (PROJ-27) — a `color` that is a palette
+  name (PROJ-42) or `nil` for the one the name gives it (PROJ-43), and
+  `harness?` true only for Elia's own project.
 - **PROJ-2** Projects are saved as one Erlang term in `.elia/projects.term`
   (Elia's data dir, PROJ-13), written atomically like a session (STORE-2). A
   missing, unreadable or corrupt file reads as "no projects" rather than an
@@ -122,6 +127,37 @@ list and the page agree about where the user is.
   `/files?project=<id>` (default: Elia's own), with paths relative to that
   project's folder. `/files` with an unknown or missing project id uses Elia's
   own.
+
+### Colours
+
+- **PROJ-42** `Elia.Projects.palette/0` is the colours a project can be: each
+  is `%{name, hex}` — a lowercase name and the `#rrggbb` the interface paints —
+  the same entries in the same order for every caller.
+- **PROJ-43** `color/1` resolves a project's colour to a palette entry
+  (PROJ-42): the one its `color` names, else the one its `name` derives
+  (`auto_color/1`), the same name always deriving the same entry — so a
+  project keeps its colour across a restart, and one whose stored colour is no
+  longer in the palette (PROJ-44) still has one. Every project has a colour,
+  Elia's own included.
+- **PROJ-44** `set_color/2` stores a palette name on a project and returns the
+  saved project as `{:ok, project}`; `nil` clears it, so the project goes back
+  to the colour its name derives (PROJ-43); a name the palette does not hold is
+  `{:error, :unknown_color}` and stores nothing. Elia's own project takes one
+  like any other.
+- **PROJ-45** The projects page (PROJ-23) carries the picker for a project's
+  colour: a swatch per palette entry (`#project-color-<id>-<name>`, painted in
+  that entry's `hex`) and one for the derived colour
+  (`#project-color-<id>-auto`), with the project's current choice marked
+  `data-selected="true"`. Pressing a swatch stores it (PROJ-44) and shows the
+  page with it chosen; pressing the automatic one clears the stored colour.
+- **PROJ-46** The header's app icon — the badge at the top left, `#app-icon` —
+  is painted in the open project's colour (PROJ-28, PROJ-43) on every page, and
+  follows the open project when the switcher changes it (PROJ-29); with no open
+  project it is the theme's primary.
+- **PROJ-47** A project's colour stands beside its name wherever the interface
+  lists it: a swatch in a row of the switcher's menu (`#project-swatch-<id>`,
+  PROJ-29) and the project's own icon on the projects page (`#project-icon-<id>`,
+  PROJ-23), each painted in the colour the header's icon uses for it (PROJ-46).
 
 ### The interface
 
@@ -238,16 +274,22 @@ list and the page agree about where the user is.
 
 ## Stored data
 
-Unchanged and backward compatible, with nothing to migrate. The registry file
-keeps its shape and its version and no project field changes, so a file written
-before this change reads as it did (PROJ-2). The open project is the default
-project the settings database already held (PROJ-8, PROJ-28): the same key and
-the same values, with the meaning the interface gives it widened from "where a
-new chat starts" to "the project the interface works in", so a value stored by
-an older version says what it said. Nor does a chat's saved `project_id`
-(STORE-19) change: a chat whose project is gone already resolved to Elia's own
-project when its session loaded, which is now stated for a view too (PROJ-9,
-PROJ-12).
+Backward compatible, with nothing to migrate. The registry (PROJ-2) gains one
+field: a project's `color` (PROJ-1, PROJ-42). A file written before this change
+has none, and a project read without one takes `color: nil` (PROJ-2), which is
+the colour its name derives (PROJ-43) — so such a file reads as a project with a
+colour, and nothing is rewritten. A stored name the palette no longer holds
+(PROJ-42) reads the same way, as `nil`. The file keeps its shape otherwise and
+its version stays 1. Elia's own project, which the registry never holds
+(PROJ-3), keeps its colour in the settings database, under a key of its own
+(PROJ-44): a database written before this change has none, which reads as the
+colour its name derives. The open project is the default project the settings
+database already held (PROJ-8, PROJ-28): the same key and the same values, with
+the meaning the interface gives it widened from "where a new chat starts" to
+"the project the interface works in", so a value stored by an older version says
+what it said. Nor does a chat's saved `project_id` (STORE-19) change: a chat
+whose project is gone already resolved to Elia's own project when its session
+loaded, which is now stated for a view too (PROJ-9, PROJ-12).
 
 The projects root is one new key of the settings database (PROJ-32, PROJ-33):
 the database holds keys and values, and one written before this change has no
@@ -273,9 +315,10 @@ indistinguishable afterwards.
 - `test/elia/projects_test.exs` (a project's shape, the file it is saved in,
   Elia's own project, `list/0`, `get/1`, `create/2`, `delete/1`, `default/0`,
   `chats_of/1` and the project a chat belongs to, a
-  project whose folder is gone — PROJ-1 to PROJ-9, PROJ-27, PROJ-31; the
-  projects root and creating from a name, with the folder it makes, its errors,
-  the repository and its initial commit and identity — PROJ-32 to PROJ-38).
+  project whose folder is gone, the projects root and creating from a name,
+  with the folder it makes, its errors, the repository and its initial commit
+  and identity, the palette, a project's colour and `set_color/2` —
+  PROJ-1 to PROJ-9, PROJ-27, PROJ-31 to PROJ-38, PROJ-42 to PROJ-44).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
   PROJ-3, PROJ-13, PROJ-14, PROJ-22).
@@ -295,6 +338,9 @@ indistinguishable afterwards.
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
   its menu, choosing a project, the entry to the projects page and no
   "Projects" link — PROJ-28 to PROJ-30).
+- `test/elia_web/live/project_colors_test.exs` (the picker on the projects page,
+  the header's app icon in the open project's colour, and the swatch beside a
+  project's name — PROJ-45 to PROJ-47).
 - `test/elia_web/live/chat_list_test.exs` (a list holding the open project's
   chats only, a chat whose project is gone under Elia's own — PROJ-31).
 - `test/elia_web/live/dashboard_test.exs` (the projects card and the default

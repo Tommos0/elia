@@ -102,7 +102,7 @@ it.
 
 | Spec | Prefix | Summary |
 | --- | --- | --- |
-| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md` and skills; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository |
+| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md` and skills; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon |
 | [Bundle refresh](bundle-refresh.md) | `BUNDLE` | An open page loads the bundle a deploy served, and keeps the page's own state while it does |
 | [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about |
 | [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |

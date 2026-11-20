@@ -98,6 +98,29 @@ defmodule EliaWeb.ProjectsLive do
     {:noreply, socket}
   end
 
+  # PROJ-45: a swatch stores the colour it names (PROJ-44); the automatic one
+  # clears the stored colour, so the project goes back to the colour its name
+  # derives (PROJ-43).
+  def handle_event("set_color", %{"id" => id, "color" => color}, socket) do
+    socket =
+      case Projects.get(id) do
+        nil ->
+          socket
+
+        project ->
+          case Projects.set_color(project, if(color == "auto", do: nil, else: color)) do
+            {:ok, _project} -> refresh(socket)
+            {:error, :unknown_color} -> socket
+          end
+      end
+
+    {:noreply, socket}
+  end
+
+  # PROJ-45: the chosen swatch is ringed; the others are not.
+  defp swatch_ring(true), do: "ring-2 ring-base-content/60 ring-offset-2 ring-offset-base-100"
+  defp swatch_ring(false), do: "ring-1 ring-base-content/15"
+
   defp empty_form, do: name_form("")
 
   defp name_form(name), do: to_form(%{"name" => name}, as: :project)
@@ -224,7 +247,11 @@ defmodule EliaWeb.ProjectsLive do
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="flex items-center gap-3">
-                  <div class="grid size-10 place-items-center rounded-xl bg-base-200 text-base-content/70">
+                  <div
+                    id={"project-icon-#{project.id}"}
+                    class="grid size-10 place-items-center rounded-xl text-white"
+                    style={"background-color: #{Projects.color(project).hex}"}
+                  >
                     <.icon name="hero-rectangle-stack" class="size-5" />
                   </div>
                   <div class="min-w-0">
@@ -264,6 +291,46 @@ defmodule EliaWeb.ProjectsLive do
                     <.icon name="hero-trash" class="size-3.5" /> Delete
                   </button>
                 </div>
+              </div>
+
+              <%!-- PROJ-45: the picker for the project's colour — one swatch per
+              palette entry (PROJ-42) and the automatic one, painted in the
+              colour the name derives (PROJ-43). --%>
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <span class="text-xs text-base-content/50">Colour</span>
+                <button
+                  type="button"
+                  id={"project-color-#{project.id}-auto"}
+                  phx-click="set_color"
+                  phx-value-id={project.id}
+                  phx-value-color="auto"
+                  title="Automatic"
+                  data-selected={to_string(project.color == nil)}
+                  class={[
+                    "grid size-6 place-items-center rounded-full text-[10px] font-semibold text-white transition hover:scale-110",
+                    swatch_ring(project.color == nil)
+                  ]}
+                  style={"background-color: #{Projects.auto_color(project).hex}"}
+                >
+                  A<span class="sr-only">Automatic</span>
+                </button>
+                <button
+                  :for={color <- Projects.palette()}
+                  type="button"
+                  id={"project-color-#{project.id}-#{color.name}"}
+                  phx-click="set_color"
+                  phx-value-id={project.id}
+                  phx-value-color={color.name}
+                  title={color.name}
+                  data-selected={to_string(project.color == color.name)}
+                  class={[
+                    "size-6 rounded-full transition hover:scale-110",
+                    swatch_ring(project.color == color.name)
+                  ]}
+                  style={"background-color: #{color.hex}"}
+                >
+                  <span class="sr-only">{color.name}</span>
+                </button>
               </div>
             </section>
           </div>

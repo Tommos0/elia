@@ -8,6 +8,9 @@ defmodule EliaWeb.Layouts do
   # PWA-8: the shell's asset links carry a version of the built file.
   alias EliaWeb.AssetVersion
 
+  # PROJ-46, PROJ-47: the header paints a project's colour.
+  alias Elia.Projects
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -58,6 +61,9 @@ defmodule EliaWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    # PROJ-46: the app's badge wears the open project's colour.
+    assigns = assign(assigns, :app_color, open_project_color(assigns[:chats]))
+
     ~H"""
     <%!-- UI-78, HOT-8: the shell's height is the markup's own, not a class's. A
     deploy hot-reloads new markup into a page that keeps the stylesheet it
@@ -76,7 +82,11 @@ defmodule EliaWeb.Layouts do
           project's name stands beside it, where the app's own name used to, as
           the switcher that changes it (PROJ-29). --%>
           <.link navigate={~p"/"} title="Home" class="flex shrink-0 items-center">
-            <span class="grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-content">
+            <span
+              id="app-icon"
+              class="grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-content"
+              style={@app_color && "background-color: #{@app_color}; color: #ffffff"}
+            >
               E
             </span>
           </.link>
@@ -158,6 +168,11 @@ defmodule EliaWeb.Layouts do
     """
   end
 
+  # PROJ-46: the colour the app's badge wears — the open project's, or `nil`,
+  # which leaves the badge the theme's primary.
+  defp open_project_color(%{open_project: %{} = project}), do: Projects.color(project).hex
+  defp open_project_color(_chats), do: nil
+
   attr :projects, :list, required: true, doc: "every project, in `list/0` order (PROJ-4)"
 
   attr :open, :map, required: true, doc: "the open project (PROJ-28)"
@@ -213,7 +228,11 @@ defmodule EliaWeb.Layouts do
             project.id == @open.id && "font-medium"
           ]}
         >
-          <.icon name="hero-rectangle-stack" class="size-4 shrink-0 opacity-60" />
+          <span
+            id={"project-swatch-#{project.id}"}
+            class="size-2.5 shrink-0 rounded-full"
+            style={"background-color: #{Projects.color(project).hex}"}
+          />
           <span class="min-w-0 flex-1 truncate">{project.name}</span>
           <.icon :if={project.id == @open.id} name="hero-check" class="size-4 shrink-0" />
         </.link>
