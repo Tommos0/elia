@@ -7,6 +7,7 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
 - Every requirement you add or change needs a test. Cite its ID in the test name or a comment, e.g. `# SHELL-3`.
 - The corpus is checked too: `test/elia/spec_hygiene_test.exs` fails the suite on the rules `specs/README.md` states (SPEC), so an ID defined twice, a section outside the shape or a citation of an ID no spec defines is a test failure rather than a review comment.
 - Traceability is checked too: every requirement must be accounted for by a test file that exists, named in a spec's `## Tests` section, or by a `No test:` line saying why, and a named path must be there (TRACE, `specs/test-traceability.md`); `test/elia/spec_tests_test.exs` fails the suite on the rest. That is what a spec's `## Tests` section is for — name the file and the IDs it covers — and why a test cites its own IDs.
+- Pick a **free** ID, and re-check it when you rebase: another chat can land the same ID on `master` while you work on yours, and only then does the hygiene lint see the duplicate. Renumber yours (the new one goes at the end, since IDs are never reused) and update every citation — a blanket `UI-<n>` → `UI-<n+1>` in the files you touched, and by hand in a file that also cites the other chat's requirement.
 - If code and spec disagree, one is a bug. Fix the code or update the spec deliberately. See `specs/README.md`.
 - Worktree and deploy tests use a throwaway live tree (`Elia.LiveTree.create/0`, `test/support/live_tree.ex`), never the server's own tree.
 - A test that deploys by hot reload replaces the loader — `config :elia, Elia.Deploy, load: fun` — instead of calling `Phoenix.CodeReloader.reload/1`: a real recompile inside a test run rebuilds Elia's own endpoint and leaves `_build/test` broken for every later test.
@@ -209,9 +210,6 @@ its own output directory.
   `test/elia/shell_test.exs`'s process-group ones are the usual suspects there —
   and for a partition whose failures you can't name: re-run, and say what you
   re-ran.
-  The deployment test `test/elia/deployment_test.exs` did the same: partition 1
-  saw one revision where it expected two (`Elia.DeploymentTest`, DEPLOY-36), and
-  the test passed alone and on the next `mix precommit`.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run
