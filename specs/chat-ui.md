@@ -325,6 +325,16 @@ stream in, approves or denies tool calls, and switches between saved chats.
   status badge and a summary of its input: `$ <command>` for `shell`, the path
   for tools with a `path` input, "(no input)" for empty input, pretty JSON
   otherwise.
+- **UI-98** A `shell` call whose command runs over more than one line shows
+  only that command's first line in its card (UI-15), followed by an ellipsis
+  and how many lines the command has, and a control (`#command-<call_id>`)
+  that opens the whole command in a block (`#command-full-<call_id>`): the
+  card is there collapsed on first render, and a press opens it where a later
+  press closes it. A command of one line is unchanged and carries no such
+  control.
+- **UI-99** While a `shell` call awaits approval (APPR-3, UI-18) its whole
+  command is open (UI-98), so what is being approved can be read above the
+  buttons.
 - **UI-16** Status badges: Needs approval, Needs your answer (a call awaiting
   an answer, ASK-3), Answered, Approved, Running, Done, Failed (done with an
   error), Pending (anything else).
@@ -747,9 +757,10 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 
 - `test/elia_web/live/chat_live_test.exs` (the page and its empty state, the
   harness messages, the streaming drafts and the reasoning, the tool cards and
-  their badges, the sidebar and its rows, a delete, the Markdown in a reply, and
-  what `/chats` opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37,
-  UI-45, UI-59, UI-63 to UI-66, UI-77).
+  their badges, a multi-line command's collapsed card — UI-98, UI-99 — the
+  sidebar and its rows, a delete, the Markdown in a reply, and what `/chats`
+  opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37, UI-45, UI-59,
+  UI-63 to UI-66, UI-77).
 - No test: UI-5, UI-11, UI-13, UI-22 to UI-24, UI-49 — no test in the
   tree asserts them: the sidebar's "No chats yet" state, the "Working" indicator
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding
@@ -807,8 +818,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
   browser: Enter sending a message, the transcript at its end, the reader's own
   move up stopping the following and their return to the end starting it again,
-  and the jump-to-the-end button — UI-14, UI-21, UI-87, UI-95; the message box's
-  draft, stored and restored per chat — UI-89; a browser test, so it runs with
+  and the jump-to-the-end button — UI-14, UI-21, UI-87, UI-95; a multi-line
+  shell command's card opening on a press — UI-98; the message box's draft,
+  stored and restored per chat — UI-89; a browser test, so it runs with
   `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/small_screen_layout_test.exs` and
   `test/elia_web/browser/interaction_feedback_test.exs` (a tool card and the

@@ -305,7 +305,10 @@ defmodule Elia.Preview do
             type: :tool_call,
             id: "call-preview-2",
             name: "shell",
-            input: %{"command" => "git push"}
+            # UI-98: a command over more than one line, so a picture shows the
+            # card a multi-line command gets — its first line and the whole
+            # command one press away.
+            input: %{"command" => "git add -A\ngit commit -m \"wip\"\ngit push"}
           },
           # UI-43: a `spawn_task` call is an ordinary tool call whose input is
           # mostly a brief, so its picture shows the brief under it and no

@@ -613,6 +613,29 @@ defmodule EliaWeb.ChatBrowserTest do
     |> wait_for_input("")
   end
 
+  # UI-98: a multi-line command's card is collapsed in a real browser, and the
+  # whole command is one press away — the press is `<details>`'s own, which no
+  # LiveView test makes.
+  test "a multi-line command's card opens on a press", %{conn: conn} do
+    id = multi_line_command_chat()
+    command = "mix test\nmix precompile\nmix format"
+
+    conn = conn |> visit("/c/#{id}") |> connected()
+
+    # UI-98: collapsed on first render — the first line is all the card shows,
+    # and the block holding the rest of the command is not shown at all.
+    evaluate(conn, command_open?(), fn open -> assert open == false end)
+    evaluate(conn, command_visible?(), fn visible -> assert visible == false end)
+
+    conn = conn |> press_command()
+
+    evaluate(conn, command_open?(), fn open -> assert open == true end)
+    evaluate(conn, command_visible?(), fn visible -> assert visible == true end)
+
+    # The whole command, as it was written, with no whitespace the card added.
+    evaluate(conn, command_text(), fn text -> assert text == command end)
+  end
+
   # UI-89: the message box reads what it is given, once the hook that keeps the
   # draft has put it there. The server renders the box empty (the draft is the
   # browser's), so waiting for a draft is what waits for that hook.
@@ -1101,6 +1124,46 @@ defmodule EliaWeb.ChatBrowserTest do
       fn reached -> assert reached, "#{message} (within #{timeout}ms)" end
     )
   end
+
+  # UI-98: a chat whose one card holds a command over more than one line.
+  defp multi_line_command_chat do
+    id = Agent.new_id()
+
+    :ok =
+      Store.save(id, [
+        Message.user("run the tests"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{
+              type: :tool_call,
+              id: "s1",
+              name: "shell",
+              input: %{"command" => "mix test\nmix precompile\nmix format"}
+            }
+          ]
+        },
+        %Message{role: :tool, content: [Message.tool_result("s1", "ok\n")]}
+      ])
+
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
+
+  # UI-98: the card's own state, as the browser sees it.
+  defp command_open?, do: "document.querySelector('#command-s1').open"
+
+  # UI-98: whether the page is showing the block holding the whole command. A
+  # closed `<details>` hides it — the element is in the DOM, and laid out, but
+  # nothing of it is painted — which is what `checkVisibility` answers and an
+  # offset cannot.
+  defp command_visible?, do: "document.querySelector('#command-full-s1').checkVisibility()"
+
+  defp command_text, do: "document.querySelector('#command-full-s1').textContent"
+
+  # UI-98: one press on the card's own control.
+  defp press_command(conn),
+    do: evaluate(conn, "document.querySelector('#command-s1 > summary').click()")
 
   defp session_ids, do: Store.list(100) |> Enum.map(& &1.id)
 end

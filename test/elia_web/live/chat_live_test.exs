@@ -1402,4 +1402,85 @@ defmodule EliaWeb.ChatLiveTest do
 
     id
   end
+
+  # UI-98: a `shell` command that runs over more than one line is collapsed to
+  # its first line — the ellipsis and the line count saying there is more — and
+  # the whole command is one press away. A command of one line is unchanged and
+  # carries no such control.
+  test "a multi-line command is collapsed to its first line", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    command = "mix test\nmix precompile\nmix format"
+
+    Elia.Store.save(id, [
+      Message.user("run it"),
+      %Message{
+        role: :assistant,
+        content: [
+          %{type: :tool_call, id: "s1", name: "shell", input: %{"command" => command}},
+          %{type: :tool_call, id: "s2", name: "shell", input: %{"command" => "mix test"}}
+        ]
+      },
+      %Message{
+        role: :tool,
+        content: [Message.tool_result("s1", "ok\n"), Message.tool_result("s2", "ok\n")]
+      }
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    assert has_element?(view, "#command-s1")
+    refute has_element?(view, "#command-s1[open]")
+
+    # Only the first line is in the summary; the rest is the block it hides.
+    summary = view |> element("#command-s1 > summary") |> render()
+    assert summary =~ "mix test"
+    refute summary =~ "mix precompile"
+    assert summary =~ "…"
+    assert summary =~ "3 lines"
+    full = view |> element("#command-full-s1") |> render()
+    assert full =~ "mix test"
+    assert full =~ "mix format"
+
+    # A command of one line renders as it always did, with no control.
+    refute has_element?(view, "#command-s2")
+    card = view |> element("#items-call-s2") |> render()
+    assert card =~ "mix test"
+    refute card =~ "command-s2"
+  end
+
+  # UI-99: while a call awaits approval its whole command is open, so what is
+  # approved can be read above the buttons.
+  test "a command awaiting approval is open", %{conn: conn} do
+    id = Agent.new_id()
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("c1", "shell", %{"command" => "mix test\nmix precompile"})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("All done.")]))
+
+    # APPR-14: a new chat auto-approves every tool, so this chat is started with
+    # an empty set — the command below has to wait for approval.
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "run the tests"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :awaiting_approval}}, 5000
+
+    assert has_element?(view, "#command-c1[open]")
+    assert has_element?(view, "#approve-c1")
+
+    view |> element("#approve-c1") |> render_click()
+    assert_receive {:agent, ^id, {:status, :idle}}, 5000
+
+    # Once decided, the card is back to its collapsed self (UI-98).
+    refute has_element?(view, "#command-c1[open]")
+  end
 end

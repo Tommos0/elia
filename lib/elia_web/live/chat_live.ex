@@ -1663,13 +1663,40 @@ defmodule EliaWeb.ChatLive do
       FLINK-4: a card whose input has a `path` links it — `cd` is the tool that
       has one — when the Files page could show it (FLINK-5); every other card's
       summary is text, as before. --%>
-      <pre class={[
-        "px-3 py-2 font-mono text-xs leading-relaxed",
-        if(@item.name == "ask_user",
-          do: "whitespace-pre-wrap break-words",
-          else: "overflow-x-auto"
-        )
-      ]}><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span><a
+      <%!-- UI-98, UI-99: a `shell` command that runs over more than one line is
+      collapsed to its first line, one press away from the whole thing, and open
+      while the call waits for approval, so what is approved is readable. --%>
+      <details
+        :if={multi_line_command(@item)}
+        id={"command-#{@item.call_id}"}
+        open={@item.status == :awaiting_approval}
+        class="group/command"
+      >
+        <summary class="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 font-mono text-xs leading-relaxed">
+          <.icon
+            name="hero-chevron-right"
+            class="size-3 shrink-0 text-base-content/40 transition group-open/command:rotate-90"
+          />
+          <span class="select-none text-base-content/40">$ </span>
+          <span class="min-w-0 overflow-x-auto whitespace-pre">{hd(command_lines(@item))}</span>
+          <span class="shrink-0 select-none text-base-content/40">…</span>
+          <span class="shrink-0 font-sans text-base-content/50">{length(command_lines(@item))} lines</span>
+        </summary>
+        <pre
+          id={"command-full-#{@item.call_id}"}
+          class="overflow-x-auto border-t border-base-300 bg-base-200/30 px-3 py-2 font-mono text-xs leading-relaxed"
+        >{Enum.join(command_lines(@item), "\n")}</pre>
+      </details>
+      <pre
+        :if={!multi_line_command(@item)}
+        class={[
+          "px-3 py-2 font-mono text-xs leading-relaxed",
+          if(@item.name == "ask_user",
+            do: "whitespace-pre-wrap break-words",
+            else: "overflow-x-auto"
+          )
+        ]}
+      ><span :if={@item.name == "shell"} class="select-none text-base-content/40">$ </span><a
         :if={@tool_link}
         id={"tool-path-#{@item.call_id}"}
         href={@tool_link}
@@ -2033,6 +2060,24 @@ defmodule EliaWeb.ChatLive do
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
   defp tool_summary(%{input: input}), do: Jason.encode!(input, pretty: true)
+
+  # UI-98: a `shell` command that runs over more than one line is shown by its
+  # first line, with the whole thing one press away, so a heredoc doesn't fill
+  # the transcript. Its lines, trailing blank ones dropped; nil for a card that
+  # isn't a shell command.
+  defp command_lines(%{name: "shell", input: %{"command" => command}})
+       when is_binary(command),
+       do: command |> String.trim_trailing() |> String.split("\n")
+
+  defp command_lines(_item), do: nil
+
+  defp multi_line_command(item) do
+    case command_lines(item) do
+      nil -> false
+      [_one] -> false
+      _lines -> true
+    end
+  end
 
   # UI-75: the choices of a question, in the order given, without an empty one
   # (which would be a button with no label).
