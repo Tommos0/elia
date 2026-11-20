@@ -9,7 +9,11 @@ defmodule Elia.Snapshot do
   working files are as they were (SNAP-1). It is reachable from one ref of its
   own, `refs/elia/snapshots/<milliseconds>-<short sha>`, and from nothing else,
   so `git log`, `git branch` and `git status` show nothing of it while git keeps
-  the objects it holds (SNAP-2).
+  the objects it holds (SNAP-2). Those refs live in the git a tree shares with
+  its linked worktrees, so the tree a call belongs to is the one its own
+  directory is in and never a worktree that shares that git (SNAP-17) — which is
+  why a snapshot is taken for the call that asks for one rather than looked up
+  as the newest ref of the tree (SNAP-5).
 
   Nothing here fails a call. A directory that is not in a git work tree, a git
   that fails and a snapshot that takes longer than `timeout` all answer `nil`,
@@ -23,17 +27,17 @@ defmodule Elia.Snapshot do
   @refs "refs/elia/snapshots"
 
   @doc """
-  The newest snapshot of the tree `dir` is in, taking one first when the tree has
-  none — so the chat's first call in a tree is compared with the tree as the chat
-  found it (SNAP-5). `nil` where no snapshot can be taken (SNAP-9).
+  A snapshot of the tree `dir` is in as it stands now, taken for the call that is
+  about to run — so a call's pair starts at the tree as that call found it, and
+  what moved the tree since its last snapshot is not shown as its change
+  (SNAP-5). A tree that hasn't moved since its newest snapshot answers that
+  snapshot and adds no ref (SNAP-4). `nil` where no snapshot can be taken
+  (SNAP-9).
   """
   @spec current(binary()) :: binary() | nil
   def current(dir) do
-    with {:ok, root} <- root(dir) do
-      case newest(root) do
-        {:ok, ref} -> ref
-        :none -> take_now(root)
-      end
+    with {:ok, root} <- root(dir), {:ok, ref} <- take(root) do
+      ref
     else
       _none -> nil
     end
@@ -155,13 +159,6 @@ defmodule Elia.Snapshot do
 
   ## Taking one
 
-  defp take_now(root) do
-    case take(root) do
-      {:ok, ref} -> ref
-      _none -> nil
-    end
-  end
-
   # SNAP-1: the tree's own index is never written — a temporary one is built
   # fresh, `git add -A` fills it and `git write-tree` turns it into a tree, all
   # inside one run, so the temporary index lives and dies with it. SNAP-2: the
@@ -272,19 +269,6 @@ defmodule Elia.Snapshot do
       {:ok, ""} -> :none
       {:ok, path} -> {:ok, path}
       {:error, _reason} -> :none
-    end
-  end
-
-  defp newest(root) do
-    case git(root, ["for-each-ref", "--sort=-refname", "--format=%(refname)", @refs]) do
-      {:ok, output} ->
-        case String.split(output, "\n", trim: true) do
-          [ref | _rest] -> {:ok, ref}
-          [] -> :none
-        end
-
-      {:error, _reason} ->
-        :none
     end
   end
 

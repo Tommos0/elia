@@ -78,16 +78,63 @@ defmodule Elia.SnapshotTest do
     refute names =~ "tmp/"
   end
 
-  # SNAP-5: a tree with no snapshot gets one, and a tree that has one keeps it,
-  # so a chat's first command in a tree is compared with the tree it found.
-  test "a tree with no snapshot gets one, and a tree with one keeps it", %{tree: tree} do
+  # SNAP-5: a call's pair starts at the tree as that call found it: the snapshot
+  # is taken for it, so what moved the tree since its last snapshot — here, a
+  # file another moment wrote — is not shown as the call's change.
+  test "a pair starts at the tree as the call found it", %{tree: tree} do
     assert refs(tree) == []
 
     first = Snapshot.current(tree)
 
     assert refs(tree) == [first]
-    assert Snapshot.current(tree) == first
-    assert refs(tree) == [first]
+
+    write(tree, "elsewhere.txt", "written between calls\n")
+    from = Snapshot.current(tree)
+
+    refute from == first
+    assert LiveTree.git!(tree, ["show", "#{from}:elsewhere.txt"]) =~ "written between calls"
+    assert Snapshot.record(tree, from).files == []
+  end
+
+  # SNAP-17: the tree a call is snapshotted in is the work tree its working
+  # directory belongs to, so a chat in a linked worktree of its own is compared
+  # with that worktree and never with the tree that holds it — the refs of both
+  # live in the git they share (SNAP-2).
+  test "a linked worktree is its own tree, not the one that holds it", %{tree: tree} do
+    write(tree, "only-in-the-holder.txt", "the tree that holds the worktree\n")
+    held = Snapshot.current(tree)
+    worktree = LiveTree.worktree(tree, "wt#{System.unique_integer([:positive])}")
+
+    from = Snapshot.current(worktree)
+
+    refute from == held
+    names = LiveTree.git!(worktree, ["ls-tree", "-r", "--name-only", from])
+    refute names =~ "only-in-the-holder.txt"
+    assert Snapshot.record(worktree, from).files == []
+  end
+
+  # SNAP-1, SNAP-10: a snapshot holds the tree's files and nothing of its git, so
+  # a call that moves the tree's git — a checkout, a commit, a branch it creates
+  # — is shown as the content that changed under it, and as nothing where none
+  # did.
+  test "a call that moves the tree's git is shown as the content it changed", %{tree: tree} do
+    LiveTree.git!(tree, ["checkout", "-q", "-b", "other"])
+    write(tree, "branch.txt", "on the other branch\n")
+    LiveTree.commit(tree, "work on the other branch")
+    LiveTree.git!(tree, ["checkout", "-q", "live"])
+
+    from = Snapshot.current(tree)
+
+    LiveTree.git!(tree, ["checkout", "-q", "other"])
+    pair = Snapshot.record(tree, from)
+
+    assert %{status: "added", path: "branch.txt"} in pair.files
+    assert LiveTree.branch(tree) == "other"
+
+    from = Snapshot.current(tree)
+    LiveTree.git!(tree, ["checkout", "-q", "-b", "third"])
+
+    assert Snapshot.record(tree, from).files == []
   end
 
   # SNAP-4: a tree that hasn't moved is the snapshot it has — no second ref, and
