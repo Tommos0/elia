@@ -925,4 +925,33 @@ defmodule Elia.StoreTest do
       File.rm_rf!(root)
     end
   end
+
+  # SNAP-7: a pair of snapshots saved on a call's tool result comes back with the
+  # chat, and a result saved without one reads as a call with no pair — the
+  # shape a chat saved before this existed holds.
+  test "a shell call's snapshot pair is saved with the chat" do
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    pair = %{
+      root: "/tmp/tree",
+      from: "refs/elia/snapshots/1-abc",
+      to: "refs/elia/snapshots/2-def",
+      files: [%{status: "modified", path: "lib/a.ex"}]
+    }
+
+    with_pair = Message.tool_result("c1", "ok\n\n[exit: 0]", false, %{snapshot: pair})
+    without = Message.tool_result("c2", "ok\n\n[exit: 0]")
+
+    :ok =
+      Store.save(id, [
+        Message.user("hi"),
+        %Message{role: :tool, content: [with_pair, without]}
+      ])
+
+    assert [_, %Message{content: [loaded, older]}] = Store.load(id)
+    assert loaded.snapshot == pair
+    assert loaded.content == "ok\n\n[exit: 0]"
+    refute Map.has_key?(older, :snapshot)
+  end
 end

@@ -22,6 +22,7 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 
 ## Tests
 
+- Debugging the harness itself: every `shell` tool call gets a fresh `/tmp` and pid namespace of its own (ISOL-2), so a script one call writes is gone by the next — write the script and run it in the same command, and have it print what you need.
 - A turn is not verified: nothing runs `mix test` for you at the end of a turn, and nothing is rolled back. Run the tests — `mix test`, or plain `mix precommit` (a command never inherits the server's `MIX_ENV`, ISOL-24) — before finishing a change; a deploy runs the full suite in the live tree again (DEPLOY-5). A change you judge safe without a run — a docs, spec or comment edit — may skip it, with a line in your last message saying why the skip was safe (`AGENTS.md`).
 
 ## Waiting on a sub-task

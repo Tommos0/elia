@@ -216,14 +216,51 @@ defmodule Elia.Preview do
     end)
   end
 
+  # SNAP-6, SNAP-10: the pair a sample `shell` call's result carries — the two
+  # snapshot refs, the files that differ between them and their diff, as a real
+  # call's pair holds them. A preview takes no snapshot of the workspace it runs
+  # in, so the sample writes the shapes a card renders.
+  defp sample_snapshot do
+    %{
+      root: ".",
+      from: "refs/elia/snapshots/1731000000000-1a2b3c4d5e6f",
+      to: "refs/elia/snapshots/1731000003600-9f8e7d6c5b4a",
+      files: [
+        %{status: "modified", path: "lib/elia/skills/shell.ex"},
+        %{status: "added", path: "test/elia/snapshot_test.exs"}
+      ],
+      diff: """
+      diff --git a/lib/elia/skills/shell.ex b/lib/elia/skills/shell.ex
+      index 1a2b3c4..9f8e7d6 100644
+      --- a/lib/elia/skills/shell.ex
+      +++ b/lib/elia/skills/shell.ex
+      @@ -208,7 +208,7 @@
+         config :elia, Elia.Skills.Shell,
+           default_timeout: 300,
+      -  max_timeout: 1_800,
+      +  max_timeout: 3_600,
+           max_output: 30_000
+
+      diff --git a/test/elia/snapshot_test.exs b/test/elia/snapshot_test.exs
+      new file mode 100644
+      index 0000000..3c4d5e6
+      --- /dev/null
+      +++ b/test/elia/snapshot_test.exs
+      @@ -0,0 +1,2 @@
+      +defmodule Elia.SnapshotTest do
+      +end
+      """
+    }
+  end
+
   @doc """
   The sample chat's messages (PREVIEW-10): a user message, an assistant reply
   with the Markdown a transcript renders (UI-25) and a requirement it cites
   (CITE-1), a reasoning block (UI-29), the
   `set_title` call that named the chat (TITLE-5, UI-74), a `cd` call whose path
-  its card links (FLINK-4), a `shell` call with its output and a failed one
-  (UI-15, UI-16, UI-20), and a last user message carrying uploaded files
-  (UPLOAD-12).
+  its card links (FLINK-4), a `shell` call with its output and the files its
+  snapshots say it changed (SNAP-10) and a failed one (UI-15, UI-16, UI-20), and
+  a last user message carrying uploaded files (UPLOAD-12).
   """
   @spec sample_messages() :: [Message.t()]
   def sample_messages do
@@ -293,7 +330,13 @@ defmodule Elia.Preview do
         content: [
           Message.tool_result("call-preview-3", "This chat is now titled \"#{@sample_title}\"."),
           Message.tool_result("call-preview-4", "Working directory: lib"),
-          Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]"),
+          # SNAP-6, SNAP-10: a `shell` call's result carries the pair of
+          # snapshots bracketing it, so its card lists the files the call
+          # changed and their diff. The pair is the sample's own: a preview
+          # seeds the shapes a card renders, and takes no snapshot (PREVIEW-10).
+          Message.tool_result("call-preview-1", "12 tests, 0 failures\n[exit: 0]", false, %{
+            snapshot: sample_snapshot()
+          }),
           Message.tool_result(
             "call-preview-2",
             "fatal: no upstream branch to push to\n[exit: 128]",

@@ -112,7 +112,10 @@ defmodule Elia.LLM.Message do
 
   def text(text), do: %{type: :text, text: text}
 
-  def tool_result(tool_call_id, content, is_error \\ false) do
+  # SNAP-6: a tool may hand back facts about its call to save beside its result
+  # — a `shell` call's snapshot pair — which the providers' encoders never send
+  # (LLM-6, LLM-32), and a block saved without them reads as it always did.
+  def tool_result(tool_call_id, content, is_error \\ false, facts \\ %{}) do
     # LLM-32: tools can return raw bytes, which can't be JSON-encoded.
     %{
       type: :tool_result,
@@ -120,6 +123,7 @@ defmodule Elia.LLM.Message do
       content: String.replace_invalid(content),
       is_error: is_error
     }
+    |> Map.merge(Map.drop(facts, [:type, :tool_call_id, :content, :is_error]))
   end
 
   @doc "Replaces invalid UTF-8 in a message's text and tool results (STORE-13)."

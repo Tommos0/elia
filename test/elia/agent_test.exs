@@ -3409,4 +3409,69 @@ defmodule Elia.AgentTest do
     assert Elia.Store.load_limits(id).max_steps == 4
     assert Elia.Store.load_auto_approve(id) == ["shell"]
   end
+
+  # SNAP-6, SNAP-8: the pair of snapshots bracketing a `shell` call rides on that
+  # call's own tool result, which the chat saves (SNAP-7), while what the model is
+  # sent stays the command's output and exit status.
+  test "a shell call's snapshot pair rides on its tool result" do
+    tree = Elia.LiveTree.create()
+    on_exit(fn -> Elia.LiveTree.remove(tree) end)
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, workspace: tree, auto_approve: ["shell"])
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("c1", "shell", %{"command" => "echo made > made.txt"})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Made it.")]))
+
+    :ok = Agent.send_message(id, "make a file")
+    await_status(id, :idle)
+
+    assert [_, _, %Message{role: :tool, content: [result]}, _] = Agent.snapshot(id).messages
+    assert %{snapshot: %{from: from, to: to, files: files}} = result
+    assert from =~ "refs/elia/snapshots/"
+    assert to =~ "refs/elia/snapshots/"
+    assert %{status: "added", path: "made.txt"} in files
+    assert result.content =~ "[exit: 0]"
+
+    # SNAP-8: what the model is sent is the command's output and exit status,
+    # with nothing of the pair on it, whichever provider encodes it — the pair
+    # lives on the chat's own record of the call.
+    [_first, second] = FakeLLM.requests()
+    assert %Message{role: :tool, content: [sent]} = List.last(second.messages)
+    assert sent.content == result.content
+
+    assert Elia.LLM.OpenAI.encode_messages([%Message{role: :tool, content: [sent]}]) ==
+             [%{"role" => "tool", "tool_call_id" => "c1", "content" => result.content}]
+
+    refute inspect(Elia.LLM.Anthropic.encode_messages([%Message{role: :tool, content: [sent]}])) =~
+             "snapshots"
+  end
+
+  # SNAP-9: a chat working outside a git work tree records no pair, and its call
+  # runs exactly as it would have without one.
+  test "a shell call outside a git work tree records no pair" do
+    dir = Path.join(System.tmp_dir!(), "elia-no-repo-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    id = Agent.new_id()
+    {:ok, pid} = Agent.ensure_started(id, workspace: dir, auto_approve: ["shell"])
+    Agent.subscribe(id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    FakeLLM.push(FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi"})]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Said hi.")]))
+
+    :ok = Agent.send_message(id, "say hi")
+    await_status(id, :idle)
+
+    assert [_, _, %Message{role: :tool, content: [result]}, _] = Agent.snapshot(id).messages
+    refute Map.has_key?(result, :snapshot)
+    assert result.content =~ "hi"
+  end
 end

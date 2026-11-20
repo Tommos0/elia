@@ -1,0 +1,72 @@
+# Shell snapshots
+
+Status: Implemented
+
+Every `shell` tool call is bracketed by a snapshot of the git work tree its
+working directory belongs to: a commit of the tree as it was when the call
+started and one of it as it finished, so the chat can show what the call did
+without the agent having to say so. The commit is built through a temporary
+index and kept under a ref of its own, so the tree's branch, index, stash and
+working files are as they were and `git log` shows nothing of it. The pair
+travels on the call's own tool result, saved with the chat; what the model is
+sent stays the command's output and exit status, so a snapshot costs the agent
+no context. The harness does this for every call in every chat, which is why
+no instruction to show a diff is needed anywhere.
+
+## Requirements
+
+- **SNAP-1** A snapshot of a git work tree is a commit holding that tree as it stands, built through a temporary index, so the tree's own index, HEAD, current branch, stash and working files are as they were.
+- **SNAP-2** A snapshot is reachable from exactly one ref, `refs/elia/snapshots/<milliseconds>-<short tree sha>`, and from nothing else, so `git log`, `git branch` and `git status` show nothing of it while the objects it holds stay reachable.
+- **SNAP-3** A snapshot holds the tree's untracked files and leaves out what the tree's own ignore rules exclude.
+- **SNAP-4** A snapshot of a tree equal to that tree's newest snapshot reuses it: no ref is added, and the two calls answer the same commit.
+- **SNAP-5** A tree with no snapshot is snapshotted before the chat's first command in it runs, so that call's pair starts at the tree as the chat found it.
+- **SNAP-6** Every `shell` tool call records, on its own tool result, the pair of snapshots bracketing it: the newest snapshot of the tree its working directory belongs to as the call started, and the snapshot taken when the call finished.
+- **SNAP-7** The pair is saved with the chat, and a tool result saved before it existed reads as a call with no pair.
+- **SNAP-8** The pair changes nothing else about a call: its result content is the command's output and exit status, which is what the model is sent.
+- **SNAP-9** A working directory that is not in a git work tree, and a snapshot that fails or takes longer than `timeout`, leave the call's own result unchanged and unblocked: the call records no pair.
+- **SNAP-10** The chat shows a call's changed files — each path with its status, as added, modified, deleted or renamed — when the call's pair differs, and shows no files when it does not.
+- **SNAP-11** Opening that list shows the pair's diff, which the pair carries, cut at `max_diff` characters with a marker saying it was cut.
+- **SNAP-12** A pair's files and diff are read from its two snapshots when the call finishes and saved with the pair, so a call's card shows what it changed after later calls have moved the tree on, and reads no git of its own.
+
+## Configuration
+
+    config :elia, Elia.Snapshot,
+      max_diff: 20_000,   # characters of a pair's diff the card shows
+      timeout: 30_000     # milliseconds one snapshot may take
+
+## Out of scope
+
+- Rolling a tree back to a snapshot, and any tool that lists, reads or deletes
+  them: a snapshot is for showing what a call changed.
+- Pruning snapshot refs, which accumulate in a tree's git until its own gc
+  drops what nothing refers to any more.
+- Deciding whether a call will write before it runs: every call is snapshotted.
+- Snapshotting any tool other than `shell`.
+
+## Stored data
+
+A `:tool_result` block in a saved chat carries an optional `:snapshot` key: the
+pair's two `refs/elia/snapshots/...` names, the files that differ between them
+with the status of each, and their diff. A chat saved before this existed has
+none and reads as a call with no pair, so the change is backward compatible and
+needs no migration. The refs themselves are written into the tree's own git
+(SNAP-2); the state the chat's own git shows is not among what a snapshot
+changes (SNAP-1).
+
+## Implementation
+
+`Elia.Snapshot` takes a snapshot, answers a tree's newest snapshot, and reads a
+pair's changed files and diff with `git`. The agent loop brackets each `shell`
+call with the pair (`Elia.Agent.Loop`), which rides on that call's tool result
+and is saved with the chat; the chat's tool card renders it
+(`lib/elia_web/live/chat_live.ex`). `Elia.Preview`'s sample chat carries one, so
+a preview shows the card (PREVIEW-10).
+
+## Tests
+
+- `test/elia/snapshot_test.exs` — SNAP-1 to SNAP-5, SNAP-11, SNAP-12
+- `test/elia/agent_test.exs` — SNAP-6, SNAP-8, SNAP-9
+- `test/elia/store_test.exs` — SNAP-7
+- `test/elia_web/live/chat_live_test.exs` — SNAP-10, SNAP-11
+- `test/elia/preview_test.exs` — SNAP-6, SNAP-10, through the sample chat a
+  preview seeds

@@ -1642,6 +1642,7 @@ defmodule EliaWeb.ChatLive do
   defp item(%{item: %{kind: :tool}} = assigns) do
     # FLINK-4: resolved once per render — the path a card links, if any.
     assigns = assign(assigns, tool_link: EliaWeb.FileLinks.card_url(assigns.links, assigns.item))
+    assigns = assign(assigns, snapshot: snapshot_view(assigns.item))
 
     ~H"""
     <div class={[
@@ -1788,6 +1789,30 @@ defmodule EliaWeb.ChatLive do
           ]
         }>{@item.output}</pre>
       </details>
+      <%!-- SNAP-10, SNAP-11: the files the call changed, and the pair's diff,
+      both read from the snapshots the call was bracketed by (SNAP-12), so a
+      card still shows what it did after later calls have moved the tree on.
+      The files are there to be read; the diff is long, so it is one click. --%>
+      <div
+        :if={@snapshot.files != []}
+        id={"snapshot-#{@item.call_id}"}
+        class="border-t border-base-300 bg-base-200/40 px-3 py-2 text-xs leading-relaxed"
+      >
+        <div class="flex items-center gap-1 text-base-content/60">
+          <.icon name="hero-document-magnifying-glass" class="size-3" />{@snapshot.label}
+        </div>
+        <ul class="mt-1 space-y-0.5 font-mono">
+          <li :for={file <- @snapshot.files}>
+            <span class="text-base-content/60">{file.status}</span> {file.path}
+          </li>
+        </ul>
+        <details class="group mt-1">
+          <summary class="flex cursor-pointer list-none items-center gap-1 text-base-content/60 hover:text-base-content">
+            <.icon name="hero-chevron-right" class="size-3 transition group-open:rotate-90" />Show diff
+          </summary>
+          <pre class="mt-1 max-h-96 overflow-auto whitespace-pre font-mono">{@snapshot.diff}</pre>
+        </details>
+      </div>
     </div>
     """
   end
@@ -1903,6 +1928,25 @@ defmodule EliaWeb.ChatLive do
     </div>
     """
   end
+
+  # SNAP-10, SNAP-11: a call's changed files and the pair's diff, both read from
+  # the snapshots the call was bracketed by and saved with the chat, rather than
+  # from the working tree, which a later call has moved on (SNAP-12). A pair
+  # that changed nothing has no list at all, and a call saved without a pair
+  # (SNAP-7) is one that changed nothing — so a chat from before this feature
+  # renders exactly as it did.
+  defp snapshot_view(item) do
+    case Map.get(item, :snapshot) do
+      %{files: [_ | _] = files} = pair ->
+        %{files: files, diff: pair.diff, label: snapshot_label(files)}
+
+      _none ->
+        %{files: [], diff: nil, label: nil}
+    end
+  end
+
+  defp snapshot_label([_one]), do: "1 file changed"
+  defp snapshot_label(files), do: "#{length(files)} files changed"
 
   defp request_id(%{kind: :tool, call_id: id}), do: "call-#{id}"
   defp request_id(%{index: index, block: block}) when is_integer(block), do: "m#{index}-#{block}"
@@ -2738,6 +2782,7 @@ defmodule EliaWeb.ChatLive do
             call
             | output: result.content,
               is_error: result.is_error,
+              snapshot: Map.get(result, :snapshot),
               status: :done
           })
 
@@ -2800,6 +2845,7 @@ defmodule EliaWeb.ChatLive do
               status: Map.get(socket.assigns.tool_status, call.id, :pending),
               output: nil,
               is_error: false,
+              snapshot: nil,
               at: Message.at(message)
             },
             status,

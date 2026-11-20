@@ -209,6 +209,14 @@ config :elia, Elia.Skills.Shell,
   max_timeout: 1_800,
   max_output: 30_000
 
+# How a `shell` call's snapshots are read back (SNAP): `max_diff` is how much of
+# a pair's diff a card shows before it is cut with a marker, and `timeout` is how
+# long one snapshot may take before it is abandoned — which never fails the call
+# it was taken beside (SNAP-9, SNAP-11).
+config :elia, Elia.Snapshot,
+  max_diff: 20_000,
+  timeout: 30_000
+
 config :elia, Elia.Harness,
   timeout: 600,
   max_timeout: 1_800,

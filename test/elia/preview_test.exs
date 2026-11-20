@@ -205,6 +205,16 @@ defmodule Elia.PreviewTest do
       results = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.flat_map(& &1.content)
       assert Enum.count(results, & &1.is_error) == 1
       assert Enum.count(results, &(not &1.is_error)) == 4
+
+      # SNAP-6, SNAP-10: the `shell` call's result carries the pair of snapshots
+      # bracketing it, so its card shows the files the call changed and their
+      # diff — a sample writes those shapes rather than taking a snapshot
+      # (PREVIEW-10).
+      assert %{snapshot: %{files: [_ | _], diff: diff}} =
+               Enum.find(results, &(&1.tool_call_id == "call-preview-1"))
+
+      assert diff =~ "--- a/"
+      assert diff =~ "+++ b/"
     end
 
     # MSGAT-9: each message carries the moment it arrived, oldest first, so a

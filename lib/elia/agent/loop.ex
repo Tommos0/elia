@@ -730,6 +730,12 @@ defmodule Elia.Agent.Loop do
 
     context = ctx.tool_ctx |> Map.put(:call_id, call.id) |> Map.put(:answer, answer)
 
+    # SNAP-5: the tree the call runs in, snapshotted as it is before the call —
+    # the newest snapshot of it, or the first one where it has none — so the
+    # pair of a chat's first call in a tree starts at the tree the chat found.
+    dir = snapshot_dir(call, context)
+    before = dir && Elia.Snapshot.current(dir)
+
     {output, is_error} =
       try do
         case Tool.call(tool, call.input, context) do
@@ -744,7 +750,26 @@ defmodule Elia.Agent.Loop do
         kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true}
       end
 
+    # SNAP-6: the pair the call is bracketed by rides on that call's own tool
+    # result, which the chat saves and reads back (SNAP-7); the result's text
+    # stays the command's output and exit status, which is what the model is
+    # sent (SNAP-8). SNAP-9: where no pair can be taken — a directory that is no
+    # git work tree, or a git that fails or times out — the call's result is the
+    # same one it would have had without a snapshot at all.
+    facts =
+      case dir && Elia.Snapshot.record(dir, before) do
+        nil -> %{}
+        pair -> %{snapshot: pair}
+      end
+
     send(ctx.session, {:loop_tool_status, call.id, :done})
-    Message.tool_result(call.id, output, is_error)
+    Message.tool_result(call.id, output, is_error, facts)
   end
+
+  # SNAP-6: a `shell` call is the one that changes a tree through the shell, and
+  # the tree it runs in is the directory its own context resolves against
+  # (WD-1) — the chat's working directory for the step, not the tree its jail
+  # holds (ISOL-13).
+  defp snapshot_dir(%{name: "shell"}, context), do: Elia.Workdir.of(context)
+  defp snapshot_dir(_call, _context), do: nil
 end

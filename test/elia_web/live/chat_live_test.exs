@@ -1309,4 +1309,86 @@ defmodule EliaWeb.ChatLiveTest do
     [left | _rest] = String.split(html, second)
     left =~ first
   end
+
+  # SNAP-10, SNAP-11: a `shell` call's card lists the files the call changed and
+  # the diff between the two snapshots it was bracketed by.
+  test "a shell call's card shows the files it changed and their diff", %{conn: conn} do
+    with_empty_store(fn ->
+      id = snapshot_chat(pair_with_a_change())
+
+      {:ok, view, html} = live(conn, ~p"/c/#{id}")
+
+      assert has_element?(view, "#snapshot-c1")
+      assert html =~ "1 file changed"
+      assert html =~ "modified"
+      assert html =~ "notes.txt"
+      # SNAP-12: the diff comes from the pair's own snapshots.
+      assert html =~ "-one"
+      assert html =~ "+two"
+    end)
+  end
+
+  # SNAP-10: a pair that changed nothing, and a call saved without a pair at all
+  # (SNAP-7), show no files.
+  test "a call that changed nothing shows no files", %{conn: conn} do
+    with_empty_store(fn ->
+      tree = Elia.LiveTree.create()
+      on_exit(fn -> Elia.LiveTree.remove(tree) end)
+      unchanged = Elia.Snapshot.record(tree, Elia.Snapshot.current(tree))
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{snapshot_chat(unchanged)}")
+      refute has_element?(view, "#snapshot-c1")
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{snapshot_chat(nil)}")
+      refute has_element?(view, "#snapshot-c1")
+    end)
+  end
+
+  # SNAP-11: a diff longer than `max_diff` is cut on the card, with a marker
+  # saying how much was left out.
+  test "a diff longer than max_diff is cut on the card", %{conn: conn} do
+    with_empty_store(fn ->
+      previous = Application.get_env(:elia, Elia.Snapshot)
+      on_exit(fn -> Application.put_env(:elia, Elia.Snapshot, previous) end)
+      Application.put_env(:elia, Elia.Snapshot, max_diff: 20, timeout: 30_000)
+
+      {:ok, _view, html} = live(conn, ~p"/c/#{snapshot_chat(pair_with_a_change())}")
+
+      assert html =~ "more characters not shown"
+    end)
+  end
+
+  # A pair of snapshots with one file changed between them (SNAP-6).
+  defp pair_with_a_change do
+    tree = Elia.LiveTree.create()
+    on_exit(fn -> Elia.LiveTree.remove(tree) end)
+    File.write!(Path.join(tree, "notes.txt"), "one\n")
+    from = Elia.Snapshot.current(tree)
+    File.write!(Path.join(tree, "notes.txt"), "two\n")
+    Elia.Snapshot.record(tree, from)
+  end
+
+  # A chat holding one `shell` call whose result carries `pair` — or no pair at
+  # all, which is what a chat saved before this existed holds (SNAP-7).
+  defp snapshot_chat(pair) do
+    id = Agent.new_id()
+    facts = if pair, do: %{snapshot: pair}, else: %{}
+
+    :ok =
+      Elia.Store.save(id, [
+        Message.user("run it"),
+        %Message{
+          role: :assistant,
+          content: [
+            %{type: :tool_call, id: "c1", name: "shell", input: %{"command" => "echo hi"}}
+          ]
+        },
+        %Message{
+          role: :tool,
+          content: [Message.tool_result("c1", "hi\n\n[exit: 0]", false, facts)]
+        }
+      ])
+
+    id
+  end
 end
