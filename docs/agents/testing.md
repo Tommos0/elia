@@ -69,6 +69,14 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
   is `"/files?path=files_live_fixture%2Finner"`, so build the expectation with
   `URI.encode_query/1` (`&"…?" <> URI.encode_query(%{path: path})`) rather than
   by hand.
+- `render/1` returns HTML with the whitespace the template's own line breaks
+  hold, and a text node a template spreads over several lines comes back with
+  that newline and indentation injected into it — while `has_element?/3` with
+  `text:` compares the element's text as Floki reads it, which is where that
+  whitespace is gone. So an assertion copied from a passing
+  `has_element?(view, "#id", text)` can fail as `render() =~ text`; assert a
+  substring, or check the exact text in a real-browser test with `textContent`,
+  where what the browser parsed is finally the truth.
 - To debug a selector, narrow the output with `LazyHTML`:
 
       html = render(view)
@@ -93,6 +101,17 @@ Playwright.
       mix assets.build                                 # esbuild/tailwind run in dev only
       ELIA_BROWSER_TESTS=1 mix test --only real_browser
 
+- A browser test file run without `--only real_browser` runs nothing: it
+  reports `0 failures, N excluded`, which reads as a green run. The line filter
+  (`mix test test/elia_web/browser/x_test.exs:42`) is the exception — it
+  includes the one test it names. And the Playwright driver can die at startup
+  with an `EPIPE` stack (the same symptom a taken port gives a preview, above)
+  and leave the run with everything excluded and an exit of 0 all the same, so
+  a browser run is read by its number of tests, not by its exit.
+- A closed `<details>` still lays its hidden content out in Chromium — it is in
+  the DOM, and has a height — so a test that the card is collapsed asks
+  `element.checkVisibility()`, not `offsetHeight`, and opens it by clicking the
+  `summary` (`document.querySelector("#id > summary").click()`).
 - `assets/node_modules` is gitignored, so a worktree a chat made for itself
   (DEPLOY-28) should have the live tree's copied in (DEPLOY-29); without it,
   install the packages the bundle imports (`@xterm/*`) once with `npm install`
