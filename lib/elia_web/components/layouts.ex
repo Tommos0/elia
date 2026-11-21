@@ -52,11 +52,11 @@ defmodule EliaWeb.Layouts do
   # drawer draws. Every page in the live session has it assigned.
   attr :chats, :map, default: nil, doc: "the chat list's state (UI-91, UI-92)"
 
-  # NOTIF-5: the bell's state (`EliaWeb.Notifications`). Every page in the live
-  # session has it assigned, and the header draws the bell from it. Required, so
-  # a page that does not hand it over fails to compile rather than losing the
-  # bell.
-  attr :notifications, :map, required: true, doc: "the notification bell's state (NOTIF-5)"
+  # ACTIVE-1: the active chats control's state (`EliaWeb.ActiveChats`). Every
+  # page in the live session has it assigned, and the header draws the control
+  # from it. Required, so a page that does not hand it over fails to compile
+  # rather than losing the control.
+  attr :active_chats, :map, required: true, doc: "the active chats control's state (ACTIVE-1)"
 
   # PROJ-29, EXPL-29: what choosing a project in the header does — opens its
   # chat list (`:navigate`), or switches the page it is on in place (`:switch`),
@@ -132,9 +132,9 @@ defmodule EliaWeb.Layouts do
           <.nav_link to={~p"/sessions"} id="sessions-link" icon="hero-signal" label="Sessions" />
           <.nav_link to={~p"/system"} id="system-link" icon="hero-chart-bar" label="System" />
           <.nav_link to={~p"/settings"} id="settings-link" icon="hero-cog-6-tooth" label="Settings" />
-          <%!-- NOTIF-5: the notification bell, at the right-hand end of the
-          header, last so that it sits at the top right of every page. --%>
-          <EliaWeb.Notifications.bell state={@notifications} />
+          <%!-- ACTIVE-1: the active chats control, at the right-hand end of
+          the header, last so that it sits at the top right of every page. --%>
+          <EliaWeb.ActiveChats.control state={@active_chats} />
         </div>
       </header>
 
@@ -202,8 +202,8 @@ defmodule EliaWeb.Layouts do
   # that switches in place, opens it and browses it there (EXPL-29). The control is
   # drawn like the settings page's pickers: the trigger asks to close while the
   # menu is open (so a press on it is not also a press outside), and the menu
-  # closes on Escape and on a press outside it. Its layer is the notification
-  # menu's (NOTIF-6), above the chat list's drawer and its backdrop (UI-36,
+  # closes on Escape and on a press outside it. Its layer is the active chats
+  # menu's (ACTIVE-5), above the chat list's drawer and its backdrop (UI-36,
   # UI-91): the menu drops from the header over the page, and the drawer — which
   # is a layer of that page, at the same height as the menu's old one — would
   # otherwise cover the projects the user is choosing from.

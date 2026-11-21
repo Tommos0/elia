@@ -158,10 +158,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
   the open chat does.
 - **UI-94** The drawer and its backdrop (UI-36, UI-91) are the page's lower
   layers: the menus the header opens — the project switcher's
-  (`#project-menu`, PROJ-29) and the notification bell's (`#notifications-menu`,
-  NOTIF-6) — are drawn above both, so with the drawer open a menu the user is
-  choosing from is neither covered by the drawer nor dimmed by its backdrop, and
-  its entries stay pressable.
+  (`#project-menu`, PROJ-29) and the active chats control's
+  (`#active-chats-menu`, ACTIVE-5) — are drawn above both, so with the drawer
+  open a menu the user is choosing from is neither covered by the drawer nor
+  dimmed by its backdrop, and its entries stay pressable.
 - **UI-37** The header never overflows horizontally on narrow screens. Below
   the `sm` breakpoint the header buttons show only their icon (the label stays
   in the DOM for screen readers and as the control's `title`), with tighter

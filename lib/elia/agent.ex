@@ -260,9 +260,21 @@ defmodule Elia.Agent do
       terminate_session(id)
       stop_terminal(id)
       Elia.Store.delete(id)
+      # SESS-48: announced once the file is gone, so a page that reads the chats
+      # again does not find it still there.
+      announce_deleted(id)
+      :ok
     else
       {:error, :invalid_id}
     end
+  end
+
+  # SESS-48: a deleted chat is announced on the activity topic (SESS-19), which
+  # is how a page that lists chats drops it without a reload (ACTIVE-7). The
+  # session it was running in is terminated first and announces no status of its
+  # own, so this event is the only word of the deletion.
+  defp announce_deleted(id) do
+    Phoenix.PubSub.broadcast(Elia.PubSub, activity_topic(), {:chat_deleted, id})
   end
 
   # TERM-3: a chat's terminal stops with the chat, so deleting one leaves

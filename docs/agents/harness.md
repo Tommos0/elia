@@ -80,6 +80,18 @@ Prefer a folder skill over changing Elixir code.
 
 Folder skills don't need a spec. Built-in skills live in `lib/elia/skills/` and do.
 
+## Listing chats
+
+`Elia.Store.list/2` reads every saved chat (`all_entries/0`), keeps the ones a
+`where:` function keeps, and only then takes the limit — so a limit caps what is
+returned, not what is read, and a `where:` over a store of any size costs a read
+per saved chat. It is a listing, not a query: `Elia.Store.entry/1` is the one that
+reads a single chat (`listed/1` on its meta file, so the full text is not decoded
+unless it is asked for). Whoever derives something over every chat — the
+dashboard's cards (DASH-3), the header's active chats control (ACTIVE-2, ACTIVE-3)
+— reads with a bound of its own (1000) and does it again on each activity event
+it follows.
+
 ## Measuring search cost
 
 A search's cost is decided by the shape of an index entry, so measure it rather

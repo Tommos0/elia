@@ -51,11 +51,11 @@ defmodule EliaWeb.Router do
 
     # UI-32, UI-36, UI-91: `EliaWeb.ChatList` gives every page the chat list's
     # state and its events, which is the drawer the header's "Chats" button
-    # opens on the pages that keep no list of their own; NOTIF-5: and
-    # `EliaWeb.Notifications` gives every page the notification bell's state and
-    # its events, which is the bell and its menu in the header.
+    # opens on the pages that keep no list of their own; ACTIVE-1: and
+    # `EliaWeb.ActiveChats` gives every page the active chats control's state
+    # and its events, which is the count and its menu in the header.
     live_session :default,
-      on_mount: [EliaWeb.ClientTracker, EliaWeb.ChatList, EliaWeb.Notifications] do
+      on_mount: [EliaWeb.ClientTracker, EliaWeb.ChatList, EliaWeb.ActiveChats] do
       # DASH-1: `/` is the dashboard, the app's start URL (PWA-1) and the
       # header logo's target; it starts no chat.
       live "/", DashboardLive, :index

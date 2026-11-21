@@ -63,9 +63,6 @@ defmodule Elia.Application do
       # the notifications sent when one needs the user.
       Elia.Push.Viewers,
       Elia.Push.Notifier,
-      # NOTIF-1, NOTIF-2: the notifications Elia keeps itself, recorded when a
-      # chat needs the user.
-      Elia.Notifications.Recorder,
       Elia.LLM.Catalog,
       # LOCAL-11, LOCAL-19: the local llama-server Elia can start, one at most,
       # owned by the app so it goes down with it.

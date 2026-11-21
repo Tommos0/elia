@@ -74,11 +74,6 @@ defmodule EliaWeb.ChatLive do
   defp mount_chat(id, socket) do
     {:ok, _pid} = Agent.ensure_started(id)
 
-    # NOTIF-8: opening the chat is what reads its entries — the user is here,
-    # whether they came from the menu, the chat list, a push notification or a
-    # URL. Nothing is written when the chat has nothing unread.
-    Elia.Notifications.mark_chat_read(id)
-
     if connected?(socket) do
       Agent.subscribe(id)
       Elia.Skills.subscribe()
@@ -195,7 +190,7 @@ defmodule EliaWeb.ChatLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications} chats_sidebar>
+    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats} chats_sidebar>
       <%!-- UI-78: this fills the shell (`main`, a flex column) and lets its own
       column and the message list shrink to nothing, so the composer stays at
       the bottom of the screen however long the transcript is. PUSH-14: the
@@ -2429,6 +2424,11 @@ defmodule EliaWeb.ChatLive do
   # (`EliaWeb.ChatList`'s hook, which runs before this clause) — a task chat is
   # an ordinary chat, and its own page is where its transcript is.
   def handle_info({:chat_status, _id, _status}, socket), do: {:noreply, socket}
+
+  # SESS-48, ACTIVE-7: a chat was deleted. This page draws the chat list's own
+  # rows (`EliaWeb.ChatList`'s hook) and the header's control is its own
+  # (`EliaWeb.ActiveChats`), so there is nothing here to do with it.
+  def handle_info({:chat_deleted, _id}, socket), do: {:noreply, socket}
 
   # Keeps the transcript's item times current (MSGAT-6), by sending again the
   # items whose text has moved on. The chat list has its own clock, wherever it

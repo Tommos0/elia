@@ -77,9 +77,8 @@ defmodule Elia.Push do
   end
 
   @doc """
-  PUSH-11, PUSH-12, NOTIF-2: what a reason reads as — one phrase, so the push
-  notification and the list's own entry (`Elia.Notifications`) say the same
-  thing about the same event rather than two copies of the same words.
+  PUSH-11, PUSH-12: what a reason reads as — one phrase per reason, which is
+  what the push notification says about the event.
   """
   @spec reason_text(atom()) :: binary()
   def reason_text(:approval), do: "Needs your approval."

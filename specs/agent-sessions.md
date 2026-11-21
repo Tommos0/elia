@@ -151,6 +151,11 @@ every view.
   is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
   status is `:awaiting_input`, and `Elia.Agent.paused/0` those whose status is
   `:paused`, without calling them.
+- **SESS-48** Deleting a chat (SESS-29, STORE-23) is announced on
+  `Elia.Agent.activity_topic/0` as `{:chat_deleted, id}`, so a page that lists
+  chats drops it without a reload (ACTIVE-7). A session the chat was running in
+  is stopped by the deletion and announces no status of its own, so this event
+  is the only word of it.
 - ~~**SESS-20** `update_task/2` (SESS-18) broadcasts `{:task, metadata}` with the
   merged metadata on the chat's topic.~~ Retired: there is no `update_task/2`
   (SESS-18) and no view that draws a chat's task metadata live. A chat's task
@@ -472,7 +477,7 @@ and a file written now is what an older version wrote.
   held, a pause recorded and the stop a turn ends in, the loop and command a
   dying session ends, and the saves themselves: the interval, a save that fails
   and the retry after it — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-13, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-47).
+  SESS-10 to SESS-12, SESS-13, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-48).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

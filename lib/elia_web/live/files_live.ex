@@ -271,7 +271,7 @@ defmodule EliaWeb.FilesLive do
     <Layouts.app
       flash={@flash}
       chats={@chat_list}
-      notifications={@notifications}
+      active_chats={@active_chats}
       project_switch={:switch}
     >
       <div class="flex h-full flex-col lg:flex-row">

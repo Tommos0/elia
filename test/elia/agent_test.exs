@@ -3133,6 +3133,21 @@ defmodule Elia.AgentTest do
     assert Elia.Store.load(id) == []
   end
 
+  # SESS-48
+  test "delete announces the chat on the activity topic" do
+    id = Agent.new_id()
+    :ok = Elia.Store.save(id, [Message.user("hi")])
+    on_exit(fn -> Elia.Store.delete(id) end)
+
+    Agent.subscribe_activity()
+
+    assert :ok = Agent.delete(id)
+    assert_receive {:chat_deleted, ^id}, 2000
+    # The chat is gone by the time the event arrives, so a page that reads the
+    # chats again finds it gone (ACTIVE-7).
+    refute Enum.any?(Elia.Store.list(1000), &(&1.id == id))
+  end
+
   # SESS-29, SESS-8, UI-65
   test "delete stops a running turn and the chat stays deleted" do
     id = Agent.new_id()

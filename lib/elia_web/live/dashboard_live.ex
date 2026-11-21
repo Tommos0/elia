@@ -46,6 +46,10 @@ defmodule EliaWeb.DashboardLive do
   @impl true
   def handle_info({:chat_status, _id, _status}, socket), do: {:noreply, refresh(socket)}
 
+  # SESS-48, DASH-3: a chat was deleted, so the lists built from the store are
+  # built again without it (ACTIVE-7).
+  def handle_info({:chat_deleted, _id}, socket), do: {:noreply, refresh(socket)}
+
   def handle_info(:stats, socket), do: {:noreply, update_stats(socket, sample())}
 
   # DASH-11: where the trunk stands against the branch the server runs
@@ -189,7 +193,7 @@ defmodule EliaWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
+    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats}>
       <div id="home-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
           <header>

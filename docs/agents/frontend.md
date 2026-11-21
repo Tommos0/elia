@@ -34,7 +34,7 @@ Files: styles in `assets/css/app.css`, JS in `assets/js/app.js`, shared componen
 
 Overlays have a fixed order (UI-94): the chat list's backdrop is `z-20`, the
 drawer (`#chats-drawer`, and the chat page's `#sidebar`) `z-30`, and the menus
-the header opens (`#project-menu`, `#notifications-menu`) `z-40` — so a menu a
+the header opens (`#project-menu`, `#active-chats-menu`) `z-40` — so a menu a
 user is choosing from is above a drawer that is open at the same time, rather
 than behind it (which is how they are stacked in the tree: same `z-index`,
 later wins). The image viewer is the exception, `z-50` over the whole page

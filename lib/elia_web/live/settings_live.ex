@@ -215,7 +215,7 @@ defmodule EliaWeb.SettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
+    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats}>
       <div class="h-full overflow-y-auto">
         <div class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
           <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
