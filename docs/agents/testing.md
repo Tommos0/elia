@@ -77,7 +77,10 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
   `~p` sigil percent-encodes a slash in a query value: a patch to a nested path
   is `"/files?path=files_live_fixture%2Finner"`, so build the expectation with
   `URI.encode_query/1` (`&"…?" <> URI.encode_query(%{path: path})`) rather than
-  by hand.
+  by hand. Over a map of more than two keys the two don't even agree on the
+  order: `URI.encode_query/1` walks the map and `~p` sorts, so a page that
+  builds its patch URL with `~p` over a map is matched by `~p` over the same
+  map, not by a query string of your own (`files_live_test.exs`'s `mode_url/2`).
 - `render/1` returns HTML with the whitespace the template's own line breaks
   hold, and a text node a template spreads over several lines comes back with
   that newline and indentation injected into it — while `has_element?/3` with
@@ -143,6 +146,16 @@ Playwright.
 - Console errors and page errors fail the test that caused them
   (`EliaWeb.BrowserJsLogger`), so a broken hook doesn't pass quietly. Lower
   levels are logged as usual.
+- That rule counts errors the *file* logs too: a script in a file the app serves
+  into a sandboxed frame is refused, and the browser logs the refusal as a
+  console error of the page's. A test whose fixture carries a script therefore
+  accounts for the log instead of hiding it — `BrowserJsLogger.take/0` and an
+  assertion that every entry is the browser's own refusal, as
+  `files_raw_test.exs` does — or the case flunks on the file's error.
+- A whole-directory browser run (`mix test test/elia_web/browser --only
+  real_browser`) is where a test that passes alone can fail: `chat_menu_test`'s
+  Escape test has been seen to, with the browser shared and the runs serial. Re-run
+  the file on its own before chasing the page.
 - `EliaWeb.BrowserCase` gives you the page, not a LiveView: there is no
   `has_element?` and no verified route (`~p`), so a test uses `assert_has/3` and
   builds a URL as a string (`"/files?" <> URI.encode_query(%{path: path})`) —
@@ -197,6 +210,12 @@ a Markdown image link per picture, which the chat renders at
 is shown before it is deployed. `test/elia_web/browser/preview_test.exs` is the
 run itself, tagged `:preview` and excluded like these tests, so it never starts
 a browser during `mix test`.
+
+A picture is looked at with the `view_image` tool, whose path is resolved
+against the workspace root rather than the chat's own working directory: a
+preview taken in `tmp/worktrees/<chat id>/` is read as
+`tmp/worktrees/<chat id>/tmp/preview/<file>.png` even though the chat is `cd`'d
+there (WD-1, WD-9).
 
 A picture is only as tall as the viewport, `full_page: true` included: the app
 shell has a height of its own and the transcript scrolls inside it (UI-78), so

@@ -156,6 +156,13 @@ defmodule Elia.Explorer do
     ".weba" => {:audio, "audio/webm"}
   }
 
+  # EXPL-31: the extensions of the files a browser parses as a document of its
+  # own rather than as text. An HTML document is served as one; an XML file is
+  # read as text like any other (EXPL-4) and served as text under the policy
+  # EXPL-24 names.
+  @html ~w(.html .htm)
+  @xml ~w(.xml .heex .eex .leex)
+
   @type preview_kind :: :image | :pdf | :video | :audio
 
   @type preview :: %{
@@ -205,6 +212,71 @@ defmodule Elia.Explorer do
              mtime: stat.mtime
            }}
         end
+    end
+  end
+
+  @type raw_kind :: preview_kind() | :html | :xml | :text
+
+  @type raw :: %{
+          path: String.t(),
+          file: String.t(),
+          kind: raw_kind(),
+          type: String.t(),
+          size: non_neg_integer(),
+          mtime: non_neg_integer()
+        }
+
+  @doc """
+  What the browser renders of the file at `rel` under `root`, with the content
+  type to serve it as, or none (EXPL-31): a path the page may preview (EXPL-25)
+  as its own kind and type (EXPL-22) — an image, a PDF, a video, an audio file —
+  an HTML document as `text/html`, and any other file the page reads as text
+  (EXPL-4) as `text/plain`. A path that is forbidden, reached through a symlink,
+  protected, a directory, missing, unreadable or binary has none (EXPL-1, EXPL-2,
+  EXPL-5).
+  """
+  @spec raw_file(String.t(), String.t()) :: {:ok, raw()} | {:error, error()}
+  def raw_file(rel, root \\ Workspace.root()) do
+    case preview(rel) do
+      {kind, type} -> raw_of(rel, root, kind, type)
+      nil -> text_raw(rel, root)
+    end
+  end
+
+  # EXPL-31: a file the browser doesn't render of itself is served raw only when
+  # the page reads it as text, so a binary file has no raw view — the same read
+  # the text view does decides it (EXPL-4).
+  defp text_raw(rel, root) do
+    with {:ok, text} <- read(rel, root) do
+      kind = text_kind(text.path)
+      raw_of(rel, root, kind, text_type(kind))
+    end
+  end
+
+  defp text_kind(path) do
+    case path |> Path.extname() |> String.downcase() do
+      ext when ext in @html -> :html
+      ext when ext in @xml -> :xml
+      _ -> :text
+    end
+  end
+
+  defp text_type(:html), do: "text/html; charset=utf-8"
+  defp text_type(_kind), do: "text/plain; charset=utf-8"
+
+  defp raw_of(rel, root, kind, type) do
+    with {:ok, abs} <- safe_path(rel, root),
+         {:ok, :file} <- type_of(abs, :directory, root),
+         {:ok, stat} <- File.stat(abs, time: :posix) |> posix() do
+      {:ok,
+       %{
+         path: Workspace.relative(abs, root),
+         file: abs,
+         kind: kind,
+         type: type,
+         size: stat.size,
+         mtime: stat.mtime
+       }}
     end
   end
 

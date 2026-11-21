@@ -1,7 +1,8 @@
 defmodule EliaWeb.FilesLive do
   @moduledoc """
   Read-only workspace browser: a directory listing next to a viewer that shows a
-  text file as text and previews what the browser renders itself (EXPL-22 - EXPL-26).
+  file's source as text or the file itself as the browser renders it — a
+  picture, a PDF, a media file, a page (EXPL-22 - EXPL-33).
   See `specs/file-explorer.md`.
   """
   use EliaWeb, :live_view
@@ -30,23 +31,28 @@ defmodule EliaWeb.FilesLive do
         {:error, reason} -> {"", nil, reason}
       end
 
-    # EXPL-8, EXPL-23: a file the browser renders itself is previewed rather
-    # than read as text, and EXPL-25 refuses that when the file can't be shown.
-    {viewer, error} =
-      case file && view(file, root) do
-        nil -> {nil, error}
-        {:ok, viewer} -> {viewer, nil}
-        {:error, :binary} -> {{:binary, file}, nil}
-        {:error, reason} -> {nil, reason}
-      end
-
-    # EXPL-24, EXPL-26: the URL the browser fetches a preview from, which the
-    # page's own parameters carry so the route serves the file it browsed.
-    raw =
-      case viewer do
-        {:preview, preview} -> raw_path(preview.path, chat)
+    # EXPL-24, EXPL-25, EXPL-31: what the browser may be given of this file, by
+    # the same check the route serves by.
+    raw_view =
+      case file && Explorer.raw_file(file, root) do
+        {:ok, raw} -> raw
         _ -> nil
       end
+
+    # EXPL-22, EXPL-30: a file the browser renders of itself opens in the raw
+    # mode, which is the mode a missing one falls back to. It takes no reading to
+    # know, and a file with no raw view of that kind (EXPL-31) opens as source.
+    default = if raw_view && preview_kind?(raw_view.kind), do: :raw, else: :source
+
+    mode = mode(params["mode"], default, raw_view)
+
+    # EXPL-8, EXPL-23: only the source mode reads the file as text, so a file the
+    # browser renders is never read for bytes it doesn't show.
+    {viewer, error} = text_view(file, mode, root, error)
+
+    # EXPL-24, EXPL-26: the URL the browser fetches the raw view from, which the
+    # page's own parameters carry so the route serves the file it browsed.
+    raw = raw_view && raw_path(raw_view.path, chat)
 
     # The listing is read again after the viewer so that a vanished directory
     # falls back to the project root instead of crashing (EXPL-9) — and so that
@@ -72,6 +78,8 @@ defmodule EliaWeb.FilesLive do
        entries: entries,
        selected: file,
        viewer: viewer,
+       raw_view: raw_view,
+       mode: mode,
        raw: raw,
        line: line(params, viewer),
        error: error,
@@ -80,16 +88,31 @@ defmodule EliaWeb.FilesLive do
      )}
   end
 
-  # EXPL-8, EXPL-22, EXPL-25: a file the browser renders itself is a preview,
-  # which the page shows once the same check the route serves by has confirmed
-  # it is a file of this workspace; every other file is read as text.
-  defp view(file, root) do
-    case Explorer.preview_file(file, root) do
-      {:ok, preview} -> {:ok, {:preview, preview}}
-      {:error, :no_preview} -> Explorer.read(file, root)
-      {:error, reason} -> {:error, reason}
+  # EXPL-30: which of the two modes the URL asks for. A `mode` that is missing,
+  # that names neither, or that asks for `raw` for a file the browser renders
+  # nothing of (EXPL-31) is the file's default mode.
+  defp mode("source", _default, _raw_view), do: :source
+  defp mode("raw", _default, raw_view) when is_map(raw_view), do: :raw
+  defp mode(_other, default, _raw_view), do: default
+
+  # EXPL-8, EXPL-22, EXPL-23, EXPL-25: the source mode reads the file as text,
+  # which is where EXPL-4's cap and its binary refusal apply. The raw mode shows
+  # the file's own bytes and has no text to read, and neither has a path the
+  # listing already refused (EXPL-9, EXPL-25).
+  defp text_view(_file, :raw, _root, error), do: {nil, error}
+  defp text_view(nil, _mode, _root, error), do: {nil, error}
+
+  defp text_view(file, :source, root, _error) do
+    case Explorer.read(file, root) do
+      {:ok, viewer} -> {viewer, nil}
+      {:error, :binary} -> {{:binary, file}, nil}
+      {:error, reason} -> {nil, reason}
     end
   end
+
+  # EXPL-23, EXPL-32: a kind the browser renders of itself gets its own element
+  # in the pane, and every other kind the frame.
+  defp preview_kind?(kind), do: kind in [:image, :pdf, :video, :audio]
 
   # EXPL-27: the line a link named, when the text in view has it. It is
   # ignored otherwise — a `line` that isn't a positive whole number, one past
@@ -205,10 +228,17 @@ defmodule EliaWeb.FilesLive do
     if params == %{}, do: ~p"/files", else: ~p"/files?#{params}"
   end
 
-  # EXPL-24, EXPL-26: the route that serves a preview's bytes takes the same
+  # EXPL-24, EXPL-26: the route that serves a raw view's bytes takes the same
   # parameters as the page, so it serves the file the page is showing.
   defp raw_path(path, chat) do
     ~p"/files/raw?#{Map.put(scope_params(chat), :path, path)}"
+  end
+
+  # EXPL-33: the mode control's URL — the workspace, the file in view and the
+  # mode asked for, so it shows the same file the other way.
+  defp mode_path(path, chat, mode) do
+    params = Map.merge(scope_params(chat), %{path: path, mode: Atom.to_string(mode)})
+    ~p"/files?#{params}"
   end
 
   defp lines(content) do
@@ -239,8 +269,8 @@ defmodule EliaWeb.FilesLive do
 
   defp root_error_message(_reason, root), do: "This project's folder can't be read: #{root}"
 
-  # EXPL-8, EXPL-23: a preview has no text, so it has no line count, gutter or
-  # language to prepare either.
+  # EXPL-8, EXPL-12, EXPL-32: only the text view has a line count, a gutter or a
+  # language to highlight; a raw view has none of them.
   defp text_assigns(assigns) do
     case assigns.viewer do
       %{content: content} ->
@@ -252,9 +282,6 @@ defmodule EliaWeb.FilesLive do
           language: language(assigns.viewer)
         )
 
-      {:preview, preview} ->
-        assign(assigns, preview: preview, line_count: 0, gutter: "", language: nil)
-
       _ ->
         assign(assigns, line_count: 0, gutter: "", language: nil)
     end
@@ -262,10 +289,7 @@ defmodule EliaWeb.FilesLive do
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(preview: nil)
-      |> text_assigns()
+    assigns = text_assigns(assigns)
 
     ~H"""
     <Layouts.app
@@ -388,16 +412,42 @@ defmodule EliaWeb.FilesLive do
                 <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
                 {error_message(@error)}
               </div>
-            <% @preview -> %>
-              <.file_header path={@preview.path} size={@preview.size} url={@raw} />
-              <.preview_pane preview={@preview} url={@raw} />
+            <% @mode == :raw -> %>
+              <%!-- EXPL-32: the file itself, in place of the source. --%>
+              <.file_header
+                path={@raw_view.path}
+                size={@raw_view.size}
+                url={@raw}
+                mode={@mode}
+                chat={@chat}
+              />
+              <.preview_pane
+                :if={preview_kind?(@raw_view.kind)}
+                preview={@raw_view}
+                url={@raw}
+              />
+              <.raw_frame :if={not preview_kind?(@raw_view.kind)} path={@raw_view.path} url={@raw} />
             <% match?({:binary, _}, @viewer) -> %>
-              <.file_header path={elem(@viewer, 1)} />
+              <.file_header
+                path={elem(@viewer, 1)}
+                url={@raw}
+                mode={@raw_view && @mode}
+                chat={@chat}
+              />
               <p id="file-binary" class="m-6 text-sm text-base-content/60">
                 This looks like a binary file, so it isn't shown.
               </p>
             <% @viewer -> %>
-              <.file_header path={@viewer.path} size={@viewer.size} lines={@line_count} />
+              <%!-- EXPL-30: the source mode, with the name of the other mode
+              beside it when the file has a raw view to switch to. --%>
+              <.file_header
+                path={@viewer.path}
+                size={@viewer.size}
+                lines={@line_count}
+                url={@raw}
+                mode={@raw_view && @mode}
+                chat={@chat}
+              />
               <p
                 :if={@viewer.truncated?}
                 id="file-truncated"
@@ -445,6 +495,8 @@ defmodule EliaWeb.FilesLive do
   attr :size, :integer, default: nil
   attr :lines, :integer, default: nil
   attr :url, :string, default: nil
+  attr :mode, :atom, default: nil
+  attr :chat, :string, default: nil
 
   defp file_header(assigns) do
     ~H"""
@@ -460,6 +512,34 @@ defmodule EliaWeb.FilesLive do
             · {@lines} {if @lines == 1, do: "line", else: "lines"}
           </span>
         </span>
+        <%!-- EXPL-33: the mode in view, and the other one of a file that has a
+        raw view. --%>
+        <nav :if={@mode} id="file-modes" class="flex items-center gap-1" aria-label="View mode">
+          <.link
+            id="mode-source"
+            patch={mode_path(@path, @chat, :source)}
+            aria-current={@mode == :source && "true"}
+            class={[
+              "rounded px-1.5 py-0.5",
+              @mode == :source && "bg-base-200 font-medium text-base-content",
+              @mode != :source && "hover:text-base-content"
+            ]}
+          >
+            Source
+          </.link>
+          <.link
+            id="mode-raw"
+            patch={mode_path(@path, @chat, :raw)}
+            aria-current={@mode == :raw && "true"}
+            class={[
+              "rounded px-1.5 py-0.5",
+              @mode == :raw && "bg-base-200 font-medium text-base-content",
+              @mode != :raw && "hover:text-base-content"
+            ]}
+          >
+            Raw
+          </.link>
+        </nav>
         <%!-- EXPL-26: the file's own URL, for a page of its own or a save. --%>
         <.link
           :if={@url}
@@ -479,9 +559,9 @@ defmodule EliaWeb.FilesLive do
   attr :preview, :map, required: true
   attr :url, :string, required: true
 
-  # EXPL-23: what the browser renders itself, in place of the text view. An
-  # image fits the pane without being enlarged past its own size; the others
-  # fill it with the browser's own controls.
+  # EXPL-23, EXPL-32: what the browser renders itself, in place of the text
+  # view. An image fits the pane without being enlarged past its own size; the
+  # others fill it with the browser's own controls.
   defp preview_pane(assigns) do
     ~H"""
     <div id="file-preview-pane" class={pane_class(@preview.kind)}>
@@ -519,4 +599,23 @@ defmodule EliaWeb.FilesLive do
 
   defp pane_class(:pdf), do: "min-h-0 flex-1"
   defp pane_class(_kind), do: "grid min-h-0 flex-1 place-items-center overflow-auto p-4"
+
+  attr :path, :string, required: true
+  attr :url, :string, required: true
+
+  # EXPL-24, EXPL-32: the file's own bytes in a frame, sandboxed with nothing
+  # allowed, so a page a script-carrying file names can neither run nor reach
+  # this app's origin — and served with the policy EXPL-24 names, which is the
+  # same restriction for the file's URL opened on a page of its own (EXPL-26).
+  defp raw_frame(assigns) do
+    ~H"""
+    <iframe
+      id="file-raw"
+      src={@url}
+      sandbox=""
+      title={@path}
+      class="min-h-0 w-full flex-1 border-0 bg-white"
+    ></iframe>
+    """
+  end
 end

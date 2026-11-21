@@ -16,6 +16,10 @@ defmodule EliaWeb.FilesLiveTest do
   # A URL naming a path and nothing else, as the page's own links build it.
   defp path_url(path), do: "/files?" <> URI.encode_query(%{path: path})
 
+  # EXPL-30, EXPL-33: a URL naming a path and the mode to show it in, which is
+  # what the mode control patches to.
+  defp mode_url(path, mode), do: ~p"/files?#{%{path: path, mode: mode}}"
+
   # EXPL-15: the page browses the open project (PROJ-28), so a test that wants
   # another one makes it the open one; Elia's own goes back afterwards.
   defp open_project(name, folder) do
@@ -508,6 +512,85 @@ defmodule EliaWeb.FilesLiveTest do
     refute has_element?(view, "#file-binary")
     # EXPL-23: no line count for a picture.
     refute has_element?(view, "#file-header", "line")
+    # EXPL-30, EXPL-33: a picture opens in the raw mode, with the control that
+    # offers its source beside it.
+    assert has_element?(view, "#mode-raw[aria-current=true]")
+    assert has_element?(view, "#mode-source")
+  end
+
+  # EXPL-30, EXPL-32, EXPL-33: a page is a page — the browser renders the file's
+  # own bytes in the frame rather than its markup as text — and the header's
+  # control shows the source instead. A file the browser doesn't render of itself
+  # opens as its source (EXPL-30), so this is the mode asked for.
+  test "renders an HTML file raw, and shows its source on request", %{conn: conn} do
+    File.write!(in_root("#{@dir}/page.html"), "<h1>hello</h1>\n")
+
+    {:ok, view, _} = live(conn, mode_url("#{@dir}/page.html", "raw"))
+
+    url = ~p"/files/raw?#{%{path: "#{@dir}/page.html"}}"
+
+    assert has_element?(view, "iframe#file-raw[src='#{url}'][sandbox]")
+    assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
+    assert has_element?(view, "#file-path", "#{@dir}/page.html")
+    # EXPL-26: the header still names the file's size.
+    assert has_element?(view, "#file-header", "15 B")
+    # EXPL-32: none of the text view's parts are there, and no line count.
+    refute has_element?(view, "#file-content")
+    refute has_element?(view, "#file-gutter")
+    refute has_element?(view, "#file-header", "line")
+    refute has_element?(view, "#file-binary")
+    assert has_element?(view, "#mode-raw[aria-current=true]")
+
+    # EXPL-30: the source mode reads the file as text instead, with the size and
+    # the line count EXPL-8 gives it.
+    view |> element("#mode-source") |> render_click()
+    assert_patch(view, mode_url("#{@dir}/page.html", "source"))
+    assert has_element?(view, "#file-content", "<h1>hello</h1>")
+    assert has_element?(view, "#file-header", "1 line")
+    assert has_element?(view, "#mode-source[aria-current=true]")
+    refute has_element?(view, "#file-raw")
+
+    view |> element("#mode-raw") |> render_click()
+    assert_patch(view, mode_url("#{@dir}/page.html", "raw"))
+    assert has_element?(view, "iframe#file-raw")
+    refute has_element?(view, "#file-content")
+  end
+
+  # EXPL-30: a `mode` that is missing, that names neither of the two, or that
+  # asks for a raw view a file has none of (EXPL-31) is the file's default mode.
+  test "a mode a file can't be shown in is its default mode", %{conn: conn} do
+    File.write!(in_root("#{@dir}/note.txt"), "hello\n")
+
+    # A text file's default is its source, which is what each of these asks for.
+    for mode <- ["", "nonsense", "Raw", "1", "sources"] do
+      {:ok, view, _} = live(conn, mode_url("#{@dir}/note.txt", mode))
+      assert has_element?(view, "#file-content", "hello"), mode
+      refute has_element?(view, "#file-raw"), mode
+      # EXPL-33: a text file has a raw view, so the control is there too.
+      assert has_element?(view, "#mode-source[aria-current=true]"), mode
+      assert has_element?(view, "#mode-raw"), mode
+    end
+
+    # A binary file has none (EXPL-31), so `raw` is EXPL-8's notice instead, and
+    # there is no control to switch modes with.
+    {:ok, view, _} = live(conn, mode_url("#{@dir}/blob.bin", "raw"))
+    assert has_element?(view, "#file-binary")
+    refute has_element?(view, "#file-raw")
+    refute has_element?(view, "#file-modes")
+    refute has_element?(view, "#file-preview-open")
+  end
+
+  # EXPL-8, EXPL-30: a picture's source is binary, so that is what the source
+  # mode says — the raw mode is the default, and this one has to be asked for.
+  test "the source mode of a picture is the binary notice", %{conn: conn} do
+    File.write!(in_root("#{@dir}/shot2.png"), <<137, 80, 78, 71, 13, 10, 26, 10>>)
+
+    {:ok, view, _} = live(conn, mode_url("#{@dir}/shot2.png", "source"))
+
+    assert has_element?(view, "#file-binary")
+    refute has_element?(view, "#file-preview")
+    assert has_element?(view, "#mode-source[aria-current=true]")
+    assert has_element?(view, "#file-preview-open")
   end
 
   # EXPL-22, EXPL-23: every kind the browser renders itself gets its own element.
@@ -528,14 +611,20 @@ defmodule EliaWeb.FilesLiveTest do
     end
   end
 
-  # EXPL-23: an SVG is a picture here, so its source is no longer the text view.
+  # EXPL-23, EXPL-30: an SVG is a picture in the raw mode it opens in, rather
+  # than the markup the source mode shows (EXPL-11 reads it as XML).
   test "previews an SVG rather than its markup", %{conn: conn} do
     File.write!(in_root("#{@dir}/logo.svg"), ~s(<svg xmlns="http://www.w3.org/2000/svg"/>))
 
-    {:ok, view, _} = live(conn, ~p"/files?#{[path: "#{@dir}/logo.svg"]}")
+    {:ok, view, _} = live(conn, path_url("#{@dir}/logo.svg"))
 
     assert has_element?(view, "img#file-preview")
     refute has_element?(view, "#file-content")
+
+    view |> element("#mode-source") |> render_click()
+    assert_patch(view, mode_url("#{@dir}/logo.svg", "source"))
+    assert has_element?(view, "#file-content", "<svg xmlns=")
+    refute has_element?(view, "#file-preview")
   end
 
   # EXPL-23: the read cap is not applied to a preview — nothing is read.
@@ -560,6 +649,37 @@ defmodule EliaWeb.FilesLiveTest do
       refute has_element?(view, "#file-preview"), path
       refute has_element?(view, "#file-preview-open"), path
     end
+  end
+
+  # EXPL-33: switching mode keeps the workspace the page browses and the file in
+  # view, so the other mode shows the same file.
+  test "the mode control keeps the workspace and the file", %{conn: conn} do
+    folder = in_root("#{@project}/modes")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    File.write!(Path.join(folder, "page.html"), "<h1>hi</h1>")
+    {:ok, project} = Projects.create("Modes", folder)
+
+    on_exit(fn ->
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    chat = Elia.Agent.new_id()
+    :ok = Elia.Store.save(chat, [], project: project.id, title: "The page")
+    on_exit(fn -> Elia.Store.delete(chat) end)
+
+    {:ok, view, _} =
+      live(conn, ~p"/files?#{%{chat: chat, path: "page.html", mode: "raw"}}")
+
+    assert has_element?(view, "#file-raw")
+
+    view |> element("#mode-source") |> render_click()
+
+    assert_patch(view, ~p"/files?#{%{chat: chat, path: "page.html", mode: "source"}}")
+
+    assert has_element?(view, "#file-content", "<h1>hi</h1>")
+    assert has_element?(view, "#workspace-note")
   end
 
   # EXPL-15, EXPL-17, EXPL-24, EXPL-26: a preview's URL carries the workspace

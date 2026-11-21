@@ -8,7 +8,10 @@ deliberately small: a directory listing next to a viewer that shows a text file
 as plain text and previews what the browser renders itself — a picture, a PDF, a
 video, an audio file (EXPL-22). It browses the open project's folder (EXPL-15),
 or a single chat's own workspace (EXPL-17), which is where a file the agent
-mentions in that chat is opened (FLINK-5).
+mentions in that chat is opened (FLINK-5). The viewer has two modes for the
+file in view (EXPL-30): its source as text, and the file itself as the browser
+renders it — a page, a picture, a media file — with none of the viewer's own
+chrome (EXPL-32).
 
 ## Requirements
 
@@ -127,7 +130,8 @@ page is opened again.
   `weba`; a PDF is `pdf`. Any other extension, and a path with none, has no
   preview.
 - **EXPL-23** For a file it may preview (EXPL-25) the viewer shows the preview
-  in place of the text view: an `img` (`#file-preview`) for an image, an
+  in place of the text view in raw mode, which is the file's default mode
+  (EXPL-30): an `img` (`#file-preview`) for an image, an
   `iframe` for a PDF, a `video` with the browser's controls for a video and an
   `audio` with them for an audio file, in a pane filling the room the listing
   leaves — an image scaled down to fit it, its aspect ratio kept and never
@@ -135,35 +139,74 @@ page is opened again.
   read for it: there is no line count, no gutter, no `#file-content`, no
   truncation notice and no highlighting (EXPL-12), and the read cap (EXPL-4)
   does not apply. There is no binary notice either (EXPL-8), and an SVG — which
-  EXPL-11 reads as `xml` — is a picture here, so its source is no longer shown.
-- **EXPL-24** `GET /files/raw` serves a previewed file's own bytes from the
-  workspace the page browses, resolved the same way from the `path` and `chat`
-  parameters it carries and the open project (EXPL-6, EXPL-15, EXPL-17), and
-  judged by the same path rules (EXPL-1, EXPL-2, EXPL-20). The response carries
-  the preview's content type
-  (EXPL-22), `x-content-type-options: nosniff`, the file's `content-length` and
+  EXPL-11 reads as `xml` — is a picture here rather than its source, which the
+  source mode shows instead (EXPL-30).
+- **EXPL-24** `GET /files/raw` serves a file's own bytes from the workspace the
+  page browses, for a path of a kind the browser renders (EXPL-31), resolved the
+  same way from the `path` and `chat` parameters it carries and the open project
+  (EXPL-6, EXPL-15, EXPL-17), and judged by the same path rules (EXPL-1, EXPL-2,
+  EXPL-20). The response carries the content type that kind gives it
+  (EXPL-22, EXPL-31), `x-content-type-options: nosniff`, the file's
+  `content-length` and
   `last-modified`, and an `etag` of its size and modification time with
   `cache-control: no-cache`; a request whose `if-none-match` is that etag is
   answered `304` with no body, so a page opened again revalidates a file instead
-  of fetching it again, and a file that changed since is served afresh. An image
-  — the only kind that can carry script — is also served with
-  `content-security-policy: default-src 'none'; sandbox`, so opening a file's
-  own URL can't run an SVG's script in this app's origin. Anything else — a path
-  that is forbidden, reached through a symlink or protected, a directory, a file
-  that isn't there or can't be read, or one nothing previews — is a `404` whose
-  body says nothing about the workspace, and no other file's bytes are served.
+  of fetching it again, and a file that changed since is served afresh. A kind
+  that can carry script — an image, an HTML document, an XML file (EXPL-31) — is
+  also served with `content-security-policy: default-src 'none'; style-src
+  'unsafe-inline'; sandbox`, so opening a file's own URL can't run its script in
+  this app's origin, while the document's own inline styles still apply. Anything
+  else — a path that is forbidden, reached through a symlink or protected, a
+  directory, a file that isn't there or can't be read, or one no kind of raw view
+  names (EXPL-31) — is a `404` whose body says nothing about the workspace, and
+  no other file's bytes are served.
 - **EXPL-25** The page renders a preview only for a path that is a previewable
   (EXPL-22), readable file of the browsed workspace: a previewable path that is
   missing, forbidden, reached through a symlink, protected, a directory or
   unreadable shows EXPL-9's message instead and no preview element at all, so
   the page never points the browser at a URL that would be a `404` (EXPL-24).
   The page and the raw route decide by the same check, so what the page previews
-  is what the route serves and nothing else.
-- **EXPL-26** With a preview in view the header still names the file's path and
-  size (EXPL-8) and carries a link to the file's raw URL (EXPL-24) —
-  `#file-preview-open`, `target="_blank"` and `rel="noreferrer"` — so the file
-  can be opened on a page of its own (a PDF at full size) or saved with the
-  browser's own controls; the preview element's own source is that same URL.
+  or renders raw is what the route serves and nothing else.
+- **EXPL-26** With a file that has a raw view (EXPL-31) the header names the
+  file's path and size (EXPL-8) and carries a link to the file's raw URL
+  (EXPL-24) — `#file-preview-open`, `target="_blank"` and `rel="noreferrer"` —
+  so the file can be opened on a page of its own (a PDF at full size, a page
+  rendered on its own) or saved with the browser's own controls; the view's own
+  source (EXPL-23, EXPL-32) is that same URL.
+
+### Raw view
+
+The viewer has two modes for the file in view: the source as text, and the file
+itself as the browser renders it. Raw mode is what a file with a rendering of
+its own is for — an HTML page, a picture, an SVG, a media file — and the page
+hands the browser the file's own bytes (EXPL-24) rather than the text the viewer
+read.
+
+- **EXPL-30** The viewer shows the file in view in one of two modes, named by a
+  `mode` query parameter: `source`, the text view (EXPL-8, EXPL-11 - EXPL-13,
+  EXPL-27), and `raw`, the file as the browser renders it (EXPL-32). A `mode`
+  that is missing, that names neither, or that asks for `raw` for a file the
+  browser renders nothing of (EXPL-31) is the file's default mode: `raw` for a
+  file the browser renders of itself (EXPL-22), `source` for any other file.
+- **EXPL-31** `Elia.Explorer.raw_file/2` names what the browser renders of a
+  path in a workspace, with the content type to serve it as, or none: a file the
+  page may preview (EXPL-25) as its own kind and type (EXPL-22), an HTML document
+  (`html` or `htm`, ignoring case) as `text/html; charset=utf-8`, an XML file
+  (`xml`, `heex`, `eex` or `leex`) and any other file the page reads as text
+  (EXPL-4) as `text/plain; charset=utf-8`. A path that is forbidden, reached
+  through a symlink, protected, a directory, missing, unreadable or binary has
+  none (EXPL-1, EXPL-2, EXPL-5).
+- **EXPL-32** In raw mode the viewer shows the file itself and not the text
+  view: a kind the browser renders of itself (EXPL-22) as its preview element
+  (EXPL-23), and any other kind EXPL-31 names in an `iframe` (`#file-raw`) whose
+  source is the file's raw URL (EXPL-24) and which carries `sandbox` with no
+  `allow-scripts`, filling the pane. There is no line count, gutter,
+  highlighting (EXPL-12), truncation notice or binary notice, and the read cap
+  (EXPL-4) does not apply to what is shown.
+- **EXPL-33** The header carries a control that switches mode — `#mode-source`
+  and `#mode-raw`, the one in view marked — for a file that has a raw view
+  (EXPL-31), and it keeps the browsed workspace and the file in view while
+  patching the URL (EXPL-7).
 
 ### Syntax highlighting
 
@@ -198,6 +241,10 @@ always sends the plain text, so the socket payload doesn't grow.
 - A thumbnail in the listing, a preview of a text file, converting a file for
   the browser, and a download of its own: the open link (EXPL-26) and the
   browser's own save and controls are the answer.
+- A raw document's own subresources: the stylesheet, script, picture or font an
+  HTML file names are not served and not resolved to the workspace, so a raw
+  page shows its own markup, with whatever its inline styles say and nothing
+  more. The policy EXPL-24 names is what keeps a file's script from running.
 - Access control: like Sessions and System, anyone who can reach the app can
   read the (non-protected) workspace, the route that serves a preview's bytes
   (EXPL-24) included. Its socket is bound to this server's own origin
@@ -209,18 +256,21 @@ Nothing stored changes. A project's `folder` is stored as the path it was
 registered with (PROJ-2), symlink and all, and is never rewritten: the link is
 followed when the root is browsed, not when the project is saved or read. An
 existing project whose folder is a symlink therefore browses as it is, and no
-migration is needed. A preview reads a file and stores nothing: the bytes it
-serves are the file's own.
+migration is needed. A preview or a raw view reads a file and stores nothing:
+the bytes it serves are the file's own, and the mode in view is a query
+parameter the URL carries rather than anything stored.
 
 ## Implementation
 
-`Elia.Explorer` (path safety, listing, reading, language and preview detection),
-`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18 and EXPL-29,
-the preview it shows, EXPL-22 - EXPL-26, and the line in view, EXPL-27),
+`Elia.Explorer` (path safety, listing, reading, language, preview detection and
+what the browser renders of a file, EXPL-31), `EliaWeb.FilesLive` (which
+workspace it browses, EXPL-15 - EXPL-18 and EXPL-29, the preview it shows,
+EXPL-22 - EXPL-26, the mode in view and the raw pane, EXPL-30, EXPL-32, EXPL-33,
+and the line in view, EXPL-27),
 `EliaWeb.FilesScope` (the workspace a page and a raw URL name, EXPL-15,
 EXPL-17), `EliaWeb.Layouts` (the header's switcher on this page, EXPL-29),
 `EliaWeb.FilesRawController` (the bytes a
-preview is made of, EXPL-24), `Elia.Deploy` (a chat's workspace, EXPL-17),
+raw view is made of, EXPL-24), `Elia.Deploy` (a chat's workspace, EXPL-17),
 `EliaWeb.FileLinks` (the links that
 open a chat's own workspace, FLINK),
 the `Highlight` hook in `assets/js/highlight.js` (EXPL-13, and EXPL-27's mark
@@ -231,20 +281,24 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
 
 - `test/elia/explorer_test.exs` (path safety, the listing, reading and its
   refusals, a browsed root that is a symlink, the language a path maps to, the
-  preview a path has and its content type — EXPL-1 to EXPL-5, EXPL-11, EXPL-20
-  to EXPL-22).
+  preview a path has and its content type, what the browser renders of a path —
+  EXPL-1 to EXPL-5, EXPL-11, EXPL-20 to EXPL-22, EXPL-31).
 - `test/elia_web/live/files_live_test.exs` (the page, its breadcrumbs, the
   viewer and its refusals, the language attribute, the header link, the project
   and the chat in view, a project whose folder is a symlink, the preview per
   kind and what it leaves out, a previewable path that can't be previewed, the
-  line in view and a line it can't use —
+  mode in view and the default mode of each kind, the raw pane and the control
+  that switches it, the line in view and a line it can't use —
   EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to EXPL-21, EXPL-23, EXPL-25 to
-  EXPL-28, EXPL-29).
-- `test/elia_web/controllers/files_raw_test.exs` (the bytes of a previewed
-  file, its content type and headers, the revalidation it answers, and every
-  refusal — EXPL-1, EXPL-2, EXPL-22, EXPL-24).
+  EXPL-28, EXPL-29, EXPL-30, EXPL-32, EXPL-33).
+- `test/elia_web/controllers/files_raw_test.exs` (the bytes of a file the
+  browser renders, its content type and headers, the policy a script-carrying
+  kind is served under, the revalidation it answers, and every refusal —
+  EXPL-1, EXPL-2, EXPL-22, EXPL-24, EXPL-31).
 - `test/elia_web/browser/files_preview_test.exs` (a picture of the workspace
   drawn by a real headless Chromium — EXPL-23, EXPL-24, EXPL-26).
+- `test/elia_web/browser/files_raw_test.exs` (a real headless Chromium renders a
+  raw page in the frame and runs none of its script — EXPL-24, EXPL-32).
 - `test/elia_web/browser/files_line_test.exs` (the mark and the scroll a real
   headless Chromium makes of the line a URL names, after the highlighting —
   EXPL-27).

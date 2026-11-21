@@ -17,11 +17,15 @@ defmodule EliaWeb.FilesRawControllerTest do
     File.write!(in_root("#{@dir}/clip.mp4"), "not really a video")
     File.write!(in_root("#{@dir}/voice.mp3"), "not really audio")
     File.write!(in_root("#{@dir}/paper.pdf"), "%PDF-1.4")
+    File.write!(in_root("#{@dir}/page.html"), "<h1>hello</h1>")
+    File.write!(in_root("#{@dir}/doc.xml"), "<a/>")
+    File.write!(in_root("#{@dir}/template.heex"), "<p>hi</p>")
+    File.write!(in_root("#{@dir}/blob.bin"), <<0, 1, 2>>)
     on_exit(fn -> File.rm_rf!(in_root(@dir)) end)
   end
 
   # EXPL-24
-  test "serves a previewed file's bytes, with its type and validators", %{conn: conn} do
+  test "serves a file's bytes, with its type and validators", %{conn: conn} do
     conn = get(conn, ~p"/files/raw?#{%{path: "#{@dir}/shot.png"}}")
 
     assert conn.status == 200
@@ -33,11 +37,49 @@ defmodule EliaWeb.FilesRawControllerTest do
     assert etag =~ ~r/^"\d+-\d+"$/
     assert [modified] = get_resp_header(conn, "last-modified")
     assert modified =~ ~r/ \d\d:\d\d:\d\d GMT$/
-    # EXPL-24: an image is the only kind that can carry script, so its own URL
-    # must not be a way to run one on this origin.
+    # EXPL-24: an image can carry script (an SVG can), so its own URL must not
+    # be a way to run one on this origin — and its own inline styles still apply.
     assert get_resp_header(conn, "content-security-policy") == [
-             "default-src 'none'; sandbox"
+             "default-src 'none'; style-src 'unsafe-inline'; sandbox"
            ]
+  end
+
+  # EXPL-24, EXPL-31: a page is served as a page, and an XML file and any other
+  # file the page reads as text as text — a kind that can carry script under the
+  # same policy as an image, and the others without one.
+  test "serves a page and a text file for the raw view", %{conn: conn} do
+    conn = get(conn, ~p"/files/raw?#{%{path: "#{@dir}/page.html"}}")
+
+    assert conn.status == 200
+    assert conn.resp_body == "<h1>hello</h1>"
+    assert get_resp_header(conn, "content-type") == ["text/html; charset=utf-8"]
+    assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+
+    assert get_resp_header(conn, "content-security-policy") == [
+             "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+           ]
+
+    for {file, body} <- [
+          {"doc.xml", "<a/>"},
+          {"template.heex", "<p>hi</p>"},
+          {"notes.txt", "hello"}
+        ] do
+      conn = get(conn, ~p"/files/raw?#{%{path: "#{@dir}/#{file}"}}")
+
+      assert conn.status == 200, file
+      assert conn.resp_body == body, file
+      assert get_resp_header(conn, "content-type") == ["text/plain; charset=utf-8"], file
+
+      # A plain text file has no markup of its own, so nothing to restrict.
+      if file == "notes.txt" do
+        assert get_resp_header(conn, "content-security-policy") == []
+      else
+        assert get_resp_header(conn, "content-security-policy") == [
+                 "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+               ],
+               file
+      end
+    end
   end
 
   # EXPL-22, EXPL-24
@@ -81,8 +123,8 @@ defmodule EliaWeb.FilesRawControllerTest do
     assert conn.resp_body == @png <> <<0>>
   end
 
-  # EXPL-1, EXPL-2, EXPL-24, EXPL-25: the route reaches exactly what the page
-  # may show, and says nothing about the rest.
+  # EXPL-1, EXPL-2, EXPL-24, EXPL-25, EXPL-31: the route reaches exactly what
+  # the page may show raw, and says nothing about the rest.
   test "is a 404 for everything the page can't show", %{conn: conn} do
     File.ln_s!(in_root("#{@dir}/shot.png"), in_root("#{@dir}/link.png"))
     File.ln_s!("/etc", in_root("#{@dir}/etc-link"))
@@ -92,8 +134,8 @@ defmodule EliaWeb.FilesRawControllerTest do
           "#{@dir}/nope.png",
           # a directory, whatever it is called
           "#{@dir}/folder.png",
-          # a file the page shows as text
-          "#{@dir}/notes.txt",
+          # a binary file, which the page reads as text and can't (EXPL-5)
+          "#{@dir}/blob.bin",
           # a symlink, and a path through one
           "#{@dir}/link.png",
           "#{@dir}/etc-link/hostname",

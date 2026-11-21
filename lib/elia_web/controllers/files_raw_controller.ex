@@ -1,16 +1,16 @@
 defmodule EliaWeb.FilesRawController do
   @moduledoc """
-  Serves the bytes a preview of the Files page is made of (EXPL-24): the file a
+  Serves the bytes a raw view of the Files page is made of (EXPL-24): the file a
   `path` parameter names in the workspace the page browses — the open project's
   folder (EXPL-15) or a chat's own (EXPL-17), resolved by `EliaWeb.FilesScope` —
-  with the content type its extension gives it (EXPL-22).
+  under the content type that file's kind gives it (EXPL-22, EXPL-31).
 
-  It reaches exactly what the page may show (EXPL-25): a previewable regular
-  file of that workspace, reached without a symlink and outside a protected path
-  (`Elia.Explorer.preview_file/2`). Anything else — a path that leads out,
-  a directory, a file this page shows as text, one that isn't there — is a 404
-  that says nothing about the workspace, so the route is never a way to read
-  what the explorer refuses.
+  It reaches exactly what the page may show (EXPL-25): a file of that workspace
+  the browser renders, reached without a symlink and outside a protected path
+  (`Elia.Explorer.raw_file/2`). Anything else — a path that leads out, a
+  directory, a binary file, one that isn't there — is a 404 that says nothing
+  about the workspace, so the route is never a way to read what the explorer
+  refuses.
   """
 
   use EliaWeb, :controller
@@ -18,16 +18,24 @@ defmodule EliaWeb.FilesRawController do
   alias Elia.Explorer
   alias EliaWeb.FilesScope
 
+  # EXPL-24: a kind that can carry script — an image (an SVG can), an HTML
+  # document, an XML file — is served under this policy, so opening a file's own
+  # URL can't run it in this app's origin, while the document's own inline styles
+  # still apply. The other kinds get no policy, so the browser's own PDF and
+  # media viewers are untouched.
+  @scripted [:image, :html, :xml]
+  @policy "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
   def show(conn, params) do
-    case preview(params) do
-      {:ok, preview} -> serve(conn, preview)
+    case raw(params) do
+      {:ok, raw} -> serve(conn, raw)
       {:error, _reason} -> send_resp(conn, 404, "Not found")
     end
   end
 
-  defp preview(params) do
+  defp raw(params) do
     with path when is_binary(path) <- params["path"] do
-      Explorer.preview_file(path, FilesScope.root(params))
+      Explorer.raw_file(path, FilesScope.root(params))
     else
       _ -> {:error, :not_found}
     end
@@ -36,30 +44,27 @@ defmodule EliaWeb.FilesRawController do
   # EXPL-24: the file's own bytes, its type and the validators a browser
   # revalidates by, so a page opened again doesn't fetch a large file again
   # while a file that changed since is served afresh.
-  defp serve(conn, preview) do
-    etag = ~s("#{preview.size}-#{preview.mtime}")
+  defp serve(conn, raw) do
+    etag = ~s("#{raw.size}-#{raw.mtime}")
 
     conn =
       conn
-      |> put_resp_header("content-type", preview.type)
+      |> put_resp_header("content-type", raw.type)
       |> put_resp_header("x-content-type-options", "nosniff")
       |> put_resp_header("cache-control", "no-cache")
       |> put_resp_header("etag", etag)
-      |> put_resp_header("last-modified", http_date(preview.mtime))
-      |> put_security_policy(preview.kind)
+      |> put_resp_header("last-modified", http_date(raw.mtime))
+      |> put_security_policy(raw.kind)
 
     if etag in get_req_header(conn, "if-none-match") do
       send_resp(conn, 304, "")
     else
-      send_file(conn, 200, preview.file)
+      send_file(conn, 200, raw.file)
     end
   end
 
-  # EXPL-24: an image is the only kind of preview that can carry script, and an
-  # SVG can, so the file's own URL can't run it in this app's origin. The other
-  # kinds get no policy, so the browser's own PDF and media viewers are untouched.
-  defp put_security_policy(conn, :image),
-    do: put_resp_header(conn, "content-security-policy", "default-src 'none'; sandbox")
+  defp put_security_policy(conn, kind) when kind in @scripted,
+    do: put_resp_header(conn, "content-security-policy", @policy)
 
   defp put_security_policy(conn, _kind), do: conn
 

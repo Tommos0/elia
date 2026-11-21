@@ -133,6 +133,63 @@ defmodule Elia.ExplorerTest do
     assert Explorer.preview("src/lib.ex") == nil
   end
 
+  # EXPL-31
+  test "names what the browser renders of a file, and the type to serve it as" do
+    File.write!(in_root("#{@dir}/page.html"), "<h1>hi</h1>")
+    File.write!(in_root("#{@dir}/Page.HTM"), "<h1>hi</h1>")
+    File.write!(in_root("#{@dir}/doc.xml"), "<a/>")
+    File.write!(in_root("#{@dir}/template.heex"), "<p/>")
+    File.write!(in_root("#{@dir}/shot.png"), <<137, 80, 78, 71, 13, 10, 26, 10>>)
+    File.write!(in_root("#{@dir}/logo.svg"), ~s(<svg xmlns="http://www.w3.org/2000/svg"/>))
+
+    # A kind the page may preview is served as its own kind and type (EXPL-22).
+    assert {:ok, %{kind: :image, type: "image/png"}} = Explorer.raw_file("#{@dir}/shot.png")
+    assert {:ok, %{kind: :image, type: "image/svg+xml"}} = Explorer.raw_file("#{@dir}/logo.svg")
+
+    # An HTML document, whatever its case, is served as one.
+    assert {:ok, %{kind: :html, type: "text/html; charset=utf-8"}} =
+             Explorer.raw_file("#{@dir}/page.html")
+
+    assert {:ok, %{kind: :html}} = Explorer.raw_file("#{@dir}/Page.HTM")
+
+    # An XML file, and any other file the page reads as text, as text.
+    assert {:ok, %{kind: :xml, type: "text/plain; charset=utf-8"}} =
+             Explorer.raw_file("#{@dir}/doc.xml")
+
+    assert {:ok, %{kind: :xml}} = Explorer.raw_file("#{@dir}/template.heex")
+
+    assert {:ok, %{kind: :text, type: "text/plain; charset=utf-8"}} =
+             Explorer.raw_file("#{@dir}/b.txt")
+
+    # The size and the modification time the route revalidates by (EXPL-24), and
+    # the path relative to the root it was browsed in (EXPL-15).
+    assert {:ok, %{path: "#{@dir}/shot.png", size: 8, mtime: mtime}} =
+             Explorer.raw_file("#{@dir}/shot.png")
+
+    assert is_integer(mtime)
+  end
+
+  # EXPL-31, EXPL-1, EXPL-2, EXPL-5: what has no raw view at all.
+  test "a file the browser renders nothing of has no raw view" do
+    File.write!(in_root("#{@dir}/note.txt"), "hi\n")
+    File.ln_s!(in_root("#{@dir}/b.txt"), in_root("#{@dir}/link.txt"))
+
+    for {path, reason} <- [
+          # binary: a NUL byte, and text in another encoding
+          {"#{@dir}/bin.dat", :binary},
+          {"#{@dir}/latin1.txt", :binary},
+          # a directory, a symlink, a path that leads out, a protected one
+          {@dir, :directory},
+          {"#{@dir}/link.txt", :forbidden},
+          {"../b.txt", :forbidden},
+          {".git/config", :forbidden},
+          # not there
+          {"#{@dir}/nope.txt", :not_found}
+        ] do
+      assert Explorer.raw_file(path) == {:error, reason}, path
+    end
+  end
+
   # EXPL-15: every function takes the folder it works against, and paths outside
   # it are refused.
   test "browses a project folder and refuses paths outside it" do
