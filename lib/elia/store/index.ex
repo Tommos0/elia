@@ -81,16 +81,22 @@ defmodule Elia.Store.Index do
   """
   @spec term(binary()) :: [{binary(), pos_integer()}]
   def term(term) do
-    term = fold(term)
+    # SEARCH-7: a term has no whitespace in it — a query is split on whitespace —
+    # so it lies inside one of the runs of non-whitespace a message's text is
+    # made of, and searching that text finds exactly the tokens that contain it.
+    # Compiling the pattern once is what `String.contains?/2` does not do: it
+    # compiles it again for every call.
+    pattern = :binary.compile_pattern(fold(term))
 
     # `:ets.foldl/3` is OTP's own, `(function, acc, table)`: the entries are
     # streamed through it, so looking a term up doesn't copy the whole index.
     :ets.foldl(
       fn {id, _identity, entry}, found ->
-        Enum.reduce(entry.tokens, found, fn {token, indexes}, found ->
-          if String.contains?(token, term),
-            do: Enum.reduce(indexes, found, &MapSet.put(&2, {id, &1})),
-            else: found
+        Enum.reduce(entry.texts, found, fn {index, text}, found ->
+          case :binary.match(text, pattern) do
+            :nomatch -> found
+            _ -> MapSet.put(found, {id, index})
+          end
         end)
       end,
       MapSet.new(),
@@ -104,7 +110,8 @@ defmodule Elia.Store.Index do
   @doc """
   The entry for `id` when its file still has `identity`, else `nil` — the entry
   a search reads: the chat's folded `title` and `description`, how many
-  `messages` it holds and its `tokens`.
+  `messages` it holds and its `texts` — the folded text of each message that has
+  any, with the index of the message it is.
   """
   @spec fetch(binary(), term()) :: map() | nil
   def fetch(id, identity) do
@@ -153,8 +160,9 @@ defmodule Elia.Store.Index do
   defp searchable_text(_block), do: nil
 
   # SEARCH-1, SEARCH-2: what one chat contributes — its folded title and
-  # description, how many messages it holds, and a term per folded token of its
-  # messages with the message indexes holding it.
+  # description, how many messages it holds, and the folded text of each message
+  # that has any, with the index of the message it is (SEARCH-7: a term is found
+  # by searching that text).
   defp build(entry) do
     messages = Elia.Store.load(entry.id)
 
@@ -162,27 +170,27 @@ defmodule Elia.Store.Index do
       title: fold(Map.get(entry, :title) || ""),
       description: fold(Map.get(entry, :description) || ""),
       messages: length(messages),
-      tokens:
+      texts:
         messages
         |> Enum.with_index(1)
-        |> Enum.reduce(%{}, fn {message, index}, tokens ->
-          Enum.reduce(searchable_texts(message), tokens, fn text, tokens ->
-            add_tokens(tokens, text, index)
-          end)
+        |> Enum.flat_map(fn {message, index} ->
+          case message_text(message) do
+            "" -> []
+            text -> [{index, text}]
+          end
         end)
     }
   end
 
-  # A term is a substring of the text it is in, and a query is split on
-  # whitespace, so a term with no whitespace in it always lies inside one of
-  # these runs: looking a term up is looking at the tokens that contain it.
-  defp add_tokens(tokens, text, index) do
-    text
+  # SEARCH-2, SEARCH-7: one message's searchable text, folded — its text blocks,
+  # its tool results and the JSON of its tool calls' inputs, joined in the order
+  # they were saved. A message with nothing to search is not indexed at all, so
+  # no term is found in it.
+  defp message_text(message) do
+    message
+    |> searchable_texts()
+    |> Enum.join(" ")
     |> fold()
-    |> String.split(~r/\s+/, trim: true)
-    |> Enum.reduce(tokens, fn token, tokens ->
-      Map.update(tokens, token, MapSet.new([index]), &MapSet.put(&1, index))
-    end)
   end
 
   # SEARCH-4: an entry whose file is gone is no longer a chat that holds
