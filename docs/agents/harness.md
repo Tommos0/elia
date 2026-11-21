@@ -115,3 +115,31 @@ warm search decodes every chat again. Count the index's memory as
 `:ets.info(table, :memory)` *plus* `:erlang.memory(:binary)`: a binary over 64 bytes
 lives off-heap and is only referenced by the table, so the table's own figure can
 look tiny while the text it holds is the much larger number beside it.
+
+## Reaching the running server
+
+`bin/serve` starts the dev server as a named node (`elixir --sname elia -S mix
+phx.server`), so an *unjailed* chat can call the app's own API in the running
+server instead of writing its files behind its back. The node is
+`elia@<short hostname>` (`:net_adm.names/0` names it, `hostname -s` gives the
+host), and a throwaway node reaches it with no cookie of its own:
+
+    elixir --sname "eliactl$RANDOM" -e ':rpc.call(:"elia@bee", Code, :eval_string, [code], 120_000)'
+
+What this is for is the bookkeeping the harness's own tools don't reach: marking
+a chat done from another chat. `mark_done` touches only the chat it runs in, and
+a bulk action is out of scope (`specs/chat-done.md`) — but `Elia.Agent.set_done/2`
+does any chat, and it is exactly what that chat's own done control calls. Three
+things to know:
+
+- `set_done/2` needs a live session, so `Elia.Agent.ensure_started/1` first.
+  Starting one *resumes* a turn the chat's file records (RESUME-2), so read
+  `Elia.Store.load_turn/1` before starting anything, and terminate the session
+  again afterwards (`DynamicSupervisor.terminate_child/2`) so the tree is left
+  as it was.
+- A chat with no messages saves no flag (SESS-14, SESS-35), so an empty "New
+  chat" can't be marked done. Neither can a file the store reads as a chat with
+  no history (STORE-48) — one holding `Elia.LLM.Message` structs from before
+  that module was renamed, say: those are listed as open "New chat" rows.
+- Never edit `.elia/sessions/*.term` by hand: a chat's file is written from its
+  session's state, so that chat's next save takes the edit off again.
