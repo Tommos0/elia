@@ -388,13 +388,13 @@ defmodule EliaWeb.ChatLive do
                   aria-expanded={to_string(@menu_open)}
                   title="This chat: its model, settings, terminal and done"
                   class={[
-                    "grid size-7 shrink-0 place-items-center rounded-lg border transition",
+                    "grid size-11 shrink-0 place-items-center rounded-xl border transition",
                     @menu_open && "border-primary/50 bg-primary/5 text-primary",
                     !@menu_open &&
                       "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
                   ]}
                 >
-                  <.icon name="hero-ellipsis-horizontal" class="size-4" />
+                  <.icon name="hero-ellipsis-horizontal" class="size-5" />
                 </button>
 
                 <div
@@ -417,9 +417,9 @@ defmodule EliaWeb.ChatLive do
                       navigate={~p"/c/#{@session_id}/settings"}
                       id="chat-settings-link"
                       title="This chat's model, auto-approval, jail, limits and context"
-                      class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+                      class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
                     >
-                      <.icon name="hero-cog-6-tooth" class="size-3.5 shrink-0 opacity-70" />
+                      <.icon name="hero-cog-6-tooth" class="size-4 shrink-0 opacity-70" />
                       <span class="font-medium">Chat settings</span>
                     </.link>
                     <%!-- TERM-19: this chat's terminal, where a shell or a
@@ -428,9 +428,9 @@ defmodule EliaWeb.ChatLive do
                       navigate={~p"/c/#{@session_id}/terminal"}
                       id="chat-terminal-link"
                       title="Run a terminal app in this chat's workspace"
-                      class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+                      class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
                     >
-                      <.icon name="hero-command-line" class="size-3.5 shrink-0 opacity-70" />
+                      <.icon name="hero-command-line" class="size-4 shrink-0 opacity-70" />
                       <span class="font-medium">Terminal</span>
                     </.link>
                     <%!-- DONE-4, UI-79: mark this chat done, or reopen it. On a
@@ -446,12 +446,12 @@ defmodule EliaWeb.ChatLive do
                           else: "Mark this chat done: its work has landed and it needs nothing more"
                       }
                       class={[
-                        "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-base-200",
+                        "flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-base-200",
                         @done && "text-success",
                         !@done && "text-base-content/80 hover:text-base-content"
                       ]}
                     >
-                      <.icon name="hero-check-circle" class="size-3.5 shrink-0 opacity-70" />
+                      <.icon name="hero-check-circle" class="size-4 shrink-0 opacity-70" />
                       <span class="font-medium">{if @done, do: "Reopen", else: "Mark done"}</span>
                     </button>
                   </div>
@@ -492,13 +492,13 @@ defmodule EliaWeb.ChatLive do
                     else: "Hide tool calls and reasoning, keeping only the messages"
                 }
                 class={[
-                  "group flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
+                  "group flex h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3.5 text-sm transition",
                   @compact_view && "border-primary/50 bg-primary/5 text-primary",
                   !@compact_view &&
                     "border-base-300 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
                 ]}
               >
-                <.icon name="hero-bars-3-bottom-left" class="size-3.5 shrink-0 opacity-70" />
+                <.icon name="hero-bars-3-bottom-left" class="size-5 shrink-0 opacity-70" />
                 <span class="font-medium">Focus</span>
               </button>
             </div>
