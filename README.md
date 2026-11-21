@@ -195,6 +195,8 @@ page (PREVIEW-9, `specs/ui-preview.md`).
 
 ## Layout
 
+The parts and how a message travels through them are drawn in [`docs/architecture.md`](docs/architecture.md); this table is the module-level view.
+
 | Module | Role |
 | --- | --- |
 | `Elia.LLM` / `Elia.LLM.Provider` | Provider-neutral model calls; `Elia.LLM.Anthropic` is the default backend |
