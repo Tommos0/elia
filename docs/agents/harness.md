@@ -143,3 +143,11 @@ things to know:
   that module was renamed, say: those are listed as open "New chat" rows.
 - Never edit `.elia/sessions/*.term` by hand: a chat's file is written from its
   session's state, so that chat's next save takes the edit off again.
+
+Two things that job got wrong once: `list_chats` shows only a page (the newest
+100) where the store held 338 chats, so the number to trust is the header's active
+chats count (`EliaWeb.ActiveChats`, ACTIVE-3) or `Elia.Store.list/2` itself, never
+a listing's page; and an id transcribed from a dump by hand can be a typo, which
+marks nothing and says nothing — `ensure_started/1` starts a session for a chat
+with no file and `set_done/2` then has nothing to save. Mark the ids read out of
+`Elia.Store.list/2` inside the server rather than ids typed into a command.
