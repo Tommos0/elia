@@ -151,3 +151,20 @@ a listing's page; and an id transcribed from a dump by hand can be a typo, which
 marks nothing and says nothing — `ensure_started/1` starts a session for a chat
 with no file and `set_done/2` then has nothing to save. Mark the ids read out of
 `Elia.Store.list/2` inside the server rather than ids typed into a command.
+
+### Marking a chat done re-dates it, so the list jumps
+
+`Elia.Store.save/3` writes `created_at: created_at(id) || now`, and `created_at/1`
+is nil when the store can't read a chat's file — so a chat whose file it reads as
+"a chat with no history" (STORE-48) gets *today* as its creation date the moment
+anything saves it. The chat list sorts by `created_at` and shows its relative time
+(`lib/elia_web/chat_list.ex`, `Elia.Store.all_entries/0`), so marking 50 such chats
+done put all 50 at the top as "just now". `updated_at` is bumped too and no screen
+reads it. Repair the dates, don't edit the files: assemble each one from the
+sources that survived — a message's `meta.at`, the chat's `.timing` file, a
+checkpoint commit (`git log --all`, "before agent turn <chat id>-<n>", which is
+how the old sub-task chats are dated) and the mtime of `.elia/worktrees/<id>` —
+then write it with `Elia.Store.update/2`, which keeps the rest of the file
+(STORE-43). A chat whose file was never written has no `created_at` to lose.
+`Enum.min/max` on `DateTime` structs is not chronological (struct term order), so
+compare with `DateTime.to_unix/2`.
