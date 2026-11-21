@@ -138,7 +138,7 @@ it.
 | [LLM providers](llm-providers.md) | `LLM` | Provider-neutral messages; Anthropic, OpenRouter and a local llama.cpp server backends |
 | [llama.cpp local provider](llamacpp-provider.md) | `LOCAL` | A local `llama-server` as a third provider: no API key, and Elia starts and stops it from a `.gguf` |
 | [Model selection](model-selection.md) | `MODEL` | Model picker, provider catalogs, per-turn selection |
-| [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks, and the Deployment section: what a deploy is doing, what it did, and going back |
+| [Settings and API keys](settings.md) | `CONF` | On-disk settings database, API key entry and checks, and the Deployment section: what a deploy is doing, what it did, going back, and pushing the trunk to `origin` |
 | [Skills registry](skills.md) | `SKILL` | Built-in and folder skills, system prompt, reload |
 | [Folder skills](folder-skills.md) | `FOLDER` | `skills/<name>/` with `SKILL.md` and script tools |
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
@@ -163,7 +163,7 @@ it.
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `await_task` waits for it and brings back what it said |
 | [Auto restart](auto-restart.md) | `RESTART` | `bin/serve` restarts the server after a crash, with backoff; the app is permanent; systemd user service |
-| [Deployment](deployment.md) | `DEPLOY` | A chat in Elia's own project works in the live tree and makes its own worktree, with `deps` and `_build` copied in, for a change it merges into the trunk; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone |
+| [Deployment](deployment.md) | `DEPLOY` | A chat in Elia's own project works in the live tree and makes its own worktree, with `deps` and `_build` copied in, for a change it merges into the trunk; a deploy from Settings brings `master` to `live` by hot reload or restart, reports its steps, checks the bundle it built, and can be undone, and the trunk can be pushed to `origin` |
 | [Worktree build cache](worktree-build-cache.md) | `BUILD` | Retired: the harness seeded each chat worktree it created with a copy of the live tree's build output; the chat copies `deps` and `_build` into its own worktree now (DEPLOY-29) |
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |

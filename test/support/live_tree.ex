@@ -132,6 +132,27 @@ defmodule Elia.LiveTree do
   """
   def push_to_trunk(path), do: git!(path, ["push", ".", "HEAD:" <> trunk()])
 
+  @doc """
+  Gives the tree an `origin` remote at `remote` — a bare repository, which this
+  makes there — with the trunk tracking it and nothing pushed from the tree yet,
+  so the tree has no `origin/master` ref of its own (DEPLOY-43). `git push
+  origin master` sends there. `remote` is a path of the caller's, so a test can
+  keep it outside the tree a jailed run holds (DEPLOY-42).
+
+      dir = Elia.LiveTree.create()
+      origin = Elia.LiveTree.origin(dir, Path.join(System.tmp_dir!(), "origin.git"))
+  """
+  @spec origin(binary(), binary()) :: binary()
+  def origin(dir, remote) do
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--quiet", "--bare"])
+    git!(remote, ["symbolic-ref", "HEAD", "refs/heads/" <> trunk()])
+    git!(dir, ["remote", "add", "origin", remote])
+    git!(dir, ["config", "branch.#{trunk()}.remote", "origin"])
+    git!(dir, ["config", "branch.#{trunk()}.merge", "refs/heads/" <> trunk()])
+    remote
+  end
+
   @doc "A change on a chat's branch, unique to the test, committed there."
   @spec work!(binary()) :: binary()
   def work!(path) do

@@ -52,6 +52,10 @@ defmodule Elia.Deploy do
   # first `npm install` on a cold cache is the slow one.
   @front_end_timeout :timer.minutes(10)
 
+  # How long pushing the trunk to `origin` may take (DEPLOY-42): the network
+  # again, and the same tree being sent over it.
+  @push_timeout :timer.minutes(5)
+
   # The bundle the browser loads, checked after the build (DEPLOY-24): the two
   # entry points the endpoint serves, named as they are under the assets
   # directory — which is also what the build stages them as (DEPLOY-31).
@@ -341,6 +345,92 @@ defmodule Elia.Deploy do
           {:ok, commits} -> {:ok, %{commits: commits, at: at, before: before && short(before)}}
           {:error, reason} -> {:error, reason}
         end
+    end
+  end
+
+  ## Pushing the trunk to origin (DEPLOY-41 to DEPLOY-43)
+
+  @doc """
+  Pushes the trunk to the `origin` remote (DEPLOY-41).
+
+  A push is no deploy: it merges nothing, runs no suite, loads nothing and is
+  never rolled back. It is not an operation of the runner either
+  (`Elia.Deploy.Runner`), so it takes no step of a deploy and writes nothing to
+  the record (DEPLOY-21, DEPLOY-23).
+
+  The one command it runs is unjailed (DEPLOY-42): the user's credentials — a
+  credential store, an SSH key, `~/.gitconfig` — are outside a command's jail on
+  purpose (ISOL-5), so a jailed push could not authenticate. It is a fixed
+  command with nothing of the caller's in it, and it is told not to prompt, so a
+  missing credential comes back as git's message rather than waiting on a
+  terminal that is not there.
+
+  `{:ok, message}` — git's own output, or that `origin` already had the trunk —
+  or `{:error, reason}` for a refusal: a non-fast-forward because `origin` has
+  commits the trunk does not, a remote that is not there, a credential that did
+  not work.
+  """
+  @spec push(binary()) :: {:ok, binary()} | {:error, binary()}
+  def push(root \\ Workspace.runtime_root()) do
+    opts = [
+      jail: false,
+      timeout: @push_timeout,
+      env: [{"GIT_TERMINAL_PROMPT", "0"}],
+      max_output: @record_text
+    ]
+
+    case git(root, ["push", "origin", @trunk], opts) do
+      {:ok, output} -> {:ok, pushed(output)}
+      {:error, reason} -> {:error, "Could not push #{@trunk} to origin.\n\n" <> reason}
+    end
+  end
+
+  # DEPLOY-41: what the push did, as the page reports it. git answers "nothing
+  # to send" in the same shape as it answers that it sent something, so the
+  # up-to-date case is told apart rather than shown as a push that moved bytes.
+  defp pushed(output) do
+    if output =~ "Everything up-to-date" do
+      "origin already had #{@trunk}: nothing to push."
+    else
+      "Pushed #{@trunk} to origin.\n\n" <> output
+    end
+  end
+
+  @doc """
+  How the trunk stands against the `origin` remote (DEPLOY-43): the commits on
+  `master` that the tree's own `origin/master` remote-tracking ref does not
+  have, `nil` when there is no such ref yet — nothing has been pushed from this
+  tree — or `{:error, reason}` when the repository has no `origin` remote to
+  push to.
+
+  It reads the ref the tree already holds and fetches nothing, so asking costs
+  no network request; a push updates that ref (DEPLOY-41).
+  """
+  @spec origin(binary()) :: {:ok, %{pending: non_neg_integer() | nil}} | {:error, binary()}
+  def origin(root \\ Workspace.runtime_root()) do
+    case git(root, ["remote", "get-url", "origin"]) do
+      {:ok, _url} -> pending_commits(root)
+      {:error, _no_remote} -> {:error, no_origin()}
+    end
+  end
+
+  defp no_origin do
+    "This repository has no origin remote to push to: add one with " <>
+      "`git remote add origin <url>`."
+  end
+
+  # DEPLOY-43: a tree that has never pushed has no `origin/master` of its own,
+  # and what a push would send is then the whole trunk.
+  defp pending_commits(root) do
+    case git(root, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/#{@trunk}"]) do
+      {:ok, _sha} ->
+        case git(root, ["rev-list", "--count", "origin/#{@trunk}..#{@trunk}"]) do
+          {:ok, count} -> {:ok, %{pending: String.to_integer(count)}}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, _none} ->
+        {:ok, %{pending: nil}}
     end
   end
 

@@ -2360,5 +2360,110 @@ defmodule Elia.DeploymentTest do
     assert reason =~ "0000000"
   end
 
+  ## Pushing the trunk to origin (DEPLOY-41 to DEPLOY-43)
+
+  # DEPLOY-41, DEPLOY-43: the trunk goes to `origin` with one `git push origin
+  # master`, the tree's own `origin/master` ref follows it, and nothing of a
+  # deploy happens: no step, no record entry, no load, no rollback.
+  test "push/1 sends the trunk to origin", %{tree: tree} do
+    remote = remote(tree)
+
+    # DEPLOY-43: nothing has been pushed from this tree, so it has no
+    # `origin/master` of its own — and what a push would send is the trunk.
+    assert {:ok, %{pending: nil}} = Deploy.origin()
+
+    assert {:ok, message} = Deploy.push()
+    assert message =~ "Pushed master to origin"
+    assert message =~ "master -> master"
+    assert LiveTree.sha(remote, "master") == LiveTree.sha(tree, "master")
+
+    # DEPLOY-43: the ref the tree holds has caught up with the remote.
+    assert {:ok, %{pending: 0}} = Deploy.origin()
+
+    # DEPLOY-41: a push is no deploy — git says it had nothing to send, and the
+    # runner took no step and the record nothing (DEPLOY-21, DEPLOY-23).
+    assert {:ok, message} = Deploy.push()
+    assert message =~ "nothing to push"
+    assert Runner.running() == nil
+    assert Runner.last() == nil
+    assert Deploy.read_record(tree) == %{running: nil, last: nil, loaded: []}
+  end
+
+  # DEPLOY-43: a tree whose trunk the remote does not have at all — nothing has
+  # ever been pushed from it — says so rather than counting commits.
+  test "origin/1 counts what origin is missing (DEPLOY-43)", %{tree: tree} do
+    remote(tree)
+    {_, 0} = git(tree, ["checkout", "master"])
+    trunk_commit(tree, "feat: a change nobody pushed")
+
+    assert {:ok, %{pending: nil}} = Deploy.origin()
+
+    assert {:ok, _message} = Deploy.push()
+    trunk_commit(tree, "feat: one more change")
+    assert {:ok, %{pending: 1}} = Deploy.origin()
+  end
+
+  # DEPLOY-41, DEPLOY-43: a repository with no `origin` remote has nothing to
+  # push to and says so, rather than failing obscurely.
+  test "a tree with no origin remote is reported as such (DEPLOY-41)" do
+    assert {:error, reason} = Deploy.origin()
+    assert reason =~ "no origin remote"
+
+    assert {:error, message} = Deploy.push()
+    assert message =~ "Could not push master to origin"
+  end
+
+  # DEPLOY-41: a push the remote refuses — there, because origin has commits the
+  # trunk does not — comes back as the page's own message rather than as a
+  # crash: what the section next to the control reports.
+  test "a refused push is reported (DEPLOY-41)", %{tree: tree} do
+    remote(tree)
+    {_, 0} = git(tree, ["checkout", "master"])
+    trunk_commit(tree, "feat: the trunk's change")
+    assert {:ok, _message} = Deploy.push()
+
+    # The trunk is moved back behind what origin now has: the push a remote
+    # refuses, because it would drop commits.
+    LiveTree.git!(tree, ["reset", "--hard", "HEAD~1"])
+
+    assert {:error, reason} = Deploy.push()
+    assert reason =~ "Could not push master to origin"
+    assert reason =~ "rejected"
+  end
+
+  # DEPLOY-42, ISOL-5: the push is the one thing Elia runs outside the jail,
+  # because what it needs — a credential store, an SSH key, `~/.gitconfig` — is
+  # outside it on purpose. The remote is outside the tree the jail holds, so a
+  # jailed `git push` could not reach it (ISOL-13): this passes only because the
+  # push leaves the jail.
+  @tag skip:
+         if(Elia.Shell.available?(),
+           do: false,
+           else: "bubblewrap is not available (ISOL-12)"
+         )
+  test "the push runs outside the jail (DEPLOY-42)", %{tree: tree} do
+    # The suite runs commands unjailed (config/test.exs, ISOL-24); a jailed call
+    # is the exception, turned on for the calls that ask for it.
+    previous = Application.get_env(:elia, Elia.Shell)
+    Application.put_env(:elia, Elia.Shell, Keyword.put(previous, :jail, true))
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+    remote = remote(tree)
+    trunk_commit(tree, "feat: a change to send")
+
+    assert Elia.Shell.jailed?()
+    assert {:ok, message} = Deploy.push()
+    assert message =~ "Pushed master to origin"
+    assert LiveTree.sha(remote, "master") == LiveTree.sha(tree, "master")
+  end
+
+  # A bare repository outside the live tree, the way a remote is: what a jail
+  # does not hold (ISOL-13), and what the push still has to reach (DEPLOY-42).
+  defp remote(tree) do
+    path = Path.join(System.tmp_dir!(), "elia-origin-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf!(path) end)
+    LiveTree.origin(tree, path)
+  end
+
   defp slice(sha), do: String.slice(sha, 0, 7)
 end
