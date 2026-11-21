@@ -1490,6 +1490,22 @@ defmodule Elia.AgentTest do
     assert %{settings: %{model: nil, jail: true, effort: nil}, messages: []} = Agent.snapshot(id)
   end
 
+  # SESS-47, NET-1: a session that outlived the hot reload which added the
+  # network setting reads it at its default rather than crashing on it — the
+  # key a page opening the chat asked for (SESS-7).
+  test "a session whose settings map predates a key reads it as its default", %{id: id} do
+    [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)
+
+    # The map such a session holds: SESS-41's five keys, its own jail setting
+    # among them, and no network setting at all.
+    :sys.replace_state(pid, fn state ->
+      %{state | settings: Map.put(Map.delete(state.settings, :network), :jail, false)}
+    end)
+
+    assert %{settings: %{network: network, jail: false}} = Agent.snapshot(id)
+    assert network == Elia.Net.default()
+  end
+
   # SESS-15, INTR-1
   test "a session with state from before :turn existed is upgraded", %{id: id} do
     [{pid, _}] = Registry.lookup(Elia.Agent.Registry, id)

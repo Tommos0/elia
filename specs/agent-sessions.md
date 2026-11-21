@@ -95,6 +95,13 @@ every view.
   process that is running the turn, so a missing one defaults to `nil`; the
   pending question (SESS-34) has nothing saved to load either, and takes its
   default, which is none.
+- **SESS-47** A state that outlived a hot reload which added a key to the one
+  `settings` map (SESS-41, HOT-5) reads the key it doesn't have as that
+  setting's own default rather than crashing: the map is read with the defaults
+  filled in under what the state holds, so a page opening the chat, a snapshot
+  (SESS-7) or a turn that asks for the new setting works from the default until
+  the chat sets it, and the state's next change writes the whole map (SESS-41).
+  A key the state already has is kept (SESS-15).
 - **SESS-16** A session loads its saved auto-approved tools on start (STORE-15),
   or, for a chat that is new, starts with every tool that can need approval
   (APPR-14, APPR-13).
@@ -465,7 +472,7 @@ and a file written now is what an older version wrote.
   held, a pause recorded and the stop a turn ends in, the loop and command a
   dying session ends, and the saves themselves: the interval, a save that fails
   and the retry after it — SESS-2 to SESS-8,
-  SESS-10 to SESS-12, SESS-13, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-46).
+  SESS-10 to SESS-12, SESS-13, SESS-14 to SESS-32, SESS-34, SESS-37 to SESS-47).
 - No test: SESS-1 — that `ensure_started/2` returns the session already running
   for a chat id rather than starting a second one for it is relied on (a page
   opens a chat whose session a test started,

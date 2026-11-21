@@ -854,7 +854,14 @@ defmodule Elia.Agent.Session do
   # upgraded on its next call (SESS-15); one that reaches this without it from
   # somewhere else (a message from a loop rather than a call, say) falls back to
   # each setting's default, as it did when they were fields of their own.
-  defp settings(state), do: Map.get(state, :settings, default_settings())
+  # SESS-47: the defaults fill in a key the state's map doesn't have as well, so
+  # a session that outlived a hot reload which added one (HOT-5) reads the new
+  # setting at its default rather than crashing on it, and its next change
+  # writes the whole map.
+  defp settings(state) do
+    Map.merge(default_settings(), Map.get(state, :settings, %{}))
+  end
+
   defp default_settings, do: %__MODULE__{}.settings
 
   # MODEL-16: the selection a chat pins at its first turn goes into the same map
