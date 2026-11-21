@@ -1390,7 +1390,7 @@ defmodule Elia.DeploymentTest do
     |> then(&Jason.decode!(&1 |> elem(1)))
   end
 
-  # DEPLOY-4, PROJ-22
+  # DEPLOY-4, EXPL-15
   test "the file explorer browses the live tree for Elia's own project", %{tree: tree} do
     assert {:ok, entries} = Explorer.list("", Projects.harness().folder)
     assert Enum.any?(entries, &(&1.name == "mix.exs"))

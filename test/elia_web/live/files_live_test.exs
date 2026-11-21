@@ -16,6 +16,21 @@ defmodule EliaWeb.FilesLiveTest do
   # A URL naming a path and nothing else, as the page's own links build it.
   defp path_url(path), do: "/files?" <> URI.encode_query(%{path: path})
 
+  # EXPL-15: the page browses the open project (PROJ-28), so a test that wants
+  # another one makes it the open one; Elia's own goes back afterwards.
+  defp open_project(name, folder) do
+    {:ok, project} = Projects.create(name, folder)
+    :ok = Projects.set_default(project.id)
+    on_exit(fn -> Elia.Settings.delete(:default_project) end)
+    project
+  end
+
+  # EXPL-29: choose a project from the header's switcher.
+  defp switch_project(view, id) do
+    view |> element("#project-switcher") |> render_click()
+    view |> element("#project-option-#{id}") |> render_click()
+  end
+
   setup do
     File.rm_rf!(in_root(@dir))
     File.mkdir_p!(in_root("#{@dir}/inner"))
@@ -211,11 +226,12 @@ defmodule EliaWeb.FilesLiveTest do
     assert_patch(view, "/files")
   end
 
-  # EXPL-15, EXPL-16
-  test "browses one project and switches with the picker", %{conn: conn} do
-    # Both roots share the relative path "sub", so switching can keep it; the
-    # project also has a path Elia's own root doesn't, to check the fallback.
-    File.rm_rf!(in_root(@project))
+  # EXPL-15, EXPL-16, EXPL-29: the page browses the open project (PROJ-28) and
+  # has no project control of its own; the header's switcher switches it to
+  # another project in place, keeping the path in view when that project has it.
+  test "browses the open project and switches to another in place", %{conn: conn} do
+    # A project whose folder holds a path Elia's own root does not, to check the
+    # fallback, and one both of them have, to check the path is kept.
     File.mkdir_p!(in_root("#{@project}/sub"))
     File.mkdir_p!(in_root("#{@project}/onlyproj"))
     File.write!(in_root("#{@project}/sub/keep.txt"), "kept\n")
@@ -223,95 +239,110 @@ defmodule EliaWeb.FilesLiveTest do
     File.write!(in_root("#{@project}/note.txt"), "hello project\n")
     File.mkdir_p!(in_root("sub"))
     File.write!(in_root("sub/keep.txt"), "kept\n")
-    {:ok, project} = Projects.create("Swap", in_root(@project))
+    project = open_project("Swap", in_root(@project))
 
     on_exit(fn ->
       File.rm_rf!(in_root(@project))
       File.rm_rf!(in_root("sub"))
-      Projects.delete(project.id)
     end)
 
-    # EXPL-15: name the project and list its folder relative to it.
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    # EXPL-15: the open project is named, its folder is listed relative to it,
+    # and a file of it is read.
+    {:ok, view, _} = live(conn, ~p"/files")
     assert has_element?(view, "#project-name", "Swap")
-    assert has_element?(view, "#project-picker")
+    refute has_element?(view, "#project-picker")
     assert has_element?(view, "[data-entry='sub']")
     assert has_element?(view, "[data-entry='note.txt']")
     refute has_element?(view, "[data-entry='#{@dir}']")
 
-    # The viewer reads a file from the project.
     view |> element("[data-entry='note.txt']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "note.txt"}}")
+    assert_patch(view, "/files?path=note.txt")
     assert has_element?(view, "#file-path", "note.txt")
     assert has_element?(view, "#file-content", "hello project")
 
-    # EXPL-16: switching keeps the current path when it exists in the new one.
+    # EXPL-29: switching keeps the path in view when the new project has it.
     view |> element("[data-entry='sub']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "sub"}}")
+    assert_patch(view, "/files?path=sub")
 
-    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    switch_project(view, "harness")
     assert_patch(view, "/files?path=sub")
     assert has_element?(view, "#project-name", "Elia")
     assert has_element?(view, "[data-entry='sub/keep.txt']")
 
-    # Back in the project, a path that only exists there falls back to the root.
-    view |> element("form#project-switch") |> render_change(%{"project" => project.id})
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "sub"}}")
+    switch_project(view, project.id)
+    assert_patch(view, "/files?path=sub")
 
+    # And falls back to the new project's root when it does not (EXPL-9).
     view |> element("#parent-dir") |> render_click()
     view |> element("[data-entry='onlyproj']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "onlyproj"}}")
+    assert_patch(view, "/files?path=onlyproj")
 
-    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    switch_project(view, "harness")
     assert_patch(view, "/files")
     assert has_element?(view, "[data-entry='#{@dir}']")
   end
 
-  # EXPL-15
-  test "an unknown or missing project browses Elia's own", %{conn: conn} do
-    for url <- [~p"/files", ~p"/files?#{%{project: "nope"}}"] do
+  # EXPL-15: an older URL's `project` parameter is ignored — the page browses
+  # the open project whatever the URL says.
+  test "an old project parameter is ignored", %{conn: conn} do
+    File.mkdir_p!(in_root(@project))
+    File.write!(in_root("#{@project}/note.txt"), "hello project\n")
+    project = open_project("Swap", in_root(@project))
+    on_exit(fn -> File.rm_rf!(in_root(@project)) end)
+
+    for url <- [
+          ~p"/files",
+          ~p"/files?#{%{project: project.id}}",
+          ~p"/files?#{%{project: "nope"}}"
+        ] do
       {:ok, view, _} = live(conn, url)
-      assert has_element?(view, "#project-name", "Elia")
-      assert has_element?(view, "[data-entry='#{@dir}']")
+      assert has_element?(view, "#project-name", "Swap")
+      assert has_element?(view, "[data-entry='note.txt']")
     end
   end
 
-  # EXPL-17, EXPL-18: a chat's own workspace can be browsed — its project's
-  # folder, which for a chat in Elia's own project is the live tree (PROJ-12,
-  # DEPLOY-1), since the harness makes no worktree for it — and the page names
-  # the chat it browses.
-  test "browses a chat's own workspace", %{conn: conn} do
-    chat = Elia.Agent.new_id()
-    File.mkdir_p!(in_root("inner"))
-    File.write!(in_root("inner/only_here.ex"), "defmodule OnlyHere do\nend\n")
-    :ok = Elia.Store.save(chat, [], project: "harness", title: "Where the file is")
+  # EXPL-17, EXPL-18: a chat in view browses that chat's own workspace, which is
+  # where a file the agent mentions in it is opened (FLINK-5), and the page says
+  # so; switching in the header leaves the chat behind (EXPL-29).
+  test "browses the chat in view's own workspace", %{conn: conn} do
+    folder = in_root("#{@project}/project")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    File.write!(Path.join(folder, "mine.txt"), "the chat's own\n")
+    {:ok, project} = Projects.create("A chat's project", folder)
 
     on_exit(fn ->
-      Elia.Store.delete(chat)
-      File.rm_rf!(in_root("inner"))
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
     end)
 
+    chat = Elia.Agent.new_id()
+    :ok = Elia.Store.save(chat, [], project: project.id, title: "Where the file is")
+    on_exit(fn -> Elia.Store.delete(chat) end)
+
+    open = open_project("Another", in_root(@project))
+
+    # EXPL-17: the chat's workspace wins over the open project, and the page
+    # says whose workspace it is.
     {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat}}")
-    assert has_element?(view, "#project-name", "Elia")
+    assert has_element?(view, "#project-name", "A chat's project")
     assert has_element?(view, "#workspace-note", "Where the file is")
+    assert has_element?(view, "[data-entry='mine.txt']")
+    assert has_element?(view, "#workspace-note[title='#{folder}']")
 
-    view |> element("[data-entry='inner']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{chat: chat, path: "inner"}}")
-    assert has_element?(view, "[data-entry='inner/only_here.ex']")
+    view |> element("[data-entry='mine.txt']") |> render_click()
+    assert_patch(view, "/files?chat=#{chat}&path=mine.txt")
+    assert has_element?(view, "#file-content", "the chat's own")
 
-    view |> element("[data-entry='inner/only_here.ex']") |> render_click()
-    assert has_element?(view, "#file-content", "defmodule OnlyHere do")
-
-    # Back to the directory, so the picker's current path is one the project has
-    # too (EXPL-16, EXPL-18): it browses that project's folder and leaves the
-    # chat behind.
-    view |> element("#breadcrumbs a", "inner") |> render_click()
-    assert_patch(view, ~p"/files?#{%{chat: chat, path: "inner"}}")
-
-    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
-    assert_patch(view, "/files?path=inner")
+    # EXPL-29: the switcher opens its project and leaves the chat behind.
+    switch_project(view, "harness")
+    assert_patch(view, "/files")
     refute has_element?(view, "#workspace-note")
-    assert has_element?(view, "[data-entry='inner/only_here.ex']")
+    assert has_element?(view, "#project-name", "Elia")
+    assert has_element?(view, "[data-entry='#{@dir}']")
+
+    switch_project(view, open.id)
+    assert has_element?(view, "#project-name", "Another")
   end
 
   # EXPL-17: a chat that isn't a saved one is ignored, and the project decides.
@@ -323,35 +354,61 @@ defmodule EliaWeb.FilesLiveTest do
     end
   end
 
-  # EXPL-19: a project whose folder is gone shows its own message — in place of
-  # EXPL-9's path message — and leaves the page usable, instead of crashing on
-  # the listing that couldn't be read.
-  test "a project folder that is gone shows a message and keeps the picker", %{conn: conn} do
+  # EXPL-19, EXPL-29: a project whose folder is gone shows its own message — in
+  # place of EXPL-9's path message — and the header's switcher is the way out.
+  test "a project folder that is gone shows a message the switcher can leave", %{conn: conn} do
     folder = in_root("#{@project}_gone")
     File.rm_rf!(folder)
     File.mkdir_p!(folder)
     {:ok, project} = Projects.create("Gone", folder)
     File.rm_rf!(folder)
+    :ok = Projects.set_default(project.id)
 
     on_exit(fn ->
+      Elia.Settings.delete(:default_project)
       File.rm_rf!(folder)
       Projects.delete(project.id)
     end)
 
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    {:ok, view, _} = live(conn, ~p"/files")
 
     assert has_element?(view, "#root-error", folder)
     assert has_element?(view, "#project-name", "Gone")
-    assert has_element?(view, "#project-picker")
+    refute has_element?(view, "#project-picker")
     refute has_element?(view, "#file-error")
     refute has_element?(view, "[data-entry]")
     refute render(view) =~ "Empty directory"
 
-    # The picker is the way out: a project that is there browses as usual.
-    view |> element("form#project-switch") |> render_change(%{"project" => "harness"})
+    switch_project(view, "harness")
     assert_patch(view, "/files")
     refute has_element?(view, "#root-error")
     assert has_element?(view, "[data-entry='#{@dir}']")
+  end
+
+  # EXPL-21: a project whose folder is a link that leads nowhere reports its
+  # root the way any other root that can't be listed does.
+  test "a project whose folder is a broken symlink shows the root message", %{conn: conn} do
+    base = in_root("#{@project}_broken")
+    File.rm_rf!(base)
+    File.mkdir_p!(Path.join(base, "real"))
+    File.ln_s!("real", Path.join(base, "link"))
+    folder = Path.join(base, "link")
+    {:ok, project} = Projects.create("Broken link", folder)
+    File.rm_rf!(Path.join(base, "real"))
+    :ok = Projects.set_default(project.id)
+
+    on_exit(fn ->
+      Elia.Settings.delete(:default_project)
+      File.rm_rf!(base)
+      Projects.delete(project.id)
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/files")
+    assert has_element?(view, "#root-error", folder)
+    assert has_element?(view, "#project-name", "Broken link")
+    refute has_element?(view, "#project-picker")
+    refute has_element?(view, "#file-error")
+    refute has_element?(view, "[data-entry]")
   end
 
   # EXPL-19: a root that is not a directory says so rather than crashing.
@@ -362,15 +419,17 @@ defmodule EliaWeb.FilesLiveTest do
     {:ok, project} = Projects.create("A file", folder)
     File.rm_rf!(folder)
     File.write!(folder, "not a folder")
+    :ok = Projects.set_default(project.id)
 
     on_exit(fn ->
+      Elia.Settings.delete(:default_project)
       File.rm_rf!(folder)
       Projects.delete(project.id)
     end)
 
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    {:ok, view, _} = live(conn, ~p"/files")
     assert has_element?(view, "#root-error", folder)
-    assert has_element?(view, "#project-picker")
+    refute has_element?(view, "#project-picker")
   end
 
   # EXPL-19, EXPL-17: a chat whose project's folder is gone reports it the same
@@ -396,32 +455,6 @@ defmodule EliaWeb.FilesLiveTest do
     assert has_element?(view, "#project-name", "Gone chat")
   end
 
-  # PROJ-27: a project whose folder is gone stays in the picker and is marked,
-  # so it isn't mistaken for a deleted one.
-  test "the picker marks a project whose folder is gone", %{conn: conn} do
-    folder = in_root("#{@project}_marked")
-    File.rm_rf!(folder)
-    File.mkdir_p!(folder)
-    {:ok, project} = Projects.create("Unmounted", folder)
-    File.rm_rf!(folder)
-
-    on_exit(fn ->
-      File.rm_rf!(folder)
-      Projects.delete(project.id)
-    end)
-
-    {:ok, view, _} = live(conn, ~p"/files")
-
-    assert has_element?(
-             view,
-             "#project-picker option[value='#{project.id}']",
-             "Unmounted (unavailable)"
-           )
-
-    assert has_element?(view, "#project-picker option[value='harness']", "Elia")
-    refute render(element(view, "#project-picker")) =~ "Elia (unavailable)"
-  end
-
   # EXPL-20: a project whose folder is itself a symlink to a directory is
   # browsed like any other, rather than reported as an unreadable root.
   test "a project whose folder is a symlink is browsed", %{conn: conn} do
@@ -432,13 +465,15 @@ defmodule EliaWeb.FilesLiveTest do
     File.write!(Path.join(base, "real/inner/deep.txt"), "deep")
     File.ln_s!("real", Path.join(base, "link"))
     {:ok, project} = Projects.create("Linked", Path.join(base, "link"))
+    :ok = Projects.set_default(project.id)
 
     on_exit(fn ->
+      Elia.Settings.delete(:default_project)
       File.rm_rf!(base)
       Projects.delete(project.id)
     end)
 
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
+    {:ok, view, _} = live(conn, ~p"/files")
     refute has_element?(view, "#root-error")
     assert has_element?(view, "#project-name", "Linked")
     assert has_element?(view, "[data-entry='inner']")
@@ -446,37 +481,13 @@ defmodule EliaWeb.FilesLiveTest do
     refute render(view) =~ "Empty directory"
 
     view |> element("[data-entry='note.txt']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "note.txt"}}")
+    assert_patch(view, "/files?path=note.txt")
     assert has_element?(view, "#file-content", "through the link")
 
     view |> element("[data-entry='inner']") |> render_click()
-    assert_patch(view, ~p"/files?#{%{project: project.id, path: "inner"}}")
+    assert_patch(view, "/files?path=inner")
     refute has_element?(view, "#root-error")
     assert has_element?(view, "[data-entry='inner/deep.txt']")
-  end
-
-  # EXPL-21: a project whose folder is a link that leads nowhere reports its
-  # root the way any other root that can't be listed does.
-  test "a project whose folder is a broken symlink shows the root message", %{conn: conn} do
-    base = in_root("#{@project}_broken")
-    File.rm_rf!(base)
-    File.mkdir_p!(Path.join(base, "real"))
-    File.ln_s!("real", Path.join(base, "link"))
-    folder = Path.join(base, "link")
-    {:ok, project} = Projects.create("Broken link", folder)
-    File.rm_rf!(Path.join(base, "real"))
-
-    on_exit(fn ->
-      File.rm_rf!(base)
-      Projects.delete(project.id)
-    end)
-
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id}}")
-    assert has_element?(view, "#root-error", folder)
-    assert has_element?(view, "#project-name", "Broken link")
-    assert has_element?(view, "#project-picker")
-    refute has_element?(view, "#file-error")
-    refute has_element?(view, "[data-entry]")
   end
 
   # EXPL-23, EXPL-26: a picture is a picture, not its bytes shown as text, and
@@ -559,18 +570,20 @@ defmodule EliaWeb.FilesLiveTest do
     File.mkdir_p!(folder)
     File.write!(Path.join(folder, "logo.png"), <<137, 80, 78, 71>>)
     {:ok, project} = Projects.create("Previews", folder)
+    :ok = Projects.set_default(project.id)
     chat = Elia.Agent.new_id()
     :ok = Elia.Store.save(chat, [], project: project.id, title: "The picture")
 
     on_exit(fn ->
+      Elia.Settings.delete(:default_project)
       Elia.Store.delete(chat)
       File.rm_rf!(folder)
       Projects.delete(project.id)
     end)
 
-    {:ok, view, _} = live(conn, ~p"/files?#{%{project: project.id, path: "logo.png"}}")
+    {:ok, view, _} = live(conn, ~p"/files?#{%{path: "logo.png"}}")
 
-    project_url = ~p"/files/raw?#{%{project: project.id, path: "logo.png"}}"
+    project_url = ~p"/files/raw?#{%{path: "logo.png"}}"
     assert has_element?(view, "img#file-preview[src='#{project_url}']")
 
     {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat, path: "logo.png"}}")

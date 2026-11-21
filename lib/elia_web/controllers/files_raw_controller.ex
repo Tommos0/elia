@@ -1,9 +1,9 @@
 defmodule EliaWeb.FilesRawController do
   @moduledoc """
   Serves the bytes a preview of the Files page is made of (EXPL-24): the file a
-  `path` parameter names in the workspace the page browses — a project's folder
-  (EXPL-15) or a chat's own (EXPL-17), resolved by `EliaWeb.FilesScope` — with
-  the content type its extension gives it (EXPL-22).
+  `path` parameter names in the workspace the page browses — the open project's
+  folder (EXPL-15) or a chat's own (EXPL-17), resolved by `EliaWeb.FilesScope` —
+  with the content type its extension gives it (EXPL-22).
 
   It reaches exactly what the page may show (EXPL-25): a previewable regular
   file of that workspace, reached without a symlink and outside a protected path

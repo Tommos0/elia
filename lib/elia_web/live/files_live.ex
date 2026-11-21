@@ -44,7 +44,7 @@ defmodule EliaWeb.FilesLive do
     # page's own parameters carry so the route serves the file it browsed.
     raw =
       case viewer do
-        {:preview, preview} -> raw_path(project, preview.path, chat)
+        {:preview, preview} -> raw_path(preview.path, chat)
         _ -> nil
       end
 
@@ -68,7 +68,6 @@ defmodule EliaWeb.FilesLive do
        chat: chat,
        chat_title: chat && Store.chat_title(chat),
        root: root,
-       projects: Elia.Projects.list(),
        dir: dir,
        entries: entries,
        selected: file,
@@ -97,7 +96,7 @@ defmodule EliaWeb.FilesLive do
   # the text shown (a truncated file's text is only what is shown), and one
   # that comes with no text at all (a preview, a binary file, a directory) —
   # so the file opens as it otherwise would. EXPL-28: it is never carried
-  # along, since `files_path/3` builds every other URL without it.
+  # along, since `files_path/2` builds every other URL without it.
   defp line(%{"line" => value}, %{content: content}) when is_binary(value) do
     count = content |> lines() |> length()
 
@@ -121,19 +120,32 @@ defmodule EliaWeb.FilesLive do
     end
   end
 
-  # EXPL-16, EXPL-18: switch the browsed project, keeping the current path when
-  # it exists in the new project (it falls back to that project's root
-  # otherwise). It leaves a chat in view behind, so the page browses the
-  # project's own folder.
+  # EXPL-29: the header's switcher (PROJ-29) makes the project chosen the open
+  # one and this page browses it, without leaving the page: the path in view is
+  # kept when that project has it and it falls back to the root when it doesn't
+  # (EXPL-9). It leaves a chat in view behind, so the page browses the project's
+  # own folder (EXPL-18).
   @impl true
-  def handle_event("pick_project", %{"project" => id}, socket) do
-    project = Elia.Projects.get(id) || Elia.Projects.harness()
-    path = socket.assigns.selected || socket.assigns.dir
-    path = if exists?(project, path), do: path, else: ""
-    {:noreply, push_patch(socket, to: files_path(project, path, nil))}
+  def handle_event("switch_project", %{"project" => id}, socket) do
+    case Elia.Projects.get(id) do
+      nil ->
+        {:noreply, socket}
+
+      project ->
+        :ok = Elia.Projects.set_default(project.id)
+        path = socket.assigns.selected || socket.assigns.dir
+        path = if exists?(project, path), do: path, else: ""
+
+        # PROJ-29, PROJ-46: the header names the open project and wears its
+        # colour, so the chat list's state is read again with it — and the menu
+        # a project was chosen from closes.
+        socket = EliaWeb.ChatList.refresh(socket)
+        chat_list = %{socket.assigns.chat_list | projects_open: false}
+        {:noreply, push_patch(assign(socket, :chat_list, chat_list), to: files_path(path, nil))}
+    end
   end
 
-  # EXPL-16: only keep the current path when the new project has it; otherwise
+  # EXPL-29: only keep the current path when the new project has it; otherwise
   # fall back to that project's root.
   defp exists?(project, path) do
     with true <- path != "",
@@ -179,16 +191,15 @@ defmodule EliaWeb.FilesLive do
     |> Enum.map(fn {path, name} -> {name, path} end)
   end
 
-  # EXPL-15, EXPL-17: the default project's links stay param-free, so the URLs
-  # are stable; a chat in view is named instead of its project, which the page
-  # takes from the chat (EXPL-18).
-  defp scope_params(project, chat) do
-    params = if project.harness? or chat, do: %{}, else: %{project: project.id}
-    if chat, do: Map.put(params, :chat, chat), else: params
+  # EXPL-15, EXPL-17: the open project's links stay param-free — it is what the
+  # page browses, so naming it would say nothing — and a chat in view is named
+  # instead, which the page takes from the chat (EXPL-18).
+  defp scope_params(chat) do
+    if chat, do: %{chat: chat}, else: %{}
   end
 
-  defp files_path(project, path, chat) do
-    params = scope_params(project, chat)
+  defp files_path(path, chat) do
+    params = scope_params(chat)
     params = if path == "", do: params, else: Map.put(params, :path, path)
 
     if params == %{}, do: ~p"/files", else: ~p"/files?#{params}"
@@ -196,8 +207,8 @@ defmodule EliaWeb.FilesLive do
 
   # EXPL-24, EXPL-26: the route that serves a preview's bytes takes the same
   # parameters as the page, so it serves the file the page is showing.
-  defp raw_path(project, path, chat) do
-    ~p"/files/raw?#{Map.put(scope_params(project, chat), :path, path)}"
+  defp raw_path(path, chat) do
+    ~p"/files/raw?#{Map.put(scope_params(chat), :path, path)}"
   end
 
   defp lines(content) do
@@ -228,12 +239,6 @@ defmodule EliaWeb.FilesLive do
 
   defp root_error_message(_reason, root), do: "This project's folder can't be read: #{root}"
 
-  # PROJ-27: a project whose folder is gone is marked rather than dropped from
-  # the picker, since the folder may only be temporarily away.
-  defp project_label(project) do
-    if File.dir?(project.folder), do: project.name, else: project.name <> " (unavailable)"
-  end
-
   # EXPL-8, EXPL-23: a preview has no text, so it has no line count, gutter or
   # language to prepare either.
   defp text_assigns(assigns) do
@@ -263,7 +268,12 @@ defmodule EliaWeb.FilesLive do
       |> text_assigns()
 
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} notifications={@notifications}>
+    <Layouts.app
+      flash={@flash}
+      chats={@chat_list}
+      notifications={@notifications}
+      project_switch={:switch}
+    >
       <div class="flex h-full flex-col lg:flex-row">
         <aside
           id="file-list"
@@ -290,30 +300,18 @@ defmodule EliaWeb.FilesLive do
                 <span class="truncate">{@chat_title}</span>
               </span>
             </div>
-            <form id="project-switch" phx-change="pick_project">
-              <select
-                id="project-picker"
-                name="project"
-                aria-label="Project"
-                class="max-w-40 rounded-lg border border-base-300 bg-base-200/50 px-2 py-1 text-xs outline-none transition focus:border-primary focus:bg-base-100"
-              >
-                <option :for={p <- @projects} value={p.id} selected={p.id == @project.id}>
-                  {project_label(p)}
-                </option>
-              </select>
-            </form>
           </div>
           <nav
             id="breadcrumbs"
             aria-label="Breadcrumb"
             class="flex flex-wrap items-center gap-x-1 border-b border-base-300 px-4 py-2.5 text-sm"
           >
-            <.link patch={files_path(@project, "", @chat)} class="font-medium hover:underline">
+            <.link patch={files_path("", @chat)} class="font-medium hover:underline">
               workspace
             </.link>
             <span :for={{name, path} <- @crumbs} class="flex items-center gap-1">
               <span class="text-base-content/40">/</span>
-              <.link patch={files_path(@project, path, @chat)} class="hover:underline">{name}</.link>
+              <.link patch={files_path(path, @chat)} class="hover:underline">{name}</.link>
             </span>
           </nav>
 
@@ -321,7 +319,7 @@ defmodule EliaWeb.FilesLive do
             <li :if={@dir != ""}>
               <.link
                 id="parent-dir"
-                patch={files_path(@project, parent(@dir), @chat)}
+                patch={files_path(parent(@dir), @chat)}
                 class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200"
               >
                 <.icon name="hero-arrow-uturn-left" class="size-4 text-base-content/50" /> ..
@@ -337,7 +335,7 @@ defmodule EliaWeb.FilesLive do
               <.link
                 :if={entry.type in [:dir, :file]}
                 data-entry={entry.path}
-                patch={files_path(@project, entry.path, @chat)}
+                patch={files_path(entry.path, @chat)}
                 aria-current={@selected == entry.path && "true"}
                 class={[
                   "flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-base-200",

@@ -58,6 +58,15 @@ defmodule EliaWeb.Layouts do
   # bell.
   attr :notifications, :map, required: true, doc: "the notification bell's state (NOTIF-5)"
 
+  # PROJ-29, EXPL-29: what choosing a project in the header does — opens its
+  # chat list (`:navigate`), or switches the page it is on in place (`:switch`),
+  # which is what the Files page asks for: it has no project control of its own
+  # (EXPL-16).
+  attr :project_switch, :atom,
+    default: :navigate,
+    values: [:navigate, :switch],
+    doc: "what the header's project switcher does (PROJ-29, EXPL-29)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -95,6 +104,7 @@ defmodule EliaWeb.Layouts do
             projects={@chats.projects}
             open={@chats.open_project}
             menu={@chats.projects_open}
+            switch={@project_switch}
           />
         </div>
         <div class="flex min-w-0 items-center gap-0.5 sm:gap-2">
@@ -179,11 +189,17 @@ defmodule EliaWeb.Layouts do
 
   attr :menu, :boolean, default: false, doc: "whether the menu is open (PROJ-29)"
 
+  attr :switch, :atom,
+    default: :navigate,
+    values: [:navigate, :switch],
+    doc: "what choosing a project does (PROJ-29, EXPL-29)"
+
   # PROJ-29, PROJ-30, UI-94: the open project beside the logo — its name where
   # the header used to show the app's own — and the menu it opens: every project,
   # the open one marked `data-open="true"`, and, below them, the entry to the
   # projects page (PROJ-23), where a project is created and deleted. Choosing a
-  # project opens it and its chat list (PROJ-8, PROJ-28, UI-77). The control is
+  # project opens it and its chat list (PROJ-8, PROJ-28, UI-77) — or, on a page
+  # that switches in place, opens it and browses it there (EXPL-29). The control is
   # drawn like the settings page's pickers: the trigger asks to close while the
   # menu is open (so a press on it is not also a press outside), and the menu
   # closes on Escape and on a press outside it. Its layer is the notification
@@ -218,24 +234,12 @@ defmodule EliaWeb.Layouts do
         phx-key="Escape"
         class="absolute top-full left-0 z-40 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl shadow-base-content/5 motion-safe:animate-[picker-in_120ms_ease-out]"
       >
-        <.link
+        <.project_option
           :for={project <- @projects}
-          navigate={~p"/chats?project=#{project.id}"}
-          id={"project-option-#{project.id}"}
-          data-open={to_string(project.id == @open.id)}
-          class={[
-            "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-base-200",
-            project.id == @open.id && "font-medium"
-          ]}
-        >
-          <span
-            id={"project-swatch-#{project.id}"}
-            class="size-2.5 shrink-0 rounded-full"
-            style={"background-color: #{Projects.color(project).hex}"}
-          />
-          <span class="min-w-0 flex-1 truncate">{project.name}</span>
-          <.icon :if={project.id == @open.id} name="hero-check" class="size-4 shrink-0" />
-        </.link>
+          project={project}
+          open={@open}
+          switch={@switch}
+        />
         <div class="my-1 border-t border-base-300"></div>
         <.link
           navigate={~p"/projects"}
@@ -246,6 +250,62 @@ defmodule EliaWeb.Layouts do
         </.link>
       </div>
     </div>
+    """
+  end
+
+  # PROJ-29, EXPL-29: one project in the switcher's menu — a link that opens
+  # that project and its chat list, or, where the page switches in place, a
+  # button that asks the page to switch to it without leaving.
+  attr :project, :map, required: true
+  attr :open, :map, required: true
+  attr :switch, :atom, required: true
+
+  defp project_option(assigns) do
+    ~H"""
+    <.link
+      :if={@switch == :navigate}
+      navigate={~p"/chats?project=#{@project.id}"}
+      id={"project-option-#{@project.id}"}
+      data-open={to_string(@project.id == @open.id)}
+      class={project_option_class(@project, @open)}
+    >
+      <.project_option_body project={@project} open={@open} />
+    </.link>
+    <button
+      :if={@switch == :switch}
+      type="button"
+      phx-click="switch_project"
+      phx-value-project={@project.id}
+      id={"project-option-#{@project.id}"}
+      data-open={to_string(@project.id == @open.id)}
+      class={project_option_class(@project, @open)}
+    >
+      <.project_option_body project={@project} open={@open} />
+    </button>
+    """
+  end
+
+  defp project_option_class(project, open) do
+    [
+      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-base-200",
+      project.id == open.id && "font-medium"
+    ]
+  end
+
+  # PROJ-47: the project's colour stands beside its name, in the swatch the
+  # header's icon is painted in (PROJ-46).
+  attr :project, :map, required: true
+  attr :open, :map, required: true
+
+  defp project_option_body(assigns) do
+    ~H"""
+    <span
+      id={"project-swatch-#{@project.id}"}
+      class="size-2.5 shrink-0 rounded-full"
+      style={"background-color: #{Projects.color(@project).hex}"}
+    />
+    <span class="min-w-0 flex-1 truncate">{@project.name}</span>
+    <.icon :if={@project.id == @open.id} name="hero-check" class="size-4 shrink-0" />
     """
   end
 

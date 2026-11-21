@@ -52,8 +52,7 @@ project's (PROJ-42, PROJ-46).
   else Elia's own project. `set_default/1` with an unknown id leaves the
   default alone.
 - **PROJ-27** A project whose folder is no longer there stays in the registry
-  and is listed, and its chats keep it (PROJ-7, PROJ-9); the Files page's picker
-  (`#project-picker`, EXPL-16) marks it as unavailable.
+  and is listed, and its chats keep it (PROJ-7, PROJ-9).
 
 ### Chats and projects
 
@@ -123,10 +122,10 @@ project's (PROJ-42, PROJ-46).
 
 ### The file explorer
 
-- **PROJ-22** The file explorer browses one project at a time:
+- ~~**PROJ-22** The file explorer browses one project at a time:
   `/files?project=<id>` (default: Elia's own), with paths relative to that
-  project's folder. `/files` with an unknown or missing project id uses Elia's
-  own.
+  project's folder.~~ Superseded by EXPL-15: the explorer browses the open
+  project (PROJ-28), with paths relative to its folder.
 
 ### Colours
 
@@ -165,6 +164,10 @@ project's (PROJ-42, PROJ-46).
   of chats (`#project-<id>`), a form to create one from a name (`#new-project`),
   and a delete button (`#delete-project-<id>`) for every project except Elia's.
   Deleting asks for confirmation.
+- **PROJ-48** A project's row carries a Files button (`#project-files-<id>`) on
+  every project but Elia's own: pressing it makes that project the open one
+  (PROJ-8, PROJ-28) and opens the Files page (EXPL-6), which browses it
+  (EXPL-15).
 - ~~**PROJ-24** The chat sidebar groups chats by project: a header per project
   (`#project-header-<id>`) with the project's name and a "New chat" button
   (`#new-chat-<id>`) starting a chat in it (PROJ-26), and that project's chats
@@ -196,7 +199,8 @@ project's (PROJ-42, PROJ-46).
   (`#project-option-<id>`, in `list/0` order, PROJ-4), the open one marked with
   `data-open="true"`, and choosing one makes it the open project (PROJ-8,
   PROJ-28) and opens its chat list: `/chats` for that project (UI-77), which
-  resumes its most recent chat or starts a chat in it. The menu closes when a
+  resumes its most recent chat or starts a chat in it — except on the Files
+  page, which it switches in place instead (EXPL-29). The menu closes when a
   project is chosen, on Escape, and on a press outside it.
 - **PROJ-30** The switcher's menu ends with an entry (`#manage-projects-link`)
   leading to the projects page (PROJ-23), labelled for what that page holds —
@@ -260,9 +264,6 @@ project's (PROJ-42, PROJ-46).
   and so does a chat in Elia's own project, unless it makes one for itself
   (DEPLOY-1, DEPLOY-28).
 - Projects have no per-project model, provider or settings.
-- The Files page's project picker (EXPL-16) browses one project without opening
-  it: browsing another project's files leaves the open project, the header and
-  the chat list where they are.
 - Creating a project by its name (PROJ-34 to PROJ-38) makes a folder and a
   repository and nothing else: no remote, no branch chosen, no dependency and no
   scaffolding beyond `README.md` and `AGENTS.md`, and a folder that is already
@@ -321,7 +322,7 @@ indistinguishable afterwards.
   PROJ-1 to PROJ-9, PROJ-27, PROJ-31 to PROJ-38, PROJ-42 to PROJ-44).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
-  PROJ-3, PROJ-13, PROJ-14, PROJ-22).
+  PROJ-3, PROJ-13, PROJ-14).
 - `test/elia/skills_test.exs` (a project's own skills, re-read for every step —
   PROJ-18 to PROJ-21).
 - `test/elia/agent_test.exs` (a chat's project as its workspace, its system
@@ -329,9 +330,10 @@ indistinguishable afterwards.
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
-- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23;
-  creating from a name, the projects root control and what the page says after
-  a creation whose repository was not set up — PROJ-39 to PROJ-41).
+- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23; the
+  Files button in a project's row, PROJ-48; creating from a name, the projects
+  root control and what the page says after a creation whose repository was not
+  set up — PROJ-39 to PROJ-41).
 - `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).
@@ -346,4 +348,4 @@ indistinguishable afterwards.
 - `test/elia_web/live/dashboard_test.exs` (the projects card and the default
   project, PROJ-8, PROJ-9).
 - `test/elia_web/live/files_live_test.exs` (the project a page browses, and one
-  whose folder is gone marked in the picker — PROJ-12, PROJ-27).
+  whose folder is gone — PROJ-12, PROJ-27).

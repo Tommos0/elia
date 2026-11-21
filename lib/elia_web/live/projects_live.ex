@@ -98,6 +98,20 @@ defmodule EliaWeb.ProjectsLive do
     {:noreply, socket}
   end
 
+  # PROJ-48: the Files button opens that project's files, so it makes the
+  # project the open one first (PROJ-8, PROJ-28) — the Files page browses the
+  # open project and nothing else (EXPL-15).
+  def handle_event("open_files", %{"id" => id}, socket) do
+    case Projects.get(id) do
+      nil ->
+        {:noreply, socket}
+
+      project ->
+        :ok = Projects.set_default(project.id)
+        {:noreply, push_navigate(socket, to: ~p"/files")}
+    end
+  end
+
   # PROJ-45: a swatch stores the colour it names (PROJ-44); the automatic one
   # clears the stored colour, so the project goes back to the colour its name
   # derives (PROJ-43).
@@ -272,13 +286,16 @@ defmodule EliaWeb.ProjectsLive do
                   >
                     {project.chats} {if project.chats == 1, do: "chat", else: "chats"}
                   </span>
-                  <.link
+                  <button
                     :if={!project.harness?}
-                    href={~p"/files?#{%{project: project.id}}"}
+                    type="button"
+                    id={"project-files-#{project.id}"}
+                    phx-click="open_files"
+                    phx-value-id={project.id}
                     class="flex items-center gap-1.5 rounded-lg border border-base-300 px-3 py-1.5 text-xs font-medium transition hover:bg-base-200"
                   >
                     <.icon name="hero-folder" class="size-4" /> Files
-                  </.link>
+                  </button>
                   <button
                     :if={!project.harness?}
                     type="button"

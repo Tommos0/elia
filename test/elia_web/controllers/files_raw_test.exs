@@ -112,31 +112,32 @@ defmodule EliaWeb.FilesRawControllerTest do
     assert get(conn, ~p"/files/raw").status == 404
   end
 
-  # EXPL-15, EXPL-24: a project's own folder is what the route serves from.
-  test "serves a file of the project in view", %{conn: conn} do
+  # EXPL-15, EXPL-24: the open project's folder is what the route serves from.
+  test "serves a file of the open project", %{conn: conn} do
     folder = in_root("#{@dir}/project")
     File.rm_rf!(folder)
     File.mkdir_p!(folder)
     File.write!(Path.join(folder, "logo.png"), @png)
     {:ok, project} = Projects.create("Raw", folder)
+    :ok = Projects.set_default(project.id)
 
     on_exit(fn ->
+      Elia.Settings.delete(:default_project)
       File.rm_rf!(folder)
       Projects.delete(project.id)
     end)
 
-    conn = get(conn, ~p"/files/raw?#{%{project: project.id, path: "logo.png"}}")
+    conn = get(conn, ~p"/files/raw?#{%{path: "logo.png"}}")
     assert conn.status == 200
     assert conn.resp_body == @png
 
-    # The same path in Elia's own project is not that file.
+    # The same path in Elia's own project is not that file (EXPL-9).
+    Elia.Settings.delete(:default_project)
     assert get(conn, ~p"/files/raw?#{%{path: "logo.png"}}").status == 404
-    # An unknown project browses Elia's own, as the page does (EXPL-15).
-    assert get(conn, ~p"/files/raw?#{%{project: "nope", path: "#{@dir}/shot.png"}}").status == 200
   end
 
-  # EXPL-17, EXPL-24: a chat in view serves from its own workspace, and a
-  # `project` alongside it doesn't override that.
+  # EXPL-17, EXPL-24: a chat in view serves from its own workspace, whatever
+  # project is open.
   test "serves a file of the chat in view", %{conn: conn} do
     folder = in_root("#{@dir}/chat-project")
     File.rm_rf!(folder)
@@ -156,7 +157,9 @@ defmodule EliaWeb.FilesRawControllerTest do
     assert conn.status == 200
     assert conn.resp_body == @png <> "chat"
 
-    conn = get(conn, ~p"/files/raw?#{%{chat: chat, project: "harness", path: "shot.png"}}")
+    :ok = Elia.Projects.set_default("harness")
+
+    conn = get(conn, ~p"/files/raw?#{%{chat: chat, path: "shot.png"}}")
     assert conn.resp_body == @png <> "chat"
 
     # A chat that isn't a saved one is ignored, as on the page (EXPL-17).

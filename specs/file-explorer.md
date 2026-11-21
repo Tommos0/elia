@@ -6,9 +6,9 @@ A Files page lets the user browse the workspace and read its files in the
 browser, without opening a terminal or asking the agent. It is read-only and
 deliberately small: a directory listing next to a viewer that shows a text file
 as plain text and previews what the browser renders itself — a picture, a PDF, a
-video, an audio file (EXPL-22). It browses a project's folder, or a single
-chat's own workspace (EXPL-17), which is where a file the agent mentions in that
-chat is opened (FLINK-5).
+video, an audio file (EXPL-22). It browses the open project's folder (EXPL-15),
+or a single chat's own workspace (EXPL-17), which is where a file the agent
+mentions in that chat is opened (FLINK-5).
 
 ## Requirements
 
@@ -68,21 +68,27 @@ chat is opened (FLINK-5).
   file or directory leaves it out of the URL, so no file shows a line marked
   that belongs to another one.
 
-- **EXPL-15** The page browses one project at a time: a `project` query
-  parameter names it, and paths are relative to that project's folder
-  (PROJ-22). `/files` with a missing or unknown id browses Elia's own project,
-  and EXPL-1–EXPL-5 apply to whichever folder is in view.
-- **EXPL-16** The page names the project it browses and has a control
-  (`#project-picker`) to switch to another one, which keeps the current path
-  when it exists there and falls back to the root when it doesn't.
+- **EXPL-15** The page browses the open project (PROJ-28, PROJ-8): paths are
+  relative to that project's folder, and there is no `project` query parameter
+  — one in an older URL is ignored, and the open project is browsed as it
+  otherwise would be. EXPL-1–EXPL-5 apply to whichever folder is in view.
+- **EXPL-16** The page names the project it browses (`#project-name`, with the
+  folder in its `title`) and has no project control of its own: the open project
+  is changed with the header's switcher (PROJ-29), which every page carries and
+  which switches this page in place (EXPL-29).
+- **EXPL-29** The header's project switcher (PROJ-29) on this page switches the
+  project there and then: the project chosen becomes the open one (PROJ-8,
+  PROJ-28) and the page browses its folder without leaving the page, keeping
+  the path in view when the new project has it and falling back to its root
+  when it does not (EXPL-9), and leaving a chat in view behind (EXPL-18).
 
 - **EXPL-17** The page can browse a chat's own workspace instead of a project
   folder: a `chat` query parameter names a saved chat (STORE), and paths are
   then relative to the workspace that chat works in (PROJ-12) — its project's
   folder, which for a chat in Elia's own project is the live tree (DEPLOY-1) —
   with EXPL-1–EXPL-5 applying to that root as to any other.
-  The project in view is the chat's own, so a `project` parameter alongside it
-  doesn't override it. It is how a file the agent mentions is opened, so the
+  The project in view is the chat's own (PROJ-9), whether or not it is the open
+  one. It is how a file the agent mentions is opened, so the
   page shows the file as that chat's workspace has it (FLINK-5). A `chat` that
   isn't a saved chat is ignored, and the page browses
   the project as EXPL-15 says. Resolving the workspace never creates anything.
@@ -90,17 +96,17 @@ chat is opened (FLINK-5).
   (EXPL-16) and, with a chat in view, that chat beside it (`#workspace-note`: a
   chat icon and the chat's title, STORE-33 — "New chat" before it has one —
   with the root in its `title`), so a chat's workspace is not mistaken for the
-  project folder on its own. The project picker (`#project-picker`) switches to that project's
-  folder and leaves the chat behind — dropping `chat` from the URL — keeping
-  the current path when it exists there (EXPL-16).
+  project folder on its own. Switching the project (EXPL-29) leaves the chat
+  behind — dropping `chat` from the URL — and keeps the path in view when that
+  project has it.
 
 - **EXPL-19** When the browsed root itself can't be listed — the folder is
   missing, unreadable or not a directory — the page shows a message saying so,
   naming the root, in place of EXPL-9's path message, and the listing is empty:
   it neither shows another directory's entries nor says the directory is empty.
-  The page stays otherwise usable — the project name, the picker
-  (`#project-picker`) and, with a chat in view, the workspace note (EXPL-18) —
-  so it can be left by switching project, and no other folder is browsed.
+  The page stays otherwise usable — the project name (EXPL-16) and, with a chat
+  in view, the workspace note (EXPL-18) — so it can be left by switching project
+  in the header (EXPL-29), and no other folder is browsed.
 
 ### Previews
 
@@ -131,9 +137,10 @@ page is opened again.
   does not apply. There is no binary notice either (EXPL-8), and an SVG — which
   EXPL-11 reads as `xml` — is a picture here, so its source is no longer shown.
 - **EXPL-24** `GET /files/raw` serves a previewed file's own bytes from the
-  browsed workspace, named by the same `path`, `project` and `chat` parameters
-  as the page (EXPL-6, EXPL-15, EXPL-17) and judged by the same path rules
-  (EXPL-1, EXPL-2, EXPL-20). The response carries the preview's content type
+  workspace the page browses, resolved the same way from the `path` and `chat`
+  parameters it carries and the open project (EXPL-6, EXPL-15, EXPL-17), and
+  judged by the same path rules (EXPL-1, EXPL-2, EXPL-20). The response carries
+  the preview's content type
   (EXPL-22), `x-content-type-options: nosniff`, the file's `content-length` and
   `last-modified`, and an `etag` of its size and modification time with
   `cache-control: no-cache`; a request whose `if-none-match` is that etag is
@@ -208,8 +215,10 @@ serves are the file's own.
 ## Implementation
 
 `Elia.Explorer` (path safety, listing, reading, language and preview detection),
-`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18, the
-preview it shows, EXPL-22 - EXPL-26, and the line in view, EXPL-27),
+`EliaWeb.FilesLive` (which workspace it browses, EXPL-15 - EXPL-18 and EXPL-29,
+the preview it shows, EXPL-22 - EXPL-26, and the line in view, EXPL-27),
+`EliaWeb.FilesScope` (the workspace a page and a raw URL name, EXPL-15,
+EXPL-17), `EliaWeb.Layouts` (the header's switcher on this page, EXPL-29),
 `EliaWeb.FilesRawController` (the bytes a
 preview is made of, EXPL-24), `Elia.Deploy` (a chat's workspace, EXPL-17),
 `EliaWeb.FileLinks` (the links that
@@ -229,8 +238,8 @@ highlight.js vendored in `assets/vendor/highlight/` (BSD-3-Clause).
   and the chat in view, a project whose folder is a symlink, the preview per
   kind and what it leaves out, a previewable path that can't be previewed, the
   line in view and a line it can't use —
-  EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to EXPL-21, EXPL-23, EXPL-25,
-  EXPL-26, EXPL-27, EXPL-28).
+  EXPL-6 to EXPL-10, EXPL-12, EXPL-13, EXPL-15 to EXPL-21, EXPL-23, EXPL-25 to
+  EXPL-28, EXPL-29).
 - `test/elia_web/controllers/files_raw_test.exs` (the bytes of a previewed
   file, its content type and headers, the revalidation it answers, and every
   refusal — EXPL-1, EXPL-2, EXPL-22, EXPL-24).

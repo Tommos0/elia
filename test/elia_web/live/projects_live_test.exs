@@ -156,6 +156,28 @@ defmodule EliaWeb.ProjectsLiveTest do
     assert has_element?(view, "#flash-error", "git repository")
   end
 
+  # PROJ-48: a project's Files button makes that project the open one (PROJ-8,
+  # PROJ-28) and opens the Files page, which browses it (EXPL-15).
+  test "a project's Files button opens its files", %{conn: conn} do
+    dir = make_dir("files")
+    {:ok, project} = Projects.create("Browsable", dir)
+    File.write!(Path.join(dir, "note.txt"), "hello\n")
+    {:ok, view, _html} = live(conn, ~p"/projects")
+
+    # Elia's own project has no button: its files are the page's default.
+    refute has_element?(view, "#project-files-harness")
+    assert has_element?(view, "#project-#{project.id} #project-files-#{project.id}")
+
+    assert {:error, {:live_redirect, %{to: "/files"}}} =
+             view |> element("#project-files-#{project.id}") |> render_click()
+
+    assert Projects.default().id == project.id
+
+    {:ok, files, _html} = live(conn, ~p"/files")
+    assert has_element?(files, "#project-name", "Browsable")
+    assert has_element?(files, "[data-entry='note.txt']")
+  end
+
   # PROJ-23: deleting asks for confirmation and removes the project.
   test "deletes a project", %{conn: conn} do
     dir = make_dir("delete")
