@@ -189,3 +189,21 @@ The guardrails are in this picture:
 - `/recover` covers what the gate cannot: a deploy that passes its suite and
   still leaves the UI unusable. It is plain server-rendered HTML, so it needs
   none of the tree's own front end.
+
+## Rendering these diagrams
+
+GitHub, most editors and a docs site render a `mermaid` block themselves. To
+render one locally, and to check a diagram still parses, mermaid-cli works with
+the Chromium this machine already has:
+
+```sh
+mkdir -p tmp/mmd && npm install --prefix tmp/mmd @mermaid-js/mermaid-cli
+printf '{"args":["--no-sandbox"]}\n' > tmp/mmd/pptr.json
+PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+  tmp/mmd/node_modules/.bin/mmdc -p tmp/mmd/pptr.json \
+    -i docs/architecture.md -o tmp/mmd/rendered.md
+```
+
+A Markdown file as `-i` renders every block in it and reports each one; for a
+PNG, give a single `.mmd` file and `-o out.png -s 2`. It is `-s/--scale` and
+`--size` in mermaid-cli 12 — `-w` and `--width` are not options there.
