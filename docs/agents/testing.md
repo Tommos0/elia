@@ -108,6 +108,9 @@ Playwright.
   with an `EPIPE` stack (the same symptom a taken port gives a preview, above)
   and leave the run with everything excluded and an exit of 0 all the same, so
   a browser run is read by its number of tests, not by its exit.
+- The first run after a recompile can fail with `Timeout 2000ms exceeded` on
+  `visit`, while the test env server boots, and the same run passes when it is
+  repeated — re-run it before chasing the page.
 - A closed `<details>` still lays its hidden content out in Chromium — it is in
   the DOM, and has a height — so a test that the card is collapsed asks
   `element.checkVisibility()`, not `offsetHeight`, and opens it by clicking the
@@ -199,7 +202,12 @@ A preview navigates and waits; it never clicks, hovers or types (out of scope in
 popover (CITE-7), the image viewer (IMG-1) — is therefore taken by hand, from
 the browser layer: a throwaway `:preview`-tagged test that visits the page,
 `click`s, and `screenshot`s into `ELIA_PREVIEW_DIR`, which `bin/preview` uses as
-its own output directory.
+its own output directory. Tag it `:preview` and `use
+PhoenixTest.Playwright.Case` the way `preview_test.exs` does: a throwaway that
+`use`s `EliaWeb.BrowserCase` carries `:real_browser` as well, and that exclusion
+beats `bin/preview`'s `--only preview`, so it quietly runs nothing (`1 test, 1
+excluded`). Run that one yourself instead:
+`ELIA_BROWSER_TESTS=1 mix test --only real_browser <file>`.
 
 ## Running
 
@@ -241,6 +249,11 @@ its own output directory.
   these too: tmux keeps its sockets in `/tmp/tmux-<uid>/` for the whole user
   rather than in the run's own temp directory, so the test can see one a
   concurrent run's terminal is using, and the file passes when run alone.
+- `test/elia_web/live/chat_live_test.exs`'s "a command awaiting approval is
+  open" (UI-99, around line 1687) fails on `master` when it is run alone: it
+  waits 5s for `{:status, :idle}` after approving a command that really runs
+  `mix test`, which takes longer than that on this machine. It is not your
+  change's — stash your work and run the file before chasing it.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run
