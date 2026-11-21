@@ -38,7 +38,9 @@ the same instruction, so the skill held a second copy of it and nothing more.
   `titles` (`set_title`,
   [Chat titles](chat-titles.md)), `done` (`mark_done`,
   [Marking a chat done](chat-done.md), DONE-6), `user-input` (`ask_user`,
-  [Structured user input](user-input.md), ASK-1), `chats` (`list_chats`,
+  [Structured user input](user-input.md), ASK-1), `network`
+  (`request_network_host`, [Network access](network-access.md), NET-30), `chats`
+  (`list_chats`,
   `read_chat`, `search_chats`, [Reading earlier chats](chat-history.md),
   HIST-1). A chat's built-in skills are the same whatever project it belongs to
   (PROJ-18); a sub-task session gets neither the `tasks` skill nor one of its
@@ -114,7 +116,8 @@ config :elia, Elia.Skills,
     Elia.Skills.Titles,
     Elia.Skills.Done,
     Elia.Skills.Chats,
-    Elia.Skills.UserInput
+    Elia.Skills.UserInput,
+    Elia.Skills.Network
   ]
 ```
 

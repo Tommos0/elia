@@ -164,6 +164,11 @@ defmodule Elia.Agent.Session do
         }
     }
 
+    # NET-29: a chat file written before the allowlist moved to the project may
+    # name hosts of its own; they go into the project's list as the chat loads,
+    # and its setting keeps the mode alone (NET-28).
+    state = migrate_network(state)
+
     # RESUME-2: the record of a turn the restart cut short is read before
     # anything saves the chat — a session's own state carries no turn (SESS-15),
     # so the save below would take the record off the file (INTR-1) before
@@ -303,7 +308,9 @@ defmodule Elia.Agent.Session do
   # NET-6: the chat's network setting as it stands, for the proxy that decides a
   # running command's requests. A chat with no session answers nil, and its
   # caller falls back to the list it started with.
-  def handle_call(:network, _from, state), do: {:reply, settings(state).network, state}
+  def handle_call(:network, _from, state) do
+    {:reply, Elia.Net.effective(settings(state).network, project(state)), state}
+  end
 
   def handle_call({:send_message, text}, _from, state),
     do: reply_to_send(state, Message.user(text))
@@ -831,11 +838,16 @@ defmodule Elia.Agent.Session do
   # each one's own default. The auto-approved set is worked out by the caller,
   # once the chat's messages are loaded (APPR-14).
   defp initial_settings(id, persist, opts) do
+    # NET-1: a chat that has never been saved starts allowlisted where that
+    # limit can be built and unrestricted where it can't, which its jail
+    # setting and the host decide (NET-20).
+    jail = initial_jail(id, persist, opts[:jail])
+
     %{
       model: opts[:selection] || if(persist, do: Elia.Store.load_model(id)),
       auto_approve: MapSet.new(),
-      jail: initial_jail(id, persist, opts[:jail]),
-      network: initial_network(id, persist, opts[:network]),
+      jail: jail,
+      network: initial_network(id, persist, opts[:network], jail),
       limits: initial_limits(id, persist, opts[:limits]),
       effort: initial_effort(id, persist)
     }
@@ -844,11 +856,29 @@ defmodule Elia.Agent.Session do
   # SESS-41, SUBTASK-30, NET-4: a caller may set the new session's network
   # setting (a sub-task's copy of its parent's) instead of loading the chat's
   # saved one.
-  defp initial_network(id, persist, nil), do: initial_network(id, persist)
-  defp initial_network(_id, _persist, setting) when is_map(setting), do: Elia.Net.load(setting)
+  defp initial_network(id, persist, nil, jail), do: initial_network(id, persist, jail)
 
-  defp initial_network(id, true), do: Elia.Store.load_network(id)
-  defp initial_network(_id, false), do: Elia.Net.default()
+  defp initial_network(_id, _persist, setting, _jail) when is_map(setting),
+    do: Elia.Net.load(setting)
+
+  defp initial_network(id, true, jail), do: Elia.Store.load_network(id, jail: jail)
+  defp initial_network(_id, false, jail), do: Elia.Net.default(jail: jail)
+
+  # NET-29: the entries an older chat named of its own go into its project's
+  # list, once, as the chat loads; its setting keeps the mode alone (NET-28).
+  # Nothing is rewritten by this: the chat's file loses the entries when it is
+  # next saved (STORE-53).
+  defp migrate_network(state) do
+    setting = settings(state).network
+    hosts = Elia.Net.hosts(setting)
+
+    if hosts != [] and Map.get(state, :persist, true) do
+      Elia.Projects.add_allowlist(state.project, hosts)
+      put_setting(state, :network, %{mode: Elia.Net.mode(setting), hosts: []})
+    else
+      state
+    end
+  end
 
   # SESS-41: the chat's per-chat settings. A state that predates the one map is
   # upgraded on its next call (SESS-15); one that reaches this without it from
@@ -993,26 +1023,14 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  # NET-1, NET-11: one of the three modes, with a list of hosts that are the
-  # forms NET-7 gives.
+  # NET-1, NET-28: one of the three modes. The entries are the chat's project's,
+  # so they are not part of what a chat sets (PROJ-49, NET-11).
   defp check_network(changes) do
     case Map.fetch(changes, :network) do
-      :error ->
-        :ok
-
-      {:ok, %{mode: mode} = setting} when mode in [:unrestricted, :allowlist, :none] ->
-        case Elia.Net.Allowlist.parse(Map.get(setting, :hosts, [])) do
-          {:ok, _hosts} -> :ok
-          {:error, entry} -> {:error, network_error(entry)}
-        end
-
-      {:ok, _other} ->
-        {:error, "network must be unrestricted, allowlist or none"}
+      :error -> :ok
+      {:ok, %{mode: mode}} when mode in [:unrestricted, :allowlist, :none] -> :ok
+      {:ok, _other} -> {:error, "network must be unrestricted, allowlist or none"}
     end
-  end
-
-  defp network_error(entry) do
-    "network hosts: #{inspect(entry)} is not a host, a *.suffix or one of those with a port"
   end
 
   # LLM-39, LLM-38: one of the three efforts, or nil for the configured one.
@@ -1535,7 +1553,7 @@ defmodule Elia.Agent.Session do
         # shell tools follow it, and its network setting (NET-1), so they follow
         # that too.
         jail: settings(state).jail,
-        network: settings(state).network,
+        network: Elia.Net.effective(settings(state).network, project(state)),
         # TIME-2: the turn's start goes into every step's timing record, so the
         # record needs nothing from the chat's saved term, whose turn entry is
         # taken off when the turn ends (STORE-30, INTR-1).

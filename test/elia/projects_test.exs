@@ -4,11 +4,12 @@ defmodule Elia.ProjectsTest do
   alias Elia.{Projects, Settings, Workspace}
 
   # The keys Elia.Projects keeps its own state under: the default project
-  # (PROJ-8), the projects root (PROJ-32) and Elia's own project's colour
-  # (PROJ-44).
+  # (PROJ-8), the projects root (PROJ-32), and Elia's own project's colour
+  # (PROJ-44) and allowlist (PROJ-49).
   @default_key :default_project
   @root_key :projects_root
   @color_key :harness_project_color
+  @allowlist_key :harness_project_allowlist
 
   setup do
     on_exit(fn ->
@@ -16,6 +17,7 @@ defmodule Elia.ProjectsTest do
       Settings.delete(@default_key)
       Settings.delete(@root_key)
       Settings.delete(@color_key)
+      Settings.delete(@allowlist_key)
     end)
 
     :ok
@@ -406,6 +408,77 @@ defmodule Elia.ProjectsTest do
 
     assert {:ok, _cleared} = Projects.set_color(Projects.harness(), nil)
     assert Projects.harness().color == nil
+  end
+
+  # PROJ-49, NET-7, NET-10, NET-11, NET-28: a project's allowlist is read
+  # cleaned, saved when every entry is one of NET-7's forms, and empty — so its
+  # chats reach nothing — until one is. Elia's own project keeps its list in the
+  # settings database, since the registry never holds it (PROJ-3).
+  test "a project's allowlist is read cleaned and saved whole" do
+    {:ok, project} = Projects.create("Widgets", Workspace.root())
+
+    # A project that names none reaches nothing (NET-10).
+    assert Projects.allowlist(project) == []
+    assert Projects.allowlist(project.id) == []
+
+    assert {:ok, updated} =
+             Projects.set_allowlist(project, "API.example.com\n*.example.org:443\n")
+
+    assert updated.allowlist == ["api.example.com", "*.example.org:443"]
+    assert Projects.allowlist(project) == ["api.example.com", "*.example.org:443"]
+    assert Projects.get(project.id).allowlist == ["api.example.com", "*.example.org:443"]
+
+    # An entry that isn't one of NET-7's forms stores nothing and names the
+    # entry (NET-11).
+    assert {:error, "not a host"} =
+             Projects.set_allowlist(project, "api.example.com\nnot a host")
+
+    assert Projects.allowlist(project) == ["api.example.com", "*.example.org:443"]
+
+    # NET-33: adding puts new entries at the end and leaves the ones it has.
+    assert {:ok, _added} = Projects.add_allowlist(project, ["api.example.com", "cdn.example.net"])
+
+    assert Projects.allowlist(project) == [
+             "api.example.com",
+             "*.example.org:443",
+             "cdn.example.net"
+           ]
+
+    assert {:error, "not a host"} = Projects.add_allowlist(project, ["not a host"])
+    assert length(Projects.allowlist(project)) == 3
+
+    # Elia's own project takes a list like any other, kept where the registry
+    # cannot hold it (PROJ-3).
+    assert {:ok, harness} = Projects.set_allowlist(Projects.harness(), ["api.example.com"])
+    assert harness.allowlist == ["api.example.com"]
+    assert Projects.allowlist(Projects.harness()) == ["api.example.com"]
+    assert Projects.allowlist("harness") == ["api.example.com"]
+    assert Settings.get(@allowlist_key) == ["api.example.com"]
+
+    assert {:ok, _cleared} = Projects.set_allowlist(Projects.harness(), [])
+    assert Projects.allowlist(Projects.harness()) == []
+
+    # A project nobody knows has no list to name (NET-10).
+    assert Projects.allowlist("nosuchproject") == []
+    assert Projects.allowlist(nil) == []
+  end
+
+  # PROJ-49, NET-10: a registry written before the field existed reads as a
+  # project with an empty list, so nothing is rewritten and there is nothing to
+  # migrate.
+  test "a project written without an allowlist reads as an empty one" do
+    write_registry([%{id: "oldproject1", name: "Old", folder: "/x"}])
+
+    assert [%{id: "harness"}, project] = Projects.list()
+    assert project.allowlist == []
+    assert Projects.allowlist(project) == []
+
+    write_registry([
+      %{id: "oldproject1", name: "Old", folder: "/x", allowlist: ["API.example.com"]}
+    ])
+
+    assert [%{id: "harness"}, project] = Projects.list()
+    assert Projects.allowlist(project) == ["api.example.com"]
   end
 
   # PROJ-2, PROJ-43: a registry written before the field existed — and one naming

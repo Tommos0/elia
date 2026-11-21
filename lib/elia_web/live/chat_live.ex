@@ -12,6 +12,10 @@ defmodule EliaWeb.ChatLive do
   @max_upload_files 10
   @max_upload_bytes 25 * 1024 * 1024
 
+  # NET-32: the two decisions a host request asks for, in the order of the card's
+  # buttons; the first of them is the answer that allows the host (NET-33).
+  @host_decisions ["Allow", "Don't allow"]
+
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
   def mount(%{"project_id" => project_id}, _session, %{assigns: %{live_action: :new}} = socket) do
@@ -131,9 +135,11 @@ defmodule EliaWeb.ChatLive do
         # the chat settings page (CSET-5).
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
-        # NET-26, UI-100: what this chat's commands may reach (NET-1), said
-        # beside the jail warning (CSET-9).
-        network: snapshot.settings.network,
+        # NET-26, UI-100: what this chat's commands may reach (NET-1) — its mode
+        # with the entries its project allows (NET-28) — said beside the jail
+        # warning (CSET-9), with the name of that project.
+        network: Elia.Net.effective(snapshot.settings.network, snapshot.project),
+        network_project: snapshot.project.name,
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
         compact_view: false,
@@ -471,7 +477,7 @@ defmodule EliaWeb.ChatLive do
                 id="network-warning"
                 class="text-xs text-base-content/50"
               >
-                {network_warning(@network)}
+                {network_warning(@network, @network_project)}
               </span>
               <%!-- UI-60, CSET-10: switch the transcript between full and
               compact; it acts on what is being read, so it stays in the bar. --%>
@@ -1525,11 +1531,15 @@ defmodule EliaWeb.ChatLive do
     do: min(100, div(tokens * 100 + window - 1, window))
 
   # NET-26, UI-100: what the chat's network setting limits, in words, beside its
-  # jail warning (CSET-9).
-  defp network_warning(%{mode: :allowlist}),
-    do: "Allowlisted hosts: commands reach only the hosts this chat names."
+  # jail warning (CSET-9), naming the project whose allowlist the chat reaches
+  # (NET-28).
+  defp network_warning(%{mode: :allowlist, hosts: []}, project),
+    do: "No host is allowed yet: commands reach nothing until #{project} allows one."
 
-  defp network_warning(_setting), do: "No network: commands reach nothing."
+  defp network_warning(%{mode: :allowlist, hosts: hosts}, project),
+    do: "Allowlisted: commands reach only the hosts #{project} allows (#{length(hosts)})."
+
+  defp network_warning(_setting, _project), do: "No network: commands reach nothing."
 
   defp context_bar_class(nil), do: ""
   defp context_bar_class(percent) when percent <= 60, do: "bg-success"
@@ -1708,7 +1718,7 @@ defmodule EliaWeb.ChatLive do
         :if={!multi_line_command(@item)}
         class={[
           "px-3 py-2 font-mono text-xs leading-relaxed",
-          if(@item.name == "ask_user",
+          if(asks?(@item.name),
             do: "whitespace-pre-wrap break-words",
             else: "overflow-x-auto"
           )
@@ -1736,9 +1746,10 @@ defmodule EliaWeb.ChatLive do
         />
       </div>
       <%!-- UI-75, ASK-4, ASK-6: a question, answered with one click or in the
-      user's own words. It goes when the answer does. --%>
+      user's own words. It goes when the answer does. NET-32: a host request is
+      one too — its buttons are the decision it asks for. --%>
       <div
-        :if={@item.name == "ask_user" && @item.status == :awaiting_input}
+        :if={asks?(@item.name) && @item.status == :awaiting_input}
         id={"answer-#{@item.call_id}"}
         class="border-t border-base-300 px-3 py-2"
       >
@@ -1834,7 +1845,7 @@ defmodule EliaWeb.ChatLive do
       <details
         :if={@item.output}
         id={"output-#{@item.call_id}"}
-        open={@item.name == "ask_user"}
+        open={asks?(@item.name)}
         class="group border-t border-base-300"
       >
         <summary class="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs text-base-content/60 hover:text-base-content">
@@ -1844,7 +1855,7 @@ defmodule EliaWeb.ChatLive do
           [
             "max-h-96 overflow-auto bg-base-200/40 px-3 py-2 font-mono text-xs leading-relaxed",
             # UI-83: the answer a question got wraps like the question itself.
-            @item.name == "ask_user" && "whitespace-pre-wrap break-words",
+            asks?(@item.name) && "whitespace-pre-wrap break-words",
             @item.is_error && "text-error"
           ]
         }>{@item.output}</pre>
@@ -2098,6 +2109,7 @@ defmodule EliaWeb.ChatLive do
 
   defp tool_icon("spawn_task"), do: "hero-rectangle-stack"
   defp tool_icon("ask_user"), do: "hero-chat-bubble-left-right"
+  defp tool_icon("request_network_host"), do: "hero-globe-alt"
   defp tool_icon(_name), do: "hero-wrench-screwdriver"
 
   defp tool_summary(%{name: "shell", input: %{"command" => command}}), do: command
@@ -2114,6 +2126,15 @@ defmodule EliaWeb.ChatLive do
   defp tool_summary(%{name: "ask_user", input: %{"question" => question}})
        when is_binary(question),
        do: question
+
+  # NET-32: a host request reads as the host and what it is wanted for.
+  defp tool_summary(%{name: "request_network_host", input: %{"host" => host} = input})
+       when is_binary(host) do
+    case input["reason"] do
+      reason when is_binary(reason) and reason != "" -> host <> " — " <> reason
+      _none -> host
+    end
+  end
 
   defp tool_summary(%{input: %{"path" => path}}), do: path
   defp tool_summary(%{input: input}) when input == %{}, do: "(no input)"
@@ -2142,7 +2163,13 @@ defmodule EliaWeb.ChatLive do
   defp answer_options(%{input: %{"options" => options}}) when is_list(options),
     do: Enum.filter(options, &(is_binary(&1) and String.trim(&1) != ""))
 
+  defp answer_options(%{name: "request_network_host"}), do: @host_decisions
+
   defp answer_options(_item), do: []
+
+  # NET-32: the card's own decisions — the first of them is the answer that
+  # allows the host (NET-33).
+  defp asks?(name), do: name == "ask_user" or name == "request_network_host"
 
   ## Events
 
@@ -2549,7 +2576,7 @@ defmodule EliaWeb.ChatLive do
     |> assign(
       selection: LLM.selection(settings.model),
       jail: settings.jail,
-      network: settings.network
+      network: Elia.Net.effective(settings.network, socket.assigns.project)
     )
     |> assign(context_window: LLM.context_window(settings.model))
   end
@@ -2768,6 +2795,7 @@ defmodule EliaWeb.ChatLive do
   # ASK-10: a question is not something the agent is doing, it is something it
   # wants from the user.
   defp work_summary({:awaiting, %{name: "ask_user"}}), do: "Waiting for your answer."
+  defp work_summary({:awaiting, %{name: "request_network_host"}}), do: "Waiting for your answer."
 
   defp work_summary({:awaiting, call}) do
     {_ing, verb, object} = step(call)
@@ -3031,6 +3059,7 @@ defmodule EliaWeb.ChatLive do
   # card stays: it is addressed to the user, not a detail of the agent's work
   # (UI-75, ASK-10).
   defp visible?(_compact, %{kind: :tool, name: "ask_user"}), do: true
+  defp visible?(_compact, %{kind: :tool, name: "request_network_host"}), do: true
   defp visible?(compact, %{kind: kind}) when kind in [:tool, :reasoning], do: not compact
 
   # UPLOAD-13, UI-90: once its tool calls and reasoning are hidden an item with

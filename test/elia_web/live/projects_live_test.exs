@@ -178,6 +178,49 @@ defmodule EliaWeb.ProjectsLiveTest do
     assert has_element?(files, "[data-entry='note.txt']")
   end
 
+  # PROJ-50, NET-11, NET-28: a project's allowlist is a field showing its
+  # entries, one per line, saved when its Save is pressed — and a list holding
+  # an entry that isn't one of NET-7's forms changes nothing and is named for
+  # that project.
+  test "shows and saves a project's allowlist", %{conn: conn} do
+    dir = make_dir("allowlist")
+    {:ok, project} = Projects.create("Widgets", dir)
+    {:ok, view, _html} = live(conn, ~p"/projects")
+
+    assert has_element?(view, "#project-allowlist-#{project.id}")
+    assert has_element?(view, "#save-project-allowlist-#{project.id}")
+
+    view
+    |> form("#project-allowlist-form-#{project.id}", %{
+      allowlist: "API.example.com\n*.example.org\n"
+    })
+    |> render_submit()
+
+    assert Projects.allowlist(project) == ["api.example.com", "*.example.org"]
+    assert has_element?(view, "#project-allowlist-#{project.id}", "api.example.com")
+    refute has_element?(view, "#project-allowlist-error-#{project.id}")
+
+    # A list holding an entry that isn't one of NET-7's forms saves nothing and
+    # names the entry (NET-11).
+    view
+    |> form("#project-allowlist-form-#{project.id}", %{allowlist: "api.example.com\nnot a host"})
+    |> render_submit()
+
+    assert has_element?(view, "#project-allowlist-error-#{project.id}", "not a host")
+    assert Projects.allowlist(project) == ["api.example.com", "*.example.org"]
+
+    # Saving a good list again clears the message.
+    view
+    |> form("#project-allowlist-form-#{project.id}", %{allowlist: "cdn.example.net\n"})
+    |> render_submit()
+
+    refute has_element?(view, "#project-allowlist-error-#{project.id}")
+    assert Projects.allowlist(project) == ["cdn.example.net"]
+
+    # Elia's own project has the field too (PROJ-3, PROJ-49).
+    assert has_element?(view, "#project-allowlist-harness")
+  end
+
   # PROJ-23: deleting asks for confirmation and removes the project.
   test "deletes a project", %{conn: conn} do
     dir = make_dir("delete")

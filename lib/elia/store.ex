@@ -78,8 +78,8 @@ defmodule Elia.Store do
     # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
     chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
 
-    # STORE-53: a chat reaches the whole network by default (NET-1), so only a
-    # setting that limits it is written.
+    # STORE-53, NET-28: only a mode that limits the network is written, and
+    # only the mode — a chat's entries are its project's.
     chat =
       case Elia.Net.stored(opts[:network]) do
         nil -> chat
@@ -342,15 +342,18 @@ defmodule Elia.Store do
   end
 
   @doc """
-  The chat's saved network setting (STORE-54): what the chat's file holds, and
-  unrestricted when the chat is missing, unreadable, corrupt, holds no entry or
-  holds one that cannot be read (NET-1).
+  The chat's saved network setting (STORE-54): the mode its file holds, or the
+  default of NET-1 for a chat that has never been saved — allowlisted where a
+  limit can be built for it, unrestricted where it can't (`opts` is what
+  `Elia.Net.available?/1` reads, e.g. `jail:`). A chat whose file is there but
+  holds no entry, or one it cannot read, is unrestricted (STORE-54).
   """
-  @spec load_network(binary()) :: map()
-  def load_network(id) do
+  @spec load_network(binary(), keyword()) :: map()
+  def load_network(id, opts \\ []) do
     case load_meta(id) do
+      nil -> Elia.Net.default(opts)
       %{network: network} -> Elia.Net.load(network)
-      _none -> Elia.Net.default()
+      _chat -> Elia.Net.unrestricted()
     end
   end
 

@@ -90,6 +90,12 @@ defmodule Elia.Skills.ShellTest do
       assert text =~ "reaches nothing"
       assert text =~ "no ssh"
     end
+
+    # NET-35: a host a command cannot reach is a reason to ask for it, and the
+    # tool that asks is named.
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "request_network_host"
+    end
   end
 
   # SHELL-14: a command is told which chat it belongs to, as `ELIA_CHAT_ID`, so a

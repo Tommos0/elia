@@ -130,16 +130,21 @@ defmodule Elia.Net.ProxyTest do
     assert read(client) =~ "hello"
   end
 
-  # NET-6: the proxy reads the chat's list at the moment it decides, so a change
-  # to it reaches a command that is already running.
-  test "the list is read from the chat when the request arrives" do
+  # NET-6, NET-28: the proxy reads the chat's effective setting — its mode with
+  # the entries its project allows — at the moment it decides, so a change to
+  # the project's list reaches a command that is already running.
+  test "the list is read from the chat's project when the request arrives" do
     port = site()
     chat = Elia.Agent.new_id()
     {:ok, _pid} = Elia.Agent.ensure_started(chat, auto_approve: [])
+    project = Elia.Agent.snapshot(chat).project
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
 
-    # The proxy was started with nothing allowed; the chat now allows the site.
+    # The proxy was started with nothing allowed; the project now allows the
+    # site, and the chat is in allowlist mode.
     path = Proxy.net(proxy([], chat)).socket
-    :ok = Elia.Agent.set_network(chat, %{mode: :allowlist, hosts: ["localhost:#{port}"]})
+    :ok = Elia.Agent.set_network(chat, %{mode: :allowlist})
+    {:ok, _project} = Elia.Projects.set_allowlist(project, ["localhost:#{port}"])
 
     answer =
       send_request(path, "GET http://localhost:#{port}/ HTTP/1.1\r\nHost: localhost\r\n\r\n")
@@ -150,7 +155,7 @@ defmodule Elia.Net.ProxyTest do
 
     # And a change that takes the host off the list takes it off a running
     # command's reach too.
-    :ok = Elia.Agent.set_network(chat, %{mode: :allowlist, hosts: ["other.example.com"]})
+    {:ok, _project} = Elia.Projects.set_allowlist(project, ["other.example.com"])
 
     refused =
       send_request(path, "GET http://localhost:#{port}/ HTTP/1.1\r\nHost: localhost\r\n\r\n")

@@ -14,7 +14,13 @@ defmodule EliaWeb.ProjectsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Projects", error: nil, root_error: nil)
+     |> assign(
+       page_title: "Projects",
+       error: nil,
+       root_error: nil,
+       # PROJ-50: the message a project's rejected allowlist left, by project id.
+       allowlist_errors: %{}
+     )
      |> assign(form: empty_form(), root_form: root_form())
      |> refresh()}
   end
@@ -129,6 +135,37 @@ defmodule EliaWeb.ProjectsLive do
       end
 
     {:noreply, socket}
+  end
+
+  # PROJ-50, NET-11: a project's allowlist, saved when Save is pressed. A list
+  # holding an entry that is not one of NET-7's forms changes nothing and the
+  # page names the entry for that project.
+  def handle_event("save_allowlist", %{"id" => id, "allowlist" => text}, socket) do
+    case Projects.get(id) do
+      nil ->
+        {:noreply, socket}
+
+      project ->
+        case Projects.set_allowlist(project, text) do
+          {:ok, _project} ->
+            {:noreply, socket |> clear_allowlist_error(id) |> refresh()}
+
+          {:error, entry} ->
+            {:noreply, put_allowlist_error(socket, id, allowlist_error(entry))}
+        end
+    end
+  end
+
+  defp allowlist_error(entry) do
+    "#{inspect(entry)} is not a host, a *.suffix or one of those with a port."
+  end
+
+  defp put_allowlist_error(socket, id, message) do
+    assign(socket, allowlist_errors: Map.put(socket.assigns.allowlist_errors, id, message))
+  end
+
+  defp clear_allowlist_error(socket, id) do
+    assign(socket, allowlist_errors: Map.delete(socket.assigns.allowlist_errors, id))
   end
 
   # PROJ-45: the chosen swatch is ringed; the others are not.
@@ -349,6 +386,48 @@ defmodule EliaWeb.ProjectsLive do
                   <span class="sr-only">{color.name}</span>
                 </button>
               </div>
+
+              <%!-- PROJ-50, NET-28: the hosts this project's chats in allowlist
+              mode may reach, one per line, saved when Save is pressed. --%>
+              <.form
+                for={%{}}
+                id={"project-allowlist-form-#{project.id}"}
+                phx-submit="save_allowlist"
+                phx-value-id={project.id}
+                class="mt-4"
+              >
+                <label class="block">
+                  <span class="text-xs text-base-content/50">Network allowlist</span>
+                  <span class="mt-0.5 block text-xs text-base-content/50">
+                    Hosts this project's chats may reach, one per line: a host
+                    (api.example.com), a <code>*.suffix</code> (*.example.com) or either with a
+                    port (api.example.com:443). Empty means they reach nothing.
+                  </span>
+                  <textarea
+                    id={"project-allowlist-#{project.id}"}
+                    name="allowlist"
+                    rows="2"
+                    class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 p-2 font-mono text-xs"
+                    placeholder="api.example.com"
+                  >{Enum.join(Projects.allowlist(project), "\n")}</textarea>
+                </label>
+                <p
+                  :if={@allowlist_errors[project.id]}
+                  id={"project-allowlist-error-#{project.id}"}
+                  role="alert"
+                  class="mt-2 flex items-center gap-2 rounded-lg bg-error/10 px-3 py-2 text-xs text-error"
+                >
+                  <.icon name="hero-exclamation-triangle" class="size-4 shrink-0" />
+                  {@allowlist_errors[project.id]}
+                </p>
+                <button
+                  type="submit"
+                  id={"save-project-allowlist-#{project.id}"}
+                  class="mt-2 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+                >
+                  Save allowlist
+                </button>
+              </.form>
             </section>
           </div>
         </div>

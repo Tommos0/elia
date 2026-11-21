@@ -122,6 +122,10 @@ defmodule Elia.Agent.Loop do
         # ISOL-15: the chat's jail setting, so a tool jails its call according
         # to the chat it runs in; nil (no chat) means the default, which is on.
         jail: opts[:jail],
+        # NET-1, NET-28: the chat's network setting as its turn began — its mode
+        # and the entries its project's allowlist names — so a command or a
+        # terminal is limited by what the chat it runs in allows.
+        network: opts[:network],
         # VISION-4, VISION-7, VISION-13: whether this turn's model accepts
         # images, so a look at one is refused where it accepts none.
         vision: Keyword.get(opts, :llm, %{})[:vision] == true,

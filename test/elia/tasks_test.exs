@@ -592,11 +592,15 @@ defmodule Elia.TasksTest do
     stop_session(child)
   end
 
-  # NET-4, SUBTASK-30
+  # NET-4, NET-28, SUBTASK-30
   test "a sub-task chat carries its parent's network setting", %{parent: parent} do
     # The parent's network is limited, so the child must start with its own copy
-    # of that.
-    :ok = Agent.set_network(parent, %{mode: :allowlist, hosts: ["api.example.com"]})
+    # of that mode — and the entries are its project's, so the child, in the
+    # same project, reaches the same hosts (NET-28).
+    project = Agent.snapshot(parent).project
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+    {:ok, _project} = Elia.Projects.set_allowlist(project, ["api.example.com"])
+    :ok = Agent.set_network(parent, %{mode: :allowlist})
 
     push_turns(
       router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
@@ -606,16 +610,15 @@ defmodule Elia.TasksTest do
 
     child = session_json(parent, "spawn_task", 0)["task_id"]
 
-    assert Agent.snapshot(child).settings.network ==
-             %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Agent.snapshot(child).settings.network == %{mode: :allowlist, hosts: []}
+    assert Agent.network(child) == %{mode: :allowlist, hosts: ["api.example.com"]}
 
     # NET-4: the copy is the child's own from then on; changing either chat
     # afterwards never affects the other.
     :ok = Agent.set_network(parent, %{mode: :none})
     assert Agent.snapshot(parent).settings.network == %{mode: :none, hosts: []}
 
-    assert Agent.snapshot(child).settings.network ==
-             %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Agent.snapshot(child).settings.network == %{mode: :allowlist, hosts: []}
 
     :ok = Agent.set_network(child, %{mode: :none})
     assert Agent.snapshot(child).settings.network == %{mode: :none, hosts: []}

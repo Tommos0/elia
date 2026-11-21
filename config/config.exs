@@ -168,6 +168,7 @@ config :elia, Elia.Skills,
     Elia.Skills.Done,
     Elia.Skills.Chats,
     Elia.Skills.UserInput,
+    Elia.Skills.Network,
     Elia.Skills.Image
   ]
 

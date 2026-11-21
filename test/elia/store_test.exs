@@ -65,49 +65,71 @@ defmodule Elia.StoreTest do
     assert Store.load_jail(id) == true
   end
 
-  # STORE-53, STORE-54: a chat reaches the whole network by default (NET-1), so
-  # only a setting that limits it is stored.
-  test "a chat's network setting is saved only when it limits the network" do
+  # STORE-53, NET-28: only a mode that limits the network is stored, and only
+  # the mode — the entries are the chat's project's.
+  test "a chat's network setting is saved as a mode" do
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
 
-    :ok =
-      Store.save(id, [Message.user("hi")],
-        network: %{mode: :allowlist, hosts: ["API.example.com"]}
-      )
+    :ok = Store.save(id, [Message.user("hi")], network: %{mode: :allowlist})
 
-    assert Store.load_network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Store.load_network(id) == %{mode: :allowlist, hosts: []}
 
     chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
-    assert chat.network == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert chat.network == %{mode: :allowlist}
 
     :ok = Store.save(id, [Message.user("hi")], network: %{mode: :none})
     assert Store.load_network(id) == %{mode: :none, hosts: []}
 
     # Setting it back to unrestricted takes the entry off the file.
     :ok = Store.save(id, [Message.user("hi")], network: %{mode: :unrestricted})
-    assert Store.load_network(id) == Elia.Net.default()
+    assert Store.load_network(id) == Elia.Net.unrestricted()
 
     chat = File.read!(Path.join(Store.dir(), id <> ".term")) |> :erlang.binary_to_term()
     refute Map.has_key?(chat, :network)
 
-    # A chat that keeps the default carries no entry at all (NET-1).
+    # A chat with no entry at all is unrestricted (STORE-54).
     :ok = Store.save(id, [Message.user("hi")])
-    assert Store.load_network(id) == Elia.Net.default()
+    assert Store.load_network(id) == Elia.Net.unrestricted()
   end
 
-  # STORE-54, NET-1: a chat that is missing, unreadable, corrupt or holds a
-  # value that can't be read is unrestricted.
-  test "a missing, unreadable or unreadable-valued chat is unrestricted" do
+  # NET-1, STORE-54: a chat that has never been saved starts allowlisted where a
+  # limit can be built for it, and unrestricted where it can't.
+  test "a chat that has never been saved starts at the default" do
     assert Store.load_network("missing-chat") == Elia.Net.default()
-    assert Store.load_network("../bad") == Elia.Net.default()
+
+    assert Store.load_network("missing-chat", jail: false) == Elia.Net.unrestricted()
+
+    # NET-29: an older file that named hosts of its own still reaches them: its
+    # session reads them and hands them to its project.
+    id = Elia.Agent.new_id()
+    on_exit(fn -> Store.delete(id) end)
+
+    :ok = Store.save(id, [Message.user("hi")], network: %{mode: :allowlist})
+    path = Path.join(Store.dir(), id <> ".term")
+
+    chat =
+      path
+      |> File.read!()
+      |> :erlang.binary_to_term()
+      |> Map.put(:network, %{mode: :allowlist, hosts: ["API.example.com"]})
+
+    File.write!(path, :erlang.term_to_binary(chat))
+
+    assert Store.load_network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+  end
+
+  # STORE-54, NET-1: a chat that is unreadable, corrupt or holds a value that
+  # can't be read is unrestricted.
+  test "an unreadable or unreadable-valued chat is unrestricted" do
+    assert Store.load_network("../bad") == Elia.Net.unrestricted()
 
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
     :ok = Store.save(id, [Message.user("hi")])
 
     File.write!(Path.join(Store.dir(), id <> ".term"), "not a term")
-    assert Store.load_network(id) == Elia.Net.default()
+    assert Store.load_network(id) == Elia.Net.unrestricted()
   end
 
   # STORE-37, STORE-38: a chat's own reasoning effort is stored only when it has

@@ -21,12 +21,13 @@ project's (PROJ-42, PROJ-46).
 
 ### The registry
 
-- **PROJ-1** A project is `%{id, name, folder, color, harness?}`: an id of 12
-  URL-safe characters (STORE-5), a non-blank `name` (trimmed on save), the
-  absolute path of a directory `folder` — one that exists when the project is
-  created (PROJ-6) and may be gone later (PROJ-27) — a `color` that is a palette
-  name (PROJ-42) or `nil` for the one the name gives it (PROJ-43), and
-  `harness?` true only for Elia's own project.
+- **PROJ-1** A project is `%{id, name, folder, color, allowlist, harness?}`: an
+  id of 12 URL-safe characters (STORE-5), a non-blank `name` (trimmed on save),
+  the absolute path of a directory `folder` — one that exists when the project
+  is created (PROJ-6) and may be gone later (PROJ-27) — a `color` that is a
+  palette name (PROJ-42) or `nil` for the one the name gives it (PROJ-43), an
+  `allowlist` of hosts (PROJ-49), and `harness?` true only for Elia's own
+  project.
 - **PROJ-2** Projects are saved as one Erlang term in `.elia/projects.term`
   (Elia's data dir, PROJ-13), written atomically like a session (STORE-2). A
   missing, unreadable or corrupt file reads as "no projects" rather than an
@@ -158,6 +159,21 @@ project's (PROJ-42, PROJ-46).
   PROJ-29) and the project's own icon on the projects page (`#project-icon-<id>`,
   PROJ-23), each painted in the colour the header's icon uses for it (PROJ-46).
 
+### The allowlist
+
+- **PROJ-49** A project has an allowlist of hosts (NET-28): `allowlist/1`
+  returns its entries cleaned (NET-7), and `set_allowlist/2` stores a list whose
+  every entry is one of NET-7's forms, or returns the first entry that is not
+  one and stores nothing. A stored project keeps its list in the registry file
+  (PROJ-2); Elia's own project, which the registry never holds (PROJ-3), keeps
+  it in the settings database under a key of its own. A project with no list has
+  an empty one.
+- **PROJ-50** The projects page (PROJ-23) shows each project's allowlist as a
+  field (`#project-allowlist-<id>`) holding its entries one per line, with a Save
+  (`#save-project-allowlist-<id>`) that applies it when it is pressed; a list
+  holding an entry that is not one of NET-7's forms changes nothing and the page
+  shows the message for that project (`#project-allowlist-error-<id>`, NET-11).
+
 ### The interface
 
 - **PROJ-23** `/projects` lists every project with its name, folder and number
@@ -275,16 +291,21 @@ project's (PROJ-42, PROJ-46).
 
 ## Stored data
 
-Backward compatible, with nothing to migrate. The registry (PROJ-2) gains one
-field: a project's `color` (PROJ-1, PROJ-42). A file written before this change
-has none, and a project read without one takes `color: nil` (PROJ-2), which is
+Backward compatible, with nothing to migrate. The registry (PROJ-2) gains two
+fields: a project's `color` (PROJ-1, PROJ-42) and a project's `allowlist`
+(PROJ-1, PROJ-49). A file written before this change has neither, and a project
+read without an `allowlist` has an empty one, which reaches nothing (NET-10),
+and nothing is rewritten by that. Such a file has no colour, and a project read
+without one takes `color: nil` (PROJ-2), which is
 the colour its name derives (PROJ-43) — so such a file reads as a project with a
 colour, and nothing is rewritten. A stored name the palette no longer holds
 (PROJ-42) reads the same way, as `nil`. The file keeps its shape otherwise and
 its version stays 1. Elia's own project, which the registry never holds
 (PROJ-3), keeps its colour in the settings database, under a key of its own
 (PROJ-44): a database written before this change has none, which reads as the
-colour its name derives. The open project is the default project the settings
+colour its name derives. Its allowlist is kept the same way, under a key of its
+own (PROJ-49), and a database written before this change has none, which reads
+as the empty list. The open project is the default project the settings
 database already held (PROJ-8, PROJ-28): the same key and the same values, with
 the meaning the interface gives it widened from "where a new chat starts" to
 "the project the interface works in", so a value stored by an older version says
@@ -319,7 +340,7 @@ indistinguishable afterwards.
   project whose folder is gone, the projects root and creating from a name,
   with the folder it makes, its errors, the repository and its initial commit
   and identity, the palette, a project's colour and `set_color/2` —
-  PROJ-1 to PROJ-9, PROJ-27, PROJ-31 to PROJ-38, PROJ-42 to PROJ-44).
+  PROJ-1 to PROJ-9, PROJ-27, PROJ-31 to PROJ-38, PROJ-42 to PROJ-44, PROJ-49).
 - `test/elia/deployment_test.exs` (the deploy bound to Elia's own project, and
   the tree Elia's own data lives in whatever project a chat belongs to —
   PROJ-3, PROJ-13, PROJ-14).
@@ -333,7 +354,8 @@ indistinguishable afterwards.
 - `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23; the
   Files button in a project's row, PROJ-48; creating from a name, the projects
   root control and what the page says after a creation whose repository was not
-  set up — PROJ-39 to PROJ-41).
+  set up, a project's allowlist field and its Save — PROJ-39 to PROJ-41,
+  PROJ-50).
 - `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).

@@ -5,15 +5,18 @@ defmodule Elia.Net do
   Three modes (NET-1):
 
     * `:unrestricted` — the host's network, as every chat had before this
-      setting existed, and what a chat that sets nothing keeps.
+      setting existed, and what a chat whose file carries no value keeps.
     * `:allowlist` — the call's processes run in a network namespace of their
       own whose only interface is loopback, and reach the network through the
-      harness's proxy, for the hosts the chat names.
+      harness's proxy, for the entries the chat's project names (NET-28). A
+      chat that has never been saved starts here (NET-1).
     * `:none` — the same namespace with nothing to reach.
 
-  A setting is `%{mode: mode, hosts: [entry]}`; `hosts` is read in `:allowlist`
-  mode only, and each entry is one of the forms `Elia.Net.Allowlist` accepts
-  (NET-7).
+  A setting is `%{mode: mode}`: the entries are the chat's project's
+  (`Elia.Projects.allowlist/1`, PROJ-49), each of them one of the forms
+  `Elia.Net.Allowlist` accepts (NET-7). A setting read from a chat's file may
+  still carry `hosts` — the entries the chat named before they moved to its
+  project — and `hosts/1` reads them for the migration of NET-29.
 
   The limit is built where the jail is: the namespace goes into the jail's argv
   (`Elia.Shell`), the proxy and the relay that carries a command's loopback to
@@ -34,9 +37,21 @@ defmodule Elia.Net do
   @spec modes() :: [atom()]
   def modes, do: @modes
 
-  @doc "The setting a chat has until it sets one: the whole network (NET-1)."
-  @spec default() :: map()
-  def default, do: %{mode: :unrestricted, hosts: []}
+  @doc """
+  The setting a chat has until it sets one (NET-1): allowlisted, with nothing
+  allowed yet — the entries its project names start empty (NET-28) — where a
+  limit can be built (`available?/1`), and unrestricted where it can't, since a
+  limit that isn't built leaves the chat reaching the network it means to deny
+  (NET-20).
+  """
+  @spec default(keyword()) :: map()
+  def default(opts \\ []) do
+    if available?(opts), do: %{mode: :allowlist, hosts: []}, else: unrestricted()
+  end
+
+  @doc "The setting that limits nothing: the host's network (NET-1)."
+  @spec unrestricted() :: map()
+  def unrestricted, do: %{mode: :unrestricted, hosts: []}
 
   @doc "The mode of a setting (NET-1); one that isn't a mode is unrestricted."
   @spec mode(term()) :: atom()
@@ -53,57 +68,54 @@ defmodule Elia.Net do
   def hosts(_setting), do: []
 
   @doc """
-  A setting as it is held (NET-1): its mode and the entries of NET-7 it names,
-  cleaned, so whatever form a caller gave them in — a list, or the lines of a
-  form field — the chat's own setting is the same.
+  The setting a chat's commands are limited by as it stands (NET-6, NET-28): its
+  mode, with the entries its project's allowlist names. A project that names
+  none gives an empty list, which reaches nothing (NET-10).
+  """
+  @spec effective(term(), map() | nil) :: map()
+  def effective(setting, project) do
+    %{mode: mode(setting), hosts: Elia.Projects.allowlist(project)}
+  end
+
+  @doc """
+  A setting as a chat holds it (NET-1, NET-28): its mode alone, since the
+  entries are the chat's project's. A value that names no mode is the default.
   """
   @spec setting(term()) :: map()
-  def setting(%{mode: mode} = given) when mode in @modes, do: %{mode: mode, hosts: hosts(given)}
+  def setting(%{mode: mode}) when mode in @modes, do: %{mode: mode, hosts: []}
   def setting(_given), do: default()
 
   @doc """
-  The setting as the chat's file stores it (STORE-53): `nil` in unrestricted
-  mode, so a chat that reaches the whole network as every chat did carries no
-  entry and setting it back takes the key off the file.
+  The setting as the chat's file stores it (STORE-53): its mode, and `nil` in
+  unrestricted mode, so a chat that reaches the whole network as every chat did
+  carries no entry and setting it back takes the key off the file. The entries
+  are the chat's project's and are not written (NET-28, NET-29).
   """
   @spec stored(term()) :: map() | nil
   def stored(setting) do
     case mode(setting) do
       :unrestricted -> nil
-      :allowlist -> %{mode: :allowlist, hosts: hosts(setting)}
+      :allowlist -> %{mode: :allowlist}
       :none -> %{mode: :none}
     end
   end
 
   @doc """
-  The setting a stored value holds (STORE-54): unrestricted when there is none,
-  when it isn't a setting, or when it names a mode that isn't one (NET-1).
+  The setting a stored value holds (STORE-54): its mode, with the entries an
+  older chat named of its own kept so its session can add them to its project's
+  list (NET-29), and unrestricted when there is none, when it isn't a setting,
+  or when it names a mode that isn't one (NET-1).
   """
   @spec load(term()) :: map()
   def load(%{mode: mode} = stored) when mode in @modes do
     case mode do
-      :unrestricted -> default()
+      :unrestricted -> unrestricted()
       :allowlist -> %{mode: :allowlist, hosts: hosts(stored)}
       :none -> %{mode: :none, hosts: []}
     end
   end
 
-  def load(_stored), do: default()
-
-  @doc """
-  The setting a mode and the entries of a form field make, or the first entry
-  that is not one of NET-7's forms (NET-11). The entries are kept in every
-  mode, so switching to another one and back doesn't lose the list.
-  """
-  @spec new(atom(), term()) :: {:ok, map()} | {:error, binary()}
-  def new(mode, entries) when mode in @modes do
-    case Allowlist.parse(entries) do
-      {:ok, hosts} -> {:ok, %{mode: mode, hosts: hosts}}
-      {:error, entry} -> {:error, entry}
-    end
-  end
-
-  def new(mode, _entries), do: {:error, "network mode: #{inspect(mode)}"}
+  def load(_stored), do: unrestricted()
 
   @doc """
   Whether a chat's network limit can be built here at all (NET-20, NET-25): the
@@ -152,10 +164,12 @@ defmodule Elia.Net do
   defp proxy(:none, _opts, _setting), do: {:ok, %{mode: :none}}
 
   defp proxy(:allowlist, opts, setting) do
+    chat_id = Keyword.get(opts, :session_id)
+
     case Proxy.start(
            mode: :allowlist,
-           hosts: hosts(setting),
-           chat_id: Keyword.get(opts, :session_id),
+           hosts: current_hosts(chat_id, hosts(setting)),
+           chat_id: chat_id,
            caller: self()
          ) do
       {:ok, pid} -> {:ok, Proxy.net(pid)}

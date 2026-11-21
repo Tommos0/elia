@@ -1,13 +1,16 @@
 # Network access
 
-Status: Draft
+Status: Implemented
 
 A chat's commands reach whatever the machine reaches: the jail keeps the secrets
 out of their hand (ISOL-5) and leaves the wire alone (ISOL-11), and an approval
 prompt says nothing about where a command may connect. This spec gives every
-chat a network setting beside its jail setting (ISOL-16) — unrestricted, as
-every chat is today; an allowlist of hosts, reached only through a proxy the
-harness serves; or no network at all.
+chat a network setting beside its jail setting (ISOL-16) — unrestricted; an
+allowlist of hosts, reached only through a proxy the harness serves; or no
+network at all. A chat starts allowlisted (NET-1), and the list belongs to its
+project rather than to the chat (NET-28), so the chats of one project reach the
+same hosts. The model can ask for a host to be allowed, and the request is put
+to the user in the chat that waits on it (NET-30).
 
 The limit is built where the jail is (ISOL-2, ISOL-13): a network namespace of
 the command's own, with no route to any host. Egress is then a property of the
@@ -35,21 +38,24 @@ decrypted — so an allowlist is by host name, which is what the user writes.
 ### The setting
 
 - **NET-1** A chat's network setting is one of three modes — unrestricted,
-  allowlist and none — plus, for allowlist, the chat's list of hosts; a chat
-  whose saved file carries no value is unrestricted (STORE-53).
+  allowlist and none. A chat that has never been saved starts allowlisted where
+  a limit can be built for it and unrestricted where it can't (NET-20, NET-25),
+  and one whose saved file carries no value is unrestricted (STORE-53,
+  STORE-54).
 - **NET-2** The setting is saved with the chat (STORE-53) and loaded with it
   (STORE-54), so it survives a restart.
 - **NET-3** A change to it is carried by the chat's `{:settings, settings}`
   event like its other settings (SESS-41, CSET-3), so every view of the chat
   follows it.
-- **NET-4** A sub-task starts with a copy of its parent's setting and its own
-  from then on (SUBTASK-30, ISOL-18), so changing either chat afterwards never
-  affects the other.
+- **NET-4** A sub-task starts with a copy of its parent's mode and its own from
+  then on (SUBTASK-30, ISOL-18), so changing either chat afterwards never
+  affects the other; the allowlist is its project's, so a child in its parent's
+  project reaches the same hosts (NET-28).
 - **NET-5** A change of mode applies to the commands and terminals that start
   after it: one already running keeps the network it started with (ISOL-19).
-- **NET-6** A change to the allowlist applies to the next request a running
-  command makes, because the proxy reads the chat's list when it decides
-  (NET-14).
+- **NET-6** A change to a project's allowlist applies to the next request a
+  running command makes, because the proxy reads the chat's effective setting —
+  its mode and its project's entries — when it decides (NET-14).
 
 ### The allowlist
 
@@ -63,9 +69,47 @@ decrypted — so an allowlist is by host name, which is what the user writes.
   port matches that port only.
 - **NET-10** An empty allowlist reaches nothing: in allowlist mode with no
   entry every request is refused.
-- **NET-11** The settings page saves a host list only when every entry is one of
-  NET-7's forms: a list holding an entry that is not one changes nothing and the
-  page shows the message for it (CSET-7, CSET-11).
+- **NET-11** A host list is saved only when every entry is one of NET-7's forms:
+  a list holding an entry that is not one changes nothing and the page shows the
+  message for it (PROJ-50).
+
+### The project's allowlist
+
+- **NET-28** The allowlist belongs to the project (PROJ-49), not to the chat: a
+  chat's setting is its mode and no hosts of its own (NET-1), every chat of a
+  project — a sub-task included — reaches the same entries, and a chat in
+  allowlist mode applies its project's list (NET-14). A project's list starts
+  empty, so a new project reaches nothing until a host is allowed (NET-10).
+- **NET-29** A chat file written before this change, whose setting holds hosts of
+  its own, keeps reaching them: when its session starts the entries it holds are
+  added to its project's list if they are not there, and the chat's setting is
+  left with its mode (NET-28).
+
+### Asking for a host
+
+- **NET-30** The built-in `network` skill (SKILL-7) carries one tool,
+  `request_network_host`, whose input is `host` (a string, required) and `reason`
+  (a string, required). The tool never needs approval (APPR-7).
+- **NET-31** A call to `request_network_host` does not run when the model makes
+  it: the turn puts the request to the user and waits for the answer (LOOP-21),
+  so the session's status is `:awaiting_input` while it is open (ASK-3, SESS-34)
+  and the answer reaches the tool as `ctx[:answer]` (ASK-2). The user may answer
+  in their own words (ASK-4), and a request in a sub-task is answered in that
+  chat (ASK-9).
+- **NET-32** The request is a card in the chat's transcript (`#answer-<call_id>`,
+  as a question's card is, UI-75): it names the host and the reason, and offers a
+  button per decision — `Allow` and `Don't allow` — beside the field for an
+  answer of the user's own. The card is shown in the compact view (UI-61), and
+  the chat is not shown as idle while the request is open (UI-59, UI-62).
+- **NET-33** An answer that allows the host adds it to the chat's project's list
+  if it is not already there (NET-28), and the tool's result says the host is
+  allowed and that the command may be run again; any other answer changes nothing
+  and the result says the host is not allowed, with the user's answer verbatim.
+  An answer that allows a host which is not one of NET-7's forms adds nothing and
+  the result says so.
+- **NET-34** A chat whose mode is not allowlist is told so in the result: the
+  host is in its project's list, and its own mode still limits what it reaches
+  (NET-1).
 
 ### What a command gets
 
@@ -111,35 +155,51 @@ decrypted — so an allowlist is by host name, which is what the user writes.
   chat's current mode marked, and a line saying what applies in words
   (`#network-state`).
 - **NET-23** Choosing a mode applies it at the moment it is clicked, like a
-  switch rather than the page's one Save (CSET-4, CSET-7), and applying one
-  keeps the host list as it stands in the field (NET-24).
-- **NET-24** In allowlist mode the section shows a host list field
-  (`#network-hosts`) holding the chat's entries one per line, saved by the
-  page's own Save (CSET-7, CSET-11).
+  switch rather than the page's one Save (CSET-4, CSET-7).
+- **NET-24** In allowlist mode the section lists the project's entries, one per
+  line as text (`#network-hosts`), and links to the projects page
+  (`#network-hosts-link`) where they are changed (PROJ-50).
 - **NET-25** Where the limit cannot be built (NET-20) the section says so and
   its control is disabled (`#network-unavailable`), rather than showing a chat
   as limited where it is not (UI-68).
 - **NET-26** The chat page says when the chat's network is limited, beside its
   jail warning in the composer toolbar (`#network-warning`, CSET-9), naming the
-  mode in words (UI-100).
+  mode in words (UI-100); in allowlist mode it names the chat's project, whose
+  entries the chat reaches (NET-28).
 
 ### Telling the model
 
 - **NET-27** The `shell` tool's description and the skill's instructions say
   what the chat's network setting is and what it means: loopback only and no name
   resolution in both restricted modes, the allowlisted hosts reached through
-  `http_proxy` and `https_proxy` in allowlist mode, and that a command which
-  cannot reach a host is expected rather than broken (SHELL-8, SHELL-9, ISOL-21).
+  `http_proxy` and `https_proxy` in allowlist mode, that a chat starts
+  allowlisted (NET-1), and that a command which cannot reach a host is expected
+  rather than broken (SHELL-8, SHELL-9, ISOL-21).
+- **NET-35** The `network` skill's instructions tell the model when to ask: a
+  command that cannot reach a host is a reason to ask for that host (NET-30)
+  rather than to give up, to reach for a chat with no limit, or to look for
+  another way out (ISOL-21).
 
 ## Stored data
 
-A chat file gains one optional key, `network`, holding the mode and, in
-allowlist, the list: `%{mode: :allowlist, hosts: ["api.example.com"]}` or
-`%{mode: :none}`. It is written only when the chat's mode is not unrestricted
-(STORE-53), and is backward compatible in both directions: a file written before
-this change has no key and reads as unrestricted (NET-1), and code that knows
-nothing of the key ignores it, as `jail` was ignored while it did not exist. No
-migration is needed.
+Backward compatible, with one read-time migration. A chat file's `network` key
+holds the mode and nothing else — `%{mode: :allowlist}` or `%{mode: :none}` — and
+is still written only when the chat's mode is not unrestricted (STORE-53). A
+chat that has never been saved starts allowlisted, and a file written before this
+change with no `network` key still reads as unrestricted (STORE-54, NET-1). A
+file that holds an older setting with hosts of its own
+(`%{mode: :allowlist, hosts: ["api.example.com"]}`) has them added to its
+project's list when its session starts, so a chat that reached a host before this
+change still does (NET-29); that migration rewrites no file, and the chat's
+setting loses the entries when it is next saved (STORE-53).
+
+A stored project gains one optional field, `allowlist` — a list of entries
+(PROJ-49) — in the registry file (PROJ-2). A file written before this change has
+none, and a project read without one has an empty list, which reaches nothing
+(NET-10), so nothing is rewritten and the file's version stays 1. Elia's own
+project, which the registry never holds (PROJ-3), keeps its list in the settings
+database under a key of its own (PROJ-49): a database written before this change
+has none, which reads as the empty list.
 
 ## Out of scope
 
@@ -155,6 +215,8 @@ migration is needed.
 - The server's own outbound requests — the model provider, `Req` in a skill of
   the harness's own — which are not a command's and are untouched.
 - A record of what a chat's proxy refused, and a page to read it.
+- An entry allowed for one chat rather than for its project (NET-28), and a queue
+  of host requests outside the chat that is waiting on one (NET-31).
 - The deploy's own network use, which is not a chat's (NET-19).
 
 ## Implementation
@@ -169,8 +231,10 @@ in the argv, the proxy's environment, and where the limit cannot be built),
 (the setting, its event, its save), `Elia.Store` (`save/3`'s `network:`,
 `load_network/1`), `Elia.Skills.Shell`, `Elia.Skills.Folder` and `Elia.Harness`
 (pass the chat's setting from the tool context), `Elia.Skills.Tasks` (the
-child's copy), `EliaWeb.ChatSettingsLive` (the section), `EliaWeb.ChatLive` (the
-toolbar warning).
+child's copy), `Elia.Projects` (a project's allowlist, where it is stored, and
+the entries an older chat held), `Elia.Skills.Network` (the tool),
+`EliaWeb.ChatSettingsLive` (the section), `EliaWeb.ProjectsLive` (a project's
+field), `EliaWeb.ChatLive` (the request card and the toolbar warning).
 
 ## Tests
 
@@ -182,20 +246,34 @@ toolbar warning).
   can't build a limit at all (NET-20)).
 - `test/elia/net_allowlist_test.exs` (an entry's forms, the case, the suffix and
   the port rules, the empty list — NET-7 to NET-10).
+- `test/elia/net_test.exs` (the modes, the default, what is stored, and the
+  effective setting a chat's commands are limited by — NET-1, NET-6, NET-28).
 - `test/elia/net_proxy_test.exs` (a forwarded request, a refused one, the
-  proxy resolving the host and reading the chat's list at the moment it decides
-  — NET-6, NET-11, NET-13, NET-14).
-- `test/elia/store_test.exs` (the setting saved and loaded — STORE-53,
-  STORE-54).
+  proxy resolving the host and reading the project's entries at the moment it
+  decides — NET-6, NET-13, NET-14).
+- `test/elia/store_test.exs` (the setting saved and loaded, and a chat that has
+  never been saved — STORE-53, STORE-54).
 - `test/elia/agent_test.exs` and `test/elia/tasks_test.exs` (the setting, its
-  event, and the child's copy — NET-3, NET-4).
+  event, the child's copy, and the request that waits for an answer with the
+  answer reaching the tool — NET-3, NET-4, NET-31).
+- `test/elia/projects_test.exs` (a project's allowlist read, saved and cleaned,
+  Elia's own project's list, and the entries an older chat held added to its
+  project's list — NET-28, NET-29, PROJ-49).
+- `test/elia/skills/network_test.exs` (the tool's shape, the answer that allows
+  and the one that doesn't, an entry that is not one of NET-7's forms, a chat
+  whose mode is not allowlist, and the skill's instructions — NET-30, NET-33 to
+  NET-35).
 - `test/elia/shell_test.exs` (the argv of each mode — NET-12 to NET-16,
   NET-20).
 - `test/elia/skills/shell_test.exs` (the tool's description and the skill's
-  instructions — NET-27).
+  instructions, both naming the request tool — NET-27, NET-35).
 - `test/elia_web/live/network_test.exs` (the section, its controls and its
-  message, the mode applied on click, the list saved by the page's Save, the
-  disabled control, the chat page's warning — NET-11, NET-22 to NET-26).
+  message, the mode applied on click, the project's entries shown, the disabled
+  control, the chat page's warning, the request card and its buttons — NET-11,
+  NET-22 to NET-26, NET-32).
+- `test/elia_web/live/projects_live_test.exs` (a project's allowlist field, its
+  Save, and the message for a list holding an entry that is not one of NET-7's
+  forms — PROJ-50).
 - No test: NET-5 and NET-18 — that a change reaches only later commands, and
   that a terminal keeps its namespace for its life, are read from where the
   setting is read when a process starts (NET-18's callers) rather than

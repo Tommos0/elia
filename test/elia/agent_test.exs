@@ -49,7 +49,7 @@ defmodule Elia.AgentTest do
     assert system =~ "Skill: shell"
 
     assert Enum.map(tools, & &1.name) |> Enum.sort() ==
-             ~w(ask_user await_task cd list_chats mark_done read_chat reload_skills search_chats set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger view_image)
+             ~w(ask_user await_task cd list_chats mark_done read_chat reload_skills request_network_host search_chats set_title shell spawn_task terminal_read terminal_send terminal_start terminal_stop update_ledger view_image)
   end
 
   # LOOP-9, LOOP-11, SHELL-1, SESS-3: the call is approved before it runs
@@ -261,6 +261,81 @@ defmodule Elia.AgentTest do
     # The turn ended in the reply after the answer, not in a new one.
     last = List.last(Agent.snapshot(id).messages)
     assert Message.text_content(last) == "Jailed, then."
+  end
+
+  # NET-31, NET-33: a host request waits for the user's answer like a question
+  # (LOOP-21, ASK-2), and the answer that allows the host reaches the tool and
+  # puts it in the chat's project's list — which every chat of that project
+  # reaches from then on (NET-28).
+  test "a host request waits, and an allowed host joins the project's list", %{id: id} do
+    project = Agent.snapshot(id).project
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("n1", "request_network_host", %{
+          "host" => "api.example.com",
+          "reason" => "curl could not reach it"
+        })
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Fetched it.")]))
+
+    # This chat is in allowlist mode, so what it is limited by is the entry the
+    # answer adds (NET-28).
+    :ok = Agent.set_network(id, %{mode: :allowlist})
+
+    :ok = Agent.send_message(id, "fetch the price")
+    await_status(id, :awaiting_input)
+
+    # NET-31: the session is awaiting input, as it is for a question.
+    assert_receive {:agent, ^id, {:tool_status, "n1", :awaiting_input}}
+    assert id in Agent.awaiting_input()
+
+    :ok = Agent.answer(id, "n1", "Allow")
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    [_user, _call, %Message{role: :tool, content: [result]}] = second.messages
+    assert %{tool_call_id: "n1", is_error: false} = result
+    assert result.content =~ "api.example.com"
+    assert result.content =~ "allowed"
+
+    # NET-33: the host is the project's now, and the chat reaches it (NET-28).
+    assert Elia.Projects.allowlist(project) == ["api.example.com"]
+
+    agent = Agent.network(id)
+    assert agent == %{mode: :allowlist, hosts: ["api.example.com"]}
+  end
+
+  # NET-29: a chat file written before the allowlist moved to the project may
+  # name hosts of its own; they join its project's list as the chat loads, and
+  # its own setting keeps the mode alone (NET-28).
+  test "hosts an older chat named of its own join its project's list" do
+    id = Agent.new_id()
+    project = Elia.Projects.default()
+    on_exit(fn -> Elia.Store.delete(id) end)
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    :ok = Elia.Store.save(id, [Message.user("hi")], network: %{mode: :allowlist})
+    path = Path.join(Elia.Store.dir(), id <> ".term")
+
+    chat =
+      path
+      |> File.read!()
+      |> :erlang.binary_to_term()
+      |> Map.put(:network, %{mode: :allowlist, hosts: ["API.example.com"]})
+
+    File.write!(path, :erlang.term_to_binary(chat))
+
+    {:ok, pid} = Agent.ensure_started(id, project: project)
+    on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+    assert Elia.Projects.allowlist(project) == ["api.example.com"]
+    assert %{settings: %{network: network}} = Agent.snapshot(id)
+    assert network == %{mode: :allowlist, hosts: []}
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
   end
 
   # ASK-6, APPR-3, APPR-4
@@ -3222,36 +3297,36 @@ defmodule Elia.AgentTest do
     assert %{settings: %{jail: true}} = Agent.snapshot(id)
   end
 
-  # NET-1, NET-3, SESS-41: a chat's network setting is set, broadcast like its
-  # other settings, and shows in the snapshot.
+  # NET-1, NET-3, NET-28, SESS-41: a chat's network setting is its mode — the
+  # entries are its project's — set, broadcast like its other settings, and
+  # shown in the snapshot; what its commands are limited by carries the
+  # project's entries (NET-6).
   test "setting the network broadcasts it and shows in the snapshot", %{id: id} do
     assert %{settings: %{network: %{mode: :unrestricted}}} = Agent.snapshot(id)
 
-    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["api.example.com"]})
+    :ok = Agent.set_network(id, %{mode: :allowlist})
 
-    assert_receive {:agent, ^id,
-                    {:settings, %{network: %{mode: :allowlist, hosts: ["api.example.com"]}}}}
-
-    assert %{settings: %{network: %{mode: :allowlist, hosts: ["api.example.com"]}}} =
-             Agent.snapshot(id)
+    assert_receive {:agent, ^id, {:settings, %{network: %{mode: :allowlist}}}}
+    assert %{settings: %{network: %{mode: :allowlist, hosts: []}}} = Agent.snapshot(id)
 
     :ok = Agent.set_network(id, %{mode: :none})
     assert_receive {:agent, ^id, {:settings, %{network: %{mode: :none}}}}
     assert Agent.network(id) == %{mode: :none, hosts: []}
   end
 
-  # NET-1, NET-11, SESS-42: a mode that isn't one of the three, and a host that
-  # isn't one of NET-7's forms, change nothing and say why.
+  # NET-1, NET-28, SESS-42: a mode that isn't one of the three changes nothing
+  # and says why; the entries a chat is offered are its project's, so a list of
+  # its own is not stored (PROJ-49).
   test "a network setting that isn't one is refused", %{id: id} do
-    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["api.example.com"]})
-
-    assert {:error, message} = Agent.set_network(id, %{mode: :allowlist, hosts: ["not a host"]})
-    assert message =~ "not a host"
-    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    :ok = Agent.set_network(id, %{mode: :allowlist})
 
     assert {:error, message} = Agent.set_network(id, %{mode: :everything})
     assert message =~ "network"
-    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Agent.network(id) == %{mode: :allowlist, hosts: []}
+
+    # An entry of its own is not the chat's to keep: the project's list is.
+    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["not a host"]})
+    assert %{settings: %{network: %{mode: :allowlist, hosts: []}}} = Agent.snapshot(id)
   end
 
   # NET-6: a chat with no running session answers nil, so a proxy deciding a

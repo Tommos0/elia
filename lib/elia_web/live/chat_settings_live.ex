@@ -46,10 +46,11 @@ defmodule EliaWeb.ChatSettingsLive do
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         # NET-22, NET-23: what this chat's commands and terminals may reach
-        # (NET-1), the host list a field holds for them, and whether a limit can
-        # be built for this chat here at all (NET-20, NET-25).
+        # (NET-1), the entries its project allows (NET-24, NET-28), and whether
+        # a limit can be built for this chat here at all (NET-20, NET-25).
         network: snapshot.settings.network,
-        network_hosts: hosts_text(snapshot.settings.network),
+        network_entries: Elia.Projects.allowlist(snapshot.project),
+        network_hosts: hosts_text(snapshot.project),
         network_available: Elia.Net.available?(jail: snapshot.settings.jail),
         # LIMIT-1, LIMIT-6: the chat's turn limits and the form that sets them.
         limits: snapshot.settings.limits,
@@ -211,6 +212,8 @@ defmodule EliaWeb.ChatSettingsLive do
                     setting={@network}
                     available={@network_available}
                     hosts={@network_hosts}
+                    entries={@network_entries}
+                    project_name={@project.name}
                   />
                 </div>
               </section>
@@ -512,6 +515,8 @@ defmodule EliaWeb.ChatSettingsLive do
   attr :setting, :map, required: true
   attr :available, :boolean, required: true
   attr :hosts, :string, required: true
+  attr :entries, :list, required: true
+  attr :project_name, :string, required: true
 
   # NET-22, NET-23, NET-25: the chat's network setting — one control per mode,
   # applied the moment it is clicked like the jail switch (CSET-4, UI-67), with
@@ -542,7 +547,7 @@ defmodule EliaWeb.ChatSettingsLive do
           {mode.label}
         </button>
         <span id="network-state" class="text-xs text-base-content/50">
-          {network_state(@setting)}
+          {network_state(@setting, @entries)}
         </span>
       </div>
 
@@ -551,21 +556,25 @@ defmodule EliaWeb.ChatSettingsLive do
         jail is on.
       </span>
 
-      <label :if={@setting.mode == :allowlist and @available} class="block">
+      <div :if={@setting.mode == :allowlist and @available} class="space-y-1">
         <span class="text-xs font-medium text-base-content/70">Allowed hosts</span>
-        <span class="mt-0.5 block text-xs text-base-content/50">
-          One per line: a host (api.example.com), a <code>*.suffix</code>
-          (*.example.com) or either with a port (api.example.com:443). The page's Save keeps
-          them; a list with any other entry saves nothing.
+        <span class="block text-xs text-base-content/50">
+          Every chat of {@project_name} reaches these, one per line. A host
+          (api.example.com), a <code>*.suffix</code> (*.example.com) or either with a port
+          (api.example.com:443).
         </span>
-        <textarea
+        <pre
           id="network-hosts"
-          name="network[hosts]"
-          rows="3"
-          class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 p-2 font-mono text-xs"
-          placeholder="api.example.com"
-        >{@hosts}</textarea>
-      </label>
+          class="w-full rounded-lg border border-base-300 bg-base-200/40 p-2 font-mono text-xs whitespace-pre-wrap break-words"
+        >{@hosts}</pre>
+        <.link
+          id="network-hosts-link"
+          navigate={~p"/projects"}
+          class="inline-block text-xs text-primary hover:underline"
+        >
+          Change {@project_name}'s allowlist on the projects page
+        </.link>
+      </div>
     </div>
     """
   end
@@ -579,43 +588,30 @@ defmodule EliaWeb.ChatSettingsLive do
   end
 
   # NET-22: what applies, in words, as the jail switch says its state (UI-67).
-  defp network_state(%{mode: :unrestricted}),
-    do: "Reaches the whole network, as every chat did before this setting."
+  defp network_state(%{mode: :unrestricted}, _entries),
+    do: "Reaches the whole network."
 
-  defp network_state(%{mode: :allowlist} = setting) do
-    case Elia.Net.hosts(setting) do
+  defp network_state(%{mode: :allowlist}, entries) do
+    case entries do
       [] -> "Reaches nothing yet: no host is allowed."
       [host] -> "Reaches #{host}."
       hosts -> "Reaches #{length(hosts)} allowed hosts."
     end
   end
 
-  defp network_state(%{mode: :none}), do: "Reaches nothing at all."
+  defp network_state(%{mode: :none}, _entries), do: "Reaches nothing at all."
 
-  defp hosts_text(setting), do: Enum.join(Elia.Net.hosts(setting), "\n")
-
-  # NET-11, NET-24: the setting the form's host list makes, or the message that
-  # names the entry it can't be.
-  defp network_setting(mode, params) do
-    case Elia.Net.new(mode, params["hosts"] || "") do
-      {:ok, setting} -> {:ok, setting}
-      {:error, entry} -> {:error, network_entry_error(entry)}
+  # NET-24, NET-28: the entries the chat's project allows, one per line.
+  defp hosts_text(project) do
+    case Elia.Projects.allowlist(project) do
+      [] -> "No host is allowed yet."
+      hosts -> Enum.join(hosts, "\n")
     end
-  end
-
-  defp network_entry_error(entry) do
-    "#{inspect(entry)} is not a host, a *.suffix or one of those with a port."
   end
 
   defp network_mode("allowlist"), do: :allowlist
   defp network_mode("none"), do: :none
   defp network_mode(_mode), do: :unrestricted
-
-  defp maybe_hosts(typed, setting) do
-    if Elia.Net.hosts(setting) == Elia.Net.Allowlist.clean(typed),
-      do: typed,
-      else: hosts_text(setting)
-  end
 
   attr :effort, :string, default: nil
 
@@ -1167,12 +1163,10 @@ defmodule EliaWeb.ChatSettingsLive do
     }
 
     with {:ok, limits} <- Elia.Limits.validate(limits),
-         {:ok, options} <- compaction_changes(compaction_params),
-         # NET-11, NET-24: a list with an entry that isn't one of NET-7's forms
-         # saves nothing, and the page names the entry (CSET-7).
-         {:ok, network} <-
-           network_setting(socket.assigns.network.mode, params["network"] || %{}) do
-      :ok = Agent.set_network(socket.assigns.session_id, network)
+         {:ok, options} <- compaction_changes(compaction_params) do
+      # NET-28: the chat's own setting is its mode; the entries are its
+      # project's, and are changed on the projects page (NET-11, PROJ-50).
+      :ok = Agent.set_network(socket.assigns.session_id, socket.assigns.network)
       :ok = Agent.set_limits(socket.assigns.session_id, limits)
       :ok = Agent.set_compaction(socket.assigns.session_id, options)
       {:noreply, push_navigate(socket, to: ~p"/c/#{socket.assigns.session_id}")}
@@ -1309,10 +1303,11 @@ defmodule EliaWeb.ChatSettingsLive do
       context_window: LLM.context_window(settings.model),
       auto_approve: settings.auto_approve,
       jail: settings.jail,
-      # NET-3, CSET-3: the network setting follows too, and the field only when
-      # the chat's own hosts changed, so a half-typed list stays (CSET-7).
+      # NET-3, CSET-3, NET-28: the network setting follows too, and the entries
+      # are read again from the chat's project, which is where they live.
       network: settings.network,
-      network_hosts: maybe_hosts(socket.assigns.network_hosts, settings.network),
+      network_entries: Elia.Projects.allowlist(socket.assigns.project),
+      network_hosts: hosts_text(socket.assigns.project),
       effort: settings.effort,
       limits: settings.limits
     )

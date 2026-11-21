@@ -102,7 +102,7 @@ it.
 
 | Spec | Prefix | Summary |
 | --- | --- | --- |
-| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md` and skills; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon |
+| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md`, skills and allowlist of hosts its chats may reach; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon |
 | [Bundle refresh](bundle-refresh.md) | `BUNDLE` | An open page loads the bundle a deploy served, and keeps the page's own state while it does |
 | [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about |
 | [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |
@@ -144,7 +144,7 @@ it.
 | [Shell tool](shell-tool.md) | `SHELL` | Running OS commands |
 | [Shell snapshots](shell-snapshots.md) | `SNAP` | Every `shell` call is bracketed by a git snapshot of its tree, so the chat lists the files it changed, each opened on its own with its diff and its added and removed lines, highlighted |
 | [Process priority](process-priority.md) | `PRIO` | Every process Elia spawns runs below the server's own CPU and I/O priority, so the UI and the agent loops stay responsive while a compile or a test suite runs |
-| [Network access](network-access.md) | `NET` | A chat's network setting: unrestricted, an allowlist of hosts reached only through the harness's proxy, or no network at all; the limit is a loopback-only namespace beside the jail |
+| [Network access](network-access.md) | `NET` | A chat's network setting: unrestricted, an allowlist of hosts reached only through the harness's proxy, or no network at all; a new chat starts allowlisted, the list belongs to its project, and the agent can ask the user to allow a host; the limit is a loopback-only namespace beside the jail |
 | [Command isolation](command-isolation.md) | `ISOL` | Commands run in a bubblewrap jail by default: a chat's commands are confined to the project folder it works in, and the settings database, saved chats and credentials aren't reachable; per-chat switch |
 | [Terminal](terminal.md) | `TERM` | A chat's own terminal: a pty (tmux in control mode) with xterm.js in the browser, jailed and niced like a command, on `/c/:id/terminal` |
 | [File tools](file-tools.md) | `FILE` | Retired: every file operation is a shell command (SHELL-15), so the six file tools are gone |

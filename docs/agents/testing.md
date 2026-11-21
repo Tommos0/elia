@@ -33,6 +33,15 @@ Read this before writing or changing tests. Tests live in `test/elia/` (core) an
   `test/elia/auto_resume_test.exs`): the scan reads every saved chat, so against
   the store the suite shares it would resume the chats other tests left behind
   and start sessions that outlive the test that runs it.
+- A project's allowlist of hosts is global state (PROJ-49, NET-28): Elia's own
+  project's lives in the settings database under `:harness_project_allowlist`
+  and a stored project's in the registry file. A test that allows a host must
+  put the list back —
+  `on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)` — or a later
+  test in the same file sees it, and `test/elia/projects_test.exs` deletes the
+  key in its `setup` for the same reason. A chat's own setting holds its mode
+  and nothing else, so a test that wants a chat to reach a host sets both: the
+  project's entry and the chat's mode.
 
 ## Fixtures that name a tool
 
@@ -196,6 +205,13 @@ what has been scrolled below the pane is not in the picture — raise
 picture of a `<details>` that is shut is taken by temporarily rendering it
 `open` for the run and reverting that edit afterwards, which `git status
 --porcelain` in the worktree then says nothing about.
+
+The preview runs the test env, where the host's jail is off, so `Elia.Net`
+falls back to unrestricted (NET-1, NET-25) and the settings page's Network
+section shows its "this host can't limit a chat's network" state rather than the
+entries list: a picture of the entries list needs a host that can build a jail,
+and the projects page (`/projects`) is where those entries are edited anyway
+(PROJ-50).
 
 A preview navigates and waits; it never clicks, hovers or types (out of scope in
 `specs/ui-preview.md`). A picture of something a *click* opens — a citation's

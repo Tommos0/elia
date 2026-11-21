@@ -14,6 +14,7 @@ defmodule Elia.Projects do
   projects" rather than an error.
   """
 
+  alias Elia.Net.Allowlist
   alias Elia.{Agent, Settings, Workspace}
 
   @version 1
@@ -22,6 +23,7 @@ defmodule Elia.Projects do
   @projects_root_key :projects_root
   @default_root "~/elia-projects"
   @color_key :harness_project_color
+  @allowlist_key :harness_project_allowlist
 
   # PROJ-42: the colours a project can be. A project stores a name; the hex is
   # what the interface paints, and each one is dark enough to take white text.
@@ -41,6 +43,7 @@ defmodule Elia.Projects do
           name: binary(),
           folder: binary(),
           color: binary() | nil,
+          allowlist: [binary()],
           harness?: boolean()
         }
 
@@ -70,6 +73,7 @@ defmodule Elia.Projects do
       name: "Elia",
       folder: Workspace.runtime_root(),
       color: stored_color_name(Settings.get(@color_key)),
+      allowlist: harness_allowlist(),
       harness?: true
     }
   end
@@ -141,6 +145,57 @@ defmodule Elia.Projects do
     with {:ok, name} <- palette_name(color) do
       save(Enum.map(read(), &put_color(&1, project.id, name)))
       {:ok, Map.put(project, :color, name)}
+    end
+  end
+
+  @doc """
+  A project's allowlist of hosts (PROJ-49, NET-28): the entries its chats in
+  allowlist mode may reach, cleaned (NET-7). A project that names none has an
+  empty list, which reaches nothing (NET-10).
+  """
+  @spec allowlist(t() | binary()) :: [binary()]
+  def allowlist(%{id: id}), do: allowlist(id)
+
+  def allowlist(id) when is_binary(id) do
+    case get(id) do
+      %{allowlist: entries} -> Allowlist.clean(entries)
+      _none -> []
+    end
+  end
+
+  def allowlist(_other), do: []
+
+  @doc """
+  Stores a project's allowlist (PROJ-49, NET-28) and returns it as
+  `{:ok, project}`; a list holding an entry that is not one of NET-7's forms is
+  `{:error, entry}` and stores nothing (NET-11). Elia's own project takes one
+  like any other.
+  """
+  @spec set_allowlist(t(), term()) :: {:ok, t()} | {:error, binary()}
+  def set_allowlist(%{id: @harness_id}, entries) do
+    with {:ok, hosts} <- Allowlist.parse(entries) do
+      store_harness_allowlist(hosts)
+      {:ok, Map.put(harness(), :allowlist, hosts)}
+    end
+  end
+
+  def set_allowlist(%{id: id} = project, entries) do
+    with {:ok, hosts} <- Allowlist.parse(entries) do
+      save(Enum.map(read(), &put_allowlist(&1, id, hosts)))
+      {:ok, Map.put(project, :allowlist, hosts)}
+    end
+  end
+
+  @doc """
+  Adds entries to a project's allowlist (NET-33, PROJ-49): each one the list
+  does not hold yet goes to its end, so an entry it already holds leaves it as
+  it is. A list holding an entry that is not one of NET-7's forms is
+  `{:error, entry}` and stores nothing.
+  """
+  @spec add_allowlist(t() | binary(), term()) :: {:ok, t()} | {:error, binary()}
+  def add_allowlist(project, entries) do
+    with {:ok, hosts} <- Allowlist.parse(entries) do
+      set_allowlist(project, Enum.uniq(allowlist(project) ++ hosts))
     end
   end
 
@@ -326,6 +381,9 @@ defmodule Elia.Projects do
       # PROJ-1, PROJ-42: a new project stores no colour, so it wears the one its
       # name derives.
       color: nil,
+      # PROJ-1, PROJ-49: and no hosts, so its chats reach nothing until one is
+      # allowed (NET-10).
+      allowlist: [],
       harness?: false
     }
   end
@@ -472,6 +530,11 @@ defmodule Elia.Projects do
     project
     |> Map.put(:harness?, false)
     |> Map.update(:color, nil, &stored_color_name/1)
+    |> Map.update(:allowlist, [], &Allowlist.clean/1)
+  end
+
+  defp put_allowlist(stored, id, hosts) do
+    if stored.id == id, do: Map.put(stored, :allowlist, hosts), else: stored
   end
 
   defp put_color(stored, id, name) do
@@ -505,6 +568,11 @@ defmodule Elia.Projects do
   # (PROJ-8).
   defp store_harness_color(nil), do: Settings.delete(@color_key)
   defp store_harness_color(name), do: Settings.put(@color_key, name)
+
+  # PROJ-49: like the colour above, Elia's own allowlist lives in the settings
+  # database, where the registry file cannot hold it (PROJ-3).
+  defp harness_allowlist, do: Allowlist.clean(Settings.get(@allowlist_key))
+  defp store_harness_allowlist(hosts), do: Settings.put(@allowlist_key, hosts)
 
   defp save(projects) do
     File.mkdir_p!(Workspace.data_dir())

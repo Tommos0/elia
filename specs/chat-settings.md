@@ -53,10 +53,10 @@ where they show up; so does the Compact button (CSET-12).
 - **CSET-7** Every numeric setting on the page is set in **one** form
   (`#settings-form`) with **one** Save button (`#save-settings`), which saves
   them all: the turn limits (LIMIT-6) and the compaction options (COMPACT-30) of
-  the Limits and Context sections alike, and the Network section's host list
-  (NET-24). A half-typed number is never a setting.
-  *Changed:* the form saves the network host list too, which is a list of hosts
-  rather than a number but is saved and refused the same way (NET-11).
+  the Limits and Context sections alike. A half-typed number is never a setting.
+  *Changed:* the form used to save the Network section's host list too; a chat's
+  entries are its project's now, and are changed on the projects page
+  (NET-24, NET-28, PROJ-50).
   The save is all or nothing: a value that isn't one (LIMIT-7, COMPACT-30)
   changes nothing — no limit and no option — and the page shows the message for
   the first bad value (`#settings-error`), keeping what was typed so it can be
@@ -113,13 +113,17 @@ where they show up; so does the Compact button (CSET-12).
 
 `EliaWeb.ChatSettingsLive` (the page, which the model picker, the auto-approve
 picker, the jail switch and the "Compact" button move to),
-`EliaWeb.ChatLive` (the settings link and the jail warning), `EliaWeb.Router`.
+`EliaWeb.ChatLive` (the settings link and the jail warning),
+`EliaWeb.ProjectsLive` (a project's allowlist, which the Network section links
+to), `EliaWeb.Router`.
 
 ## Tests
 
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
 CSET-7, CSET-11 to CSET-13), `test/elia_web/live/network_test.exs` (the Network
-section, NET-22 to NET-25), `test/elia_web/live/model_picker_test.exs`,
+section, NET-11, NET-22 to NET-26, NET-32),
+`test/elia_web/live/projects_live_test.exs` (a project's allowlist field,
+PROJ-50), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
 `test/elia_web/live/jail_test.exs` (the moved controls),
 `test/elia_web/live/chat_live_test.exs` and
