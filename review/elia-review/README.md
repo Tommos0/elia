@@ -4,6 +4,8 @@
 
 **Assessment:** retain the spec-driven architecture and its strong regression-test foundation; prioritize confinement, process ownership, workspace identity and deployment recovery before adding more orchestration complexity. There are **17 source-confirmed findings: 6 P1 and 11 P2**. One P1 has explicit browser/proxy reachability preconditions. None is presented as a reproduced end-to-end exploit or an executed ExUnit failure. [Findings](FINDINGS.md) · [Evidence and limits](meta/VALIDATION.md).
 
+> **Update, 21 November 2026:** all 17 findings are closed and five of the seven open questions are still live. [Review status](STATUS.md) names the fix, test and spec for each; the finding text below is left as the review wrote it.
+
 ## Choose your reading route
 
 Times are editorial estimates, not measurements. Each route has a stopping point so readers need not ingest the whole archive.
@@ -43,6 +45,7 @@ All narrative material is Markdown. **There are no HTML files**, so no separate 
 - [Review metadata](evidence/review-metadata.json): snapshot and GitHub retrieval observations.
 - [Package validation](evidence/package-validation.json): link, citation-bound, routing and consistency checks.
 - [Checksums](MANIFEST.sha256): hashes for the archive's contents, excluding the checksum file itself.
+- [Review status](STATUS.md): what the tree has done about the review since this snapshot, and what of it is still open.
 
 ## Read the confidence labels correctly
 

@@ -4,6 +4,8 @@
 
 **17 findings: 6 P1, 11 P2.** P1 means resolve before relying on the affected boundary/workflow; P2 means a concrete defect to schedule. All are high-confidence source deductions with runtime reproduction pending. V07–V09 are narrowly scoped local checks, not application tests. W01 has explicit known-ID and browser/proxy reachability preconditions. No CVSS or blanket security certification is implied.
 
+**Update, 21 November 2026: all 17 are closed.** The fix, test and specification for each are in [review status](STATUS.md); what is still open is the [open questions](review/OPEN-QUESTIONS.md), not these findings.
+
 ## P1 — first repair group
 
 | ID | Finding | Trigger/qualification | Detail | Owner route |
