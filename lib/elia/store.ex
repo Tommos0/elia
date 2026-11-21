@@ -35,7 +35,9 @@ defmodule Elia.Store do
   `opts[:done]` (a boolean) whether the chat is marked done (STORE-34), which is
   stored only when it is `true`, `opts[:effort]` the chat's own reasoning
   effort (`"low"`, `"medium"` or `"high"`, LLM-39, STORE-37), which is stored
-  only when the chat has one of its own, and `opts[:cwd]` the chat's working
+  only when the chat has one of its own, `opts[:network]` its network setting
+  (STORE-53, NET-1), which is stored only when it limits the network, and
+  `opts[:cwd]` the chat's working
   directory as an absolute path (STORE-46, WD-1), which is stored only when the
   chat has one of its own — a chat working in its workspace root carries no
   entry (WD-7).
@@ -75,6 +77,14 @@ defmodule Elia.Store do
 
     # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
     chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
+
+    # STORE-53: a chat reaches the whole network by default (NET-1), so only a
+    # setting that limits it is written.
+    chat =
+      case Elia.Net.stored(opts[:network]) do
+        nil -> chat
+        network -> Map.put(chat, :network, network)
+      end
 
     # STORE-34, DONE-1: a chat is open by default, so only "done" is written and
     # reopening it takes the entry off the file.
@@ -328,6 +338,19 @@ defmodule Elia.Store do
       jail
     else
       _ -> true
+    end
+  end
+
+  @doc """
+  The chat's saved network setting (STORE-54): what the chat's file holds, and
+  unrestricted when the chat is missing, unreadable, corrupt, holds no entry or
+  holds one that cannot be read (NET-1).
+  """
+  @spec load_network(binary()) :: map()
+  def load_network(id) do
+    case load_meta(id) do
+      %{network: network} -> Elia.Net.load(network)
+      _none -> Elia.Net.default()
     end
   end
 

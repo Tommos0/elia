@@ -82,6 +82,9 @@ defmodule Elia.Harness do
           env: [{"MIX_ENV", "test"}, {"ELIA_TEST_RUN", ""}],
           timeout: timeout,
           jail: opts[:jail],
+          # NET-19: the harness's own steps have no chat, so no chat's network
+          # setting is theirs and they run unrestricted.
+          network: opts[:network],
           max_output: Elia.Skills.Shell.max_output()
         )
 

@@ -464,6 +464,51 @@ defmodule Elia.ShellJailTest do
     %{tree: tree}
   end
 
+  # NET-12, NET-16: the namespace a mode puts in the jail's argv — what
+  # `Elia.Net.prepare/1` hands `Shell.run/2` as `:net`. Unrestricted is the jail
+  # as it was; none mode is the namespace alone, with nothing to reach.
+  test "an unrestricted or none network is the jail's argv", %{tree: tree} do
+    {_exe, args} = Shell.argv("echo hi", tree, jail: true)
+    refute "--unshare-net" in args
+    assert Enum.take(args, -4) == ["--", Shell.shell([]), "-c", "echo hi"]
+
+    {_exe, args} = Shell.argv("echo hi", tree, jail: true, net: %{mode: :none})
+    assert "--unshare-net" in args
+    # NET-16: no proxy and no relay: nothing to reach, so nothing to carry it.
+    refute Enum.any?(args, &String.contains?(&1, "relay.exs"))
+    assert Enum.take(args, -4) == ["--", Shell.shell([]), "-c", "echo hi"]
+  end
+
+  # NET-13: an allowlist's namespace holds the relay and the proxy's socket, and
+  # the command runs behind a wrapper that starts the relay first — the same
+  # shell and the same script it would have run (SHELL-2).
+  test "an allowlist's namespace holds the relay and the wrapper", %{tree: tree} do
+    {:ok, proxy} = Elia.Net.Proxy.start(mode: :allowlist, hosts: [], chat_id: nil)
+    net = Elia.Net.Proxy.net(proxy)
+    on_exit(fn -> Elia.Net.Proxy.stop(proxy) end)
+
+    {_exe, args} = Shell.argv("echo hi", tree, jail: true, net: net)
+
+    assert "--unshare-net" in args
+    assert net.dir in args
+    assert Path.join(net.dir, "run") in args
+
+    # The wrapper is the script, and the command's shell and script are its
+    # arguments.
+    assert Enum.take(args, -5) == [
+             "-c",
+             Enum.at(args, -4),
+             "elia-net",
+             Shell.shell([]),
+             "echo hi"
+           ]
+
+    wrapper = Enum.at(args, -4)
+    assert wrapper =~ "relay.exs"
+    assert wrapper =~ "#{net.port}"
+    assert wrapper =~ net.socket
+  end
+
   # ISOL-2: the jail is bubblewrap with its own namespaces — a fresh pid, UTS,
   # IPC and cgroup namespace, its own `/proc`, `/dev` and `/tmp` — and a `chdir`
   # into the directory the call runs in.

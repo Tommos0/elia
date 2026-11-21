@@ -592,6 +592,37 @@ defmodule Elia.TasksTest do
     stop_session(child)
   end
 
+  # NET-4, SUBTASK-30
+  test "a sub-task chat carries its parent's network setting", %{parent: parent} do
+    # The parent's network is limited, so the child must start with its own copy
+    # of that.
+    :ok = Agent.set_network(parent, %{mode: :allowlist, hosts: ["api.example.com"]})
+
+    push_turns(
+      router(&spawn_and_await(&1, %{"title" => "T", "brief" => "B"}), &reporting_child/1)
+    )
+
+    run_parent(parent, ["s1"])
+
+    child = session_json(parent, "spawn_task", 0)["task_id"]
+
+    assert Agent.snapshot(child).settings.network ==
+             %{mode: :allowlist, hosts: ["api.example.com"]}
+
+    # NET-4: the copy is the child's own from then on; changing either chat
+    # afterwards never affects the other.
+    :ok = Agent.set_network(parent, %{mode: :none})
+    assert Agent.snapshot(parent).settings.network == %{mode: :none, hosts: []}
+
+    assert Agent.snapshot(child).settings.network ==
+             %{mode: :allowlist, hosts: ["api.example.com"]}
+
+    :ok = Agent.set_network(child, %{mode: :none})
+    assert Agent.snapshot(child).settings.network == %{mode: :none, hosts: []}
+
+    stop_session(child)
+  end
+
   # SUBTASK-30, STORE-26
   test "a child of a chat that keeps the default is jailed", %{parent: parent} do
     # The parent's value is the default and so isn't in its file (STORE-25).

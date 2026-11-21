@@ -136,6 +136,9 @@ defmodule EliaWeb.ChatLive do
         # the chat settings page (CSET-5).
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
+        # NET-26, UI-100: what this chat's commands may reach (NET-1), said
+        # beside the jail warning (CSET-9).
+        network: snapshot.settings.network,
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
         compact_view: false,
@@ -465,6 +468,15 @@ defmodule EliaWeb.ChatLive do
               </span>
               <span :if={@jail_available and !@jail} id="jail-warning" class="text-xs text-warning">
                 Not jailed: commands can read the settings database and your credentials.
+              </span>
+              <%!-- NET-26, UI-100: what the chat's network setting limits, beside
+              the jail warning, where its commands run (CSET-9). --%>
+              <span
+                :if={@network.mode != :unrestricted}
+                id="network-warning"
+                class="text-xs text-base-content/50"
+              >
+                {network_warning(@network)}
               </span>
               <%!-- UI-60, CSET-10: switch the transcript between full and
               compact; it acts on what is being read, so it stays in the bar. --%>
@@ -1517,6 +1529,13 @@ defmodule EliaWeb.ChatLive do
   defp percent_of(tokens, window) when is_integer(window) and window > 0,
     do: min(100, div(tokens * 100 + window - 1, window))
 
+  # NET-26, UI-100: what the chat's network setting limits, in words, beside its
+  # jail warning (CSET-9).
+  defp network_warning(%{mode: :allowlist}),
+    do: "Allowlisted hosts: commands reach only the hosts this chat names."
+
+  defp network_warning(_setting), do: "No network: commands reach nothing."
+
   defp context_bar_class(nil), do: ""
   defp context_bar_class(percent) when percent <= 60, do: "bg-success"
   defp context_bar_class(percent) when percent <= 85, do: "bg-warning"
@@ -2527,7 +2546,11 @@ defmodule EliaWeb.ChatLive do
   # chat settings page, CSET-5), and neither do the turn's limits (LIMIT-6).
   defp apply_event({:settings, settings}, socket) do
     socket
-    |> assign(selection: LLM.selection(settings.model), jail: settings.jail)
+    |> assign(
+      selection: LLM.selection(settings.model),
+      jail: settings.jail,
+      network: settings.network
+    )
     |> assign(context_window: LLM.context_window(settings.model))
   end
 

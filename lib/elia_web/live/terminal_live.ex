@@ -76,7 +76,10 @@ defmodule EliaWeb.TerminalLive do
     case Terminal.start(socket.assigns.session_id,
            command: if(command == "", do: nil, else: command),
            workspace: socket.assigns.project.folder,
-           jail: jail
+           jail: jail,
+           # NET-18: a terminal runs in the network its chat has now, like the
+           # jail it has now (TERM-37).
+           network: Agent.snapshot(socket.assigns.session_id).settings.network
          ) do
       {:ok, _pid} -> {:noreply, socket |> assign(jail: jail) |> refresh(command)}
       {:error, message} -> {:noreply, assign(socket, error: message)}

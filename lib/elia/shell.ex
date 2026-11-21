@@ -51,6 +51,10 @@ defmodule Elia.Shell do
   @spec available?() :: boolean()
   def available?, do: bwrap() != nil
 
+  @doc "The directories a jailed command finds its toolchain in (ISOL-4)."
+  @spec toolchain() :: [binary()]
+  def toolchain, do: @toolchain
+
   @doc """
   What a run says when it wanted a jail and didn't get one (ISOL-12). It is
   prepended to the command's own output, so a caller that reads that output
@@ -101,7 +105,10 @@ defmodule Elia.Shell do
   """
   @spec strip_notices(binary()) :: binary()
   def strip_notices(output) do
-    String.replace_leading(output, @jail_skipped_notice <> "\n", "")
+    output
+    |> String.replace_leading(@jail_skipped_notice <> "\n", "")
+    |> String.replace_leading(Elia.Net.skipped_notice() <> "\n", "")
+    |> String.replace_leading(Elia.Net.relay_notice() <> "\n", "")
   end
 
   @doc """
@@ -142,7 +149,10 @@ defmodule Elia.Shell do
   jail holds, default: the `cd` — ISOL-13), `:env` (list of string pairs),
   `:shell` (path or name, to override the shell), `:timeout` in milliseconds
   (default 60s), `:jail` (`false` runs the command unjailed, ISOL-16),
-  `:priority` (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to
+  `:network` (the chat's network setting, NET-1: what the command may reach
+  and, in allowlist mode, the hosts it may, NET-13) with `:session_id` (the
+  chat the command belongs to, whose allowlist the proxy reads at each request,
+  NET-6), `:priority` (`Elia.Priority` settings for this command, e.g. `[nice: 0]` to
   run it at the server's own priority, PRIO-5) and `:max_output` (characters:
   the output is held bounded while the command runs and comes back cut as
   `truncate/2` cuts it, SHELL-13; without it the run keeps every byte, as the
@@ -160,7 +170,16 @@ defmodule Elia.Shell do
     script = "exec </dev/null\n" <> drop_env(command, opts)
     cd = Keyword.get_lazy(opts, :cd, &Workspace.root/0)
 
-    execute(script, cd, opts)
+    # NET-13, NET-20: the network this call's processes get, and what the run
+    # says when the chat's setting could not be applied.
+    {opts, net_notice} = Elia.Net.prepare(opts)
+
+    try do
+      execute(script, cd, opts) |> skipped(opts, net_notice)
+    after
+      # NET-21: the proxy, its socket and its directory end with the command.
+      Elia.Net.release(opts)
+    end
   end
 
   # ISOL-24: the server has its own `MIX_ENV` (`bin/serve`'s, RESTART-8), and a
@@ -247,7 +266,7 @@ defmodule Elia.Shell do
     {exe, args} = argv(script, cd, opts)
     port = open(exe, args, cd, opts)
 
-    watched(port, fn -> collect(port, buffer(opts), deadline) |> skipped(opts) end)
+    watched(port, fn -> collect(port, buffer(opts), deadline) end)
   end
 
   # SHELL-12: a command never outlives the process waiting on it. A watcher of
@@ -320,8 +339,80 @@ defmodule Elia.Shell do
       read_only_args(@toolchain) ++
       home_args() ++
       binds ++
-      ["--chdir", cd, "--", shell(opts), "-c", script]
+      net_args(opts) ++
+      ["--chdir", cd, "--", net_shell(opts), "-c", net_script(script, opts)] ++
+      net_argv(script, opts)
   end
+
+  # NET-13, NET-16: the namespace a restricted command runs in. It is a fresh
+  # one, so its only interface is loopback and there is no route out of it; in
+  # allowlist mode the relay and the proxy's socket are bound into it, which is
+  # the one way out (NET-13).
+  defp net_args(opts) do
+    case Keyword.get(opts, :net) do
+      %{mode: :none} ->
+        ["--unshare-net"]
+
+      %{mode: :allowlist, dir: dir} ->
+        [
+          "--unshare-net",
+          "--ro-bind",
+          dir,
+          dir,
+          "--bind",
+          Path.join(dir, "run"),
+          Path.join(dir, "run")
+        ]
+
+      _none ->
+        []
+    end
+  end
+
+  # NET-13: what a command in allowlist mode reaches instead of the network. A
+  # wrapper starts the relay on the namespace's loopback, waits for it to
+  # listen, and then runs the command's script as it would have run — the same
+  # shell, the same script, the same arguments (SHELL-2).
+  defp net_script(script, opts) do
+    case Keyword.get(opts, :net) do
+      %{mode: :allowlist, dir: dir, port: port, elixir: elixir} ->
+        relay_wrapper(dir, port, elixir)
+
+      _none ->
+        script
+    end
+  end
+
+  defp relay?(opts), do: match?(%{mode: :allowlist}, Keyword.get(opts, :net))
+
+  # The wrapper is POSIX `sh` — it uses nothing else — while the command inside
+  # it keeps the shell it would have had (SHELL-2).
+  defp net_shell(opts), do: if(relay?(opts), do: sh(), else: shell(opts))
+
+  # The wrapper is given the shell and the script as its arguments, so nothing
+  # in either is read as shell syntax.
+  defp net_argv(script, opts) do
+    if relay?(opts), do: ["elia-net", shell(opts), script], else: []
+  end
+
+  defp sh, do: System.find_executable("sh") || "/bin/sh"
+
+  defp relay_wrapper(dir, port, elixir) do
+    run = Path.join(dir, "run")
+    ready = q(Path.join(run, "ready"))
+
+    """
+    #{q(elixir)} #{q(Path.join(dir, "relay.exs"))} #{port} #{q(Path.join(run, "proxy.sock"))} #{ready} >#{q(Path.join(run, "relay.log"))} 2>&1 &
+    i=0
+    while [ ! -e #{ready} ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+    [ -e #{ready} ] || echo "#{Elia.Net.relay_notice()}" >&2
+    exec "$1" -c "$2"
+    """
+  end
+
+  # A single-quoted word for the shell that runs the wrapper (SHELL-2): the
+  # paths come from outside, so nothing in them is read as shell syntax.
+  defp q(word), do: "'" <> String.replace(to_string(word), "'", "'\\''") <> "'"
 
   # ISOL-13: the tree the jail holds — the workspace the call belongs to, which
   # is the `cd` when the caller names none.
@@ -473,17 +564,18 @@ defmodule Elia.Shell do
   end
 
   # A command that wanted a jail and didn't get one says so, so a run that
-  # wasn't isolated never looks like one that was (ISOL-12).
-  defp skipped(result, opts) do
-    if wanted?(opts) and not available?() do
-      notice = @jail_skipped_notice <> "\n"
+  # wasn't isolated never looks like one that was (ISOL-12); a command whose
+  # chat limits the network and didn't get the limit says that too (NET-20).
+  defp skipped(result, opts, net_notice) do
+    notices =
+      [if(wanted?(opts) and not available?(), do: @jail_skipped_notice), net_notice]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map_join(&(&1 <> "\n"))
 
-      case result do
-        {:ok, output, status} -> {:ok, notice <> output, status}
-        {:timeout, output} -> {:timeout, notice <> output}
-      end
-    else
-      result
+    case {result, notices} do
+      {result, ""} -> result
+      {{:ok, output, status}, notices} -> {:ok, notices <> output, status}
+      {{:timeout, output}, notices} -> {:timeout, notices <> output}
     end
   end
 

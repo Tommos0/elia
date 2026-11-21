@@ -242,6 +242,9 @@ defmodule Elia.Skills.Tasks do
       # SUBTASK-30: and a copy of the parent's jail setting (ISOL-18), which is
       # the child's own from then on.
       jail: parent.settings.jail,
+      # NET-4: the child starts with a copy of its parent's network setting and
+      # from then on has its own.
+      network: parent.settings.network,
       project: project
     ]
 

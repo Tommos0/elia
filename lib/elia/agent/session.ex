@@ -28,9 +28,9 @@ defmodule Elia.Agent.Session do
 
   require Logger
 
-  # SESS-41: the five settings the chat's one map holds, and the only keys a
-  # change to it may name (SESS-42).
-  @setting_keys [:model, :auto_approve, :jail, :limits, :effort]
+  # SESS-41: the settings the chat's one map holds, and the only keys a change
+  # to it may name (SESS-42).
+  @setting_keys [:model, :auto_approve, :jail, :network, :limits, :effort]
 
   # SUBTASK-9: what a child says about itself when it marked its chat done
   # without a last message to say it with.
@@ -72,13 +72,15 @@ defmodule Elia.Agent.Session do
     compaction: %Compaction{},
     # The chat's per-chat settings as one map (SESS-41, SESS-7): the model
     # selection of the chat (MODEL-1), the tool names it auto-approves (APPR-8),
-    # whether its commands run in the jail (ISOL-16), its turn limits (LIMIT-1)
-    # and its own reasoning effort (LLM-39), each at its own default until the
-    # chat sets it. One write path sets any of them (SESS-41).
+    # whether its commands run in the jail (ISOL-16), what its commands may
+    # reach (NET-1), its turn limits (LIMIT-1) and its own reasoning effort
+    # (LLM-39), each at its own default until the chat sets it. One write path
+    # sets any of them (SESS-41).
     settings: %{
       model: nil,
       auto_approve: MapSet.new(),
       jail: true,
+      network: Elia.Net.default(),
       limits: Elia.Limits.defaults(),
       effort: nil
     },
@@ -297,6 +299,11 @@ defmodule Elia.Agent.Session do
 
     {:reply, snapshot, state}
   end
+
+  # NET-6: the chat's network setting as it stands, for the proxy that decides a
+  # running command's requests. A chat with no session answers nil, and its
+  # caller falls back to the list it started with.
+  def handle_call(:network, _from, state), do: {:reply, settings(state).network, state}
 
   def handle_call({:send_message, text}, _from, state),
     do: reply_to_send(state, Message.user(text))
@@ -819,7 +826,7 @@ defmodule Elia.Agent.Session do
   defp initial_effort(id, true), do: Elia.Store.load_effort(id)
   defp initial_effort(_id, false), do: nil
 
-  # SESS-41, SESS-7: the five per-chat settings a session starts with — what its
+  # SESS-41, SESS-7: the per-chat settings a session starts with — what its
   # caller gave it (SESS-17, SUBTASK-30), else what the chat has saved, else
   # each one's own default. The auto-approved set is worked out by the caller,
   # once the chat's messages are loaded (APPR-14).
@@ -828,10 +835,20 @@ defmodule Elia.Agent.Session do
       model: opts[:selection] || if(persist, do: Elia.Store.load_model(id)),
       auto_approve: MapSet.new(),
       jail: initial_jail(id, persist, opts[:jail]),
+      network: initial_network(id, persist, opts[:network]),
       limits: initial_limits(id, persist, opts[:limits]),
       effort: initial_effort(id, persist)
     }
   end
+
+  # SESS-41, SUBTASK-30, NET-4: a caller may set the new session's network
+  # setting (a sub-task's copy of its parent's) instead of loading the chat's
+  # saved one.
+  defp initial_network(id, persist, nil), do: initial_network(id, persist)
+  defp initial_network(_id, _persist, setting) when is_map(setting), do: Elia.Net.load(setting)
+
+  defp initial_network(id, true), do: Elia.Store.load_network(id)
+  defp initial_network(_id, false), do: Elia.Net.default()
 
   # SESS-41: the chat's per-chat settings. A state that predates the one map is
   # upgraded on its next call (SESS-15); one that reaches this without it from
@@ -864,6 +881,10 @@ defmodule Elia.Agent.Session do
         end),
       auto_approve: from_state(old, :auto_approve, fn -> initial_auto_approve(upgraded, nil) end),
       jail: from_state(old, :jail, fn -> initial_jail(upgraded.id, upgraded.persist, nil) end),
+      network:
+        from_state(old, :network, fn ->
+          initial_network(upgraded.id, upgraded.persist, nil)
+        end),
       limits:
         from_state(old, :limits, fn -> initial_limits(upgraded.id, upgraded.persist, nil) end),
       effort: from_state(old, :effort, fn -> initial_effort(upgraded.id, upgraded.persist) end)
@@ -883,6 +904,9 @@ defmodule Elia.Agent.Session do
 
         {:jail, on?}, settings ->
           Map.put(settings, :jail, on?)
+
+        {:network, setting}, settings ->
+          Map.put(settings, :network, Elia.Net.setting(setting))
 
         {:effort, effort}, settings ->
           Map.put(settings, :effort, effort)
@@ -925,6 +949,7 @@ defmodule Elia.Agent.Session do
     with :ok <- check_keys(changes),
          :ok <- check_model(changes),
          :ok <- check_jail(changes),
+         :ok <- check_network(changes),
          :ok <- check_effort(changes),
          :ok <- check_auto_approve(state, changes),
          {:ok, limits} <- check_limits(changes) do
@@ -959,6 +984,28 @@ defmodule Elia.Agent.Session do
       {:ok, on?} when is_boolean(on?) -> :ok
       {:ok, _other} -> {:error, "jail must be true or false"}
     end
+  end
+
+  # NET-1, NET-11: one of the three modes, with a list of hosts that are the
+  # forms NET-7 gives.
+  defp check_network(changes) do
+    case Map.fetch(changes, :network) do
+      :error ->
+        :ok
+
+      {:ok, %{mode: mode} = setting} when mode in [:unrestricted, :allowlist, :none] ->
+        case Elia.Net.Allowlist.parse(Map.get(setting, :hosts, [])) do
+          {:ok, _hosts} -> :ok
+          {:error, entry} -> {:error, network_error(entry)}
+        end
+
+      {:ok, _other} ->
+        {:error, "network must be unrestricted, allowlist or none"}
+    end
+  end
+
+  defp network_error(entry) do
+    "network hosts: #{inspect(entry)} is not a host, a *.suffix or one of those with a port"
   end
 
   # LLM-39, LLM-38: one of the three efforts, or nil for the configured one.
@@ -1368,6 +1415,7 @@ defmodule Elia.Agent.Session do
         project: project(state).id,
         compaction: saved_compaction(Map.get(state, :compaction)),
         jail: settings(state).jail,
+        network: settings(state).network,
         limits: settings(state).limits,
         effort: settings(state).effort,
         # STORE-30, INTR-1: the turn in flight, or nothing when there is
@@ -1477,8 +1525,10 @@ defmodule Elia.Agent.Session do
         # step, through `{:cwd}` — this is where it stands as the turn begins.
         cwd: cwd(state),
         # ISOL-15: the tool context carries this chat's jail setting, so the
-        # shell tools follow it.
+        # shell tools follow it, and its network setting (NET-1), so they follow
+        # that too.
         jail: settings(state).jail,
+        network: settings(state).network,
         # TIME-2: the turn's start goes into every step's timing record, so the
         # record needs nothing from the chat's saved term, whose turn entry is
         # taken off when the turn ends (STORE-30, INTR-1).

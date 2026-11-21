@@ -83,6 +83,9 @@ defmodule Elia.Terminal.Session do
     # the host's and bubblewrap's presence together (ISOL-12, ISOL-16), decided
     # once, as the argv was built — rather than only what the chat asked for.
     :jailed,
+    # NET-18: what `Elia.Net.prepare/1` built for this session, if anything, so
+    # its proxy is ended with it (NET-21).
+    :net,
     :port,
     :cols,
     :rows,
@@ -200,17 +203,26 @@ defmodule Elia.Terminal.Session do
     argv = Terminal.command_argv(command)
     socket = "elia-" <> (:crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower))
 
-    # TERM-7, TERM-8: the jail's argv and the priority wrapper come from
-    # `Elia.Shell.argv/3`, the same ones a command runs with — a terminal is not
-    # a way around either. The jail holds the chat's workspace, the tree the
+    # TERM-7, TERM-8, NET-18: the jail's argv, the network the session's whole
+    # process tree gets (NET-13, NET-16) and the priority wrapper all come from
+    # `Elia.Shell`, the same ones a command runs with — a terminal is not a way
+    # around any of them. The jail holds the chat's workspace, the tree the
     # session belongs to, not the directory it starts in (TERM-2, ISOL-13).
+    session_opts =
+      Elia.Net.prepare(
+        workspace: workspace,
+        jail: jail,
+        env: [{"TERM", "xterm-256color"}],
+        network: Keyword.get(opts, :network),
+        session_id: chat_id
+      )
+      |> elem(0)
+
     {exe, args} =
       Shell.argv(
         script(socket, argv, Terminal.tmux()),
         workspace,
-        workspace: workspace,
-        jail: jail,
-        env: [{"TERM", "xterm-256color"}]
+        Keyword.put(session_opts, :workspace, workspace)
       )
 
     port =
@@ -230,6 +242,9 @@ defmodule Elia.Terminal.Session do
       workspace: workspace,
       jail: jail,
       jailed: Shell.jailed?(jail: jail),
+      # NET-21: the proxy, its socket and its directory go when this session
+      # does, whatever ends it (TERM-3, TERM-4).
+      net: Keyword.get(session_opts, :net),
       socket: socket,
       port: port,
       cols: @initial_cols,
@@ -366,6 +381,8 @@ defmodule Elia.Terminal.Session do
     if state.port, do: kill_port(state.port)
     # TERM-36: a session that already ended released its tmux then.
     if state.status != :ended, do: release_tmux(state)
+    # NET-21: the network this session was given ends with it.
+    Elia.Net.release(net: state.net)
     :ok
   end
 

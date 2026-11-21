@@ -35,6 +35,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `task` | a map: the sub-task metadata of a chat started by `spawn_task` (STORE-16) | when the chat is a sub-task chat | yes — a chat that is no sub-task carries no entry (STORE-16) |
   | `compaction` | a map: the chat's compaction state (STORE-21, COMPACT-24) | when the chat has compaction state | yes — a chat with none carries no entry (STORE-21) |
   | `jail` | `false` | only when the chat's jail is off (STORE-25) | yes — the jail is on by default (ISOL-16) |
+  | `network` | a map: the chat's network mode and, in allowlist mode, its hosts (STORE-53, NET-1) | when the chat's mode isn't unrestricted (STORE-53) | yes — unrestricted is not written (STORE-53) |
   | `limits` | a map of only the limits that aren't the default (STORE-27, LIMIT-1) | when the chat sets a limit of its own | yes — a chat that sets none carries no entry (STORE-27) |
   | `effort` | `"low"`, `"medium"` or `"high"` | when the chat has a reasoning effort of its own (STORE-37, LLM-39) | yes — the configured default is not written (LLM-38) |
   | `title` | a string | when the chat's own title isn't blank (STORE-32, TITLE-1) | yes — a blank or missing title is not written (STORE-32) |
@@ -258,6 +259,14 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-26** `load_jail/1` returns `true` when the chat is missing,
   unreadable, corrupt or has no value, since the jail is on by default
   (ISOL-16).
+- **STORE-53** `save/3` takes `network:` (the chat's network setting: its mode
+  and, in allowlist mode, its list of hosts, NET-1) and stores it as `network`
+  only when the mode is not unrestricted, so a chat that reaches the whole
+  network as every chat did carries no entry and setting it back removes the key
+  from the file.
+- **STORE-54** `load_network/1` returns the chat's saved network setting, or
+  unrestricted when the chat is missing, unreadable, corrupt, holds no entry or
+  holds one it cannot read (NET-1).
 - **STORE-27** `save/3` takes `limits:` (the chat's turn limits, LIMIT-1) and
   stores it as `limits`, with only the values that aren't the default, so a chat
   that sets none carries no entry and one that clears a limit drops it from the

@@ -170,6 +170,10 @@ defmodule Elia.Skills.Folder do
         env: env,
         timeout: timeout,
         jail: ctx[:jail],
+        # NET-18: a folder skill's script runs in the same network its chat's
+        # commands do, the jail's own argv being what builds it (FOLDER-6).
+        network: ctx[:network],
+        session_id: ctx[:session_id],
         max_output: Elia.Skills.Shell.max_output()
       ),
       timeout

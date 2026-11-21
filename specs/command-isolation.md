@@ -110,6 +110,9 @@ genuinely needs the rest of the machine (ISOL-16).
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
   them. Nothing is inherited, so a key in the server's own environment (CONF-5)
   reaches no command.
+  *Changed:* a command in allowlist mode is given the proxy's address as well,
+  `http_proxy`, `https_proxy` and `all_proxy` (NET-13), which is the one place
+  the allowlist adds to the list.
 - **ISOL-24** A command never builds in the environment the server happens to
   run in: `MIX_ENV` is absent whichever path it takes. A jailed command has
   none (ISOL-8), and an unjailed one (ISOL-12, ISOL-16) runs in a shell that
@@ -134,9 +137,13 @@ genuinely needs the rest of the machine (ISOL-16).
   then be the wrapper's, in whose group the command is not. On timeout the jail
   is killed, which takes its whole pid namespace with it; with the jail off
   (ISOL-16, ISOL-20) the process-group kill does the work.
-- **ISOL-11** The jail doesn't restrict the network, and it changes neither what
-  a command may write inside its workspace nor what approval it needs (APPR,
-  WS). It is a second line behind the approval prompt, not a replacement for it.
+- **ISOL-11** The jail itself doesn't restrict the network — what a command may
+  reach is its chat's network setting (NET) — and it changes neither what a
+  command may write inside its workspace nor what approval it needs (APPR, WS).
+  It is a second line behind the approval prompt, not a replacement for it.
+  *Changed:* the jail used to be the whole answer to what a command reaches, and
+  left the wire alone; it still leaves it alone, and a chat's network mode is
+  what limits it now.
 - **ISOL-12** When there is no jail — bubblewrap not installed, user namespaces
   not permitted (ISOL-20) — a command runs unjailed as it does today and its
   result says the jail was skipped, so a run that wasn't isolated never looks
@@ -340,11 +347,12 @@ bubblewrap is missing (ISOL-12).
 
 ## Out of scope
 
-- **Network isolation.** `--unshare-net` is one flag away, but a fresh network
-  namespace has `lo` down and no route out, which breaks anything that talks to
-  a local server or fetches dependencies — and the prompt itself is an egress
-  channel, since whatever a command prints is sent to the provider. What the
-  jail protects is the secrets, not the wire.
+- **The jail's own network rules.** A per-command filter of the host's network
+  is not what limits a chat: a restriction is a namespace of the command's own
+  beside the jail (NET-13, NET-16), and the jail's argv is unchanged by it
+  (ISOL-11). The prompt stays an egress channel whatever a command may reach,
+  since whatever it prints is sent to the provider; what the jail protects is
+  the secrets.
 - **A uid per command.** A uid boundary is the stronger form of this: it holds
   even for a path a bind list forgets, and it isolates the credentials git
   itself needs. It needs a second user, a sudoers rule and group-shared

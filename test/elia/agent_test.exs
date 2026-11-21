@@ -3191,6 +3191,44 @@ defmodule Elia.AgentTest do
     assert %{settings: %{jail: true}} = Agent.snapshot(id)
   end
 
+  # NET-1, NET-3, SESS-41: a chat's network setting is set, broadcast like its
+  # other settings, and shows in the snapshot.
+  test "setting the network broadcasts it and shows in the snapshot", %{id: id} do
+    assert %{settings: %{network: %{mode: :unrestricted}}} = Agent.snapshot(id)
+
+    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["api.example.com"]})
+
+    assert_receive {:agent, ^id,
+                    {:settings, %{network: %{mode: :allowlist, hosts: ["api.example.com"]}}}}
+
+    assert %{settings: %{network: %{mode: :allowlist, hosts: ["api.example.com"]}}} =
+             Agent.snapshot(id)
+
+    :ok = Agent.set_network(id, %{mode: :none})
+    assert_receive {:agent, ^id, {:settings, %{network: %{mode: :none}}}}
+    assert Agent.network(id) == %{mode: :none, hosts: []}
+  end
+
+  # NET-1, NET-11, SESS-42: a mode that isn't one of the three, and a host that
+  # isn't one of NET-7's forms, change nothing and say why.
+  test "a network setting that isn't one is refused", %{id: id} do
+    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["api.example.com"]})
+
+    assert {:error, message} = Agent.set_network(id, %{mode: :allowlist, hosts: ["not a host"]})
+    assert message =~ "not a host"
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+
+    assert {:error, message} = Agent.set_network(id, %{mode: :everything})
+    assert message =~ "network"
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+  end
+
+  # NET-6: a chat with no running session answers nil, so a proxy deciding a
+  # request falls back to the list it started with.
+  test "a chat with no session has no network to read" do
+    assert Agent.network("no-such-chat") == nil
+  end
+
   # SESS-6, SESS-40, SESS-41
   test "setting the reasoning effort broadcasts it and shows in the snapshot", %{id: id} do
     :ok = Agent.set_effort(id, "high")

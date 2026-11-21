@@ -118,6 +118,9 @@ defmodule Elia.StoreShapeTest do
     do: [compaction: %{level: 2, covered: 5, summary: "so far", pins: [{1, nil}], ledger: ["x"]}]
 
   defp option("jail"), do: [jail: false]
+  # NET-1, STORE-53: a network setting that limits the network, so the key is
+  # written.
+  defp option("network"), do: [network: %{mode: :allowlist, hosts: ["api.example.com"]}]
   defp option("limits"), do: [limits: %{max_steps: 5}]
   defp option("effort"), do: [effort: "high"]
   defp option("title"), do: [title: "A title of its own"]

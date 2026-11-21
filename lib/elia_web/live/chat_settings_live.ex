@@ -45,6 +45,12 @@ defmodule EliaWeb.ChatSettingsLive do
         # has a jail at all (ISOL-12, ISOL-20).
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
+        # NET-22, NET-23: what this chat's commands and terminals may reach
+        # (NET-1), the host list a field holds for them, and whether a limit can
+        # be built for this chat here at all (NET-20, NET-25).
+        network: snapshot.settings.network,
+        network_hosts: hosts_text(snapshot.settings.network),
+        network_available: Elia.Net.available?(jail: snapshot.settings.jail),
         # LIMIT-1, LIMIT-6: the chat's turn limits and the form that sets them.
         limits: snapshot.settings.limits,
         limits_form: limits_form(snapshot.settings.limits),
@@ -176,11 +182,39 @@ defmodule EliaWeb.ChatSettingsLive do
               </div>
             </section>
 
-            <%!-- CSET-7: one form with one Save holds every numeric setting on the
-            page — the turn's limits below and the context options after them — so
-            the save is all or nothing, and an accepted one goes back to the chat
-            (CSET-11). --%>
-            <.form for={%{}} id="settings-form" phx-submit="save_settings" class="space-y-4">
+            <%!-- CSET-7, NET-24: one form with one Save holds the settings the
+            page saves together — the network's host list below, the turn's limits
+            and the context options — so the save is all or nothing, and an
+            accepted one goes back to the chat (CSET-11). A keystroke keeps the
+            list as it is typed, so applying a mode (NET-23) doesn't lose it. --%>
+            <.form
+              for={%{}}
+              id="settings-form"
+              phx-submit="save_settings"
+              phx-change="draft_network"
+              phx-debounce="300"
+              class="space-y-4"
+            >
+              <%!-- CSET-5, NET-22 to NET-25: what this chat's commands and
+              terminals may reach. --%>
+              <section
+                id="settings-network"
+                class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+              >
+                <h2 class="font-medium">Network</h2>
+                <p class="mt-0.5 text-xs text-base-content/50">
+                  What this chat's commands and its terminal may reach. A change applies to
+                  the ones that start after it.
+                </p>
+                <div class="mt-4">
+                  <.network_choice
+                    setting={@network}
+                    available={@network_available}
+                    hosts={@network_hosts}
+                  />
+                </div>
+              </section>
+
               <%!-- CSET-5, LIMIT-6: the turn's limits --%>
               <section
                 id="settings-limits"
@@ -473,6 +507,114 @@ defmodule EliaWeb.ChatSettingsLive do
       </span>
     </div>
     """
+  end
+
+  attr :setting, :map, required: true
+  attr :available, :boolean, required: true
+  attr :hosts, :string, required: true
+
+  # NET-22, NET-23, NET-25: the chat's network setting — one control per mode,
+  # applied the moment it is clicked like the jail switch (CSET-4, UI-67), with
+  # its state in words and, in allowlist mode, the hosts a field holds (NET-24).
+  # Where a limit can't be built here the controls are disabled and the section
+  # says so, rather than showing a chat as limited where it isn't (NET-20,
+  # UI-68).
+  defp network_choice(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          :for={mode <- network_modes()}
+          type="button"
+          id={"network-" <> mode.key}
+          phx-click="set_network"
+          phx-value-mode={mode.value}
+          aria-pressed={to_string(@setting.mode == mode.atom)}
+          disabled={!@available}
+          class={[
+            "rounded-lg border px-2.5 py-1 text-xs transition disabled:cursor-not-allowed",
+            @setting.mode == mode.atom && "border-primary/50 bg-primary/5 font-medium text-primary",
+            @setting.mode != mode.atom && @available &&
+              "border-base-300 text-base-content/60 hover:border-base-content/20",
+            !@available && "border-base-300 text-base-content/40"
+          ]}
+        >
+          {mode.label}
+        </button>
+        <span id="network-state" class="text-xs text-base-content/50">
+          {network_state(@setting)}
+        </span>
+      </div>
+
+      <span :if={!@available} id="network-unavailable" class="block text-xs text-base-content/50">
+        This host can't limit a chat's network: it needs a jail the host has and a chat whose
+        jail is on.
+      </span>
+
+      <label :if={@setting.mode == :allowlist and @available} class="block">
+        <span class="text-xs font-medium text-base-content/70">Allowed hosts</span>
+        <span class="mt-0.5 block text-xs text-base-content/50">
+          One per line: a host (api.example.com), a <code>*.suffix</code>
+          (*.example.com) or either with a port (api.example.com:443). The page's Save keeps
+          them; a list with any other entry saves nothing.
+        </span>
+        <textarea
+          id="network-hosts"
+          name="network[hosts]"
+          rows="3"
+          class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 p-2 font-mono text-xs"
+          placeholder="api.example.com"
+        >{@hosts}</textarea>
+      </label>
+    </div>
+    """
+  end
+
+  defp network_modes do
+    [
+      %{key: "unrestricted", value: "unrestricted", atom: :unrestricted, label: "Unrestricted"},
+      %{key: "allowlist", value: "allowlist", atom: :allowlist, label: "Allowlisted hosts"},
+      %{key: "none", value: "none", atom: :none, label: "No network"}
+    ]
+  end
+
+  # NET-22: what applies, in words, as the jail switch says its state (UI-67).
+  defp network_state(%{mode: :unrestricted}),
+    do: "Reaches the whole network, as every chat did before this setting."
+
+  defp network_state(%{mode: :allowlist} = setting) do
+    case Elia.Net.hosts(setting) do
+      [] -> "Reaches nothing yet: no host is allowed."
+      [host] -> "Reaches #{host}."
+      hosts -> "Reaches #{length(hosts)} allowed hosts."
+    end
+  end
+
+  defp network_state(%{mode: :none}), do: "Reaches nothing at all."
+
+  defp hosts_text(setting), do: Enum.join(Elia.Net.hosts(setting), "\n")
+
+  # NET-11, NET-24: the setting the form's host list makes, or the message that
+  # names the entry it can't be.
+  defp network_setting(mode, params) do
+    case Elia.Net.new(mode, params["hosts"] || "") do
+      {:ok, setting} -> {:ok, setting}
+      {:error, entry} -> {:error, network_entry_error(entry)}
+    end
+  end
+
+  defp network_entry_error(entry) do
+    "#{inspect(entry)} is not a host, a *.suffix or one of those with a port."
+  end
+
+  defp network_mode("allowlist"), do: :allowlist
+  defp network_mode("none"), do: :none
+  defp network_mode(_mode), do: :unrestricted
+
+  defp maybe_hosts(typed, setting) do
+    if Elia.Net.hosts(setting) == Elia.Net.Allowlist.clean(typed),
+      do: typed,
+      else: hosts_text(setting)
   end
 
   attr :effort, :string, default: nil
@@ -963,6 +1105,27 @@ defmodule EliaWeb.ChatSettingsLive do
     {:noreply, socket}
   end
 
+  # NET-23, NET-22: apply the mode that was clicked, with the host list as it
+  # stands on the page, so switching to another mode and back doesn't lose it.
+  # A change reaches the commands and terminals that start after it (NET-5).
+  def handle_event("set_network", %{"mode" => mode}, socket) do
+    setting = %{mode: network_mode(mode), hosts: socket.assigns.network_hosts}
+
+    case Agent.set_network(socket.assigns.session_id, setting) do
+      :ok -> {:noreply, socket}
+      {:error, message} -> {:noreply, assign(socket, settings_error: message)}
+    end
+  end
+
+  # NET-24, CSET-7: remember the host list as it is typed, so the save has it
+  # and applying a mode (NET-23) doesn't lose a half-typed one.
+  def handle_event("draft_network", params, socket) do
+    case get_in(params, ["network", "hosts"]) do
+      nil -> {:noreply, socket}
+      hosts -> {:noreply, assign(socket, network_hosts: hosts)}
+    end
+  end
+
   # CSET-13, SESS-40: this chat's own reasoning effort (LLM-39). The buttons
   # follow the session's broadcast, so every view of the chat stays in sync.
   def handle_event("set_effort", %{"effort" => effort}, socket) do
@@ -1004,7 +1167,12 @@ defmodule EliaWeb.ChatSettingsLive do
     }
 
     with {:ok, limits} <- Elia.Limits.validate(limits),
-         {:ok, options} <- compaction_changes(compaction_params) do
+         {:ok, options} <- compaction_changes(compaction_params),
+         # NET-11, NET-24: a list with an entry that isn't one of NET-7's forms
+         # saves nothing, and the page names the entry (CSET-7).
+         {:ok, network} <-
+           network_setting(socket.assigns.network.mode, params["network"] || %{}) do
+      :ok = Agent.set_network(socket.assigns.session_id, network)
       :ok = Agent.set_limits(socket.assigns.session_id, limits)
       :ok = Agent.set_compaction(socket.assigns.session_id, options)
       {:noreply, push_navigate(socket, to: ~p"/c/#{socket.assigns.session_id}")}
@@ -1141,6 +1309,10 @@ defmodule EliaWeb.ChatSettingsLive do
       context_window: LLM.context_window(settings.model),
       auto_approve: settings.auto_approve,
       jail: settings.jail,
+      # NET-3, CSET-3: the network setting follows too, and the field only when
+      # the chat's own hosts changed, so a half-typed list stays (CSET-7).
+      network: settings.network,
+      network_hosts: maybe_hosts(socket.assigns.network_hosts, settings.network),
       effort: settings.effort,
       limits: settings.limits
     )

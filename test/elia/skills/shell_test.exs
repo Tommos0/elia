@@ -78,6 +78,20 @@ defmodule Elia.Skills.ShellTest do
     end
   end
 
+  # NET-27
+  test "instructions and tool description say what the chat's network setting is" do
+    assert [%{description: description}] = Shell.tools()
+
+    for text <- [Shell.instructions(), description] do
+      assert text =~ "network"
+      assert text =~ "allowlisted"
+      assert text =~ "http_proxy"
+      assert text =~ "no name resolution"
+      assert text =~ "reaches nothing"
+      assert text =~ "no ssh"
+    end
+  end
+
   # SHELL-14: a command is told which chat it belongs to, as `ELIA_CHAT_ID`, so a
   # chat can name the worktree and the branch it makes for itself (DEPLOY-28)
   # without being told its own id — and a step the harness runs for no chat gets

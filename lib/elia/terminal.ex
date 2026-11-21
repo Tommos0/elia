@@ -101,9 +101,10 @@ defmodule Elia.Terminal do
   Starts `chat_id`'s terminal (TERM-2, TERM-25).
 
   Options: `:command` (a command line the login shell runs; the default
-  otherwise, TERM-5), `:workspace` (default `Elia.Workspace.root/0`) and
+  otherwise, TERM-5), `:workspace` (default `Elia.Workspace.root/0`),
   `:jail` (default on, ISOL-16, so the terminal is confined as a command is,
-  TERM-7).
+  TERM-7) and `:network` (the chat's network setting, NET-1: what the session's
+  whole process tree may reach, NET-18).
 
   Refused when the chat already has a *running* session (TERM-1) and where tmux
   is missing (TERM-29). A session whose command has exited is not running: it is

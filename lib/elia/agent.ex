@@ -122,11 +122,12 @@ defmodule Elia.Agent do
   Sets any of the chat's per-chat settings at once (SESS-41): `:model` (a
   selection, MODEL-1, or `nil` for none of its own), `:auto_approve` (a map of
   tool names to whether the chat auto-approves them, APPR-8), `:jail` (a
-  boolean, ISOL-16), `:limits` (a map of turn limits to change, LIMIT-1) and
+  boolean, ISOL-16), `:network` (a setting of NET-1: a mode and, in allowlist
+  mode, its hosts), `:limits` (a map of turn limits to change, LIMIT-1) and
   `:effort` (`nil` or one of `"low"`, `"medium"` and `"high"`, LLM-39). It is
   the one write path: the change is saved with the chat once it has messages and
   broadcast as one `{:settings, settings}` event (SESS-6), so every view of the
-  chat agrees. A key of a change that isn't one of the five, or a value that
+  chat agrees. A key of a change that isn't one of the settings, or a value that
   isn't one for its key, returns `{:error, message}` naming the setting at fault
   and changes nothing (SESS-42).
   """
@@ -149,6 +150,28 @@ defmodule Elia.Agent do
   """
   @spec set_effort(binary(), binary() | nil) :: :ok | {:error, binary()}
   def set_effort(id, effort), do: set_settings(id, %{effort: effort})
+
+  @doc """
+  Sets this chat's network setting (SESS-41, NET-1): `%{mode: mode}` with the
+  mode `:unrestricted`, `:allowlist` or `:none`, and `%{hosts: [entry]}` for
+  the hosts an allowlist names (NET-7). A mode that is not one of the three, or
+  a host that is not one of NET-7's forms, returns `{:error, message}` and
+  changes nothing (NET-11). Allowed mid-turn (ISOL-19): a change reaches the
+  commands and terminals that start after it (NET-5), and, in allowlist mode, a
+  running command's next request (NET-6).
+  """
+  @spec set_network(binary(), map()) :: :ok | {:error, binary()}
+  def set_network(id, setting), do: set_settings(id, %{network: setting})
+
+  @doc """
+  This chat's network setting as it stands (NET-1), or `nil` when the chat has
+  no running session — a proxy that decides a running command's requests falls
+  back to the list it started with (NET-6).
+  """
+  @spec network(binary()) :: map() | nil
+  def network(id) do
+    if live?(id), do: GenServer.call(Session.via(id), :network), else: nil
+  end
 
   @doc """
   Sets this chat's turn limits (SESS-31, LIMIT-2): any of `:max_steps` (a whole

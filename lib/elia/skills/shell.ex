@@ -54,6 +54,16 @@ defmodule Elia.Skills.Shell do
     unjailed, on the whole machine, and what an approved command reads or \
     changes is the whole of it.
 
+    What a command may reach on the network is the chat's own setting (NET). \
+    Unrestricted — how every chat starts — reaches the whole network. An \
+    allowlisted chat's commands have no route out but the harness's proxy, \
+    named by `http_proxy`, `https_proxy` and `all_proxy`: they reach the hosts \
+    the chat names, over those variables, and nothing else — no name \
+    resolution of their own, no ssh, no database client, no script's own \
+    sockets — so a command that can't reach a host there is expected, not \
+    broken. A chat with no network reaches nothing at all: only a server the \
+    command starts itself.
+
     A command also runs at a lower scheduling priority than the server, on the \
     CPU (`nice`) and on the disk (`ionice`), so a compile or a test suite \
     doesn't take the machine from the UI and the agent loops that drive them. \
@@ -83,6 +93,11 @@ defmodule Elia.Skills.Shell do
             "conversations and the user's credentials are not in it, so a command " <>
             "that can't find them is expected, not broken. In a chat whose jail " <>
             "the user turned off, commands run unjailed. " <>
+            "What the command may reach on the network is the chat's own setting " <>
+            "(NET): unrestricted reaches the whole network; an allowlisted chat " <>
+            "reaches only the hosts it names, through the proxy in `http_proxy` " <>
+            "and `https_proxy` (no name resolution, no ssh, no script's own " <>
+            "sockets); a chat with no network reaches nothing. " <>
             "The command runs at a lower CPU and I/O priority than the server, " <>
             "so a heavy one takes longer on a busy machine than on an idle one. " <>
             "It runs in the chat's working directory (WD-9), which is the chat's " <>
@@ -133,6 +148,8 @@ defmodule Elia.Skills.Shell do
             env: chat_env(ctx),
             timeout: timeout,
             jail: ctx[:jail],
+            network: ctx[:network],
+            session_id: ctx[:session_id],
             max_output: max_output()
           ),
           timeout,
