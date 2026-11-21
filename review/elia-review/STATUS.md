@@ -101,3 +101,11 @@ run directory, settings database and temporary directory (SUITE-1, SUITE-11), so
 concurrent runs in one worktree or several no longer collide. What is still
 shared is the endpoint port a browser run or `bin/preview` binds, which each run
 must set for itself.
+
+## Keeping this note and the checksums honest
+
+This folder is pinned by `MANIFEST.sha256`. Editing anything in it means
+refreshing that file: its paths are the root files in byte order first, then
+each directory's files in byte order, with `MANIFEST.sha256` itself excluded.
+`sha256sum -c MANIFEST.sha256` from `review/elia-review` proves every entry still
+matches, which is also how the archive was checked before this note was added.
