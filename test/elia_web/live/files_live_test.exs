@@ -556,6 +556,56 @@ defmodule EliaWeb.FilesLiveTest do
     refute has_element?(view, "#file-content")
   end
 
+  # SERVE-15: with a preview host configured, an HTML document in a project's
+  # folder opens at its URL on that host — the only URL a browser runs it at,
+  # since the raw view has its scripts off (EXPL-24). Without one it stays the
+  # raw view's URL, which is what the test above asserts.
+  test "an HTML document opens at the preview host's URL when there is one", %{conn: conn} do
+    File.write!(in_root("#{@dir}/page.html"), "<h1>hello</h1>\n")
+    _project = open_project("files live preview", in_root(@dir))
+
+    Application.put_env(:elia, EliaWeb.PreviewHost, host: "preview.localhost:7000")
+    on_exit(fn -> Application.delete_env(:elia, EliaWeb.PreviewHost) end)
+
+    # The project's folder is the fixture directory, so the path in view is the
+    # file's name alone (EXPL-1, EXPL-15).
+    {:ok, view, _} = live(conn, path_url("page.html"))
+
+    url = "http://preview.localhost:7000/files-live-preview/page.html"
+
+    assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
+    # The page itself is still the raw view's, which the frame draws.
+    refute has_element?(view, "iframe#file-raw[src='#{url}']")
+  end
+
+  # SERVE-15: a chat's own workspace has no preview URL — a preview serves a
+  # project, not a chat's worktree — so the control stays the raw view's.
+  test "a chat's own workspace opens at the raw view's URL with a preview host", %{conn: conn} do
+    folder = in_root("#{@project}/preview_url")
+    File.rm_rf!(folder)
+    File.mkdir_p!(folder)
+    File.write!(Path.join(folder, "page.html"), "<h1>hi</h1>")
+    {:ok, project} = Projects.create("Preview url", folder)
+
+    on_exit(fn ->
+      File.rm_rf!(folder)
+      Projects.delete(project.id)
+    end)
+
+    chat = Elia.Agent.new_id()
+    :ok = Elia.Store.save(chat, [], project: project.id, title: "The page")
+    on_exit(fn -> Elia.Store.delete(chat) end)
+
+    Application.put_env(:elia, EliaWeb.PreviewHost, host: "preview.localhost:7000")
+    on_exit(fn -> Application.delete_env(:elia, EliaWeb.PreviewHost) end)
+
+    {:ok, view, _} = live(conn, ~p"/files?#{%{chat: chat, path: "page.html"}}")
+
+    url = ~p"/files/raw?#{%{path: "page.html", chat: chat}}"
+
+    assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
+  end
+
   # EXPL-30: a `mode` that is missing, that names neither of the two, or that
   # asks for a raw view a file has none of (EXPL-31) is the file's default mode.
   test "a mode a file can't be shown in is its default mode", %{conn: conn} do

@@ -7,7 +7,7 @@ defmodule EliaWeb.FilesLive do
   """
   use EliaWeb, :live_view
 
-  alias Elia.{Explorer, Store, SystemStats, Workspace}
+  alias Elia.{Explorer, Projects, Store, SystemStats, Workspace}
   alias EliaWeb.FilesScope
 
   @highlight_max 128 * 1024
@@ -81,6 +81,7 @@ defmodule EliaWeb.FilesLive do
        raw_view: raw_view,
        mode: mode,
        raw: raw,
+       open_url: open_url(raw_view, chat, project, raw),
        line: line(params, viewer),
        error: error,
        root_error: root_error,
@@ -113,6 +114,19 @@ defmodule EliaWeb.FilesLive do
   # EXPL-23, EXPL-32: a kind the browser renders of itself gets its own element
   # in the pane, and every other kind the frame.
   defp preview_kind?(kind), do: kind in [:image, :pdf, :video, :audio]
+
+  # SERVE-15: an HTML document in a project's folder opens at its URL on the
+  # preview host when the install has one — the only URL a browser runs it at,
+  # since a raw view has its scripts off (EXPL-24, EXPL-26). A chat's own
+  # workspace has none: a preview serves a project, not a chat's worktree.
+  defp open_url(%{kind: :html} = raw_view, nil, project, raw) do
+    case Projects.slug(project.name) do
+      nil -> raw
+      slug -> EliaWeb.PreviewHost.url([slug | String.split(raw_view.path, "/")]) || raw
+    end
+  end
+
+  defp open_url(_raw_view, _chat, _project, raw), do: raw
 
   # EXPL-27: the line a link named, when the text in view has it. It is
   # ignored otherwise — a `line` that isn't a positive whole number, one past
@@ -417,7 +431,7 @@ defmodule EliaWeb.FilesLive do
               <.file_header
                 path={@raw_view.path}
                 size={@raw_view.size}
-                url={@raw}
+                url={@open_url}
                 mode={@mode}
                 chat={@chat}
               />
@@ -430,7 +444,7 @@ defmodule EliaWeb.FilesLive do
             <% match?({:binary, _}, @viewer) -> %>
               <.file_header
                 path={elem(@viewer, 1)}
-                url={@raw}
+                url={@open_url}
                 mode={@raw_view && @mode}
                 chat={@chat}
               />
@@ -444,7 +458,7 @@ defmodule EliaWeb.FilesLive do
                 path={@viewer.path}
                 size={@viewer.size}
                 lines={@line_count}
-                url={@raw}
+                url={@open_url}
                 mode={@raw_view && @mode}
                 chat={@chat}
               />

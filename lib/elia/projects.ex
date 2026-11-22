@@ -237,17 +237,33 @@ defmodule Elia.Projects do
   """
   @spec folder_for(binary()) :: binary() | nil
   def folder_for(name) when is_binary(name) do
-    folder =
+    case slug(name) do
+      nil -> nil
+      slug -> Path.join(root(), slug)
+    end
+  end
+
+  def folder_for(_name), do: nil
+
+  @doc """
+  SERVE-7: the slug a project's name gives, which is the folder PROJ-34 derives
+  for it — the name lowercased, every run of characters that are neither letters
+  nor digits replaced by `-`, and leading and trailing `-` removed — without the
+  projects root. `nil` for a name that leaves none.
+  """
+  @spec slug(binary()) :: binary() | nil
+  def slug(name) when is_binary(name) do
+    slug =
       name
       |> String.trim()
       |> String.downcase()
       |> String.replace(~r/[^\p{L}\p{N}]+/u, "-")
       |> String.trim("-")
 
-    if folder == "", do: nil, else: Path.join(root(), folder)
+    if slug == "", do: nil, else: slug
   end
 
-  def folder_for(_name), do: nil
+  def slug(_name), do: nil
 
   @doc """
   PROJ-34 - PROJ-38: makes a project from its name alone, in a folder of its own

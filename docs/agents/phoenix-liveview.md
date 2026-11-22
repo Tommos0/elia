@@ -9,6 +9,17 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 - A `scope` alias is prefixed onto every route inside it. Don't add your own `alias` for routes. In the default `:browser` scope, `live "/weather", WeatherLive` points to `EliaWeb.WeatherLive`.
 - LiveViews are named with a `Live` suffix (`EliaWeb.SystemLive`).
 - `Phoenix.View` is gone. Don't use it.
+- A plug that answers — `send_resp`, `send_file`, `halt` — must **also halt**,
+  and the halt has to cover every answer it gives (`halt(conn)` after the
+  `case`, not inside one branch). A plug in the endpoint's own plug list that
+  answers without halting lets the next plug answer a connection that is
+  already sent, and the symptom is a `Plug.Conn.AlreadySentError` raised from
+  `lib/elia_web/endpoint.ex:1`, which says nothing about which plug it was.
+  `EliaWeb.PreviewHost` is the one that sits at the top of the endpoint
+  (`specs/preview-host.md`).
+- A plug that must be reached *before everything* — ahead of the static files,
+  the session and the router — goes in `EliaWeb.Endpoint`'s plug list, not the
+  router: a router plug runs only after the static files have had their turn.
 
 ## HEEx
 

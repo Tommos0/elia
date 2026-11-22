@@ -26,6 +26,14 @@ if config_env() != :test do
   config :elia, EliaWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "7000"))]
 end
 
+# SERVE-1, SERVE-2: the host a project's files are served at — a hostname of
+# their own, so a browser runs what a project builds without the app's own origin
+# ever serving a file that carries script (specs/preview-host.md). A host without
+# a port is reached over HTTPS, one with a port over plain HTTP; behind a tunnel
+# this is the one public hostname that points at the app's own port. Unset: no
+# preview host, and nothing changes.
+config :elia, EliaWeb.PreviewHost, host: System.get_env("ELIA_PREVIEW_HOST")
+
 config :elia, Elia.LLM.Anthropic, api_key: System.get_env("ANTHROPIC_API_KEY")
 config :elia, Elia.LLM.OpenRouter, api_key: System.get_env("OPENROUTER_API_KEY")
 

@@ -351,6 +351,97 @@ defmodule Elia.Explorer do
     end
   end
 
+  # SERVE-8: the document a directory is served as.
+  @index "index.html"
+
+  # SERVE-9: what a served file is sent as, by extension (ignoring case) — the
+  # kinds EXPL-22 previews, the files a project hands a browser, and
+  # `application/octet-stream` for anything else.
+  @served %{
+    ".html" => "text/html; charset=utf-8",
+    ".htm" => "text/html; charset=utf-8",
+    ".css" => "text/css; charset=utf-8",
+    ".js" => "text/javascript; charset=utf-8",
+    ".mjs" => "text/javascript; charset=utf-8",
+    ".cjs" => "text/javascript; charset=utf-8",
+    ".json" => "application/json",
+    ".map" => "application/json",
+    ".txt" => "text/plain; charset=utf-8",
+    ".md" => "text/markdown; charset=utf-8",
+    ".xml" => "application/xml",
+    ".webmanifest" => "application/manifest+json",
+    ".wasm" => "application/wasm",
+    ".woff" => "font/woff",
+    ".woff2" => "font/woff2",
+    ".ttf" => "font/ttf",
+    ".otf" => "font/otf"
+  }
+
+  @type served :: %{
+          path: String.t(),
+          file: String.t(),
+          type: String.t(),
+          size: non_neg_integer(),
+          mtime: non_neg_integer()
+        }
+
+  @doc """
+  The file at `rel` under `root` as the preview host serves it (SERVE-6,
+  SERVE-8 - SERVE-10): a directory is the `index.html` it holds, and any other
+  path is the file it names, with the content type its extension gives it
+  (SERVE-9).
+
+  Anything else is the refusal reading it would give: a path that leads out of
+  the workspace or through a symlink (EXPL-1, EXPL-2), a directory without an
+  `index.html`, a symlink of its own, a special file and a missing one all come
+  back as errors, so the preview never says which of them it was (EXPL-5).
+  """
+  @spec served_file(String.t(), String.t()) :: {:ok, served()} | {:error, error()}
+  def served_file(rel, root \\ Workspace.root()) do
+    with {:ok, abs} <- safe_path(rel, root),
+         {:ok, abs} <- document(abs, root),
+         {:ok, :file} <- type_of(abs, :directory, root),
+         {:ok, stat} <- posix(File.stat(abs, time: :posix)) do
+      {:ok,
+       %{
+         path: Workspace.relative(abs, root),
+         file: abs,
+         type: served_type(abs),
+         size: stat.size,
+         mtime: stat.mtime
+       }}
+    end
+  end
+
+  @doc """
+  The content type a file is served as by the preview host (SERVE-9): the one
+  its extension names, else the kind EXPL-22 previews it as, else
+  `application/octet-stream`.
+  """
+  @spec served_type(String.t()) :: String.t()
+  def served_type(path) do
+    case Map.fetch(@served, path |> Path.extname() |> String.downcase()) do
+      {:ok, type} ->
+        type
+
+      :error ->
+        case preview(path) do
+          {_kind, type} -> type
+          nil -> "application/octet-stream"
+        end
+    end
+  end
+
+  # SERVE-8: a directory is served as the `index.html` it holds, and one without
+  # it has nothing to serve.
+  defp document(abs, root) do
+    case type_of(abs, :directory, root) do
+      {:ok, :file} -> {:ok, abs}
+      {:error, :directory} -> {:ok, Path.join(abs, @index)}
+      other -> other
+    end
+  end
+
   defp size(abs), do: posix(File.stat(abs, time: :posix), & &1.size)
 
   defp read_head(abs) do

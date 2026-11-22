@@ -37,6 +37,12 @@ defmodule EliaWeb.Endpoint do
     websocket: [connect_info: @connect_info, check_csrf: true, code_reloader: false],
     longpoll: [connect_info: @connect_info, check_csrf: true, code_reloader: false]
 
+  # SERVE-1 - SERVE-4: a project's files at a hostname of their own, ahead of
+  # every other plug — on that host nothing of the app is reached, not even a
+  # static file (SERVE-3), and on any other host it does nothing (SERVE-4). It
+  # reads no session, so it comes before `Plug.Session` too (SERVE-13).
+  plug EliaWeb.PreviewHost
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

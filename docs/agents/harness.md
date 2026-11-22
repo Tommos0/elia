@@ -80,6 +80,25 @@ Prefer a folder skill over changing Elixir code.
 
 Folder skills don't need a spec. Built-in skills live in `lib/elia/skills/` and do.
 
+## Showing a project's HTML
+
+A file opened in the Files page can never run its own script: an HTML document's
+raw view is served under `sandbox` with scripting off (EXPL-24, EXPL-30), which
+deliberately keeps workspace script out of this app's origin. That is why a
+project's built page — anything from Vite, and any single-file build with a
+`<noscript>` note in it — shows "needs JavaScript" there, in every browser: it
+is the response's policy, not the browser, and `<noscript>` renders whenever a
+context has scripting disabled.
+
+To look at a project's build, use the preview host (`specs/preview-host.md`,
+`SERVE`): `ELIA_PREVIEW_HOST=<host>` serves one project's files at a hostname of
+their own — `/` is the open project (`Elia.Projects.default/0`), `/<slug>/…` is
+any project — over the app's own port and with no policy of its own. Behind the
+Cloudflare tunnel one public hostname pointing at `http://localhost:7000` covers
+every project, present and future. Unset, the feature is off and nothing
+changes. The route reads no session and never serves the app, so it is exactly
+as reachable as the app is.
+
 ## Listing chats
 
 `Elia.Store.list/2` reads every saved chat (`all_entries/0`), keeps the ones a
