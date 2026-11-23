@@ -513,7 +513,10 @@ defmodule Elia.Shell do
   end
 
   # Elia's data under the live tree is masked with an empty tmpfs (ISOL-6): the
-  # sessions and the settings database live there, and a jail holds neither.
+  # sessions, the projects list and the deploy record live there, and a jail
+  # holds none of them. The settings database is not here: it lives in the XDG
+  # data home, outside every workspace, so the home bind list keeps it out
+  # (ISOL-5).
   defp mask_args(live) do
     data = Path.join(live, ".elia")
     if File.exists?(data), do: ["--tmpfs", data], else: []
