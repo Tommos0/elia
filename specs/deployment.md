@@ -473,10 +473,12 @@ it merges nothing, tests nothing, loads nothing and is never rolled back.
   ignores and only an npm install fills, so a tree without Node and those
   packages still compiles and still starts and serves a page with no stylesheet
   and no JavaScript — there is no `/assets/js/app.js` or `/assets/css/app.css`
-  to fetch. The real-browser tests and `bin/preview` install the packages for
-  themselves and need Node too (BROWSER-10, PREVIEW-14). No document repeats
-  the bare claim that Node is optional for a tree that builds its own bundle
-  without saying this.
+  to fetch. `bin/preview` needs Node too and installs the workspace's own
+  packages for itself (PREVIEW-14); the real-browser tests install nothing —
+  they need built assets (BROWSER-6) and the user-wide Playwright CLI
+  (BROWSER-2), and a run that can't find the CLI names the command that
+  installs it (BROWSER-10). No document repeats the bare claim that Node is
+  optional for a tree that builds its own bundle without saying this.
 
 ### Retired: guarded files
 
