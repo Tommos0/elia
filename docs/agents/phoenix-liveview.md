@@ -73,6 +73,7 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 - Build forms with `to_form/2` in the LiveView, then `<.form for={@form} id="...">` and `<.input field={@form[:field]} />`.
 - From params: `to_form(params)`, or `to_form(params, as: :user)` to nest. The map needs string keys.
 - **Never** pass a changeset to the template, use `<.form let={f}>`, or use `Phoenix.HTML.form_for`. This project has no Ecto, so forms are normally built from params.
+- A `<.form>` **inside** another one is the trap to avoid: an inner form makes the outer one's own controls unreachable — `view |> form("#outer", ...)` then fails to find an input inside it, and the failure reads as an HTML problem rather than a nested form. The settings page hit this when the Network section got a Save of its own: the section had to move *out* of `#settings-form` (CSET-7, NET-38), so a new form in a section means checking whether that section is inside another one.
 
 ## The transcript's Markdown
 

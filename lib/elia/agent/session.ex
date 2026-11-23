@@ -164,11 +164,6 @@ defmodule Elia.Agent.Session do
         }
     }
 
-    # NET-29: a chat file written before the allowlist moved to the project may
-    # name hosts of its own; they go into the project's list as the chat loads,
-    # and its setting keeps the mode alone (NET-28).
-    state = migrate_network(state)
-
     # RESUME-2: the record of a turn the restart cut short is read before
     # anything saves the chat — a session's own state carries no turn (SESS-15),
     # so the save below would take the record off the file (INTR-1) before
@@ -310,6 +305,13 @@ defmodule Elia.Agent.Session do
   # caller falls back to the list it started with.
   def handle_call(:network, _from, state) do
     {:reply, Elia.Net.effective(settings(state).network, project(state)), state}
+  end
+
+  # NET-36: the network setting the chat holds of its own — its mode and the
+  # entries it names — without its project's, which is what a request that
+  # allows a host for this chat adds to (NET-33).
+  def handle_call(:network_setting, _from, state) do
+    {:reply, Elia.Net.setting(settings(state).network), state}
   end
 
   def handle_call({:send_message, text}, _from, state),
@@ -853,9 +855,9 @@ defmodule Elia.Agent.Session do
     }
   end
 
-  # SESS-41, SUBTASK-30, NET-4: a caller may set the new session's network
-  # setting (a sub-task's copy of its parent's) instead of loading the chat's
-  # saved one.
+  # SESS-41, SUBTASK-30, NET-4, NET-37: a caller may set the new session's
+  # network setting (a sub-task's copy of its parent's mode and of the entries
+  # its parent names of its own) instead of loading the chat's saved one.
   defp initial_network(id, persist, nil, jail), do: initial_network(id, persist, jail)
 
   defp initial_network(_id, _persist, setting, jail) when is_map(setting),
@@ -863,22 +865,6 @@ defmodule Elia.Agent.Session do
 
   defp initial_network(id, true, jail), do: Elia.Store.load_network(id, jail: jail)
   defp initial_network(_id, false, jail), do: Elia.Net.default(jail: jail)
-
-  # NET-29: the entries an older chat named of its own go into its project's
-  # list, once, as the chat loads; its setting keeps the mode alone (NET-28).
-  # Nothing is rewritten by this: the chat's file loses the entries when it is
-  # next saved (STORE-53).
-  defp migrate_network(state) do
-    setting = settings(state).network
-    hosts = Elia.Net.hosts(setting)
-
-    if hosts != [] and Map.get(state, :persist, true) do
-      Elia.Projects.add_allowlist(state.project, hosts)
-      put_setting(state, :network, %{mode: Elia.Net.mode(setting), hosts: []})
-    else
-      state
-    end
-  end
 
   # SESS-41: the chat's per-chat settings. A state that predates the one map is
   # upgraded on its next call (SESS-15); one that reaches this without it from
@@ -1023,8 +1009,8 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  # NET-1, NET-28: one of the three modes. The entries are the chat's project's,
-  # so they are not part of what a chat sets (PROJ-49, NET-11).
+  # NET-1, NET-11, NET-36: one of the three modes. The entries a change carries
+  # are the chat's own and are cleaned where the setting is built (NET-7).
   defp check_network(changes) do
     case Map.fetch(changes, :network) do
       :error -> :ok

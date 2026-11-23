@@ -46,11 +46,14 @@ defmodule EliaWeb.ChatSettingsLive do
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         # NET-22, NET-23: what this chat's commands and terminals may reach
-        # (NET-1), the entries its project allows (NET-24, NET-28), and whether
-        # a limit can be built for this chat here at all (NET-20, NET-25).
+        # (NET-1), the entries this chat names of its own (NET-38) beside the
+        # ones its project allows (NET-24, NET-28, NET-36), and whether a limit
+        # can be built for this chat here at all (NET-20, NET-25).
         network: snapshot.settings.network,
-        network_entries: Elia.Projects.allowlist(snapshot.project),
+        network_entries: Elia.Net.hosts(network_effective(snapshot)),
         network_hosts: hosts_text(snapshot.project),
+        network_own: own_text(snapshot.settings.network),
+        network_own_error: nil,
         network_available: Elia.Net.available?(jail: snapshot.settings.jail),
         # LIMIT-1, LIMIT-6: the chat's turn limits and the form that sets them.
         limits: snapshot.settings.limits,
@@ -183,41 +186,41 @@ defmodule EliaWeb.ChatSettingsLive do
               </div>
             </section>
 
+            <%!-- CSET-5, NET-22 to NET-25: what this chat's commands and
+            terminals may reach. --%>
+            <section
+              id="settings-network"
+              class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
+            >
+              <h2 class="font-medium">Network</h2>
+              <p class="mt-0.5 text-xs text-base-content/50">
+                What this chat's commands and its terminal may reach. A change applies to
+                the ones that start after it.
+              </p>
+              <div class="mt-4">
+                <.network_choice
+                  setting={@network}
+                  available={@network_available}
+                  hosts={@network_hosts}
+                  entries={@network_entries}
+                  own={@network_own}
+                  own_error={@network_own_error}
+                  project_name={@project.name}
+                />
+              </div>
+            </section>
+
             <%!-- CSET-7, NET-24: one form with one Save holds the settings the
-            page saves together — the network's host list below, the turn's limits
-            and the context options — so the save is all or nothing, and an
-            accepted one goes back to the chat (CSET-11). A keystroke keeps the
-            list as it is typed, so applying a mode (NET-23) doesn't lose it. --%>
+            page saves together — the turn's limits and the context options — so
+            the save is all or nothing, and an accepted one goes back to the chat
+            (CSET-11). The network section's own entries are not part of it: they
+            have a Save of their own (NET-38). --%>
             <.form
               for={%{}}
               id="settings-form"
               phx-submit="save_settings"
-              phx-change="draft_network"
-              phx-debounce="300"
               class="space-y-4"
             >
-              <%!-- CSET-5, NET-22 to NET-25: what this chat's commands and
-              terminals may reach. --%>
-              <section
-                id="settings-network"
-                class="rounded-2xl border border-base-300 p-5 transition duration-200 hover:border-base-content/20 hover:shadow-sm"
-              >
-                <h2 class="font-medium">Network</h2>
-                <p class="mt-0.5 text-xs text-base-content/50">
-                  What this chat's commands and its terminal may reach. A change applies to
-                  the ones that start after it.
-                </p>
-                <div class="mt-4">
-                  <.network_choice
-                    setting={@network}
-                    available={@network_available}
-                    hosts={@network_hosts}
-                    entries={@network_entries}
-                    project_name={@project.name}
-                  />
-                </div>
-              </section>
-
               <%!-- CSET-5, LIMIT-6: the turn's limits --%>
               <section
                 id="settings-limits"
@@ -516,6 +519,8 @@ defmodule EliaWeb.ChatSettingsLive do
   attr :available, :boolean, required: true
   attr :hosts, :string, required: true
   attr :entries, :list, required: true
+  attr :own, :string, required: true
+  attr :own_error, :string, default: nil
   attr :project_name, :string, required: true
 
   # NET-22, NET-23, NET-25: the chat's network setting — one control per mode,
@@ -556,24 +561,67 @@ defmodule EliaWeb.ChatSettingsLive do
         jail is on.
       </span>
 
-      <div :if={@setting.mode == :allowlist and @available} class="space-y-1">
-        <span class="text-xs font-medium text-base-content/70">Allowed hosts</span>
-        <span class="block text-xs text-base-content/50">
-          Every chat of {@project_name} reaches these, one per line. A host
-          (api.example.com), a <code>*.suffix</code> (*.example.com) or either with a port
-          (api.example.com:443).
-        </span>
-        <pre
-          id="network-hosts"
-          class="w-full rounded-lg border border-base-300 bg-base-200/40 p-2 font-mono text-xs whitespace-pre-wrap break-words"
-        >{@hosts}</pre>
-        <.link
-          id="network-hosts-link"
-          navigate={~p"/projects"}
-          class="inline-block text-xs text-primary hover:underline"
+      <div :if={@setting.mode == :allowlist and @available} class="space-y-4">
+        <%!-- NET-38, NET-11: the entries this chat names of its own, saved when
+        Save is pressed; a list holding an entry that is not one of NET-7's forms
+        changes nothing and says which. --%>
+        <.form
+          for={%{}}
+          id="chat-network-hosts-form"
+          phx-submit="save_chat_network"
+          class="space-y-1"
         >
-          Change {@project_name}'s allowlist on the projects page
-        </.link>
+          <span class="text-xs font-medium text-base-content/70">This chat's own hosts</span>
+          <span class="block text-xs text-base-content/50">
+            Hosts only this chat reaches, one per line. A host (api.example.com), a
+            <code>*.suffix</code>
+            (*.example.com) or either with a port (api.example.com:443).
+            Empty means this chat reaches none of its own.
+          </span>
+          <textarea
+            id="chat-network-hosts"
+            name="hosts"
+            rows="2"
+            class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 p-2 font-mono text-xs"
+            placeholder="api.example.com"
+          >{@own}</textarea>
+          <p
+            :if={@own_error}
+            id="chat-network-hosts-error"
+            role="alert"
+            class="mt-2 flex items-center gap-2 rounded-lg bg-error/10 px-3 py-2 text-xs text-error"
+          >
+            <.icon name="hero-exclamation-triangle" class="size-4 shrink-0" />
+            {@own_error}
+          </p>
+          <button
+            type="submit"
+            id="save-chat-network-hosts"
+            class="mt-2 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-content transition hover:brightness-110 active:scale-95"
+          >
+            Save hosts
+          </button>
+        </.form>
+
+        <div class="space-y-1">
+          <span class="text-xs font-medium text-base-content/70">Allowed hosts</span>
+          <span class="block text-xs text-base-content/50">
+            Every chat of {@project_name} reaches these, one per line. A host
+            (api.example.com), a <code>*.suffix</code> (*.example.com) or either with a port
+            (api.example.com:443).
+          </span>
+          <pre
+            id="network-hosts"
+            class="w-full rounded-lg border border-base-300 bg-base-200/40 p-2 font-mono text-xs whitespace-pre-wrap break-words"
+          >{@hosts}</pre>
+          <.link
+            id="network-hosts-link"
+            navigate={~p"/projects"}
+            class="inline-block text-xs text-primary hover:underline"
+          >
+            Change {@project_name}'s allowlist on the projects page
+          </.link>
+        </div>
       </div>
     </div>
     """
@@ -588,6 +636,14 @@ defmodule EliaWeb.ChatSettingsLive do
   end
 
   # NET-22: what applies, in words, as the jail switch says its state (UI-67).
+  # NET-36, NET-38: the entries the chat names of its own, one per line, as the
+  # field holds them; NET-26's state line reads what it reaches — its own and its
+  # project's together.
+  defp own_text(setting), do: Enum.join(Elia.Net.hosts(setting), "\n")
+
+  defp network_effective(snapshot),
+    do: Elia.Net.effective(snapshot.settings.network, snapshot.project)
+
   defp network_state(%{mode: :unrestricted}, _entries),
     do: "Reaches the whole network."
 
@@ -607,6 +663,13 @@ defmodule EliaWeb.ChatSettingsLive do
       [] -> "No host is allowed yet."
       hosts -> Enum.join(hosts, "\n")
     end
+  end
+
+  # NET-38, NET-11: what the section says about an entry it cannot hold.
+  defp own_entry_error(entry) do
+    "#{inspect(entry)} is not a host this allowlist can hold: name a host " <>
+      "(api.example.com), a *. suffix of one (*.example.com), or either with a port " <>
+      "(api.example.com:443)."
   end
 
   defp network_mode("allowlist"), do: :allowlist
@@ -1101,11 +1164,12 @@ defmodule EliaWeb.ChatSettingsLive do
     {:noreply, socket}
   end
 
-  # NET-23, NET-22: apply the mode that was clicked, with the host list as it
-  # stands on the page, so switching to another mode and back doesn't lose it.
-  # A change reaches the commands and terminals that start after it (NET-5).
+  # NET-23, NET-22: apply the mode that was clicked, keeping the entries the chat
+  # names of its own as they are saved (NET-36), so switching to another mode and
+  # back doesn't lose them. A change reaches the commands and terminals that start
+  # after it (NET-5).
   def handle_event("set_network", %{"mode" => mode}, socket) do
-    setting = %{mode: network_mode(mode), hosts: socket.assigns.network_hosts}
+    setting = %{mode: network_mode(mode), hosts: Elia.Net.hosts(socket.assigns.network)}
 
     case Agent.set_network(socket.assigns.session_id, setting) do
       :ok -> {:noreply, socket}
@@ -1113,12 +1177,25 @@ defmodule EliaWeb.ChatSettingsLive do
     end
   end
 
-  # NET-24, CSET-7: remember the host list as it is typed, so the save has it
-  # and applying a mode (NET-23) doesn't lose a half-typed one.
-  def handle_event("draft_network", params, socket) do
-    case get_in(params, ["network", "hosts"]) do
-      nil -> {:noreply, socket}
-      hosts -> {:noreply, assign(socket, network_hosts: hosts)}
+  # NET-38, NET-11: the entries this chat names of its own, applied when Save is
+  # pressed. A list holding an entry that is not one of NET-7's forms changes
+  # nothing and says which entry it is.
+  def handle_event("save_chat_network", %{"hosts" => text}, socket) do
+    case Elia.Net.Allowlist.parse(text) do
+      {:ok, hosts} ->
+        setting = %{mode: socket.assigns.network.mode, hosts: hosts}
+
+        case Agent.set_network(socket.assigns.session_id, setting) do
+          :ok ->
+            {:noreply,
+             assign(socket, network_own: Enum.join(hosts, "\n"), network_own_error: nil)}
+
+          {:error, message} ->
+            {:noreply, assign(socket, network_own_error: message)}
+        end
+
+      {:error, entry} ->
+        {:noreply, assign(socket, network_own_error: own_entry_error(entry))}
     end
   end
 
@@ -1164,8 +1241,8 @@ defmodule EliaWeb.ChatSettingsLive do
 
     with {:ok, limits} <- Elia.Limits.validate(limits),
          {:ok, options} <- compaction_changes(compaction_params) do
-      # NET-28: the chat's own setting is its mode; the entries are its
-      # project's, and are changed on the projects page (NET-11, PROJ-50).
+      # NET-36: the chat's setting — its mode and the entries it names of its
+      # own, which have their own Save above (NET-38) — is left as it stands.
       :ok = Agent.set_network(socket.assigns.session_id, socket.assigns.network)
       :ok = Agent.set_limits(socket.assigns.session_id, limits)
       :ok = Agent.set_compaction(socket.assigns.session_id, options)
@@ -1303,11 +1380,15 @@ defmodule EliaWeb.ChatSettingsLive do
       context_window: LLM.context_window(settings.model),
       auto_approve: settings.auto_approve,
       jail: settings.jail,
-      # NET-3, CSET-3, NET-28: the network setting follows too, and the entries
-      # are read again from the chat's project, which is where they live.
+      # NET-3, CSET-3, NET-28, NET-36: the network setting follows too, with the
+      # entries this chat names of its own and the ones its project's allowlist
+      # names, which the section shows beside them.
       network: settings.network,
-      network_entries: Elia.Projects.allowlist(socket.assigns.project),
+      network_entries:
+        Elia.Net.hosts(Elia.Net.effective(settings.network, socket.assigns.project)),
       network_hosts: hosts_text(socket.assigns.project),
+      network_own: own_text(settings.network),
+      network_own_error: nil,
       effort: settings.effort,
       limits: settings.limits
     )

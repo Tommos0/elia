@@ -41,11 +41,12 @@ where they show up; so does the Compact button (CSET-12).
   it: **Model** (the picker of MODEL-9 to MODEL-13, and the chat's reasoning
   effort, CSET-13), **Auto-approve** (the button, popover and switches of UI-38
   to UI-42), **Jail** (the switch of UI-67 and UI-68), **Network** (the mode
-  control and, in allowlist mode, the host list of NET-22 to NET-24),
+  control and, in allowlist mode, the chat's own host list of NET-38 and the
+  project's of NET-22 to NET-24),
   **Limits** (LIMIT-6) and **Context** (the chat's compaction options of
   COMPACT-9 and the "Compact" button of UI-54, COMPACT-10).
   *Changed:* the page gained the Network section, whose controls NET-22 to
-  NET-24 give.
+  NET-24 and NET-38 give.
 - **CSET-6** Every control that changes a chat's saved value does so through the
   session (SESS-14, SESS-16, SESS-30, LIMIT-2), so a chat with no messages yet
   is not written to disk by a change made here: the value lives in the running
@@ -54,9 +55,10 @@ where they show up; so does the Compact button (CSET-12).
   (`#settings-form`) with **one** Save button (`#save-settings`), which saves
   them all: the turn limits (LIMIT-6) and the compaction options (COMPACT-30) of
   the Limits and Context sections alike. A half-typed number is never a setting.
-  *Changed:* the form used to save the Network section's host list too; a chat's
-  entries are its project's now, and are changed on the projects page
-  (NET-24, NET-28, PROJ-50).
+  *Changed:* the form used to save the Network section's host list too; the
+  entries a chat names of its own have a Save of their own in that section
+  (NET-38), and its project's are changed on the projects page
+  (NET-24, PROJ-50).
   The save is all or nothing: a value that isn't one (LIMIT-7, COMPACT-30)
   changes nothing — no limit and no option — and the page shows the message for
   the first bad value (`#settings-error`), keeping what was typed so it can be
@@ -121,7 +123,7 @@ to), `EliaWeb.Router`.
 
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
 CSET-7, CSET-11 to CSET-13), `test/elia_web/live/network_test.exs` (the Network
-section, NET-11, NET-22 to NET-26, NET-32),
+section, NET-11, NET-22 to NET-26, NET-32, NET-38),
 `test/elia_web/live/projects_live_test.exs` (a project's allowlist field,
 PROJ-50), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and

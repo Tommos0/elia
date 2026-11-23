@@ -40,7 +40,7 @@ defmodule EliaWeb.NetworkTest do
     end
   end
 
-  # NET-28: the entries are the chat's project's, so a test that changes them
+  # NET-28: a project's entries are every chat of it, so a test that changes them
   # puts them back.
   defp project(id), do: Agent.snapshot(id).project
 
@@ -63,9 +63,12 @@ defmodule EliaWeb.NetworkTest do
     assert has_element?(view, "#network-state", "Reaches nothing yet")
 
     # NET-24: allowlist mode shows the project's entries and where to change
-    # them.
+    # them; NET-38: and the entries this chat names of its own, in a field with
+    # a Save of its own.
     assert has_element?(view, "#network-hosts")
     assert has_element?(view, "#network-hosts-link")
+    assert has_element?(view, "#chat-network-hosts")
+    assert has_element?(view, "#save-chat-network-hosts")
   end
 
   # NET-23: choosing a mode applies it at the moment it is clicked, like a
@@ -92,9 +95,58 @@ defmodule EliaWeb.NetworkTest do
     assert %{settings: %{network: %{mode: :unrestricted}}} = Agent.snapshot(id)
   end
 
+  # NET-38: the entries this chat names of its own are applied when its own Save
+  # is pressed; NET-36: they are the chat's alone, so the project's list is not
+  # touched. NET-11: an entry that is not one of NET-7's forms changes nothing
+  # and the section says which it is.
+  test "the chat's own hosts are saved when Save is pressed", %{conn: conn, id: id} do
+    {:ok, view, _html} = settings(conn, id)
+    project = project(id)
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    view
+    |> element("#chat-network-hosts-form")
+    |> render_submit(%{"hosts" => "API.example.com\nlocalhost:3000"})
+
+    assert %{settings: %{network: network}} = Agent.snapshot(id)
+    assert network == %{mode: :allowlist, hosts: ["api.example.com", "localhost:3000"]}
+    assert Elia.Projects.allowlist(project) == []
+    assert has_element?(view, "#network-state", "Reaches 2 allowed hosts")
+
+    # A page reopened on the chat shows them as the chat names them (NET-36).
+    {:ok, view, _html} = settings(conn, id)
+    assert has_element?(view, "#chat-network-hosts", "api.example.com")
+
+    # NET-11, NET-38: an entry that can't be one is named, and nothing changes.
+    view
+    |> element("#chat-network-hosts-form")
+    |> render_submit(%{"hosts" => "api.example.com\nnot a host"})
+
+    assert has_element?(view, "#chat-network-hosts-error", "not a host")
+    assert %{settings: %{network: network}} = Agent.snapshot(id)
+    assert network == %{mode: :allowlist, hosts: ["api.example.com", "localhost:3000"]}
+  end
+
+  # NET-36: the entries a chat names of its own belong to it, so applying a mode
+  # leaves them as they are — switching to another mode and back loses nothing.
+  test "choosing a mode keeps the chat's own entries", %{conn: conn, id: id} do
+    {:ok, view, _html} = settings(conn, id)
+
+    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["localhost:3000"]})
+    view |> element("#network-none") |> render_click()
+
+    assert %{settings: %{network: network}} = Agent.snapshot(id)
+    assert network == %{mode: :none, hosts: ["localhost:3000"]}
+
+    view |> element("#network-allowlist") |> render_click()
+    assert %{settings: %{network: network}} = Agent.snapshot(id)
+    assert network == %{mode: :allowlist, hosts: ["localhost:3000"]}
+  end
+
   # NET-24, NET-28, CSET-7: the section shows the entries the chat's project
-  # allows, one per line, and the page's Save stores the mode alone — the
-  # entries are changed on the projects page (PROJ-50).
+  # allows, one per line, and the page's Save is the numeric settings' — a
+  # project's entries are changed on the projects page (PROJ-50), and the chat's
+  # own by its own Save (NET-38).
   test "the section shows the project's entries, and the save keeps the mode", %{
     conn: conn,
     id: id
@@ -117,9 +169,11 @@ defmodule EliaWeb.NetworkTest do
     assert to == "/c/#{id}"
     assert %{settings: %{network: %{mode: :allowlist}}} = Agent.snapshot(id)
 
-    # Reopening the page shows the project's entries, not the chat's (NET-28).
+    # Reopening the page shows the project's entries (NET-28), and none of the
+    # chat's own where the chat names none (NET-36).
     {:ok, view, _html} = settings(conn, id)
     assert has_element?(view, "#network-hosts", "api.example.com")
+    assert has_element?(view, "#chat-network-hosts", "")
   end
 
   # NET-3, CSET-3: the section follows `{:settings, settings}`, so every view of
@@ -173,6 +227,13 @@ defmodule EliaWeb.NetworkTest do
     assert has_element?(view, "#network-warning", "Allowlisted")
     assert has_element?(view, "#network-warning", project.name)
 
+    # NET-26, NET-36: it names the entries of the chat's own beside the
+    # project's, so the count is what the chat reaches in all.
+    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["localhost:3000"]})
+
+    assert has_element?(view, "#network-warning", "this chat allows")
+    assert has_element?(view, "#network-warning", "2 in all")
+
     :ok = Agent.set_network(id, %{mode: :none})
     assert has_element?(view, "#network-warning", "No network")
 
@@ -205,20 +266,22 @@ defmodule EliaWeb.NetworkTest do
     assert has_element?(view, "#transcript", "curl could not reach it")
     refute has_element?(view, "#transcript", "\"reason\"")
 
-    # NET-32, UI-59, UI-62: one button per decision, and the field for an answer
-    # of the user's own (ASK-4).
-    assert has_element?(view, "#answer-n1-0", "Allow")
-    assert has_element?(view, "#answer-n1-1", "Don't allow")
+    # NET-32, UI-59, UI-62: one button per decision — the host for this chat,
+    # for its project, or neither — and the field for an answer of the user's own
+    # (ASK-4).
+    assert has_element?(view, "#answer-n1-0", "Allow for chat")
+    assert has_element?(view, "#answer-n1-1", "Allow for project")
+    assert has_element?(view, "#answer-n1-2", "Deny")
     assert has_element?(view, "#answer-text-n1")
 
     # NET-32, UI-61: the card is shown in the compact view too — it is addressed
     # to the user, not a detail of the agent's work.
     render_hook(view, "set_compact_view", %{"on" => true})
-    assert has_element?(view, "#answer-n1-0", "Allow")
+    assert has_element?(view, "#answer-n1-0", "Allow for chat")
     assert has_element?(view, "#answer-text-n1")
 
-    # NET-33: clicking Allow answers the request, the host joins the chat's
-    # project's list, and the card is answered.
+    # NET-33, NET-36: clicking the first answers the request, and the host joins
+    # the entries this chat names of its own — its project's list is untouched.
     project = project(id)
     on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
 
@@ -226,6 +289,38 @@ defmodule EliaWeb.NetworkTest do
     view |> element("#answer-n1-0") |> render_click()
 
     await_status(id, :idle)
+    assert Agent.network_setting(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Elia.Projects.allowlist(project) == []
+  end
+
+  # NET-32, NET-33, NET-28: the project's button answers the request with the
+  # host for the project, whose list every chat of it reaches from then on.
+  test "the project's button allows the host for the project", %{conn: conn, id: id} do
+    {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("n1", "request_network_host", %{
+          "host" => "api.example.com",
+          "reason" => "curl could not reach it"
+        })
+      ])
+    )
+
+    :ok = Agent.send_message(id, "fetch the price")
+    await_status(id, :awaiting_input)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+    project = project(id)
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Fetched it.")]))
+    view |> element("#answer-n1-1") |> render_click()
+
+    await_status(id, :idle)
     assert Elia.Projects.allowlist(project) == ["api.example.com"]
+    assert Agent.network_setting(id) == %{mode: :allowlist, hosts: []}
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
   end
 end

@@ -106,8 +106,8 @@ defmodule Elia.StoreTest do
 
     assert Store.load_network("missing-chat", jail: false) == Elia.Net.unrestricted()
 
-    # NET-29: an older file that named hosts of its own still reaches them: its
-    # session reads them and hands them to its project.
+    # NET-36: a file that names hosts of its own reads them as the entries the
+    # chat names of its own, so a chat that reached them still does.
     id = Elia.Agent.new_id()
     on_exit(fn -> Store.delete(id) end)
 

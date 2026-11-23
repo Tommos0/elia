@@ -8,15 +8,16 @@ defmodule Elia.Net do
       setting existed, and what a chat whose file carries no value keeps.
     * `:allowlist` — the call's processes run in a network namespace of their
       own whose only interface is loopback, and reach the network through the
-      harness's proxy, for the entries the chat's project names (NET-28). A
-      chat that has never been saved starts here (NET-1).
+      harness's proxy, for the entries the chat names of its own and the ones its
+      project names (NET-28, NET-36). A chat that has never been saved starts
+      here (NET-1).
     * `:none` — the same namespace with nothing to reach.
 
-  A setting is `%{mode: mode}`: the entries are the chat's project's
-  (`Elia.Projects.allowlist/1`, PROJ-49), each of them one of the forms
-  `Elia.Net.Allowlist` accepts (NET-7). A setting read from a chat's file may
-  still carry `hosts` — the entries the chat named before they moved to its
-  project — and `hosts/1` reads them for the migration of NET-29.
+  A setting is `%{mode: mode, hosts: entries}`: the entries are the ones the
+  chat names of its own (NET-36), each of them one of the forms
+  `Elia.Net.Allowlist` accepts (NET-7), and they are judged together with its
+  project's (`Elia.Projects.allowlist/1`, PROJ-49) — `effective/2` is what a
+  chat's commands and terminals are limited by (NET-28).
 
   The limit is built where the jail is: the namespace goes into the jail's argv
   (`Elia.Shell`), the proxy and the relay that carries a command's loopback to
@@ -69,39 +70,62 @@ defmodule Elia.Net do
 
   @doc """
   The setting a chat's commands are limited by as it stands (NET-6, NET-28): its
-  mode, with the entries its project's allowlist names. A project that names
-  none gives an empty list, which reaches nothing (NET-10).
+  mode, with the entries it names of its own and the ones its project's allowlist
+  names (NET-36). A project that names none and a chat that names none give an
+  empty list, which reaches nothing (NET-10).
   """
   @spec effective(term(), map() | nil) :: map()
   def effective(setting, project) do
-    %{mode: mode(setting), hosts: Elia.Projects.allowlist(project)}
+    %{mode: mode(setting), hosts: Enum.uniq(hosts(setting) ++ Elia.Projects.allowlist(project))}
   end
 
   @doc """
-  A setting as a chat holds it (NET-1, NET-28): its mode alone, since the
-  entries are the chat's project's. A value that names no mode is the default.
+  A setting with one entry added to the entries the chat names of its own
+  (NET-33, NET-36), if it is not there already. The entry is one of NET-7's
+  forms; one that isn't is still added here and a caller refuses it before this
+  (NET-11).
+  """
+  @spec add_host(term(), term()) :: map()
+  def add_host(setting, host) do
+    %{
+      mode: mode(setting),
+      hosts: Allowlist.clean(Enum.uniq(hosts(setting) ++ [to_string(host)]))
+    }
+  end
+
+  @doc """
+  A setting as a chat holds it (NET-1, NET-36): its mode and the entries it
+  names of its own, cleaned (NET-7). A value that names no mode is the default.
   """
   @spec setting(term()) :: map()
-  def setting(%{mode: mode}) when mode in @modes, do: %{mode: mode, hosts: []}
+  def setting(%{mode: mode} = given) when mode in @modes,
+    do: %{mode: mode, hosts: hosts(given)}
+
   def setting(_given), do: default()
 
   @doc """
   The setting as the chat's file stores it (STORE-53): its mode, for every mode
   a chat can be in — unrestricted included, so a chat that chooses the whole
-  network keeps it across a restart (NET-1). A value that names no mode is not a
-  setting and is not written: `nil`, so the file's entry stays off. The entries
-  are the chat's project's and are not written (NET-28, NET-29).
+  network keeps it across a restart (NET-1) — with the entries it names of its
+  own (NET-36). A value that names no mode is not a setting and is not written:
+  `nil`, so the file's entry stays off.
   """
   @spec stored(term()) :: map() | nil
+  def stored(%{mode: :allowlist} = setting), do: allowlist_stored(hosts(setting))
   def stored(%{mode: mode}) when mode in @modes, do: %{mode: mode}
   def stored(_setting), do: nil
 
+  # NET-36, STORE-53: the entries the chat names of its own are written with its
+  # mode, and a chat that names none carries no `hosts` entry.
+  defp allowlist_stored([]), do: %{mode: :allowlist}
+  defp allowlist_stored(hosts), do: %{mode: :allowlist, hosts: hosts}
+
   @doc """
-  The setting a stored value holds (STORE-54): its mode, with the entries an
-  older chat named of its own kept so its session can add them to its project's
-  list (NET-29), and the default of NET-1 when there is none, when it isn't a
-  setting, or when it names a mode that isn't one — so unrestricted is a mode a
-  chat has by choosing it (NET-1). `opts` is what `available?/1` reads.
+  The setting a stored value holds (STORE-54): its mode, with the entries the
+  chat names of its own (NET-36), and the default of NET-1 when there is none,
+  when it isn't a setting, or when it names a mode that isn't one — so
+  unrestricted is a mode a chat has by choosing it (NET-1). `opts` is what
+  `available?/1` reads.
   """
   @spec load(term(), keyword()) :: map()
   def load(stored, opts \\ [])

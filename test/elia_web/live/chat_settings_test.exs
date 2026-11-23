@@ -148,7 +148,8 @@ defmodule EliaWeb.ChatSettingsTest do
   end
 
   # CSET-7: every numeric setting is set in one form with one Save — the limits
-  # and the context options alike.
+  # and the context options alike. The network section's own entries are not
+  # among them: they have a Save of their own (NET-38).
   test "the page has one form with one Save for every numeric setting", %{
     conn: conn,
     id: id
@@ -167,7 +168,11 @@ defmodule EliaWeb.ChatSettingsTest do
 
     assert length(LazyHTML.to_tree(LazyHTML.query(document, "form#settings-form"))) == 1
 
-    assert length(LazyHTML.to_tree(LazyHTML.query(document, "button[type='submit']"))) == 1
+    assert length(
+             LazyHTML.to_tree(
+               LazyHTML.query(document, "form#settings-form button[type='submit']")
+             )
+           ) == 1
   end
 
   # CSET-3: every control follows the chat's own events, so a change made

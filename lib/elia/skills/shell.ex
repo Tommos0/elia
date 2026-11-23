@@ -57,7 +57,8 @@ defmodule Elia.Skills.Shell do
     What a command may reach on the network is the chat's own setting (NET). \
     A chat starts allowlisted (NET-1): its commands have no route out but the \
     harness's proxy, named by `http_proxy`, `https_proxy` and `all_proxy`, and \
-    reach only the hosts its project's allowlist names (NET-28) — nothing else, \
+    reach only the hosts it names of its own together with its project's \
+    allowlist (NET-28, NET-36) — nothing else, \
     with no name resolution of their own, no ssh, no database client and no \
     script's own sockets — so a command that can't reach a host is expected, \
     not broken: ask for that host with `request_network_host` (NET-35). \
@@ -95,7 +96,8 @@ defmodule Elia.Skills.Shell do
             "that can't find them is expected, not broken. In a chat whose jail " <>
             "the user turned off, commands run unjailed. " <>
             "What the command may reach on the network is the chat's own setting " <>
-            "(NET): a chat starts allowlisted and reaches only the hosts its " <>
+            "(NET): a chat starts allowlisted and reaches only the hosts it " <>
+            "names of its own and its project's allowlist " <>
             "project allows, through the proxy in `http_proxy` and `https_proxy` " <>
             "(no name resolution, no ssh, no script's own sockets), so ask for a " <>
             "host it can't reach with `request_network_host` (NET-35); unrestricted " <>

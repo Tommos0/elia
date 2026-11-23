@@ -263,11 +263,11 @@ defmodule Elia.AgentTest do
     assert Message.text_content(last) == "Jailed, then."
   end
 
-  # NET-31, NET-33: a host request waits for the user's answer like a question
-  # (LOOP-21, ASK-2), and the answer that allows the host reaches the tool and
-  # puts it in the chat's project's list — which every chat of that project
-  # reaches from then on (NET-28).
-  test "a host request waits, and an allowed host joins the project's list", %{id: id} do
+  # NET-31, NET-33, NET-36: a host request waits for the user's answer like a
+  # question (LOOP-21, ASK-2), and the answer that allows the host for the chat
+  # reaches the tool and puts it in the entries the chat names of its own, which
+  # that chat alone reaches.
+  test "a host request waits, and the answer that allows it for the chat adds it", %{id: id} do
     project = Agent.snapshot(id).project
     on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
 
@@ -283,7 +283,7 @@ defmodule Elia.AgentTest do
     FakeLLM.push(FakeLLM.assistant([Message.text("Fetched it.")]))
 
     # This chat is in allowlist mode, so what it is limited by is the entry the
-    # answer adds (NET-28).
+    # answer adds (NET-36).
     :ok = Agent.set_network(id, %{mode: :allowlist})
 
     :ok = Agent.send_message(id, "fetch the price")
@@ -293,7 +293,7 @@ defmodule Elia.AgentTest do
     assert_receive {:agent, ^id, {:tool_status, "n1", :awaiting_input}}
     assert id in Agent.awaiting_input()
 
-    :ok = Agent.answer(id, "n1", "Allow")
+    :ok = Agent.answer(id, "n1", "Allow for chat")
     await_status(id, :idle)
 
     [_, second] = FakeLLM.requests()
@@ -302,21 +302,57 @@ defmodule Elia.AgentTest do
     assert result.content =~ "api.example.com"
     assert result.content =~ "allowed"
 
-    # NET-33: the host is the project's now, and the chat reaches it (NET-28).
-    assert Elia.Projects.allowlist(project) == ["api.example.com"]
-
-    agent = Agent.network(id)
-    assert agent == %{mode: :allowlist, hosts: ["api.example.com"]}
+    # NET-33, NET-36: the host is the chat's own now — its project's list is
+    # untouched — and the chat reaches it (NET-28).
+    assert Elia.Projects.allowlist(project) == []
+    assert Agent.network_setting(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
   end
 
-  # NET-29: a chat file written before the allowlist moved to the project may
-  # name hosts of its own; they join its project's list as the chat loads, and
-  # its own setting keeps the mode alone (NET-28).
-  test "hosts an older chat named of its own join its project's list" do
+  # NET-33, NET-28: the answer that allows the host for the project puts it in
+  # the project's list, which every chat of that project reaches from then on,
+  # and leaves the chat's own entries alone (NET-36).
+  test "a host request answered for the project joins the project's list", %{id: id} do
+    project = Agent.snapshot(id).project
+    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("n1", "request_network_host", %{
+          "host" => "api.example.com",
+          "reason" => "curl could not reach it"
+        })
+      ])
+    )
+
+    :ok = Agent.set_network(id, %{mode: :allowlist})
+    :ok = Agent.send_message(id, "fetch the price")
+    await_status(id, :awaiting_input)
+
+    :ok = Agent.answer(id, "n1", "Allow for project")
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    [_user, _call, %Message{role: :tool, content: [result]}] = second.messages
+    assert result.content =~ "run the command again"
+    assert result.content =~ project.name
+
+    assert Elia.Projects.allowlist(project) == ["api.example.com"]
+    assert Agent.network_setting(id) == %{mode: :allowlist, hosts: []}
+    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+  end
+
+  # NET-36: the entries a chat's file names are the entries it names of its own,
+  # written before the entries moved to the project or since: the chat loads them
+  # as its own, reaches them beside its project's, and its project's list is
+  # untouched — no entry is moved into it (NET-28).
+  test "the entries a chat names of its own stay its own as it loads" do
     id = Agent.new_id()
     project = Elia.Projects.default()
     on_exit(fn -> Elia.Store.delete(id) end)
     on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
+
+    {:ok, _project} = Elia.Projects.set_allowlist(project, ["other.example.com"])
 
     :ok = Elia.Store.save(id, [Message.user("hi")], network: %{mode: :allowlist})
     path = Path.join(Elia.Store.dir(), id <> ".term")
@@ -332,10 +368,12 @@ defmodule Elia.AgentTest do
     {:ok, pid} = Agent.ensure_started(id, project: project)
     on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
 
-    assert Elia.Projects.allowlist(project) == ["api.example.com"]
+    assert Elia.Projects.allowlist(project) == ["other.example.com"]
     assert %{settings: %{network: network}} = Agent.snapshot(id)
-    assert network == %{mode: :allowlist, hosts: []}
-    assert Agent.network(id) == %{mode: :allowlist, hosts: ["api.example.com"]}
+    assert network == %{mode: :allowlist, hosts: ["api.example.com"]}
+
+    assert Agent.network(id) ==
+             %{mode: :allowlist, hosts: ["api.example.com", "other.example.com"]}
   end
 
   # ASK-6, APPR-3, APPR-4

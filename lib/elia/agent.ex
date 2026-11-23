@@ -153,8 +153,8 @@ defmodule Elia.Agent do
 
   @doc """
   Sets this chat's network setting (SESS-41, NET-1): `%{mode: mode}` with the
-  mode `:unrestricted`, `:allowlist` or `:none`, and `%{hosts: [entry]}` for
-  the hosts an allowlist names (NET-7). A mode that is not one of the three, or
+  mode `:unrestricted`, `:allowlist` or `:none`, and `%{hosts: [entry]}` for the
+  entries the chat names of its own (NET-7, NET-36). A mode that is not one of the three, or
   a host that is not one of NET-7's forms, returns `{:error, message}` and
   changes nothing (NET-11). Allowed mid-turn (ISOL-19): a change reaches the
   commands and terminals that start after it (NET-5), and, in allowlist mode, a
@@ -171,6 +171,17 @@ defmodule Elia.Agent do
   @spec network(binary()) :: map() | nil
   def network(id) do
     if live?(id), do: GenServer.call(Session.via(id), :network), else: nil
+  end
+
+  @doc """
+  The network setting this chat holds of its own (NET-1, NET-36): its mode and
+  the entries it names of its own, without its project's (`network/1` is what its
+  commands are limited by, NET-28). `nil` when the chat has no running session,
+  so a caller that allows a host for it has nothing to add to (NET-33).
+  """
+  @spec network_setting(binary()) :: map() | nil
+  def network_setting(id) do
+    if live?(id), do: GenServer.call(Session.via(id), :network_setting), else: nil
   end
 
   @doc """

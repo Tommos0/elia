@@ -12,9 +12,10 @@ defmodule EliaWeb.ChatLive do
   @max_upload_files 10
   @max_upload_bytes 25 * 1024 * 1024
 
-  # NET-32: the two decisions a host request asks for, in the order of the card's
-  # buttons; the first of them is the answer that allows the host (NET-33).
-  @host_decisions ["Allow", "Don't allow"]
+  # NET-32: the decisions a host request asks for, in the order of the card's
+  # buttons; the first two are the answers that allow the host, for this chat and
+  # for its project (NET-33), and the last allows nothing.
+  @host_decisions ["Allow for chat", "Allow for project", "Deny"]
 
   @impl true
   # PROJ-26: `/p/<id>/new` starts a chat in that project; an unknown id goes home.
@@ -136,9 +137,11 @@ defmodule EliaWeb.ChatLive do
         jail: snapshot.settings.jail,
         jail_available: Elia.Shell.jailed?(),
         # NET-26, UI-100: what this chat's commands may reach (NET-1) — its mode
-        # with the entries its project allows (NET-28) — said beside the jail
-        # warning (CSET-9), with the name of that project.
+        # with the entries it names of its own and the ones its project allows
+        # (NET-28, NET-36) — said beside the jail warning (CSET-9), with the name
+        # of that project and the entries of its own.
         network: Elia.Net.effective(snapshot.settings.network, snapshot.project),
+        network_own: Elia.Net.hosts(snapshot.settings.network),
         network_project: snapshot.project.name,
         skills: skills,
         # UI-60: the compact transcript, chosen in the browser (localStorage).
@@ -477,7 +480,7 @@ defmodule EliaWeb.ChatLive do
                 id="network-warning"
                 class="text-xs text-base-content/50"
               >
-                {network_warning(@network, @network_project)}
+                {network_warning(@network, @network_project, @network_own)}
               </span>
               <%!-- UI-60, CSET-10: switch the transcript between full and
               compact; it acts on what is being read, so it stays in the bar. --%>
@@ -1532,14 +1535,19 @@ defmodule EliaWeb.ChatLive do
 
   # NET-26, UI-100: what the chat's network setting limits, in words, beside its
   # jail warning (CSET-9), naming the project whose allowlist the chat reaches
-  # (NET-28).
-  defp network_warning(%{mode: :allowlist, hosts: []}, project),
-    do: "No host is allowed yet: commands reach nothing until #{project} allows one."
+  # and, when it names any of its own, those too (NET-28, NET-36).
+  defp network_warning(%{mode: :allowlist, hosts: []}, project, _own),
+    do: "No host is allowed yet: commands reach nothing until #{project} or this chat allows one."
 
-  defp network_warning(%{mode: :allowlist, hosts: hosts}, project),
+  defp network_warning(%{mode: :allowlist, hosts: hosts}, project, []),
     do: "Allowlisted: commands reach only the hosts #{project} allows (#{length(hosts)})."
 
-  defp network_warning(_setting, _project), do: "No network: commands reach nothing."
+  defp network_warning(%{mode: :allowlist, hosts: hosts}, project, own),
+    do:
+      "Allowlisted: commands reach only the hosts #{project} allows and the " <>
+        "#{length(own)} this chat allows (#{length(hosts)} in all)."
+
+  defp network_warning(_setting, _project, _own), do: "No network: commands reach nothing."
 
   defp context_bar_class(nil), do: ""
   defp context_bar_class(percent) when percent <= 60, do: "bg-success"
@@ -2576,7 +2584,8 @@ defmodule EliaWeb.ChatLive do
     |> assign(
       selection: LLM.selection(settings.model),
       jail: settings.jail,
-      network: Elia.Net.effective(settings.network, socket.assigns.project)
+      network: Elia.Net.effective(settings.network, socket.assigns.project),
+      network_own: Elia.Net.hosts(settings.network)
     )
     |> assign(context_window: LLM.context_window(settings.model))
   end

@@ -18,8 +18,13 @@ defmodule Elia.Skills.NetworkTest do
 
   defp run(input, ctx), do: Enum.at(@skill.tools(), 0).run.(input, ctx)
 
-  defp ctx(project, answer, mode \\ :allowlist) do
-    %{project: project, answer: answer, network: %{mode: mode, hosts: []}}
+  defp ctx(project, answer, mode \\ :allowlist, opts \\ []) do
+    %{
+      project: project,
+      answer: answer,
+      network: %{mode: mode, hosts: []},
+      session_id: Keyword.get(opts, :session_id)
+    }
   end
 
   # NET-30: the built-in network skill carries one tool, whose input is the host
@@ -38,29 +43,66 @@ defmodule Elia.Skills.NetworkTest do
   end
 
   # NET-35: the instructions say when to ask rather than give up or look for
-  # another way out.
+  # another way out, and what the card offers the user — the host for this chat
+  # or for its project (NET-32).
   test "the instructions say when to ask" do
     instructions = @skill.instructions()
 
     assert instructions =~ "request_network_host"
     assert instructions =~ "cannot reach a host"
     assert instructions =~ "project"
+    assert instructions =~ "chat"
   end
 
-  # NET-33: an answer that allows the host adds it to the chat's project's list,
-  # and the result says the command may be run again.
-  test "an answer that allows the host adds it to the project", %{project: project} do
+  # NET-33, NET-32: the answer that names the project adds the host to the
+  # project's list — one every chat of it reaches (NET-28) — and the result says
+  # so and that the command may be run again.
+  test "an answer that allows the host for the project adds it to the project", %{
+    project: project
+  } do
     assert {:ok, message} =
-             run(%{"host" => "API.example.com", "reason" => "curl"}, ctx(project, "Allow"))
+             run(
+               %{"host" => "API.example.com", "reason" => "curl"},
+               ctx(project, "Allow for project")
+             )
 
     assert message =~ "api.example.com"
     assert message =~ "allowed"
     assert message =~ "run the command again"
+    assert message =~ project.name
     assert Projects.allowlist(project) == ["api.example.com"]
   end
 
+  # NET-33, NET-36: the answer that names the chat adds the host to the entries
+  # the chat names of its own, which no other chat reaches — and the result says
+  # which list it went into. The chat's own setting is read from the chat, so a
+  # request answered with no running session allows nothing.
+  test "an answer that allows the host for the chat needs the chat's own session", %{
+    project: project
+  } do
+    assert {:error, message} =
+             run(
+               %{"host" => "api.example.com", "reason" => "curl"},
+               ctx(project, "Allow for chat")
+             )
+
+    assert message =~ "no running session"
+    assert message =~ "nothing was added"
+    assert Projects.allowlist(project) == []
+  end
+
+  # NET-39: an answer that allows the host without naming a list is read as
+  # allowing it for the chat, not for the project.
+  test "an answer that names no list allows the host for the chat", %{project: project} do
+    assert {:error, message} =
+             run(%{"host" => "api.example.com", "reason" => "curl"}, ctx(project, "allow"))
+
+    assert message =~ "no running session"
+    assert Projects.allowlist(project) == []
+  end
+
   # NET-33: any other answer changes nothing, and the result carries the answer
-  # verbatim.
+  # verbatim. NET-32: the card's own third button is one of them.
   test "an answer that doesn't allow the host changes nothing", %{project: project} do
     assert {:ok, message} =
              run(
@@ -71,25 +113,37 @@ defmodule Elia.Skills.NetworkTest do
     assert message =~ "did not allow api.example.com"
     assert message =~ ~s("Ask me later?")
     assert Projects.allowlist(project) == []
+
+    assert {:ok, message} =
+             run(%{"host" => "api.example.com", "reason" => "curl"}, ctx(project, "Deny"))
+
+    assert message =~ "did not allow api.example.com"
+    assert Projects.allowlist(project) == []
   end
 
   # NET-33: an answer that allows a host which is not one of NET-7's forms adds
   # nothing, and the result says so.
   test "a host that can't be one is named and nothing is allowed", %{project: project} do
     assert {:error, message} =
-             run(%{"host" => "not a host", "reason" => "curl"}, ctx(project, "Allow"))
+             run(
+               %{"host" => "not a host", "reason" => "curl"},
+               ctx(project, "Allow for project")
+             )
 
     assert message =~ "not a host"
     assert Projects.allowlist(project) == []
   end
 
-  # NET-34: a chat whose mode is not allowlist is told so — the host is in its
-  # project's list, and its own mode still limits what it reaches.
+  # NET-34: a chat whose mode is not allowlist is told so — the host is in the
+  # list the answer chose, and its own mode still limits what it reaches.
   test "a chat that isn't in allowlist mode is told its mode still limits it", %{
     project: project
   } do
     assert {:ok, message} =
-             run(%{"host" => "api.example.com", "reason" => "curl"}, ctx(project, "Allow", :none))
+             run(
+               %{"host" => "api.example.com", "reason" => "curl"},
+               ctx(project, "Allow for project", :none)
+             )
 
     assert message =~ "api.example.com"
     assert message =~ ~s("none")
@@ -98,7 +152,7 @@ defmodule Elia.Skills.NetworkTest do
     assert {:ok, message} =
              run(
                %{"host" => "other.example.com", "reason" => "curl"},
-               ctx(project, "Allow", :unrestricted)
+               ctx(project, "Allow for project", :unrestricted)
              )
 
     assert message =~ "reaches the whole network"
