@@ -119,7 +119,7 @@ it.
 | [System dashboard](system-dashboard.md) | `SYS` | CPU, memory, disks, network, load and VM stats |
 | [Log viewer](log-viewer.md) | `LOG` | In-memory capture of the server's logs, on a `/logs` page |
 | [File explorer](file-explorer.md) | `EXPL` | Read-only workspace browser: a text viewer and a raw mode that shows the file as the browser renders it (images, PDF, video, audio, HTML), and a file opens at the line a link names |
-| [Preview host](preview-host.md) | `SERVE` | A project's files served over HTTP at a hostname of their own, so a browser runs what the project builds without the app's own origin ever serving a file that carries script |
+| [Preview host](preview-host.md) | `SERVE` | A project's `dist` folder served over HTTP at a hostname of their own, so a browser runs what the project builds without the app's own origin ever serving a file that carries script |
 | [File links](file-links.md) | `FLINK` | A file the agent mentions in a reply or on a tool card links to the Files page |
 | [Function links](function-links.md) | `FUNC` | An Elixir function the agent names in a reply links to the line its definition is written at, in the Files page |
 | [Spec citations](spec-citations.md) | `CITE` | A requirement ID an assistant message cites shows that requirement's own text on hover and on a tap, with a link to where it is written and to the requirements it names |

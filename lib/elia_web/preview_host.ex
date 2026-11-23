@@ -1,14 +1,16 @@
 defmodule EliaWeb.PreviewHost do
   @moduledoc """
-  A project's files served at a hostname of their own (`specs/preview-host.md`).
+  A project's build output served at a hostname of their own
+  (`specs/preview-host.md`).
 
   The app's own origin must never serve a file that carries script: a raw view
   of an HTML document is sandboxed with its scripts off (EXPL-24), deliberately,
   so a file from a workspace can never run in this app's origin. A preview host
-  is the other way round — one project's files, at a hostname that is not the
-  app's, under no policy of the preview's own — so a project's build runs in a
-  browser as it does from any web server, while the app's origin stays untouched
-  (SERVE-1 - SERVE-5).
+  is the other way round — the build output of one project, at a hostname that
+  is not the app's, under no policy of the preview's own — so a project's build
+  runs in a browser as it does from any web server, while the app's origin stays
+  untouched (SERVE-1 - SERVE-5). What it serves is that project's `dist` folder
+  and nothing beside it (SERVE-16, SERVE-17).
 
   It is a plug at the top of the endpoint rather than a route in the router:
   on the preview host nothing of the app may be reached, not even a static file
@@ -93,32 +95,35 @@ defmodule EliaWeb.PreviewHost do
     halt(conn)
   end
 
-  # SERVE-6, SERVE-7: the file a request names — under the folder of the project
-  # whose slug the first segment is, else under the open project's folder
-  # (PROJ-8), with `/` being that folder's `index.html`.
+  # SERVE-16, SERVE-17: the file a request names — under the `dist` folder of
+  # the project whose slug the first segment is (PROJ-34), and nothing else of
+  # that project's. The root and a first segment that is no project's slug name
+  # no project at all, and are answered like any other path that is not a file.
   defp respond(conn) do
-    {root, rel} = target(conn.request_path)
+    case target(conn.request_path) do
+      nil ->
+        send_resp(conn, 404, "Not found")
 
-    case Explorer.served_file(rel, root) do
-      {:ok, file} -> send_served(conn, file)
-      {:error, _reason} -> send_resp(conn, 404, "Not found")
+      {root, rel} ->
+        case Explorer.served_file(rel, root) do
+          {:ok, file} -> send_served(conn, file)
+          {:error, _reason} -> send_resp(conn, 404, "Not found")
+        end
     end
   end
 
   defp target(request_path) do
     case request_path |> URI.decode() |> String.split("/", trim: true) do
-      [] ->
-        {open_root(), ""}
-
       [first | rest] ->
         case project_by_slug(first) do
-          nil -> {open_root(), Enum.join([first | rest], "/")}
-          project -> {project.folder, Enum.join(rest, "/")}
+          nil -> nil
+          project -> {Path.join(project.folder, "dist"), Enum.join(rest, "/")}
         end
+
+      [] ->
+        nil
     end
   end
-
-  defp open_root, do: Projects.default().folder
 
   defp project_by_slug(segment) do
     Enum.find(Projects.list(), &(Projects.slug(&1.name) == segment))

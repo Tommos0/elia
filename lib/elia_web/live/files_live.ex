@@ -115,18 +115,31 @@ defmodule EliaWeb.FilesLive do
   # in the pane, and every other kind the frame.
   defp preview_kind?(kind), do: kind in [:image, :pdf, :video, :audio]
 
-  # SERVE-15: an HTML document in a project's folder opens at its URL on the
-  # preview host when the install has one — the only URL a browser runs it at,
-  # since a raw view has its scripts off (EXPL-24, EXPL-26). A chat's own
-  # workspace has none: a preview serves a project, not a chat's worktree.
+  # SERVE-15: an HTML document in a project's `dist` folder opens at its URL on
+  # the preview host when the install has one — the only URL a browser runs it
+  # at, since a raw view has its scripts off (EXPL-24). A document elsewhere in
+  # the project's folder, and one in a chat's own workspace, have none: the
+  # preview serves a project's build output, not its sources.
   defp open_url(%{kind: :html} = raw_view, nil, project, raw) do
-    case Projects.slug(project.name) do
-      nil -> raw
-      slug -> EliaWeb.PreviewHost.url([slug | String.split(raw_view.path, "/")]) || raw
+    with "dist/" <> path <- raw_view.path,
+         segments when is_list(segments) <- preview_segments(project, path),
+         url when is_binary(url) <- EliaWeb.PreviewHost.url(segments) do
+      url
+    else
+      _other -> raw
     end
   end
 
   defp open_url(_raw_view, _chat, _project, raw), do: raw
+
+  # SERVE-16: the preview's path is the project's slug and then the document's
+  # path under `dist`. A project whose name gives no slug has no URL there.
+  defp preview_segments(project, path) do
+    case Projects.slug(project.name) do
+      slug when is_binary(slug) -> [slug | String.split(path, "/")]
+      nil -> nil
+    end
+  end
 
   # EXPL-27: the line a link named, when the text in view has it. It is
   # ignored otherwise — a `line` that isn't a positive whole number, one past

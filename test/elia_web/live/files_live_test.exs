@@ -556,26 +556,48 @@ defmodule EliaWeb.FilesLiveTest do
     refute has_element?(view, "#file-content")
   end
 
-  # SERVE-15: with a preview host configured, an HTML document in a project's
-  # folder opens at its URL on that host — the only URL a browser runs it at,
-  # since the raw view has its scripts off (EXPL-24). Without one it stays the
-  # raw view's URL, which is what the test above asserts.
-  test "an HTML document opens at the preview host's URL when there is one", %{conn: conn} do
-    File.write!(in_root("#{@dir}/page.html"), "<h1>hello</h1>\n")
+  # SERVE-15, SERVE-16: with a preview host configured, an HTML document in a
+  # project's `dist` folder opens at its URL on that host — the only URL a
+  # browser runs it at, since the raw view has its scripts off (EXPL-24).
+  # Without one it stays the raw view's URL, which is what the test above
+  # asserts. The preview's path is the slug and then the document's path in
+  # `dist`, so the folder itself is not in the URL.
+  test "an HTML document in dist opens at the preview host's URL when there is one", %{
+    conn: conn
+  } do
+    File.mkdir_p!(in_root("#{@dir}/dist"))
+    File.write!(in_root("#{@dir}/dist/page.html"), "<h1>hello</h1>\n")
     _project = open_project("files live preview", in_root(@dir))
 
     Application.put_env(:elia, EliaWeb.PreviewHost, host: "preview.localhost:7000")
     on_exit(fn -> Application.delete_env(:elia, EliaWeb.PreviewHost) end)
 
     # The project's folder is the fixture directory, so the path in view is the
-    # file's name alone (EXPL-1, EXPL-15).
-    {:ok, view, _} = live(conn, path_url("page.html"))
+    # file's path in it (EXPL-1, EXPL-15).
+    {:ok, view, _} = live(conn, path_url("dist/page.html"))
 
     url = "http://preview.localhost:7000/files-live-preview/page.html"
 
     assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
     # The page itself is still the raw view's, which the frame draws.
     refute has_element?(view, "iframe#file-raw[src='#{url}']")
+  end
+
+  # SERVE-15: an HTML document beside the build, in the project's folder but
+  # not in its `dist` folder, has no URL on the preview host — it is not served
+  # there (SERVE-16) — so the control stays the raw view's.
+  test "an HTML document outside dist opens at the raw view's URL", %{conn: conn} do
+    File.write!(in_root("#{@dir}/page.html"), "<h1>hello</h1>\n")
+    _project = open_project("files live preview", in_root(@dir))
+
+    Application.put_env(:elia, EliaWeb.PreviewHost, host: "preview.localhost:7000")
+    on_exit(fn -> Application.delete_env(:elia, EliaWeb.PreviewHost) end)
+
+    {:ok, view, _} = live(conn, path_url("page.html"))
+
+    url = ~p"/files/raw?#{%{path: "page.html"}}"
+
+    assert has_element?(view, "#file-preview-open[href='#{url}'][target=_blank]")
   end
 
   # SERVE-15: a chat's own workspace has no preview URL — a preview serves a

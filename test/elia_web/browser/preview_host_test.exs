@@ -19,9 +19,10 @@ defmodule EliaWeb.Browser.PreviewHostTest do
   setup do
     dir = Path.join(Workspace.root(), @dir)
     File.rm_rf!(dir)
-    File.mkdir_p!(dir)
+    # SERVE-16: what the preview serves is the project's `dist` folder.
+    File.mkdir_p!(Path.join(dir, "dist"))
 
-    File.write!(Path.join(dir, "page.html"), """
+    File.write!(Path.join(dir, "dist/page.html"), """
     <!doctype html>
     <title>before its script</title>
     <script>
