@@ -38,11 +38,11 @@ defmodule Elia.Net do
   def modes, do: @modes
 
   @doc """
-  The setting a chat has until it sets one (NET-1): allowlisted, with nothing
-  allowed yet — the entries its project names start empty (NET-28) — where a
-  limit can be built (`available?/1`), and unrestricted where it can't, since a
-  limit that isn't built leaves the chat reaching the network it means to deny
-  (NET-20).
+  The setting a chat has until it sets one (NET-1), and what a chat whose file
+  names no mode reads as (STORE-54): allowlisted, with nothing allowed yet — the
+  entries its project names start empty (NET-28) — where a limit can be built
+  (`available?/1`), and unrestricted where it can't, since a limit that isn't
+  built leaves the chat reaching the network it means to deny (NET-20).
   """
   @spec default(keyword()) :: map()
   def default(opts \\ []) do
@@ -86,28 +86,27 @@ defmodule Elia.Net do
   def setting(_given), do: default()
 
   @doc """
-  The setting as the chat's file stores it (STORE-53): its mode, and `nil` in
-  unrestricted mode, so a chat that reaches the whole network as every chat did
-  carries no entry and setting it back takes the key off the file. The entries
+  The setting as the chat's file stores it (STORE-53): its mode, for every mode
+  a chat can be in — unrestricted included, so a chat that chooses the whole
+  network keeps it across a restart (NET-1). A value that names no mode is not a
+  setting and is not written: `nil`, so the file's entry stays off. The entries
   are the chat's project's and are not written (NET-28, NET-29).
   """
   @spec stored(term()) :: map() | nil
-  def stored(setting) do
-    case mode(setting) do
-      :unrestricted -> nil
-      :allowlist -> %{mode: :allowlist}
-      :none -> %{mode: :none}
-    end
-  end
+  def stored(%{mode: mode}) when mode in @modes, do: %{mode: mode}
+  def stored(_setting), do: nil
 
   @doc """
   The setting a stored value holds (STORE-54): its mode, with the entries an
   older chat named of its own kept so its session can add them to its project's
-  list (NET-29), and unrestricted when there is none, when it isn't a setting,
-  or when it names a mode that isn't one (NET-1).
+  list (NET-29), and the default of NET-1 when there is none, when it isn't a
+  setting, or when it names a mode that isn't one — so unrestricted is a mode a
+  chat has by choosing it (NET-1). `opts` is what `available?/1` reads.
   """
-  @spec load(term()) :: map()
-  def load(%{mode: mode} = stored) when mode in @modes do
+  @spec load(term(), keyword()) :: map()
+  def load(stored, opts \\ [])
+
+  def load(%{mode: mode} = stored, _opts) when mode in @modes do
     case mode do
       :unrestricted -> unrestricted()
       :allowlist -> %{mode: :allowlist, hosts: hosts(stored)}
@@ -115,7 +114,7 @@ defmodule Elia.Net do
     end
   end
 
-  def load(_stored), do: unrestricted()
+  def load(_stored, opts), do: default(opts)
 
   @doc """
   Whether a chat's network limit can be built here at all (NET-20, NET-25): the

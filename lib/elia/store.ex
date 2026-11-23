@@ -343,17 +343,18 @@ defmodule Elia.Store do
 
   @doc """
   The chat's saved network setting (STORE-54): the mode its file holds, or the
-  default of NET-1 for a chat that has never been saved — allowlisted where a
-  limit can be built for it, unrestricted where it can't (`opts` is what
-  `Elia.Net.available?/1` reads, e.g. `jail:`). A chat whose file is there but
-  holds no entry, or one it cannot read, is unrestricted (STORE-54).
+  default of NET-1 for a chat that has never been saved, for one whose file holds
+  no entry and for one it cannot read — allowlisted where a limit can be built
+  for it, unrestricted where it can't (`opts` is what `Elia.Net.available?/1`
+  reads, e.g. `jail:`). So a chat that never chose a mode is limited rather than
+  left with the whole network, and unrestricted is a mode a chat has by choosing
+  it (NET-1).
   """
   @spec load_network(binary(), keyword()) :: map()
   def load_network(id, opts \\ []) do
     case load_meta(id) do
-      nil -> Elia.Net.default(opts)
-      %{network: network} -> Elia.Net.load(network)
-      _chat -> Elia.Net.unrestricted()
+      %{network: network} -> Elia.Net.load(network, opts)
+      _chat -> Elia.Net.default(opts)
     end
   end
 

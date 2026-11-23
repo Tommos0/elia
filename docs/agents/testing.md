@@ -289,6 +289,18 @@ excluded`). Run that one yourself instead:
   waits 5s for `{:status, :idle}` after approving a command that really runs
   `mix test`, which takes longer than that on this machine. It is not your
   change's — stash your work and run the file before chasing it.
+- `settings_live_test.exs`'s "hot reload deploys what the chats merged, and the
+  page stays responsive" (CONF-20, around line 893) failed in partition 2 of a
+  full run and passed when the file was run alone, twice over; it is the flake
+  above, not your change's.
+- The suite runs with the host's jail off (`config/test.exs`), and
+  `Elia.Net.available?/1` is `Elia.Shell.jailed?/1 and Proxy.available?/1` — so a
+  test that wants the *allowlisted* branch of NET-1's default (a chat whose file
+  names no mode starts allowlisted) has to set the jail on for its own run
+  (`Application.put_env(:elia, Elia.Shell, jail: true)`, put back on exit) and
+  skip where bubblewrap is missing, the way `test/elia_web/live/network_test.exs`
+  does. Without it the default every test sees is unrestricted, and such a test
+  proves nothing.
 - Runs don't have to take turns. Every run's state is its own: the scratch
   workspace, the settings database and the temp directory the run's tests name
   their own paths in all live under a run directory belonging to that run

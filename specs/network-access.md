@@ -38,10 +38,12 @@ decrypted — so an allowlist is by host name, which is what the user writes.
 ### The setting
 
 - **NET-1** A chat's network setting is one of three modes — unrestricted,
-  allowlist and none. A chat that has never been saved starts allowlisted where
-  a limit can be built for it and unrestricted where it can't (NET-20, NET-25),
-  and one whose saved file carries no value is unrestricted (STORE-53,
-  STORE-54).
+  allowlist and none. A chat whose saved file names no mode — one that has never
+  been saved, one saved empty as it was started (STORE-22), and one written
+  before this setting existed — starts allowlisted where a limit can be built
+  for it and unrestricted where it can't (NET-20, NET-25). Unrestricted is a
+  mode a chat has by choosing it, and one that chooses it keeps it across a
+  restart (STORE-53, STORE-54).
 - **NET-2** The setting is saved with the chat (STORE-53) and loaded with it
   (STORE-54), so it survives a restart.
 - **NET-3** A change to it is carried by the chat's `{:settings, settings}`
@@ -182,12 +184,18 @@ decrypted — so an allowlist is by host name, which is what the user writes.
 
 ## Stored data
 
-Backward compatible, with one read-time migration. A chat file's `network` key
-holds the mode and nothing else — `%{mode: :allowlist}` or `%{mode: :none}` — and
-is still written only when the chat's mode is not unrestricted (STORE-53). A
-chat that has never been saved starts allowlisted, and a file written before this
-change with no `network` key still reads as unrestricted (STORE-54, NET-1). A
-file that holds an older setting with hosts of its own
+Backward compatible, with two read-time rules and no rewrite. A chat file's
+`network` key holds the mode and nothing else — `%{mode: :unrestricted}`,
+`%{mode: :allowlist}` or `%{mode: :none}` — and is written for every mode, so a
+chat that chooses the whole network has it again after a restart (STORE-53). A
+file that names no mode reads as the default of NET-1 (STORE-54) where it read
+as unrestricted before: the chats the UI saves empty as they are started
+(STORE-22), and every chat file written before this change, are limited from then
+on, and one that wants the whole network again chooses it once (NET-1). Where no
+limit can be built there is no change at all, and such a chat still reads
+unrestricted (NET-20, NET-25).
+
+A file that holds an older setting with hosts of its own
 (`%{mode: :allowlist, hosts: ["api.example.com"]}`) has them added to its
 project's list when its session starts, so a chat that reached a host before this
 change still does (NET-29); that migration rewrites no file, and the chat's
@@ -251,7 +259,8 @@ field), `EliaWeb.ChatLive` (the request card and the toolbar warning).
 - `test/elia/net_proxy_test.exs` (a forwarded request, a refused one, the
   proxy resolving the host and reading the project's entries at the moment it
   decides — NET-6, NET-13, NET-14).
-- `test/elia/store_test.exs` (the setting saved and loaded, and a chat that has
+- `test/elia/store_test.exs` (the setting saved and loaded in every mode, a chat
+  whose file names no mode, one written before this change, and a chat that has
   never been saved — STORE-53, STORE-54).
 - `test/elia/agent_test.exs` and `test/elia/tasks_test.exs` (the setting, its
   event, the child's copy, and the request that waits for an answer with the
@@ -271,6 +280,8 @@ field), `EliaWeb.ChatLive` (the request card and the toolbar warning).
   message, the mode applied on click, the project's entries shown, the disabled
   control, the chat page's warning, the request card and its buttons — NET-11,
   NET-22 to NET-26, NET-32).
+- `test/elia_web/live/chat_live_test.exs` (a chat the New chat button starts
+  comes up allowlisted — NET-1, STORE-22).
 - `test/elia_web/live/projects_live_test.exs` (a project's allowlist field, its
   Save, and the message for a list holding an entry that is not one of NET-7's
   forms — PROJ-50).

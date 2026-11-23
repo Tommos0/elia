@@ -858,8 +858,8 @@ defmodule Elia.Agent.Session do
   # saved one.
   defp initial_network(id, persist, nil, jail), do: initial_network(id, persist, jail)
 
-  defp initial_network(_id, _persist, setting, _jail) when is_map(setting),
-    do: Elia.Net.load(setting)
+  defp initial_network(_id, _persist, setting, jail) when is_map(setting),
+    do: Elia.Net.load(setting, jail: jail)
 
   defp initial_network(id, true, jail), do: Elia.Store.load_network(id, jail: jail)
   defp initial_network(_id, false, jail), do: Elia.Net.default(jail: jail)

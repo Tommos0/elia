@@ -3302,7 +3302,8 @@ defmodule Elia.AgentTest do
   # shown in the snapshot; what its commands are limited by carries the
   # project's entries (NET-6).
   test "setting the network broadcasts it and shows in the snapshot", %{id: id} do
-    assert %{settings: %{network: %{mode: :unrestricted}}} = Agent.snapshot(id)
+    # NET-1: a chat that has never chosen a mode starts at the default.
+    assert Agent.snapshot(id).settings.network == Elia.Net.default(jail: true)
 
     :ok = Agent.set_network(id, %{mode: :allowlist})
 

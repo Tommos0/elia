@@ -73,6 +73,37 @@ defmodule EliaWeb.ChatLiveTest do
     end)
   end
 
+  # NET-1, STORE-22: a chat the UI starts is saved with no network entry at all,
+  # so what it comes up as is the default of NET-1 rather than the whole network
+  # by not choosing — the limit is built where the chat's jail is on, as it is
+  # by default (ISOL-16).
+  test "a chat started from the UI comes up allowlisted", %{conn: conn} do
+    previous = Application.get_env(:elia, Elia.Shell)
+    Application.put_env(:elia, Elia.Shell, jail: true)
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, previous) end)
+
+    with_empty_store(fn ->
+      # No stored default project, so it is Elia's own (PROJ-8).
+      Elia.Settings.delete(:default_project)
+
+      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} = live(conn, ~p"/chats")
+
+      # STORE-22, STORE-53: saved as it is started, and its file names no mode.
+      chat =
+        Path.join(Elia.Store.dir(), id <> ".term")
+        |> File.read!()
+        |> :erlang.binary_to_term()
+
+      refute Map.has_key?(chat, :network)
+
+      # NET-1, STORE-54: and the chat it starts is allowlisted, where a limit
+      # can be built here.
+      if Elia.Net.available?() do
+        assert Agent.snapshot(id).settings.network == %{mode: :allowlist, hosts: []}
+      end
+    end)
+  end
+
   # UI-6: a turn's start refreshes the sidebar and the page title, so the chat
   # shows its first message without waiting for the turn to end.
   test "the sidebar and page title follow a turn's start", %{conn: conn} do
