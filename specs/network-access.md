@@ -187,11 +187,13 @@ decrypted — so an allowlist is by host name, which is what the user writes.
 - **NET-25** Where the limit cannot be built (NET-20) the section says so and
   its control is disabled (`#network-unavailable`), rather than showing a chat
   as limited where it is not (UI-68).
-- **NET-26** The chat page says when the chat's network is limited, beside its
+- ~~**NET-26** The chat page says when the chat's network is limited, beside its
   jail warning in the composer toolbar (`#network-warning`, CSET-9), naming the
   mode in words (UI-100); in allowlist mode it names what the chat reaches — its
   project, whose entries it reaches, and the chat's own entries when it names any
-  (NET-28, NET-36).
+  (NET-28, NET-36).~~ Removed: the composer's network notice is gone; the mode
+  and its entries are set and read on the chat settings page (NET-22 to NET-25,
+  NET-38).
 - **NET-38** The chat settings page's Network section lists the entries the chat
   names of its own in a field (`#chat-network-hosts`) holding them one per line,
   with a Save (`#save-chat-network-hosts`) that applies them to the chat when it
@@ -276,7 +278,7 @@ own entries, and the lists an effective setting holds), `Elia.Skills.Network`
 (the tool, and which list an answer fills), `EliaWeb.ChatSettingsLive` (the
 section, its field for the chat's own entries and the project's shown beside
 them), `EliaWeb.ProjectsLive` (a project's field), `EliaWeb.ChatLive` (the
-request card's decisions and the toolbar warning).
+request card's decisions).
 
 ## Tests
 
@@ -315,8 +317,8 @@ request card's decisions and the toolbar warning).
 - `test/elia_web/live/network_test.exs` (the section, its controls and its
   message, the mode applied on click, the chat's own entries in a field with its
   Save and the message for a bad entry, the project's entries shown beside it,
-  the disabled control, the chat page's warning, the request card and its three
-  buttons — NET-11, NET-22 to NET-26, NET-32, NET-38).
+  the disabled control, the request card and its three buttons, and no network
+  notice in the composer — NET-11, NET-22 to NET-25, NET-32, NET-38).
 - `test/elia_web/live/chat_live_test.exs` (a chat the New chat button starts
   comes up allowlisted — NET-1, STORE-22).
 - `test/elia_web/live/projects_live_test.exs` (a project's allowlist field, its

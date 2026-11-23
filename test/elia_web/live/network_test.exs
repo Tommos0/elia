@@ -211,34 +211,24 @@ defmodule EliaWeb.NetworkTest do
     assert has_element?(view, "#network-state", "Reaches the whole network")
   end
 
-  # NET-26, NET-28, UI-100: the chat page says when the chat's network is
-  # limited, beside its jail warning, naming the project whose allowlist the
-  # chat reaches, and shows nothing there when it is unrestricted.
-  test "the chat page says when the chat's network is limited", %{conn: conn, id: id} do
+  # NET-26 retired: the composer carries no network notice, in any mode. The
+  # setting is shown and changed on the chat settings page instead.
+  test "the composer shows no network notice", %{conn: conn, id: id} do
     {:ok, _pid} = Agent.ensure_started(id, auto_approve: [])
-    project = project(id)
-    on_exit(fn -> Elia.Projects.set_allowlist(project, []) end)
-    {:ok, _project} = Elia.Projects.set_allowlist(project, ["api.example.com"])
 
     {:ok, view, _html} = live(conn, ~p"/c/#{id}")
 
-    # NET-1: a chat that has never been saved is allowlisted, so the warning is
-    # there from the first render.
-    assert has_element?(view, "#network-warning", "Allowlisted")
-    assert has_element?(view, "#network-warning", project.name)
-
-    # NET-26, NET-36: it names the entries of the chat's own beside the
-    # project's, so the count is what the chat reaches in all.
-    :ok = Agent.set_network(id, %{mode: :allowlist, hosts: ["localhost:3000"]})
-
-    assert has_element?(view, "#network-warning", "this chat allows")
-    assert has_element?(view, "#network-warning", "2 in all")
-
-    :ok = Agent.set_network(id, %{mode: :none})
-    assert has_element?(view, "#network-warning", "No network")
-
-    :ok = Agent.set_network(id, %{mode: :unrestricted})
+    # NET-1: a chat that has never been saved is allowlisted, and says nothing.
     refute has_element?(view, "#network-warning")
+
+    for network <- [
+          %{mode: :none},
+          %{mode: :unrestricted},
+          %{mode: :allowlist, hosts: ["localhost:3000"]}
+        ] do
+      :ok = Agent.set_network(id, network)
+      refute has_element?(view, "#network-warning")
+    end
   end
 
   # NET-32: the request is a card in the transcript that names the host and the

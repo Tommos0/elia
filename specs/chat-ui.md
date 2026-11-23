@@ -424,10 +424,12 @@ stream in, approves or denies tool calls, and switches between saved chats.
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
   runs unjailed (ISOL-17).
-- **UI-100** The chat page's composer toolbar says when the chat's network is
+- ~~**UI-100** The chat page's composer toolbar says when the chat's network is
   limited (`#network-warning`) — beside the chat menu's trigger and its jail
   warning (CSET-9) — naming the mode in words, "Allowlisted hosts" or "No
-  network", and shows nothing there when the chat is unrestricted (NET-26).
+  network", and shows nothing there when the chat is unrestricted (NET-26).~~
+  Removed: the composer's network notice is gone; the mode and its entries are
+  set and read on the chat settings page (NET-22 to NET-25).
 - ~~**UI-70** The chat shows a worktree's dependency sync in progress (ISOL-7,
   ISOL-23) as text next to the composer (`#deps-sync`, "Preparing shared
   dependencies…"), following an event like `{:deps_sync, on?}`, gone when the
@@ -780,8 +782,6 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   browser (UI-3).
 - `test/elia_web/live/auto_approve_test.exs` (UI-38 to UI-40, UI-42).
 - `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69).
-- `test/elia_web/live/network_test.exs` (the network warning in the composer
-  toolbar, UI-100).
 - `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET; the
   controls it took over, UI-2, UI-3, UI-38).
 - `test/elia_web/live/compaction_test.exs` (the transcript's annotations,

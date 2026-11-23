@@ -637,7 +637,7 @@ defmodule EliaWeb.ChatSettingsLive do
 
   # NET-22: what applies, in words, as the jail switch says its state (UI-67).
   # NET-36, NET-38: the entries the chat names of its own, one per line, as the
-  # field holds them; NET-26's state line reads what it reaches — its own and its
+  # field holds them; NET-22's state line reads what it reaches — its own and its
   # project's together.
   defp own_text(setting), do: Enum.join(Elia.Net.hosts(setting), "\n")
 

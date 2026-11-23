@@ -123,7 +123,7 @@ to), `EliaWeb.Router`.
 
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
 CSET-7, CSET-11 to CSET-13), `test/elia_web/live/network_test.exs` (the Network
-section, NET-11, NET-22 to NET-26, NET-32, NET-38),
+section, NET-11, NET-22 to NET-25, NET-32, NET-38),
 `test/elia_web/live/projects_live_test.exs` (a project's allowlist field,
 PROJ-50), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
