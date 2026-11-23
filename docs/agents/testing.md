@@ -272,6 +272,12 @@ excluded`). Run that one yourself instead:
   bin/test` from such a shell. `settings_live_test.exs` says which server it is
   about for itself (`unsupervised/0`); the deploy and socket-origin files don't
   yet.
+- A chat whose network setting is allowlisted exports `http_proxy`,
+  `https_proxy` and `all_proxy` into every command it runs, and the jail-off
+  case of `Elia.NetworkAccessTest` (`jail: false`, so the command inherits that
+  environment) fails on `proxy=`: it expects no proxy and sees the one of the
+  chat. It is not your change: run `env -u http_proxy -u https_proxy -u
+  all_proxy mix test test/elia/network_access_test.exs`, which passes.
 - A partition can fail on a test that passes on its own. In this tree partition
   2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
   and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with

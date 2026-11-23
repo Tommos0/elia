@@ -190,7 +190,7 @@ defmodule Elia.SkillsTest do
 
     assert agents =~ "bin/preview"
     assert agents =~ "ELIA_PREVIEW_THEME=dark"
-    assert agents =~ "ELIA_PREVIEW_WIDTH=390"
+    assert agents =~ "ELIA_PREVIEW_WIDTH=430"
   end
 
   # SKILL-7, PROJ-18

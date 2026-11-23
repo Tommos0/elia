@@ -212,7 +212,7 @@ mix test test/path_test.exs      # one file; --failed, --stale, --trace also wor
 bin/test                         # the whole suite as concurrent partitions (SUITE-1)
 bin/test --plan                  # how it would split, without running it
 mix assets.build && ELIA_BROWSER_TESTS=1 mix test --only real_browser
-ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat
+ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=430 bin/preview @chat
 ```
 
 The real-browser tests are excluded from a plain `mix test`, so `mix test` and

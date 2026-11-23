@@ -163,9 +163,10 @@ live tree's saved chats are never touched.
   client-side file, run a preview and put its image links in the reply, since
   the user cannot see the change in the running app until they deploy it. The
   wording lives in `AGENTS.md`. By default a
-  preview for that purpose is taken in the dark theme at a mobile width
-  (`ELIA_PREVIEW_THEME=dark` with `ELIA_PREVIEW_WIDTH=390`, PREVIEW-3), and a
-  light or desktop picture is taken as well only when the change is about that.
+  preview for that purpose is taken in the dark theme at the width of a typical
+  phone — `ELIA_PREVIEW_THEME=dark` with `ELIA_PREVIEW_WIDTH=430` (PREVIEW-3) —
+  and a light or desktop picture is taken as well only when the change is about
+  that.
 
 ## Configuration
 
@@ -174,7 +175,7 @@ bin/preview                      # the empty state and the sample chat
 bin/preview @chat                # just the sample chat
 bin/preview @ask                 # the chat whose turn is paused on a question
 bin/preview / /files /settings   # three pages, three PNGs, three links
-ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=390 bin/preview @chat  # the agent's default
+ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=430 bin/preview @chat  # the agent's default
 ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 ```
