@@ -993,14 +993,17 @@ defmodule EliaWeb.ChatList do
     end)
   end
 
-  # UI-105, UI-106: a filter button — tinted, as the app's other pressed toggles
-  # are (UI-60), for a group the list shows, and dimmed for one it hides.
+  # UI-105, UI-106: a square filter button — tinted, as the app's other pressed
+  # toggles are (UI-60), for a group the list shows, and dimmed for one it hides.
+  # The tint is the theme's own: the light theme's primary, off-white in the dark
+  # theme (its primary is the blue UI-105's icons would otherwise wear).
   defp filter_button_class(true),
-    do: "rounded-lg border border-primary/40 bg-primary/10 px-1.5 py-1 text-primary transition"
+    do:
+      "grid size-6 place-items-center rounded-none border border-primary/40 bg-primary/10 text-primary transition dark:border-base-content/40 dark:bg-base-content/10 dark:text-base-content"
 
   defp filter_button_class(false),
     do:
-      "rounded-lg border border-base-300 px-1.5 py-1 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
+      "grid size-6 place-items-center rounded-none border border-base-300 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
 
   # UI-45: task chats nested under their parent; orphans stay at the top level.
   defp chat_tree(chats) do
