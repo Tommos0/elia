@@ -12,6 +12,59 @@ the code are in `docs/agents/` — [`harness.md`](docs/agents/harness.md),
 [`frontend.md`](docs/agents/frontend.md) and
 [`testing.md`](docs/agents/testing.md).
 
+**Elia is vibe coded.** It was built in conversation with a model: most of its
+code, and every spec it is written against, came out of chats like the ones it
+runs — a request, a draft spec, an approval, the code, the tests, a commit. It
+isn't hand-written and doesn't pretend to be, so expect a tree that grew by
+whatever the last conversation wanted, held in place by the specs in `specs/`
+and the tests that pin them.
+
+## What it does
+
+- **Jailed commands.** Everything Elia runs for a turn — a `shell` command, a
+  folder skill's script, a terminal, even the deploy's own `git` calls — goes
+  through one bubblewrap jail holding a single tree: the project folder the chat
+  works in, with a read-only toolchain beside it (ISOL-1, ISOL-13). `$HOME` is
+  not in there, so a credential store, the settings database and every other
+  project are absent whatever path a command asks for (ISOL-5). The jail is on
+  by default, is a chat's own setting, and is a second line behind the approval
+  prompt rather than a replacement for it (ISOL-11, ISOL-16); with it off, the
+  approval prompt says so (ISOL-17).
+- **A network setting per chat.** Unrestricted, an allowlist, or nothing at all.
+  A chat starts allowlisted: its commands reach only the hosts the chat or its
+  project names, through the harness's own proxy, so a host nobody named is
+  unreachable rather than merely refused (NET-1, NET-28). When a command needs
+  one, the agent asks, and the question is a card in the transcript the user
+  answers (NET-30, NET-32).
+- **Nothing acts without approval.** Shell commands, script tools and starting a
+  terminal pause for the user, unless the chat's auto-approval says otherwise
+  (APPR, TERM-10).
+- **The agent extends itself.** A skill is a folder — `skills/<name>/SKILL.md`
+  with instructions, and `tools.json` for script-backed tools — which is how
+  Elia grows a tool without its Elixir changing: drop it in, call
+  `reload_skills`, and it is there (SKILL, FOLDER).
+- **Sub-tasks.** `spawn_task` hands a self-contained step to a child chat with a
+  fresh context; the child commits on its own branch for its parent to merge,
+  and `await_task` brings back what it said (SUBTASK-23, SUBTASK-9).
+- **Projects.** A chat works in a project folder, and the project supplies its
+  own `AGENTS.md`, its own skills and its own host allowlist; Elia's own project
+  is just the first one (PROJ-12, PROJ-15).
+- **Chats are files.** Conversations are saved under `.elia/sessions/` — there is
+  no database — and the agent can list, read and search chats other than the one
+  it is in (STORE, HIST, SEARCH).
+- **Guardrails on its own code.** A chat in Elia's own project changes it in a
+  git worktree and merges into `master` itself, and only a deploy from the
+  Settings page — after the full suite — brings it live (DEPLOY-28, DEPLOY-13);
+  `/recover` is the plain-HTML way back when a deploy breaks the UI anyway
+  (RECOVER-10).
+- **Spec-driven.** Every feature has a spec in `specs/` and every requirement an
+  ID, and the suite fails on a spec that breaks the corpus's rules, on a
+  requirement no test accounts for, and on a citation of an ID no spec defines
+  (SPEC, TRACE, CITE).
+- **A phone-sized UI.** It installs as a web app and pushes a notification when
+  a chat needs you (PWA, PUSH), and `/system`, `/logs`, `/files`, `/sessions`
+  and `/recover` show the machine it runs on (SYS, LOG, EXPL, CLIENT, RECOVER).
+
 ## Getting started
 
 ### What it needs
@@ -181,18 +234,16 @@ deployment section of the Settings page names its address too (RECOVER-15).
 Taken from the app itself with `bin/preview`
 ([`specs/ui-preview.md`](specs/ui-preview.md)), on the sample data a preview
 seeds: the dark theme at a phone width (`ELIA_PREVIEW_THEME=dark`,
-`ELIA_PREVIEW_WIDTH=390`).
+`ELIA_PREVIEW_WIDTH=430`).
 
 ![The dashboard](docs/screenshots/dashboard.png)
 
-*The dashboard: what needs you, where you left off, the machine and the deploy
-state.*
+*The dashboard: where you left off, what needs you, and the recent chats.*
 
 ![A chat](docs/screenshots/chat.png)
 
-*A chat: a reply with Markdown and a code block, file links, tool calls with
-their output, one that failed, and the composer's chat menu showing the model
-(CSET-8).*
+*A chat: tool calls with their output, one that failed, a sub-task that
+finished, and a reply carrying two uploaded files.*
 
 ![A question with option buttons](docs/screenshots/question.png)
 
@@ -201,8 +252,8 @@ button, and there is always a field for an answer in their own words (ASK-4).*
 
 ![The settings page](docs/screenshots/settings.png)
 
-*`/settings`: a card per provider for its API key. The deploy section and push
-notifications follow below.*
+*`/settings`: a card per section — appearance, the LLM providers and their
+keys, deployment, and push notifications.*
 
 ## Tests and previews
 
