@@ -114,6 +114,12 @@ setting the next one will use.
   reports — and the chat's setting is said separately, as what the next
   terminal will use, because turning the jail off or on reaches only sessions
   started afterwards (ISOL-19).
+- **TERM-40** A start that asks for no jail (`jail: false`, ISOL-31) starts an
+  unjailed session whatever the chat's setting is, for that session only: the
+  setting is untouched, so the page's next Start follows it again (TERM-37), and
+  the page's jail line and the tool's result report that session's own
+  confinement (TERM-9, TERM-39). The page's own Start button never asks: a
+  terminal the user opens follows the chat's setting (TERM-37).
 
 ### Streaming
 
@@ -365,7 +371,7 @@ says and starts with — TERM-19..TERM-23, TERM-37..TERM-39),
 `test/elia_web/terminal_channel_test.exs` (join,
 keystrokes to the command's stdin, output to the client, resize, a join for an
 ended session, TERM-12..TERM-18), `test/elia/skills/terminal_test.exs` (the
-tools, TERM-24 to TERM-28 and TERM-30 to TERM-34), and
+tools, TERM-24 to TERM-28, TERM-30 to TERM-34 and TERM-40), and
 `test/elia_web/browser/terminal_test.exs` for the parts that are a browser:
 typing into a running shell and seeing its echo, and a resize that reaches the
 pty (BROWSER-1). A test that needs tmux skips where it isn't installed

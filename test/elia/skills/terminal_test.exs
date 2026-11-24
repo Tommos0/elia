@@ -93,6 +93,34 @@ defmodule Elia.Skills.TerminalTest do
     assert message =~ "already has a running terminal"
   end
 
+  # TERM-40, ISOL-31: a start may ask for no jail, and that session runs outside
+  # it whatever the chat's setting is — for that session alone.
+  test "a start that asks for no jail starts an unjailed session", %{id: id, dir: dir} do
+    ctx = %{session_id: id, workspace: dir, jail: true}
+
+    assert {:ok, output} =
+             TerminalSkill.run_start(%{"command" => "sleep 60", "jail" => false}, ctx)
+
+    assert output =~ "(unjailed)"
+
+    # TERM-39: what the session reports is what it was started with, and the
+    # chat's setting (TERM-37) is untouched — the next start follows it again.
+    assert {:ok, %{jail: false, jailed: false}} = Terminal.status(id)
+    assert {:ok, _} = Terminal.stop(id)
+
+    assert {:ok, output} = TerminalSkill.run_start(%{"command" => "sleep 60"}, ctx)
+    assert output =~ "(jailed)"
+    assert {:ok, %{jail: true}} = Terminal.status(id)
+
+    # ISOL-32, APPR-19: the request is the user's to allow every time.
+    tool = tool("terminal_start")
+
+    assert Elia.Tool.approval(tool, %{"command" => "htop"}, ctx) == :required
+
+    assert Elia.Tool.approval(tool, %{"command" => "htop", "jail" => false}, ctx) ==
+             {:required, :always}
+  end
+
   # TERM-26: what the terminal shows, as text and as what it is — a running
   # session, or one that has ended and how — and an error where a chat has no
   # terminal at all.

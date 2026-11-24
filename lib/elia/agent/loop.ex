@@ -13,7 +13,8 @@ defmodule Elia.Agent.Loop do
     * `{:loop_event, event}` - streaming `t:Elia.LLM.Provider.event/0`s
     * `{:loop_append, message}` - a message to append to the history
     * `{:loop_tool_status, call_id, status}` - `:running` or `:done`
-    * `{:loop_await_approval, task_pid, calls}` - reply with
+    * `{:loop_await_approval, task_pid, calls}` - each call with the approval
+      it carries (APPR-1), to reply to with
       `{:approval_decisions, %{call_id => :approve | :deny}}`
     * `{:loop_await_input, task_pid, calls}` - a tool that asks the user
       (LOOP-21); reply with `{:input_answers, %{call_id => answer}}
@@ -552,7 +553,12 @@ defmodule Elia.Agent.Loop do
   defp run_tools(ctx, tools, calls, stop_reason) do
     checked = Enum.map(calls, &{&1, check(ctx, tools, &1, stop_reason)})
 
-    needs_approval = for {call, {:ok, _tool, :required}} <- checked, do: call
+    # APPR-1, APPR-19: each call the user decides on goes with its approval, so
+    # the session can tell `:required` — which the chat's auto-approved set may
+    # wave through (APPR-8) — from `{:required, :always}`, which it may not.
+    needs_approval =
+      for {call, {:ok, _tool, approval}} <- checked, approval != :never, do: {call, approval}
+
     {decisions, approved_ms} = await_approval(ctx, needs_approval)
 
     # LOOP-21: a tool that asks the user is put to them before the step's tools

@@ -10,9 +10,11 @@ defmodule Elia.Tool do
   picture a look at a file recorded (`Elia.LLM.Images`, VISION-12) and the
   snapshot pair the loop brackets the call with (SNAP-6).
 
-  `approval` is `:required`, `:never`, or a function of `(input, ctx)`
-  returning one of those or `{:deny, reason}`. Calls that need approval
-  pause the agent until the user decides.
+  `approval` is `:required`, `:never`, `{:required, :always}`, or a function of
+  `(input, ctx)` returning one of those or `{:deny, reason}`. Calls that need
+  approval pause the agent until the user decides; `:required` is one the chat's
+  auto-approved set may wave through and `{:required, :always}` one it may not
+  (APPR-8, APPR-19).
 
   `asks_user` marks a tool whose call is put to the user instead of running
   straight away: the loop waits for their answer and hands it to the tool as
@@ -27,14 +29,14 @@ defmodule Elia.Tool do
           | {:ok, binary(), facts()}
           | {:error, binary(), facts()}
 
-  @type decision :: :required | :never | {:deny, binary()}
+  @type decision :: :required | :never | {:required, :always} | {:deny, binary()}
 
   @type t :: %__MODULE__{
           name: binary(),
           description: binary(),
           input_schema: map(),
           run: (map() -> result()) | (map(), map() -> result()),
-          approval: :required | :never | (map(), map() -> decision()),
+          approval: :required | :never | {:required, :always} | (map(), map() -> decision()),
           asks_user: boolean()
         }
 

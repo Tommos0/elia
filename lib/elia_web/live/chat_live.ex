@@ -1553,6 +1553,12 @@ defmodule EliaWeb.ChatLive do
     "flex items-center gap-1.5 rounded-xl border border-base-300 bg-base-200/60 px-2.5 py-1 text-xs text-base-content/80 transition hover:border-base-content/20 hover:text-base-content"
   end
 
+  # UI-69, UI-101, ISOL-17, ISOL-31: a prompt says the command runs unjailed when
+  # the chat's jail is off, and when that call asked for no jail itself.
+  defp unjailed?(item, jail) do
+    not jail or Map.get(Map.get(item, :input) || %{}, "jail") == false
+  end
+
   attr :item, :map, required: true
   attr :jail, :boolean, default: true
   # FLINK-1, FLINK-5: where this chat's mentions resolve.
@@ -1787,8 +1793,13 @@ defmodule EliaWeb.ChatLive do
         class="flex items-center justify-end gap-2 border-t border-base-300 px-3 py-2"
       >
         <span class="mr-auto text-xs text-base-content/60">
-          Allow this? <%!-- ISOL-17, UI-69: the state is visible at the moment it matters. --%>
-          <span :if={!@jail} id={"unjailed-#{@item.call_id}"} class="font-medium text-warning">
+          Allow this?
+          <%!-- ISOL-17, ISOL-31, UI-69, UI-101: the state is visible at the moment it matters. --%>
+          <span
+            :if={unjailed?(@item, @jail)}
+            id={"unjailed-#{@item.call_id}"}
+            class="font-medium text-warning"
+          >
             It runs unjailed.
           </span>
         </span>

@@ -160,7 +160,10 @@ defmodule Elia.ToolApprovalTest do
     case tool.approval do
       :never -> "never"
       :required -> "always"
-      fun when is_function(fun, 2) -> if decision(tool) == :required, do: "always", else: "never"
+      # APPR-19: a call that may never be auto-approved needs the user's
+      # approval like any other, so the table still says `always`.
+      {:required, :always} -> "always"
+      fun when is_function(fun, 2) -> if decision(tool) == :never, do: "never", else: "always"
     end
   end
 

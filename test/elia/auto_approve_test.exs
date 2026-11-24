@@ -180,6 +180,32 @@ defmodule Elia.AutoApproveTest do
     await_status(id, :idle)
   end
 
+  # APPR-19, ISOL-32: auto-approval never covers a call that asks for no jail,
+  # however its tool is switched — that one is the user's to decide.
+  test "a call that asks for no jail waits even where its tool is auto-approved", %{id: id} do
+    :ok = Agent.set_auto_approve(id, "shell", true)
+
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi", "jail" => false})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    :ok = Agent.send_message(id, "run it")
+    await_status(id, :awaiting_approval)
+    assert_receive {:agent, ^id, {:tool_status, "c1", :awaiting_approval}}, 5000
+
+    :ok = Agent.approve(id, "c1")
+    await_status(id, :idle)
+
+    [_, second] = FakeLLM.requests()
+    assert %{is_error: false, content: content} = tool_result(second, "c1")
+    assert content =~ "[jail: off at this call's request]"
+    assert content =~ "hi"
+  end
+
   # APPR-9, APPR-2: auto-approval only replaces the user's decision — a call the
   # tool's own policy denies doesn't run and is refused with the policy's reason
   # as its result, however the tool is switched.

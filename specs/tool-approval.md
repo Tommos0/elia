@@ -8,8 +8,11 @@ refused.
 
 ## Requirements
 
-- **APPR-1** A tool's approval is `:never`, `:required`, or a function of the
-  input and context that returns one of those or `{:deny, reason}`.
+- **APPR-1** A tool's approval is `:never`, `:required`,
+  `{:required, :always}`, or a function of the input and context that returns
+  one of those or `{:deny, reason}`. `:required` is a call the chat's
+  auto-approved set may wave through (APPR-8); `{:required, :always}` is one it
+  may not (APPR-19).
 - **APPR-2** A call that is denied by policy doesn't run and gets `reason` as
   an error result. The user isn't asked.
 - **APPR-3** All calls in a step that need approval are shown to the user at
@@ -81,6 +84,13 @@ per-tool switch; it never loosens what a tool's own policy refuses.
   turning a tool off (UI-39) removes it from the set like any other (APPR-11),
   and the set is saved with the chat's first message (APPR-12, STORE-14).
 
+- **APPR-19** Auto-approval never covers a call whose approval is
+  `{:required, :always}` (APPR-1): while its tool is in the chat's set (APPR-8),
+  the call is still shown to the user and the step waits for them (APPR-3,
+  APPR-5). This is what a call that asks to run without the jail is (ISOL-32).
+  A decision the user makes about it is unaffected: approving it, or a control
+  that approves that tool's waiting calls (APPR-11), is theirs either way.
+
 Auto-approving `shell` or a script tool lets the model act in that chat without
 review. The UI says so next to the switch (UI-39).
 
@@ -117,7 +127,8 @@ a chat that wants its commands reviewed turns that switch off (UI-39).
 ## Implementation
 
 `Elia.Tool`, `Elia.Agent.Loop`, `Elia.Agent.Session` (auto-approval is applied
-in the session when the loop asks for approval, so the loop is unchanged).
+in the session when the loop asks for approval, which passes each call's
+approval with it, so a call that must ask always does — APPR-19).
 
 `test/elia/tool_approval_test.exs` derives what a row claims from the tool
 itself, not from a second list: a tool whose approval is a function (APPR-1) is
@@ -139,7 +150,8 @@ is compared without an entry in the test.
   its role against the toolset — APPR-7, APPR-15 to APPR-18).
 - `test/elia/auto_approve_test.exs` (the saved set, a chat's own set, what
   auto-approval replaces, a step all auto-approved, a tool turned on, the
-  default set — APPR-8 to APPR-14).
+  default set, and a call an auto-approval does not cover — APPR-8 to APPR-14,
+  APPR-19).
 - `test/elia_web/live/chat_live_test.exs` (the approval prompt and the toolbar,
   APPR-14).
 - `test/elia_web/live/auto_approve_test.exs` (the popover, its switches and what

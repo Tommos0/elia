@@ -38,8 +38,10 @@ defmodule Elia.Skills.Terminal do
     started. A terminal runs in the chat's workspace, in the same jail as a \
     command and at the same lower priority (TERM-7, TERM-8), so what it can \
     reach is what a command can reach, and it doesn't take the machine from the \
-    UI. Where tmux is not installed the terminal is unavailable and says so \
-    (TERM-29).
+    UI. A terminal that needs what the jail keeps out can ask for no jail with \
+    `jail: false` (TERM-40): that session runs outside the jail whatever the \
+    chat's setting, and the user is asked about it every time (ISOL-32). Where \
+    tmux is not installed the terminal is unavailable and says so (TERM-29).
     """
   end
 
@@ -63,7 +65,10 @@ defmodule Elia.Skills.Terminal do
           "them first. Read what it shows with terminal_read. It runs in the " <>
           "chat's workspace, in the same jail and at " <>
           "the same lower priority as a command, and its output is not part of this " <>
-          "transcript. A chat has one terminal at a time.",
+          "transcript. A chat has one terminal at a time. A start may ask for no " <>
+          "jail with `jail: false`: that session runs outside the jail whatever " <>
+          "the chat's setting, and the user is asked about it every time " <>
+          "(TERM-40, ISOL-32).",
       input_schema: %{
         "type" => "object",
         "properties" => %{
@@ -72,10 +77,18 @@ defmodule Elia.Skills.Terminal do
             "description" =>
               "The command line to run in the terminal, e.g. \"htop\" or " <>
                 "\"mix test --watch\". Omit it for the user's own login shell."
+          },
+          "jail" => %{
+            "type" => "boolean",
+            "description" =>
+              "Set false to start this session outside the jail, whatever the " <>
+                "chat's setting (TERM-40). Only for work the jail makes " <>
+                "impossible: the user is asked to approve this call every time, " <>
+                "whatever this chat auto-approves (ISOL-32)."
           }
         }
       },
-      approval: :required,
+      approval: &approval/2,
       run: &run_start/2
     }
   end
@@ -169,14 +182,15 @@ defmodule Elia.Skills.Terminal do
   @doc "Starts a session for the chat this turn runs in (TERM-25)."
   def run_start(input, ctx \\ %{}) do
     chat_id = chat_id(ctx)
+    jail_on = jail(input, ctx)
 
     case Terminal.start(chat_id,
            command: command(input),
            workspace: workspace(ctx),
-           jail: Map.get(ctx, :jail, true)
+           jail: jail_on
          ) do
       {:ok, _pid} ->
-        {:ok, started_message(chat_id, input["command"], ctx)}
+        {:ok, started_message(chat_id, input["command"], jail_on, ctx)}
 
       {:error, message} ->
         {:error, message}
@@ -273,14 +287,24 @@ defmodule Elia.Skills.Terminal do
     end
   end
 
-  defp started_message(chat_id, command, ctx) do
+  # ISOL-31, TERM-40: a start may ask for no jail; otherwise the chat's setting
+  # decides (TERM-37), and a host with no jail runs it unjailed anyway (ISOL-20).
+  defp jail(input, ctx),
+    do: if(input["jail"] == false, do: false, else: Map.get(ctx, :jail, true))
+
+  # ISOL-32, TERM-40, APPR-19: a start that asks for no jail is the user's to
+  # allow every time — never one the chat's auto-approval waves through.
+  defp approval(input, _ctx),
+    do: if(input["jail"] == false, do: {:required, :always}, else: :required)
+
+  defp started_message(chat_id, command, jail_on, ctx) do
     what =
       case command do
         nil -> "the user's login shell"
         command -> "`#{command}`"
       end
 
-    jail = if Map.get(ctx, :jail, true), do: "jailed", else: "unjailed"
+    jail = if jail_on, do: "jailed", else: "unjailed"
 
     "Terminal started in `#{workspace(ctx)}` (#{jail}), running #{what}. " <>
       "The user can watch it and type into it at [the terminal page](/c/#{chat_id}/terminal); " <>

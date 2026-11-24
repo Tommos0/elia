@@ -297,6 +297,28 @@ is harmless.
   A chat's own setting can only turn it off, never force it on where the host
   says no.
 
+### Asking for no jail
+
+The chat's setting is the user's (ISOL-16). Work that needs the machine a jail
+hides — the settings database, a credential, another tree — is one call's
+business, and what the model can do about it is ask:
+
+- **ISOL-31** A call may ask for no jail: the `shell` tool and `terminal_start`
+  take `jail: false` in their input, and that call runs unjailed whatever the
+  chat's setting is (ISOL-16). The request only loosens — `jail: true`, or none,
+  leaves the chat's setting to decide, and a host with no jail (ISOL-20) runs
+  the call unjailed anyway. It changes no setting: the chat's next call follows
+  ISOL-16 as before, and a terminal started this way is unjailed for that
+  session alone (TERM-40).
+- **ISOL-32** A call that asks for no jail is always put to the user: it is
+  never auto-approved, whatever the chat's auto-approved set holds (APPR-8,
+  APPR-19), so the prompt — which says the command runs unjailed (UI-101) — is
+  where the user sees what they are agreeing to.
+- **ISOL-33** A `shell` call that asked for no jail says so in its result,
+  before the output, where the chat's setting would otherwise have jailed it
+  (ISOL-16, ISOL-20): `[jail: off at this call's request]`, in the shape of the
+  notice a skipped jail has (ISOL-12).
+
 ### Telling the model
 
 - **ISOL-21** The `shell` tool's description and the skill's instructions say
@@ -304,7 +326,9 @@ is harmless.
   and the toolchain and nothing else, and that the settings database, the saved
   conversations and the user's credentials aren't in it — so a command that
   can't find them is expected, not broken (SHELL-8, SHELL-9). They say too that
-  a chat whose jail the user turned off (ISOL-16) runs commands unjailed.
+  a chat whose jail the user turned off (ISOL-16) runs commands unjailed. They
+  say that a call may ask for no jail of its own (`jail: false`, ISOL-31) and
+  that such a call is the user's to allow every time (ISOL-32).
 
 ### The harness's own steps
 
@@ -347,6 +371,9 @@ bubblewrap is missing (ISOL-12).
 
 ## Out of scope
 
+- **A script tool's own request.** A folder skill's script tool (FOLDER-6)
+  follows the chat's setting as it does today; asking for no jail is the `shell`
+  tool's and `terminal_start`'s (ISOL-31).
 - **The jail's own network rules.** A per-command filter of the host's network
   is not what limits a chat: a restriction is a namespace of the command's own
   beside the jail (NET-13, NET-16), and the jail's argv is unchanged by it
@@ -443,8 +470,9 @@ lock, and `Elia.Deploy`'s worktree administration.
   Playwright CLI bound read-only, ISOL-4, ISOL-26, the server pid not in `/proc`, the
   workspace writable, a command writing inside its workspace's `deps` and
   leaving the live tree's unchanged (DEPLOY-29), a timeout still cleaning up, and
-  `Elia.Harness.run_tests/3` jailed — ISOL-1, ISOL-3, ISOL-5, ISOL-6, ISOL-8 to
-  ISOL-10, ISOL-15).
+  `Elia.Harness.run_tests/3` jailed, and a call that asks for no jail running
+  outside it whatever the chat's setting (ISOL-31) — ISOL-1, ISOL-3, ISOL-5,
+  ISOL-6, ISOL-8 to ISOL-10, ISOL-15).
 - `test/elia/deployment_test.exs` (the deploy's fetch, DEPLOY-18; the jail the
   deploy's own commands run in, ISOL-13, ISOL-14, ISOL-20; a hook and an
   fsmonitor the repository names not run by the harness's own git, ISOL-30).
@@ -457,7 +485,11 @@ lock, and `Elia.Deploy`'s worktree administration.
   ISOL-18).
 - `test/elia/store_test.exs` (the setting saved and loaded, ISOL-16).
 - `test/elia/skills/shell_test.exs` (the tool's description and the skill's
-  instructions say the command is jailed, ISOL-21).
+  instructions say the command is jailed and that a call may ask for no jail,
+  ISOL-21; the request's forced approval and the notice its result carries —
+  ISOL-32, ISOL-33).
+- `test/elia/auto_approve_test.exs` (a call that asks for no jail waiting for
+  the user's own decision where its tool is auto-approved — ISOL-32).
 - `test/elia_web/live/jail_test.exs` (the switch, the prompts it changes, and
   the chat that owns the setting — ISOL-16, ISOL-17, ISOL-19, ISOL-20, UI-67 to
   UI-69).

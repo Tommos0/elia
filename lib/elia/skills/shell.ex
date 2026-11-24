@@ -52,7 +52,11 @@ defmodule Elia.Skills.Shell do
     nothing reaches them, and that is the boundary rather than a reason to look \
     for another way in. In a chat whose jail the user turned off, commands run \
     unjailed, on the whole machine, and what an approved command reads or \
-    changes is the whole of it.
+    changes is the whole of it. Work the jail makes impossible — a credential, \
+    the settings database, another tree on the machine — is a reason to ask for \
+    no jail rather than to look for another way in: `jail: false` runs that one \
+    command outside the jail whatever the chat's setting, and the user is asked \
+    about it every time (ISOL-31, ISOL-32).
 
     What a command may reach on the network is the chat's own setting (NET). \
     A chat starts allowlisted (NET-1): its commands have no route out but the \
@@ -94,7 +98,10 @@ defmodule Elia.Skills.Shell do
             "the toolchain and nothing else: the settings database, the saved " <>
             "conversations and the user's credentials are not in it, so a command " <>
             "that can't find them is expected, not broken. In a chat whose jail " <>
-            "the user turned off, commands run unjailed. " <>
+            "the user turned off, commands run unjailed. A call may ask for no " <>
+            "jail with `jail: false`: that command runs outside the jail whatever " <>
+            "the chat's setting, and the user is asked about it every time " <>
+            "(ISOL-31, ISOL-32). " <>
             "What the command may reach on the network is the chat's own setting " <>
             "(NET): a chat starts allowlisted and reaches only the hosts it " <>
             "names of its own and its project's allowlist " <>
@@ -119,11 +126,20 @@ defmodule Elia.Skills.Shell do
                   "#{config(:default_timeout)} and the most is #{config(:max_timeout)}: a " <>
                   "larger value runs with the maximum and the result says so. Ask for more " <>
                   "for a long build, a cold compile or a whole test suite."
+            },
+            "jail" => %{
+              "type" => "boolean",
+              "description" =>
+                "Set false to run this command outside the jail, whatever the " <>
+                  "chat's setting (ISOL-31). Only for work the jail makes " <>
+                  "impossible — a credential, the settings database, another " <>
+                  "tree on the machine: the user is asked to approve this call " <>
+                  "every time, whatever this chat auto-approves (ISOL-32)."
             }
           },
           "required" => ["command"]
         },
-        approval: :required,
+        approval: &approval/2,
         run: &run/2
       }
     ]
@@ -152,7 +168,7 @@ defmodule Elia.Skills.Shell do
             workspace: workspace(ctx),
             env: chat_env(ctx),
             timeout: timeout,
-            jail: ctx[:jail],
+            jail: jail(input, ctx),
             network: ctx[:network],
             session_id: ctx[:session_id],
             max_output: max_output()
@@ -160,6 +176,7 @@ defmodule Elia.Skills.Shell do
           timeout,
           asked: asked
         )
+        |> with_jail_notice(input)
 
       {:error, :invalid} ->
         {:error,
@@ -190,6 +207,25 @@ defmodule Elia.Skills.Shell do
       _no_chat -> []
     end
   end
+
+  # ISOL-31, SHELL-16: a call may ask for no jail; otherwise the chat's setting
+  # decides (ISOL-16), and a host with no jail runs it unjailed anyway (ISOL-20).
+  defp jail(input, ctx),
+    do: if(input["jail"] == false, do: false, else: ctx[:jail])
+
+  # ISOL-32, SHELL-16, APPR-19: a call that asks for no jail is the user's to
+  # allow every time — never one the chat's auto-approval waves through.
+  defp approval(input, _ctx),
+    do: if(input["jail"] == false, do: {:required, :always}, else: :required)
+
+  # ISOL-33, SHELL-16: a result says which jail it ran under, in the shape of the
+  # notice a skipped jail gets (ISOL-12), so it never reads like a command the
+  # chat's setting jailed.
+  @unjailed_notice "[jail: off at this call's request]\n"
+  defp with_jail_notice(result, %{"jail" => false}), do: with_notice(result, @unjailed_notice)
+  defp with_jail_notice(result, _input), do: result
+
+  defp with_notice({tag, text}, notice), do: {tag, notice <> text}
 
   @doc """
   The tool result for a run: the combined output and its exit status (SHELL-4).

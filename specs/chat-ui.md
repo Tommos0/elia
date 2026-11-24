@@ -424,6 +424,9 @@ stream in, approves or denies tool calls, and switches between saved chats.
   and says so, rather than showing a chat as protected where it isn't.
 - **UI-69** An approval prompt in a chat whose jail is off says the command
   runs unjailed (ISOL-17).
+- **UI-101** An approval prompt for a call that asked for no jail says the
+  command runs unjailed (`#unjailed-<call id>`, ISOL-31) — the label UI-69 puts
+  on a prompt while the chat's jail is off, on that call's own request instead.
 - ~~**UI-100** The chat page's composer toolbar says when the chat's network is
   limited (`#network-warning`) — beside the chat menu's trigger and its jail
   warning (CSET-9) — naming the mode in words, "Allowlisted hosts" or "No
@@ -781,7 +784,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   `test/elia_web/live/page_title_test.exs` for the page title a chat gives the
   browser (UI-3).
 - `test/elia_web/live/auto_approve_test.exs` (UI-38 to UI-40, UI-42).
-- `test/elia_web/live/jail_test.exs` (the jail switch, UI-67 to UI-69).
+- `test/elia_web/live/jail_test.exs` (the jail switch, and the prompts that say
+  a call runs unjailed — UI-67 to UI-69, UI-101).
 - `test/elia_web/live/chat_settings_test.exs` (the settings page, CSET; the
   controls it took over, UI-2, UI-3, UI-38).
 - `test/elia_web/live/compaction_test.exs` (the transcript's annotations,

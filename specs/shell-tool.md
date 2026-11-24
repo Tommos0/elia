@@ -99,6 +99,12 @@ call takes.
   in the tree is the shell's own search (`grep -n`, `rg`); and that creating,
   editing and deleting a file is a command the user approves as it stands
   (SHELL-1), so a change to a file is reviewed as the command that makes it.
+- **SHELL-16** A call may ask for no jail: `jail: false` in the input runs that
+  command outside the jail whatever the chat's setting (ISOL-31), the call waits
+  for the user's own decision (ISOL-32), and its result names the jail it did
+  not run in (ISOL-33). `jail: true`, or no value at all, leaves the chat's
+  setting to decide (ISOL-16), so the request is the only thing a call adds to
+  it.
 
 ## Configuration
 
@@ -134,7 +140,8 @@ passes to a command, SHELL-14),
 
 - `test/elia/skills/shell_test.exs` (the clamped timeout and the rejected value,
   SHELL-10; the chat id the command is given, SHELL-14; the instructions and the
-  tool description — SHELL-9, SHELL-15).
+  tool description — SHELL-9, SHELL-15; the `jail: false` request, the approval
+  it forces and the notice its result carries, SHELL-16).
 - `test/elia/shell_test.exs` (the shell it runs the command with, the process
   group, the result's shape, the output cap, a run that floods stdout still
   ending at its deadline, a command whose waiting process exits being killed

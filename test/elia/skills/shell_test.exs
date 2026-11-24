@@ -75,6 +75,11 @@ defmodule Elia.Skills.ShellTest do
       assert text =~ "credentials"
       assert text =~ "expected, not broken"
       assert text =~ "unjailed"
+
+      # ISOL-21, ISOL-31, ISOL-32: and that a call may ask for no jail of its
+      # own, which the user is asked about every time.
+      assert text =~ "ask for no jail"
+      assert text =~ "asked about it every time"
     end
   end
 
@@ -195,5 +200,34 @@ defmodule Elia.Skills.ShellTest do
     refute output =~ "hi"
 
     assert {:error, _} = Shell.run(%{"command" => "echo hi", "timeout_seconds" => -5})
+  end
+
+  # ISOL-32, SHELL-16, APPR-19: a call may ask for no jail, and that call is the
+  # user's to allow every time — never one the chat's auto-approval waves
+  # through (APPR-8).
+  test "a call that asks for no jail is the user's to allow, and says so" do
+    [tool] = Shell.tools()
+
+    assert Elia.Tool.approval(tool, %{"command" => "echo hi"}, %{}) == :required
+
+    assert Elia.Tool.approval(tool, %{"command" => "echo hi", "jail" => false}, %{}) ==
+             {:required, :always}
+
+    # SHELL-16: the input is a boolean, and leaving it out leaves the chat's
+    # setting to decide (ISOL-16).
+    assert Elia.Tool.validate(tool, %{"command" => "echo hi", "jail" => false}) == :ok
+
+    assert {:error, message} =
+             Elia.Tool.validate(tool, %{"command" => "echo hi", "jail" => "no"})
+
+    assert message =~ "jail must be a boolean"
+
+    # ISOL-33: the result says which jail it ran under, before the output.
+    assert {:ok, output} = Shell.run(%{"command" => "echo hi", "jail" => false}, %{jail: true})
+    assert output =~ "[jail: off at this call's request]\nhi"
+
+    # A call that asked for nothing says nothing.
+    assert {:ok, output} = Shell.run(%{"command" => "echo hi"}, %{jail: false})
+    refute output =~ "jail: off"
   end
 end

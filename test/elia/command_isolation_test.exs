@@ -108,6 +108,32 @@ defmodule Elia.CommandIsolationTest do
     assert output =~ "chat-jailed"
   end
 
+  # ISOL-31, SHELL-16: a call may ask for no jail, and that call runs outside it
+  # whatever the chat's setting is — the tool passes the call's own request to
+  # the run.
+  test "a call that asks for no jail runs outside it (ISOL-31)" do
+    # The chat's setting is on here (setup), and the jail's `/tmp` is a fresh
+    # tmpfs (ISOL-1), so a file the machine has under /tmp is what tells the two
+    # apart.
+    probe = "/tmp/elia-jail-probe-#{System.unique_integer([:positive])}"
+    File.write!(probe, "x")
+    on_exit(fn -> File.rm(probe) end)
+
+    assert {:error, output} =
+             Elia.Skills.Shell.run(%{"command" => "ls -d #{probe} 2>/dev/null"}, %{jail: true})
+
+    refute output =~ probe
+
+    assert {:ok, output} =
+             Elia.Skills.Shell.run(
+               %{"command" => "ls -d #{probe}", "jail" => false},
+               %{jail: true}
+             )
+
+    assert output =~ probe
+    assert output =~ "[jail: off at this call's request]"
+  end
+
   test "the server is not visible (ISOL-9)" do
     # A process that is definitely running outside the jail.
     assert {:ok, output, 0} =

@@ -205,4 +205,36 @@ defmodule EliaWeb.JailTest do
     assert has_element?(view, "#approve-c1")
     refute has_element?(view, "#unjailed-c1")
   end
+
+  # UI-101, ISOL-31, ISOL-32: a call that asked for no jail says so on its own
+  # prompt, in a chat whose jail is on — and waits for the user although its
+  # tool is auto-approved (APPR-14, APPR-19).
+  test "a prompt for a call that asked for no jail says it runs unjailed", %{
+    conn: conn,
+    id: id
+  } do
+    FakeLLM.push(
+      FakeLLM.assistant([
+        FakeLLM.tool_call("c1", "shell", %{"command" => "echo hi", "jail" => false})
+      ])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Done.")]))
+
+    # APPR-14: this chat is new, so `shell` is auto-approved — the request is
+    # what makes this call wait.
+    {:ok, _pid} = Agent.ensure_started(id)
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+    Agent.subscribe(id)
+
+    view |> form("#chat-form", chat: %{text: "go"}) |> render_submit()
+    assert_receive {:agent, ^id, {:status, :awaiting_approval}}, 5000
+
+    assert %{settings: %{jail: true, auto_approve: auto}} = Agent.snapshot(id)
+    assert "shell" in auto
+
+    assert has_element?(view, "#approve-c1")
+    assert has_element?(view, "#unjailed-c1", "unjailed")
+  end
 end

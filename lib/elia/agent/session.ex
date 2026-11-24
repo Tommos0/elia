@@ -591,10 +591,12 @@ defmodule Elia.Agent.Session do
   end
 
   def handle_info({:loop_await_approval, pid, calls}, state) do
-    # APPR-8: calls for auto-approved tools skip the user.
+    # APPR-8: calls for auto-approved tools skip the user. APPR-19: a call the
+    # loop marked `{:required, :always}` is never one of them.
     decisions =
-      Map.new(calls, fn call ->
-        {call.id, if(auto_approved?(state, call.name), do: :approve, else: :pending)}
+      Map.new(calls, fn {call, approval} ->
+        skips? = auto_approved?(state, call.name) and approval != {:required, :always}
+        {call.id, if(skips?, do: :approve, else: :pending)}
       end)
 
     state =
