@@ -124,6 +124,7 @@ defmodule Elia.StoreShapeTest do
   defp option("limits"), do: [limits: %{max_steps: 5}]
   defp option("effort"), do: [effort: "high"]
   defp option("title"), do: [title: "A title of its own"]
+  defp option("title_by"), do: [title_by: "user"]
   defp option("turn"), do: [turn: %{id: "turn-1", started_at: @turn}]
   defp option("done"), do: [done: true]
   defp option("cwd"), do: [cwd: "/tmp/a-chat-of-its-own"]

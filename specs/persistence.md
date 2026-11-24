@@ -1,6 +1,6 @@
 # Conversation persistence
 
-Status: Draft
+Status: Implemented
 
 Chats are saved to disk so they survive restarts and can be listed and
 reopened. A saved chat's shape is stated in one place — the table under STORE-1

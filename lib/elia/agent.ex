@@ -203,10 +203,28 @@ defmodule Elia.Agent do
   message (TITLE-1). The text is trimmed, its whitespace collapsed and cut to 60
   characters (TITLE-2), and the accepted title is returned. A blank title returns
   `{:error, message}`, as the `set_title` tool reports to the model (TITLE-6); a
-  sub-task chat may name itself like any chat (TITLE-3).
+  sub-task chat may name itself like any chat (TITLE-3). It also refuses a chat
+  whose title was set by hand (TITLE-9), with an error naming that reason: that
+  name is the user's, so overwriting it is the one thing the model must not do.
   """
   @spec set_title(binary(), term()) :: {:ok, binary()} | {:error, binary()}
   def set_title(id, text), do: GenServer.call(Session.via(id), {:set_title, text})
+
+  @doc """
+  Names the chat by hand (TITLE-8), from its row in the chat list (UI-104): the
+  text is a title like any other (TITLE-2), and a name at all gives the chat
+  that title of its own and records that it was set by hand (STORE-55), so the
+  model's `set_title` refuses it from then on (TITLE-6). The accepted title is
+  returned, and a name that is blank once trimmed returns `{:error, message}`,
+  changing nothing. A chat whose session isn't running is reached by starting it,
+  as the chat settings page does (CSET-1), and a chat with no messages yet is
+  saved with its new name (TITLE-8, STORE-22).
+  """
+  @spec rename(binary(), term()) :: {:ok, binary()} | {:error, binary()}
+  def rename(id, text) do
+    {:ok, _pid} = ensure_started(id)
+    GenServer.call(Session.via(id), {:rename, text})
+  end
 
   @doc """
   The chat's working directory (WD-1): an absolute path inside the chat's

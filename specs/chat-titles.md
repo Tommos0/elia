@@ -1,6 +1,6 @@
 # Chat titles
 
-Status: Draft
+Status: Implemented
 
 A chat's title is what its sidebar row, its page title and the chat list show,
 and today it is always derived from the first user message, cut to 60
@@ -9,7 +9,7 @@ report, a pasted stack trace — is listed under an arbitrary prefix of it. This
 spec lets a chat carry a title of its own, written by the agent from the request
 it has in front of it, and keeps the derivation as the fallback, so a chat
 without one is exactly as it is today. A chat can also be named by hand, from
-its row in the chat list (TITLE-8, UI-102), and a name the user typed is the
+its row in the chat list (TITLE-8, UI-104), and a name the user typed is the
 user's: the agent leaves it alone (TITLE-9).
 
 The trigger is the agent's own tool call, inside a turn it is already running:
@@ -81,7 +81,7 @@ expensive because of this feature.
 ### Naming a chat by hand
 
 - **TITLE-8** A chat can be named by hand from its row in the chat list
-  (UI-102): `Elia.Agent.rename/2` (chat id, text) takes the text as a name,
+  (UI-104): `Elia.Agent.rename/2` (chat id, text) takes the text as a name,
   shaped as TITLE-2 shapes any title, and when it is a name at all it gives the
   chat that title of its own (TITLE-1) — saved with the chat (STORE-32) and
   broadcast as `{:title, title}` (SESS-6, SESS-33), so its row (UI-4, UI-74), the
@@ -120,7 +120,7 @@ view with an id and for a title set by hand), `Elia.Skills.Titles` (the skill
 and its `set_title` tool), `Elia.Agent` and `Elia.Agent.Session` (`set_title/2`
 and `rename/2`, saving, the `{:title, title}` event, the snapshot field),
 `EliaWeb.ChatLive` (the page title, the sidebar row, the tool card),
-`EliaWeb.ChatList` (the row's menu and the rename input, UI-101, UI-102),
+`EliaWeb.ChatList` (the row's menu and the rename input, UI-103, UI-104),
 `config/config.exs` (the built-in skill list).
 
 ## Tests
@@ -132,4 +132,4 @@ saving and outliving the model's, and the refusal that follows it,
 TITLE-1 - TITLE-9), `test/elia_web/live/chat_title_test.exs` (the page
 title and the row, `{:title, title}` mid-turn, the card's summary, UI-74), and
 `test/elia_web/live/chat_list_test.exs` (naming a chat by hand from its row —
-TITLE-8, UI-102).
+TITLE-8, UI-104).

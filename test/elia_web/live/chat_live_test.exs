@@ -467,9 +467,13 @@ defmodule EliaWeb.ChatLiveTest do
     assert has_element?(view, time, "1 hour ago")
   end
 
-  # UI-64: every chat row — task chats too (UI-45) — has a delete button beside
-  # its link, as a sibling of it rather than nested inside it.
-  test "each sidebar chat has a delete button beside its link", %{conn: conn} do
+  # UI-64, UI-103: every chat row — task chats too (UI-45) — draws a menu of its
+  # own, and the menu is where the row's delete entry lives. It is in the row's
+  # markup from the first render and shut until the gesture opens it, and it is
+  # the client's: never patched by the server, so an open one is never a state
+  # the server has to remember (UI-103). A row carries no delete control of its
+  # own (UI-64).
+  test "each sidebar chat draws its own menu, shut, from the first render", %{conn: conn} do
     parent = Agent.new_id()
     child = Agent.new_id()
     on_exit(fn -> Enum.each([parent, child], &Elia.Store.delete/1) end)
@@ -484,27 +488,171 @@ defmodule EliaWeb.ChatLiveTest do
     {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
 
     for id <- [parent, child] do
+      # UI-103: the row opens it, so the hook is on the row itself.
+      assert has_element?(
+               view,
+               "#chat-row-#{id}[phx-hook='EliaWeb.ChatList.ChatRowMenu'][data-row-chat='#{id}']"
+             )
+
+      # UI-103: in the markup from the first render, and hidden until then.
+      assert has_element?(view, "#chat-row-#{id} > #chat-row-menu-#{id}[style='display: none']")
+      assert has_element?(view, "#chat-row-menu-#{id}[aria-hidden='true']")
+
+      # The client owns it (UI-103): patching the row never touches the menu.
+      assert has_element?(view, "#chat-row-menu-#{id}[phx-update='ignore']")
+
+      # It sits beside the link, in the row's own box, so neither is nested in
+      # the other (UI-103) — and the link is not inside it.
+      assert has_element?(view, "#chat-row-#{id} > #chat-link-#{id}")
+      refute has_element?(view, "#chat-link-#{id} #chat-row-menu-#{id}")
+      refute has_element?(view, "#chat-link-#{id} button")
+
+      # UI-103: "Rename" first, then the delete entry (UI-64), in that order.
+      assert has_element?(view, "#chat-row-menu-#{id} #rename-chat-#{id}", "Rename")
+      assert has_element?(view, "#chat-row-menu-#{id} #delete-chat-#{id}")
+      assert id_of(view, "#chat-row-menu-#{id} button:first-of-type") == "rename-chat-#{id}"
+      assert id_of(view, "#chat-row-menu-#{id} button:last-of-type") == "delete-chat-#{id}"
+
+      # UI-64: the delete entry keeps its accessible label and names the chat it
+      # deletes. It is a button of the menu, not one of the row's own.
       assert has_element?(
                view,
                "#delete-chat-#{id}[aria-label='Delete chat'][title='Delete chat']"
              )
 
       assert has_element?(view, "#delete-chat-#{id} .hero-trash")
-      # A sibling of the link, and never nested in it (or in another button).
-      assert has_element?(view, "#chat-row-#{id} > #chat-link-#{id}")
-      assert has_element?(view, "#chat-row-#{id} > #delete-chat-#{id}")
-      refute has_element?(view, "#chat-link-#{id} #delete-chat-#{id}")
-      refute has_element?(view, "#chat-link-#{id} button")
-      refute has_element?(view, "#delete-chat-#{id} a")
+      refute has_element?(view, "#chat-row-#{id} button:not(#chat-row-menu-#{id} button)")
     end
 
-    # The link keeps the status indicator and the start time (UI-34, UI-59).
+    # The link keeps the status indicator and the start time (UI-34, UI-59), and
+    # the link is what the menu's gesture is looked for on (UI-103).
     assert has_element?(view, "#chat-link-#{parent} #chat-status-#{parent}")
     assert has_element?(view, "#chat-link-#{parent} #chat-time-#{parent}")
     assert has_element?(view, "#chat-link-#{parent}.bg-base-300")
+    assert has_element?(view, "#chat-link-#{parent}[data-row-link]")
     # UI-64: the confirmation names the chat it deletes.
     assert has_element?(view, "#delete-chat-#{parent}[data-confirm*='delegate this']")
     assert has_element?(view, "#delete-chat-#{child}[data-confirm*='Task one']")
+  end
+
+  # The id of one element, for the assertions about a menu's order (UI-103).
+  defp id_of(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.attribute("id")
+    |> List.first()
+  end
+
+  # UI-104, UI-103: a chat is renamed from its own row. The menu's "Rename" puts
+  # the input in the row's place — the link is not rendered then, so a press on
+  # the row cannot navigate away mid-rename — holding the chat's title with all
+  # of it selected and focused, and the name the input posts on Enter (the
+  # form's own `phx-submit`) is the chat's from then on (TITLE-8, STORE-55).
+  # The row's `title` attribute stays the chat's description (UI-33).
+  test "a chat is renamed from its own row", %{conn: conn} do
+    open = Agent.new_id()
+    other = Agent.new_id()
+    on_exit(fn -> Enum.each([open, other], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+    :ok = Elia.Store.save(other, [Message.user("the other chat")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+    assert has_element?(view, "#chat-link-#{other}[title='the other chat']")
+    refute has_element?(view, "#rename-form-#{other}")
+
+    view |> element("#rename-chat-#{other}") |> render_click()
+
+    # The input takes the link's place, holding the chat's title — not its
+    # description (UI-33) — and the row's link is not rendered at all.
+    assert has_element?(view, "#chat-row-#{other} > #rename-form-#{other}")
+    refute has_element?(view, "#chat-link-#{other}")
+    assert has_element?(view, "#chat-rename-#{other}[value='the other chat']")
+    assert has_element?(view, "#chat-rename-#{other}[maxlength='60']")
+    assert has_element?(view, "#chat-rename-#{other}[phx-hook='EliaWeb.ChatList.ChatRename']")
+    refute has_element?(view, "#chat-rename-#{other} #chat-row-menu-#{other}")
+
+    view
+    |> form("#rename-form-#{other}", %{"title" => "  A name of its own  "})
+    |> render_submit()
+
+    # TITLE-2: a name is shaped like any title; the row shows it and the link is
+    # back. TITLE-9: and it is the user's from then on.
+    assert has_element?(view, "#chat-link-#{other}", "A name of its own")
+    refute has_element?(view, "#rename-form-#{other}")
+    assert Elia.Store.load_title(other) == "A name of its own"
+    assert Elia.Store.title_by(other) == "user"
+  end
+
+  # UI-104, TITLE-2: a name that is blank once trimmed is no title at all — it
+  # saves nothing and the row goes back to what it showed, exactly as
+  # cancelling leaves it.
+  test "a blank name leaves the row as it was", %{conn: conn} do
+    open = Agent.new_id()
+    other = Agent.new_id()
+    on_exit(fn -> Enum.each([open, other], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+    :ok = Elia.Store.save(other, [Message.user("the other chat")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+    view |> element("#rename-chat-#{other}") |> render_click()
+
+    view |> form("#rename-form-#{other}", %{"title" => "   "}) |> render_submit()
+
+    refute has_element?(view, "#rename-form-#{other}")
+    assert has_element?(view, "#chat-link-#{other}", "the other chat")
+    assert Elia.Store.load_title(other) == nil
+    assert Elia.Store.title_by(other) == nil
+  end
+
+  # UI-104: cancelling — the row's own control, and the hook's Escape and press
+  # outside — puts the row back exactly as it was and saves nothing.
+  test "cancelling a rename puts the link back", %{conn: conn} do
+    open = Agent.new_id()
+    other = Agent.new_id()
+    on_exit(fn -> Enum.each([open, other], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+    :ok = Elia.Store.save(other, [Message.user("the other chat")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+    view |> element("#rename-chat-#{other}") |> render_click()
+    view |> element("#cancel-rename-#{other}") |> render_click()
+
+    refute has_element?(view, "#rename-form-#{other}")
+    assert has_element?(view, "#chat-link-#{other}", "the other chat")
+    assert Elia.Store.load_title(other) == nil
+
+    # The same through the event the input's own hook pushes when the focus
+    # leaves it or Escape is pressed in it (UI-104).
+    view |> element("#rename-chat-#{other}") |> render_click()
+    assert has_element?(view, "#rename-form-#{other}")
+    render_hook(view, "cancel_rename", %{})
+
+    refute has_element?(view, "#rename-form-#{other}")
+    assert Elia.Store.load_title(other) == nil
+  end
+
+  # UI-103, UI-64: choosing a menu's entry once is enough — "Rename" opens the
+  # input (UI-104), and a chat can be deleted straight from the menu it opened
+  # (UI-64, UI-65).
+  test "a menu's entries act on the row they were opened for", %{conn: conn} do
+    open = Agent.new_id()
+    other = Agent.new_id()
+    on_exit(fn -> Enum.each([open, other], &Elia.Store.delete/1) end)
+    :ok = Elia.Store.save(open, [Message.user("the open chat")])
+    :ok = Elia.Store.save(other, [Message.user("the other chat")])
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+
+    view |> element("#delete-chat-#{other}") |> render_click()
+
+    refute has_element?(view, "#chat-row-#{other}")
+    assert has_element?(view, "#chat-row-#{open}")
+    assert Elia.Store.list() |> Enum.any?(&(&1.id == other)) == false
+
+    view |> element("#rename-chat-#{open}") |> render_click()
+    assert has_element?(view, "#chat-rename-#{open}")
   end
 
   # UI-64, UI-65: confirming removes the chat, flashes, and leaves the open chat

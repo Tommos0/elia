@@ -20,6 +20,13 @@ defmodule Elia.ChatTitlesTest do
 
   defp await_status(id, status), do: assert_receive({:agent, ^id, {:status, ^status}}, 5000)
 
+  # The session a chat has, ended at the test's end — for the tests that let
+  # `Elia.Agent.rename/2` start one (TITLE-8).
+  defp stop_session(id) do
+    if pid = GenServer.whereis(Elia.Agent.Session.via(id)),
+      do: DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+  end
+
   defp listed(id), do: Store.list() |> Enum.filter(&(&1.id == id))
 
   ## The stored title (TITLE-1, TITLE-2, STORE-32, STORE-33)
@@ -188,6 +195,107 @@ defmodule Elia.ChatTitlesTest do
     assert Store.load_title(child) == "Something else"
     assert [entry] = listed(child)
     assert entry.title == "Something else"
+  end
+
+  ## Naming a chat by hand (TITLE-8, TITLE-9, STORE-55)
+
+  # TITLE-8, TITLE-2, STORE-55: a name is a title like any other, saved with the
+  # chat and broadcast so every view of it agrees (SESS-6, TITLE-1).
+  test "a chat is named by hand, shaped, saved and broadcast", %{id: id} do
+    :ok = Store.save(id, [Message.user("hi")])
+    on_exit(fn -> Store.delete(id) end)
+    start_session(id)
+
+    assert {:ok, "Chat titles"} = Agent.rename(id, "  Chat \n titles  ")
+
+    assert_receive {:agent, ^id, {:title, "Chat titles"}}
+    assert Agent.snapshot(id).title == "Chat titles"
+    assert Store.load_title(id) == "Chat titles"
+    # TITLE-9: the name is the user's, which the chat's file records.
+    assert Store.title_by(id) == "user"
+    assert Store.chat_title(id) == "Chat titles"
+    assert [entry] = listed(id)
+    assert entry.title == "Chat titles"
+    assert entry.description == "hi"
+  end
+
+  # TITLE-8: a chat whose session isn't running is reached by starting it
+  # (CSET-1), and a chat with no messages yet is saved with its new name — not
+  # skipped, as the model's own naming skips it (TITLE-4).
+  test "a chat with no messages is saved with the name it is given", %{id: id} do
+    on_exit(fn -> Store.delete(id) end)
+    on_exit(fn -> stop_session(id) end)
+
+    refute Agent.live?(id)
+    assert {:ok, "Named before its first word"} = Agent.rename(id, "Named before its first word")
+
+    assert Store.load_title(id) == "Named before its first word"
+    assert Store.title_by(id) == "user"
+    assert Store.chat_title(id) == "Named before its first word"
+  end
+
+  # TITLE-8, TITLE-2: a name that is blank once trimmed changes nothing, and
+  # says so — the refusal the row's box leaves open to be corrected.
+  test "a blank name is refused", %{id: id} do
+    :ok = Store.save(id, [Message.user("hi")], title: "The name it had")
+    on_exit(fn -> Store.delete(id) end)
+
+    assert {:error, message} = Agent.rename(id, "  \n ")
+    assert message =~ "blank"
+
+    assert Store.load_title(id) == "The name it had"
+    # TITLE-9: a refused name is not a hand-set one.
+    assert Store.title_by(id) == nil
+  end
+
+  # TITLE-9, TITLE-6: the name a user gives is theirs — the model's `set_title`
+  # refuses it — and the record is saved with the chat, so a session that
+  # resumes it holds to the refusal.
+  test "the model's set_title refuses a name set by hand", %{id: id} do
+    :ok = Store.save(id, [Message.user("hi")])
+    on_exit(fn -> Store.delete(id) end)
+    pid = start_session(id)
+    on_exit(fn -> stop_session(id) end)
+
+    assert {:ok, "Mine"} = Agent.rename(id, "Mine")
+    assert_receive {:agent, ^id, {:title, "Mine"}}
+
+    assert {:error, message} = Agent.set_title(id, "The model's")
+    assert message =~ "by hand"
+    refute_receive {:agent, ^id, {:title, _}}, 50
+    assert Store.load_title(id) == "Mine"
+
+    # The same chat, its session started again: the refusal is the file's too.
+    DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid)
+    start_session(id)
+
+    assert {:error, _message} = Agent.set_title(id, "The model's")
+    assert Store.load_title(id) == "Mine"
+    assert Store.chat_title(id) == "Mine"
+  end
+
+  # TITLE-9: a title the model set is not the user's — no record is written —
+  # so the model may name the chat again.
+  test "a title the model set is not a hand-set one", %{id: id} do
+    :ok = Store.save(id, [Message.user("hi")])
+    on_exit(fn -> Store.delete(id) end)
+    start_session(id)
+
+    assert {:ok, "First"} = Agent.set_title(id, "First")
+    assert Store.title_by(id) == nil
+
+    assert {:ok, "Second"} = Agent.set_title(id, "Second")
+    assert Store.load_title(id) == "Second"
+  end
+
+  # STORE-55: a chat saved by a version that didn't write the record reads as
+  # one whose title was not set by hand, exactly as it did.
+  test "a chat file without the record names no hand-set title", %{id: id} do
+    :ok = Store.save(id, [Message.user("hi")], title: "An older title")
+    on_exit(fn -> Store.delete(id) end)
+
+    assert Store.title_by(id) == nil
+    assert Store.load_title(id) == "An older title"
   end
 
   ## The skill and its tool (TITLE-5, SKILL-7)

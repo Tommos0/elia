@@ -411,6 +411,61 @@ defmodule EliaWeb.ChatListTest do
     a_at < b_at
   end
 
+  # UI-103, UI-104: the list's state is what a row is drawn from, so the drawer
+  # every other page opens has the same rows — and the same menu — as the
+  # sidebar (UI-91, UI-92), under its own `drawer-` ids. The menu's gesture is
+  # the hook's (UI-103, a browser: `chat_row_menu_test.exs`); what the server
+  # keeps is which row is being renamed and the name it is given, and it is the
+  # one list the sidebar and the drawer draw.
+  test "the drawer's rows carry the same menu, and one row is renamed at a time",
+       %{conn: conn} do
+    with_empty_store(fn ->
+      [first, second] = save_chats(2)
+
+      # A page without a chat list of its own, so the drawer is the list
+      # (UI-91, UI-92).
+      {:ok, view, _html} = live(conn, ~p"/system")
+      view |> element("#chats-toggle") |> render_click()
+
+      # UI-103: the drawer's rows open the same menu the sidebar's do.
+      assert has_element?(
+               view,
+               "#drawer-chat-row-#{second}[phx-hook='EliaWeb.ChatList.ChatRowMenu']"
+             )
+
+      assert has_element?(
+               view,
+               "#drawer-chat-row-menu-#{second} #drawer-rename-chat-#{second}",
+               "Rename"
+             )
+
+      assert has_element?(view, "#drawer-chat-row-menu-#{second} #drawer-delete-chat-#{second}")
+
+      # UI-104: "Rename" puts the input in that row only, and the row's link is
+      # not rendered while it is there.
+      view |> element("#drawer-rename-chat-#{second}") |> render_click()
+
+      assert has_element?(view, "#drawer-chat-rename-#{second}")
+      refute has_element?(view, "#drawer-chat-rename-#{first}")
+      refute has_element?(view, "#drawer-chat-link-#{second}")
+
+      # A cancel with no row being renamed (a stale client) is nothing to do.
+      render_hook(view, "cancel_rename", %{})
+      refute has_element?(view, "#drawer-chat-rename-#{second}")
+      assert has_element?(view, "#drawer-chat-link-#{second}")
+
+      view |> element("#drawer-rename-chat-#{second}") |> render_click()
+
+      view
+      |> form("#drawer-rename-form-#{second}", %{"title" => "Named from the drawer"})
+      |> render_submit()
+
+      assert has_element?(view, "#drawer-chat-link-#{second}", "Named from the drawer")
+      assert Elia.Store.load_title(second) == "Named from the drawer"
+      assert Elia.Store.title_by(second) == "user"
+    end)
+  end
+
   # N chats, oldest first, so the list's pages can be named (STORE-12 order).
   defp save_chats(n) do
     for _ <- 1..n do

@@ -32,6 +32,8 @@ defmodule Elia.Store do
   chat's turn limits (STORE-27), of which only the values that aren't the
   default (LIMIT-1) are stored, `opts[:title]` the chat's own title
   (STORE-32), which is stored only when it isn't blank (TITLE-2),
+  `opts[:title_by]` (the string `"user"`) the record that the chat's title was
+  set by hand (STORE-55, TITLE-9), which is stored only when it was,
   `opts[:done]` (a boolean) whether the chat is marked done (STORE-34), which is
   stored only when it is `true`, `opts[:effort]` the chat's own reasoning
   effort (`"low"`, `"medium"` or `"high"`, LLM-39, STORE-37), which is stored
@@ -62,6 +64,12 @@ defmodule Elia.Store do
         nil -> chat
         title -> Map.put(chat, :title, title)
       end
+
+    # STORE-55, TITLE-9: a title set by hand is the user's, recorded with the
+    # chat so the model's `set_title` refuses it (TITLE-6) and a session that
+    # resumes the chat holds to the refusal. A title the model set, and one
+    # derived from the first message (STORE-7), carry no entry.
+    chat = if opts[:title_by] == "user", do: Map.put(chat, :title_by, "user"), else: chat
 
     chat =
       case opts[:compaction] do
@@ -253,6 +261,21 @@ defmodule Elia.Store do
     case load_meta(id) do
       %{} = meta -> shape_title(Map.get(meta, :title))
       nil -> nil
+    end
+  end
+
+  @doc """
+  Whether the chat's title was set by hand (STORE-55, TITLE-9): the string
+  `"user"` when it was, or `nil` when the chat is missing, unreadable, corrupt,
+  or was saved by a version that didn't write the field — so a chat saved
+  before this feature reads as one whose title was not set by hand, exactly as
+  it did.
+  """
+  @spec title_by(binary()) :: binary() | nil
+  def title_by(id) do
+    case load_meta(id) do
+      %{title_by: value} when is_binary(value) -> value
+      _ -> nil
     end
   end
 

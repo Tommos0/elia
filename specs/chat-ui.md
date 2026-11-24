@@ -1,6 +1,6 @@
 # Chat UI
 
-Status: Draft
+Status: Implemented
 
 A single LiveView where the user chats with the agent, watches responses
 stream in, approves or denies tool calls, and switches between saved chats.
@@ -198,7 +198,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   highlighted (UI-4) and "New chat" starts in its project (UI-31); elsewhere none
   is highlighted and it starts in the default project (PROJ-8).
 - **UI-93** A chat row in the drawer opens that chat (UI-2), and the delete
-  entry of its row menu (UI-101) deletes it as UI-64 and UI-65 describe: the row
+  entry of its row menu (UI-103) deletes it as UI-64 and UI-65 describe: the row
   leaves the list with a "Chat deleted." flash, while the page the user is on
   stays where it is.
   Deleting the chat that page belongs to (`/c/<id>/settings`,
@@ -245,7 +245,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   delete a chat: a row carries no delete control of its own. *Changed:* a row
   used to carry a trash button (`#delete-chat-<id>`) of its own beside its link
   (`#chat-link-<id>`).
-- **UI-101** A chat row opens a menu of its own on a long press of it — a press
+- **UI-103** A chat row opens a menu of its own on a long press of it — a press
   held for about half a second — on a right-click on it with a pointer, and from
   the keyboard, the context-menu key or Shift+F10, while the row's link has
   focus. The menu (`#chat-row-menu-<id>`) is in the row's markup from the first
@@ -260,10 +260,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
   leaves the list scrolling as it did. One menu is open at a time: opening
   another row's closes the first. It closes on Escape, which puts focus back on
   the row's link, on a press outside it, and once an entry is chosen (UI-64,
-  UI-102). It is drawn above the list rather than clipped by its scroll box, and
+  UI-104). It is drawn above the list rather than clipped by its scroll box, and
   within the screen's width (UI-78), so a row at the list's edge shows all of
   it. A chat row in the drawer (UI-92, UI-93) opens the same menu the same way.
-- **UI-102** Choosing "Rename" (UI-101) renames the chat in its row: the input
+- **UI-104** Choosing "Rename" (UI-103) renames the chat in its row: the input
   (`#chat-rename-<id>`) takes the link's place in the row — the row's link is
   not rendered while it is open, so no control is nested in another and a press
   on the row cannot navigate away mid-rename — holding the chat's title with all
@@ -811,7 +811,7 @@ disagree.
 
 The chat list lives in one place: `EliaWeb.ChatList` draws it (the "New chat"
 button, the rows with their status indicators, the menu a row opens and the
-rename input it shows (UI-101, UI-102), the empty state and "Load more chats"),
+rename input it shows (UI-103, UI-104), the empty state and "Load more chats"),
 and its hook in the session's
 `on_mount` list gives every page the list's state — the listed chats of the
 open project and whether more are saved in it, the page size (UI-84, UI-85),
@@ -850,7 +850,7 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   sidebar and its rows, its row menu and renaming a chat in a row, a delete,
   the Markdown in a reply, and what `/chats`
   opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37, UI-45, UI-59,
-  UI-63 to UI-66, UI-77, UI-101, UI-102).
+  UI-63 to UI-66, UI-77, UI-103, UI-104).
 - No test: UI-5, UI-11, UI-13, UI-22 to UI-24, UI-49 — no test in the
   tree asserts them: the sidebar's "No chats yet" state, the "Working" indicator
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding
@@ -912,7 +912,7 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_row_menu_test.exs` (a row's menu in a real
   browser: the long press and the right-click that open it, that the browser's
   own menu does not follow them, a press that becomes a scroll opening none, and
-  Escape and a press outside closing it — UI-101, UI-102; a browser test, so it
+  Escape and a press outside closing it — UI-103, UI-104; a browser test, so it
   runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
   browser: Enter sending a message, the transcript at its end, the reader's own

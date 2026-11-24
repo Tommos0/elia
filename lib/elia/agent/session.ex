@@ -61,6 +61,12 @@ defmodule Elia.Agent.Session do
     # The chat's own title (TITLE-1, STORE-32), nil when it has none and its
     # title is the first user message (STORE-7).
     :title,
+    # Whether the chat's title was set by hand (TITLE-9, STORE-55): "user" when
+    # it was, nil when the model set it or it is the first user message
+    # (STORE-7). Held here and not only in the file, so the refusal the model's
+    # `set_title` gives (TITLE-6) survives this session's next save and a
+    # resumed session's state.
+    :title_by,
     # Sub-task metadata when the chat was started by `spawn_task` (STORE-16).
     :task_meta,
     messages: [],
@@ -145,6 +151,8 @@ defmodule Elia.Agent.Session do
       task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
       compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
       title: if(persist, do: Elia.Store.load_title(opts[:id])),
+      # TITLE-9, STORE-55: "user" when the chat's title was set by hand.
+      title_by: if(persist, do: Elia.Store.title_by(opts[:id])),
       done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
     }
 
@@ -193,6 +201,7 @@ defmodule Elia.Agent.Session do
              not is_map_key(state, :pause) or
              not is_map_key(state, :turn) or
              not is_map_key(state, :title) or not is_map_key(state, :input) or
+             not is_map_key(state, :title_by) or
              not is_map_key(state, :done) or not is_map_key(state, :cwd) do
     upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
 
@@ -235,6 +244,14 @@ defmodule Elia.Agent.Session do
       if is_map_key(state, :title),
         do: upgraded,
         else: %{upgraded | title: if(upgraded.persist, do: Elia.Store.load_title(upgraded.id))}
+
+    upgraded =
+      if is_map_key(state, :title_by),
+        do: upgraded,
+        else: %{
+          upgraded
+          | title_by: if(upgraded.persist, do: Elia.Store.title_by(upgraded.id))
+        }
 
     upgraded =
       if is_map_key(state, :done),
@@ -437,6 +454,15 @@ defmodule Elia.Agent.Session do
     {:reply, {:error, :not_pending}, state}
   end
 
+  # TITLE-6, TITLE-9: the model's `set_title` refuses a chat whose title was set
+  # by hand — that name is the user's, so overwriting it is the one thing the
+  # model must not do — saving and broadcasting nothing. The record is held in
+  # this session's state (and saved with the chat, STORE-55), so a session that
+  # resumes the chat holds to the refusal.
+  def handle_call({:set_title, _text}, _from, %{title_by: "user"} = state) do
+    {:reply, {:error, "This chat's title was set by hand, so it is the user's."}, state}
+  end
+
   # SESS-33, TITLE-4: the chat's own title, set by the model's `set_title` tool
   # (TITLE-5). A blank title is no title at all (TITLE-2, TITLE-6). A sub-task
   # may name itself like any chat (TITLE-3): its spawn's title is its first
@@ -451,6 +477,26 @@ defmodule Elia.Agent.Session do
         # As with the model selection, an empty chat is saved with its first
         # message.
         state = if state.messages == [], do: state, else: save(state)
+        broadcast(state, {:title, title})
+        {:reply, {:ok, title}, state}
+    end
+  end
+
+  # TITLE-8, TITLE-9: naming a chat by hand, from its row in the chat list
+  # (UI-104). The text is a title like any other (TITLE-2), and a name at all
+  # gives the chat that title of its own and records that it was set by hand
+  # (STORE-55), so the model's `set_title` refuses it from here on (TITLE-6).
+  # Unlike the model's own naming, a chat with no messages yet is saved with its
+  # new name too (TITLE-8, STORE-22), so the name isn't lost before the first
+  # message.
+  def handle_call({:rename, text}, _from, state) do
+    case Elia.Store.shape_title(text) do
+      nil ->
+        {:reply, {:error, "The title must not be blank."}, state}
+
+      title ->
+        state = %{state | title: title, title_by: "user"}
+        state = save(state)
         broadcast(state, {:title, title})
         {:reply, {:ok, title}, state}
     end
@@ -1435,6 +1481,9 @@ defmodule Elia.Agent.Session do
         # none (which takes the entry off the file).
         turn: Map.get(state, :turn),
         title: Map.get(state, :title),
+        # STORE-55, TITLE-9: "user" when the chat's title was set by hand, so
+        # the record is saved with the chat and outlives this process.
+        title_by: Map.get(state, :title_by),
         done: Map.get(state, :done, false),
         # STORE-46, WD-2: the chat's working directory, saved so it
         # outlives this process.

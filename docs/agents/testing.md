@@ -124,6 +124,15 @@ Playwright.
 - The first run after a recompile can fail with `Timeout 2000ms exceeded` on
   `visit`, while the test env server boots, and the same run passes when it is
   repeated — re-run it before chasing the page.
+- `press` presses a **key** on a selector, and `click` is a whole click: neither
+  can hold a pointer down, so a gesture that depends on *how long* a press lasts
+  (a long press, `specs/chat-ui.md` UI-103) is driven with Playwright's own
+  mouse, inside `unwrap(conn, fn %{page_id: page} -> ... end)`:
+  `PlaywrightEx.Page.mouse_move`, `mouse_down` (and `mouse_up`), `Process.sleep`
+  between them, and `button: :right` for a right-click (there is no
+  `mouse_click`). What the browser then *sends* — the click that follows a long
+  press, a `contextmenu` the hook cancels — is the reason such a test is a
+  browser one at all.
 - A closed `<details>` still lays its hidden content out in Chromium — it is in
   the DOM, and has a height — so a test that the card is collapsed asks
   `element.checkVisibility()`, not `offsetHeight`, and opens it by clicking the
