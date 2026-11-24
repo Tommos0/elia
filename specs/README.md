@@ -104,7 +104,7 @@ it.
 | --- | --- | --- |
 | [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md`, skills and allowlist of hosts its chats may reach; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon |
 | [Bundle refresh](bundle-refresh.md) | `BUNDLE` | An open page loads the bundle a deploy served, and keeps the page's own state while it does |
-| [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about |
+| [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about, within the chat's own project |
 | [Dashboard](dashboard.md) | `DASH` | `/` is a home screen: what needs you, where you left off, recent chats, projects, the machine and the deploy state |
 | [Chat UI](chat-ui.md) | `UI` | LiveView chat: transcript, Markdown, streaming, approvals, chat list |
 | [Chat titles](chat-titles.md) | `TITLE` | A chat's own title, set by the agent's `set_title` tool; the first-message derivation stays as the fallback |

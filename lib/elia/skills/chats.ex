@@ -9,16 +9,18 @@ defmodule Elia.Skills.Chats do
   They read Elia's own saved chats (STORE-1) through the harness — no command
   is run and no approval is asked — so they work in a chat whose jail is on too
   (HIST-1, ISOL-16), where `.elia/sessions` is out of reach of a command
-  (ISOL-6).
+  (ISOL-6). They see the chats of the chat's own project and no other
+  (HIST-11).
   """
 
   @behaviour Elia.Skill
 
   alias Elia.LLM.Message
 
-  # How many chats a listing, a lookup by title and a search consider, the same
-  # order as the chat list's own `Store.list/1` call (UI-4): more chats than
-  # this are older than anything a turn needs to consult.
+  # How many chats a listing, a lookup by title and a search consider — of the
+  # chat's own project (HIST-11), in the same order as the chat list's own
+  # `Store.list/1` call (UI-4): more chats than this are older than anything a
+  # turn needs to consult.
   @scan 1_000
 
   @list_default 20
@@ -60,6 +62,12 @@ defmodule Elia.Skills.Chats do
     its messages, so a chat whose title holds every term is reported before \
     one whose title does not.
 
+    The three tools see the chats of this chat's own project and no other: \
+    `list_chats` lists that project's chats, `read_chat` reads one of them — \
+    an id belonging to another project is refused — and `search_chats` \
+    searches that project's chats. Another project's history is not yours to \
+    consult.
+
     A chat is named by its id, the one in its URL (`/c/<id>`). The tools read \
     Elia's own saved chats through the harness — not with a command — so they \
     work in a chat whose jail is on too: `.elia/sessions` is out of a \
@@ -90,9 +98,10 @@ defmodule Elia.Skills.Chats do
         description:
           "List chats other than this one, newest first, as JSON: each chat's `id`, " <>
             "`title`, `created_at`, `updated_at`, `project`, `parent`, `status` and how " <>
-            "many `messages` it holds. `query` keeps the chats whose title or description " <>
-            "contains it and `project` those of one project. `children` keeps this chat's " <>
-            "own sub-tasks (`true`), or those together with their own children " <>
+            "many `messages` it holds. Only the chats of this chat's own project are " <>
+            "listed. `query` keeps the chats whose title or description contains it. " <>
+            "`children` keeps this chat's own sub-tasks (`true`), or those together " <>
+            "with their own children " <>
             "(`\"all\"`). Use it to find the id to read.",
         input_schema: %{
           "type" => "object",
@@ -101,7 +110,6 @@ defmodule Elia.Skills.Chats do
               "type" => "string",
               "description" => "Only chats whose title or description contains this text"
             },
-            "project" => %{"type" => "string", "description" => "Only chats of this project id"},
             "limit" => %{
               "type" => "integer",
               "description" => "How many chats, newest first (default 20, at most 100)"
@@ -125,9 +133,9 @@ defmodule Elia.Skills.Chats do
         name: "read_chat",
         description:
           "Read a chat's saved transcript, by `id` or by `query` when it matches " <>
-            "exactly one chat's title. The result is the chat's messages in order, with " <>
-            "its tool calls and their results; a long chat is read in pieces with " <>
-            "`offset` and `limit`.",
+            "exactly one chat's title. Only a chat of this chat's own project can be " <>
+            "read. The result is the chat's messages in order, with its tool calls and " <>
+            "their results; a long chat is read in pieces with `offset` and `limit`.",
         input_schema: %{
           "type" => "object",
           "properties" => %{
@@ -148,13 +156,14 @@ defmodule Elia.Skills.Chats do
           "required" => []
         },
         approval: :never,
-        run: fn input, _ctx -> read_chat(input) end
+        run: fn input, ctx -> read_chat(input, ctx) end
       },
       %Elia.Tool{
         name: "search_chats",
         description:
-          "Search the saved chats for a query of terms — every one of them has to be " <>
-            "there, in a message or in a chat's title — ignoring case, as JSON: the " <>
+          "Search the saved chats of this chat's own project for a query of terms — " <>
+            "every one of them has to be there, in a message or in a chat's title — " <>
+            "ignoring case, as JSON: the " <>
             "`id` and `title` of each chat with a match, and the matching message's " <>
             "`index`, `role` and a `snippet` of the text around the match. A chat whose " <>
             "title holds every term comes first, then the newest chats, then the " <>
@@ -174,24 +183,31 @@ defmodule Elia.Skills.Chats do
           "required" => ["query"]
         },
         approval: :never,
-        run: fn input, _ctx -> search_chats(input) end
+        run: fn input, ctx -> search_chats(input, ctx) end
       }
     ]
   end
+
+  # HIST-11: the project the chat a call runs in belongs to (PROJ-9, PROJ-12).
+  # A tool context that names no project — a test calling a tool directly —
+  # works in Elia's own, as a chat with no `project_id` and one whose project
+  # has been deleted both belong there (PROJ-9).
+  defp project(ctx), do: ctx[:project] || Elia.Projects.harness()
 
   ## list_chats (HIST-2, HIST-3)
 
   defp list_chats(input, ctx) do
     query = blank_to_nil(input["query"])
-    project = blank_to_nil(input["project"])
     limit = clamp(input["limit"], @list_default, @list_max)
     children = children_ids(input["children"], ctx[:session_id])
     running = MapSet.new(Elia.Agent.running())
 
+    # HIST-2, HIST-11: the chats of the project this chat belongs to and no
+    # other's, as the chat list holds one project's chats (PROJ-31).
     chats =
-      Elia.Store.list(@scan)
+      Elia.Store.list(@scan, where: Elia.Projects.chats_of(project(ctx)))
       |> Enum.filter(&Elia.Store.valid_id?(&1.id))
-      |> Enum.filter(&matching?(&1, query, project))
+      |> Enum.filter(&matching?(&1, query))
       |> Enum.filter(&of_group?(&1, children))
       |> Enum.take(limit)
       |> Enum.map(&listed(&1, running))
@@ -227,10 +243,12 @@ defmodule Elia.Skills.Chats do
     end)
   end
 
-  defp matching?(entry, query, project) do
-    (is_nil(project) or Map.get(entry, :project_id) == project) and
-      (is_nil(query) or contains?(entry.title, query) or
-         contains?(Map.get(entry, :description) || "", query))
+  # HIST-2: the `query` filter — the title or the description (STORE-10) holds
+  # it, ignoring case. Which chats a listing considers at all is HIST-11's
+  # project (PROJ-31).
+  defp matching?(entry, query) do
+    is_nil(query) or contains?(entry.title, query) or
+      contains?(Map.get(entry, :description) || "", query)
   end
 
   defp listed(entry, running) do
@@ -262,24 +280,24 @@ defmodule Elia.Skills.Chats do
 
   ## read_chat (HIST-4 - HIST-8)
 
-  defp read_chat(input) do
-    with {:ok, id} <- chat_to_read(input), do: transcript(id, input)
+  defp read_chat(input, ctx) do
+    with {:ok, id} <- chat_to_read(input, project(ctx)), do: transcript(id, input)
   end
 
-  # HIST-4, HIST-8: the chat to read is the given `id`, or the one chat whose
-  # title a `query` matches.
-  defp chat_to_read(input) do
+  # HIST-4, HIST-8, HIST-11: the chat to read is the given `id`, or the one
+  # chat of this chat's own project whose title a `query` matches.
+  defp chat_to_read(input, project) do
     id = blank_to_nil(input["id"])
     query = blank_to_nil(input["query"])
 
     cond do
-      id -> check_id(id)
-      query -> by_title(query)
+      id -> check_id(id, project)
+      query -> by_title(query, project)
       true -> {:error, "Give the chat's `id`, or a `query` that matches one chat's title."}
     end
   end
 
-  defp check_id(id) do
+  defp check_id(id, project) do
     cond do
       not Elia.Store.valid_id?(id) ->
         {:error,
@@ -289,14 +307,28 @@ defmodule Elia.Skills.Chats do
       not Elia.Store.exists?(id) ->
         {:error, "No saved chat has the id #{inspect(id)}. Use `list_chats` to find one."}
 
+      not in_project?(id, project) ->
+        {:error,
+         "The chat #{inspect(id)} belongs to another project. These tools read the chats " <>
+           "of this chat's own project only."}
+
       true ->
         {:ok, id}
     end
   end
 
-  defp by_title(query) do
+  # HIST-11: whether a chat belongs to `project`, as a listing resolves it
+  # (PROJ-9, PROJ-31).
+  defp in_project?(id, project) do
+    case Elia.Store.entry(id) do
+      nil -> false
+      entry -> Elia.Projects.chats_of(project).(entry)
+    end
+  end
+
+  defp by_title(query, project) do
     matches =
-      Elia.Store.list(@scan)
+      Elia.Store.list(@scan, where: Elia.Projects.chats_of(project))
       |> Enum.filter(&Elia.Store.valid_id?(&1.id))
       |> Enum.filter(&contains?(&1.title, query))
 
@@ -306,14 +338,15 @@ defmodule Elia.Skills.Chats do
 
       [] ->
         {:error,
-         "No saved chat's title matches #{inspect(query)}. Use `list_chats` to see the " <>
-           "chats there are."}
+         "No chat of this chat's own project has a title matching #{inspect(query)}. " <>
+           "Use `list_chats` to see the chats there are."}
 
       many ->
         named = Enum.take(many, @candidates)
 
         {:error,
-         "#{length(many)} chats' titles match #{inspect(query)}; name the one you want by " <>
+         "#{length(many)} chats of this chat's own project have a title matching " <>
+           "#{inspect(query)}; name the one you want by " <>
            "`id`:\n" <>
            Enum.map_join(named, "\n", &"#{&1.id}  #{&1.title}") <>
            left_out(length(many))}
@@ -417,7 +450,7 @@ defmodule Elia.Skills.Chats do
 
   ## search_chats (SEARCH-7 - SEARCH-11)
 
-  defp search_chats(input) do
+  defp search_chats(input, ctx) do
     case blank_to_nil(input["query"]) do
       nil ->
         # SEARCH-11: a query is required, and a blank one is the same as none.
@@ -426,7 +459,7 @@ defmodule Elia.Skills.Chats do
       query ->
         limit = clamp(input["limit"], @search_default, @search_max)
         terms = terms(query)
-        entries = candidates()
+        entries = candidates(project(ctx))
 
         # SEARCH-4, SEARCH-5: the index is brought up to date with the chats a
         # search considers before anything is looked up in it, so a chat saved,
@@ -448,10 +481,12 @@ defmodule Elia.Skills.Chats do
   # way the index is, so it is found whatever its case.
   defp terms(query), do: query |> String.downcase() |> String.split(~r/\s+/, trim: true)
 
-  # The chats a search considers: the newest `@scan`, as a listing and a
-  # lookup by title consider (UI-4).
-  defp candidates do
-    Elia.Store.list(@scan) |> Enum.filter(&Elia.Store.valid_id?(&1.id))
+  # SEARCH-13, HIST-11: the chats a search considers — the newest `@scan` of
+  # the project the chat it runs in belongs to, as a listing of one project's
+  # chats considers them (PROJ-31, UI-4).
+  defp candidates(project) do
+    Elia.Store.list(@scan, where: Elia.Projects.chats_of(project))
+    |> Enum.filter(&Elia.Store.valid_id?(&1.id))
   end
 
   # SEARCH-8, SEARCH-9: the matches of every chat, ordered with a chat whose

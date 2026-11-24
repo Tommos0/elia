@@ -14,6 +14,9 @@ saved chats through the harness instead — the way a parent reads a child chat'
 result with `await_task` (SUBTASK-27) — so a chat can consult the earlier ones
 whether or not it is jailed, and without a command or an approval prompt.
 
+They are confined to the chat's own project (HIST-11): what a chat can consult
+is its own project's history and not another project's.
+
 ## Requirements
 
 - **HIST-1** The built-in skill `chats` (`Elia.Skills.Chats`, listed in the
@@ -27,16 +30,18 @@ whether or not it is jailed, and without a command or an approval prompt.
   where `.elia/sessions` is out of reach and its files are Erlang
   terms rather than text anyway (STORE-1) — and that what they read is the chat
   as it was last saved (STORE-1), so a chat that is running now may not have its
-  current turn in its file yet.
-- **HIST-2** `list_chats` takes `query`, `project`, `limit` and `children`, all
-  optional, and returns the matching chats newest first (STORE-12) as a JSON
-  array of objects with `id`, `title` (STORE-33), `created_at` and `updated_at`
+  current turn in its file yet, and that they see the chats of the chat's own
+  project and no other (HIST-11).
+- **HIST-2** `list_chats` takes `query`, `limit` and `children`, all optional,
+  and returns the matching chats of the chat's own project (HIST-11) newest
+  first (STORE-12) as a JSON array of objects with `id`, `title` (STORE-33),
+  `created_at` and `updated_at`
   (ISO 8601 UTC, STORE-11), `project` (the chat's project id or `null`,
   STORE-20), `parent` (the id of the chat that spawned it, or `null` for a chat
   nothing spawned, STORE-17), `status` (HIST-3) and `messages` (how many
   messages the chat holds). `query` keeps a chat whose title or description
-  (STORE-10) contains it, ignoring case; `project` keeps a chat of that project
-  (STORE-19); `limit` is how many are returned, 20 by default and at most 100.
+  (STORE-10) contains it, ignoring case; `limit` is how many are returned, 20 by
+  default and at most 100.
   `children` keeps this chat's own sub-tasks (STORE-18) and nothing else:
   `true` lists the chats this one started, and `"all"` lists those together with
   their own children — without it (or with `false`) nothing is filtered by
@@ -57,10 +62,11 @@ whether or not it is jailed, and without a command or an approval prompt.
   (SUBTASK-33).
 - **HIST-4** `read_chat` takes `id` (a chat id, STORE-4) and returns that
   chat's saved transcript (STORE-1), or, instead of `id`, `query`: a non-blank
-  string that must match exactly one saved chat's title, ignoring case, as a
-  substring of the title (STORE-33), whose chat is then read. `offset` (the
-  1-based index of the first message shown, default 1) and `limit` (how many
-  messages, 100 by default and at most 200) page through a long transcript.
+  string that must match exactly one title among the chats of the chat's own
+  project (HIST-11), ignoring case, as a substring of the title (STORE-33),
+  whose chat is then read. `offset` (the 1-based index of the first message
+  shown, default 1) and `limit` (how many messages, 100 by default and at most
+  200) page through a long transcript.
 - **HIST-5** `read_chat`'s result is text: a header naming the chat and its
   saved state — `# <title> (<id>)`, then `created <ISO 8601>, updated <ISO
   8601>, project <id|none>, <status> (HIST-3), <n> messages` — then
@@ -83,8 +89,9 @@ whether or not it is jailed, and without a command or an approval prompt.
   the chat's message count, and a chat that holds no message reads as its
   header and `[messages 0-0 of 0]` alone.
 - **HIST-8** `read_chat` is a tool error, naming what it was given and changing
-  nothing, when its `id` isn't a valid chat id (STORE-4) or has no saved chat
-  (STORE-24), and when its `query` matches no chat or more than one — the error
+  nothing, when its `id` isn't a valid chat id (STORE-4), has no saved chat
+  (STORE-24) or names a chat of another project (HIST-11), and when its `query`
+  matches no chat of the chat's own project or more than one — the error
   names the matching chats' ids and titles (up to 10) so the model can pick
   rather than guess. `id` and `query` are both required, or the call is a tool
   error saying so.
@@ -105,6 +112,15 @@ whether or not it is jailed, and without a command or an approval prompt.
 - **HIST-10** The three tools never write: no saved chat is changed, no session
   is started for a chat they read — reading a chat is not a way to resume it
   (SESS-14) — and no approval is asked, as for `await_task` (SUBTASK-27, APPR-1).
+- **HIST-11** The three tools see the chats of the project the chat they run in
+  belongs to (PROJ-9) and no other: `list_chats` lists that project's chats,
+  `read_chat` reads one of them — an `id` naming another project's chat is a
+  tool error (HIST-8) — and `search_chats` searches that project's chats
+  (SEARCH-13). The project is the one the chat's tool context carries (PROJ-12),
+  and a context that names no project works in Elia's own (PROJ-9), so a chat
+  with no `project_id` and one whose project has been deleted (PROJ-7) see Elia's
+  own project's chats. `list_chats` therefore takes no `project` argument, and
+  none of the three can be pointed at another project's history.
 
 ## Out of scope
 
@@ -119,6 +135,9 @@ whether or not it is jailed, and without a command or an approval prompt.
 - **A per-chat switch.** The tools are in every chat, jailed or not (HIST-1);
   what they may read is Elia's own saved chats and nothing else — not the
   settings database and not a file outside `.elia/sessions`.
+- **Another project's chats.** A chat consults its own project's history
+  (HIST-11), as the chat list holds the open project's chats and no other's
+  (PROJ-31).
 
 ## Stored data
 
@@ -135,6 +154,8 @@ from the same file. No migration is needed.
 `Elia.Store` (`list/1`, `load/1`, `entry/1` and `children/1`, STORE-18,
 STORE-36),
 `Elia.Agent` (`running/0` for HIST-3's `working`),
+`Elia.Projects` (`chats_of/1` and `chat_project_id/2`, PROJ-31: the project the
+three tools see, HIST-11),
 `config/config.exs` (the skill in `builtin`).
 
 ## Tests
@@ -142,7 +163,7 @@ STORE-36),
 - `test/elia/skills/chats_test.exs` (the skill and its instructions, listing,
   filtering — the `children` filter among it, HIST-2, SUBTASK-26 — and statuses,
   reading a chat with paging and truncation, reading by query and the errors, and
-  searching — HIST-2 to HIST-8, HIST-10; how a search reads a query is SEARCH-7
-  to SEARCH-12, `specs/chat-search.md`).
+  searching — HIST-2 to HIST-8, HIST-10, HIST-11; how a search reads a query is
+  SEARCH-7 to SEARCH-13, `specs/chat-search.md`).
 - `test/elia/store_test.exs` (`entry/1`, STORE-36) and `test/elia/agent_test.exs`
   (a session's tool list names the three, HIST-1).

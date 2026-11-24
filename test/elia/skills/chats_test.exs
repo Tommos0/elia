@@ -4,6 +4,7 @@ defmodule Elia.Skills.ChatsTest do
   use ExUnit.Case, async: false
 
   alias Elia.LLM.Message
+  alias Elia.{Projects, Workspace}
   alias Elia.Skills.Chats
   alias Elia.Store
 
@@ -60,17 +61,20 @@ defmodule Elia.Skills.ChatsTest do
   end
 
   # HIST-2: newest first, the fields a decision needs, and the filters.
-  test "HIST-2 list_chats lists chats newest first, with query, project and limit" do
+  test "HIST-2 list_chats lists chats newest first, with query and limit" do
     older = save([Message.user("the older one")], title: "Older chat")
     newer = save([Message.user("the newer one")], title: "Newer chat")
-    project = save([Message.user("of a project")], project: "proj-#{unique("p")}")
+
+    # PROJ-9: a chat whose `project_id` names no project belongs to Elia's own,
+    # so a listing of Elia's own project's chats holds it.
+    orphan = save([Message.user("of a project")], project: "proj-#{unique("p")}")
 
     ids =
       list(%{"limit" => 100})
       |> Enum.map(& &1["id"])
-      |> Enum.filter(&(&1 in [older, newer, project]))
+      |> Enum.filter(&(&1 in [older, newer, orphan]))
 
-    assert ids == [project, newer, older]
+    assert ids == [orphan, newer, older]
 
     assert %{
              "id" => ^newer,
@@ -87,8 +91,12 @@ defmodule Elia.Skills.ChatsTest do
     assert Enum.map(matches("newer c"), & &1["id"]) == [newer]
     assert Enum.map(matches("the older one"), & &1["id"]) == [older]
 
-    # A project id keeps just that project's chats.
-    assert Enum.map(list(%{"project" => listed(project)["project"]}), & &1["id"]) == [project]
+    # HIST-2, HIST-11: a listing is the chat's own project's chats and takes
+    # no `project` of its own, so an id in the input filters nothing.
+    refute tool("list_chats").input_schema["properties"]["project"]
+
+    assert Enum.map(list(%{"project" => "another-project", "limit" => 100}), & &1["id"]) ==
+             Enum.map(list(%{"limit" => 100}), & &1["id"])
 
     # A limit returns at most that many, newest first.
     assert length(list(%{"limit" => 2})) == 2
@@ -99,8 +107,8 @@ defmodule Elia.Skills.ChatsTest do
 
   defp matches(query), do: list(%{"query" => query, "limit" => 100})
 
-  defp list(input) do
-    {:ok, json} = call("list_chats", input)
+  defp list(input, ctx \\ %{}) do
+    {:ok, json} = call("list_chats", input, ctx)
     Jason.decode!(json)
   end
 
@@ -162,6 +170,72 @@ defmodule Elia.Skills.ChatsTest do
   end
 
   defp ids(input), do: list(input) |> Enum.map(& &1["id"])
+
+  # HIST-11: the three tools see the chats of the project the chat they run in
+  # belongs to and no other — listing, reading and searching alike (SEARCH-13).
+  test "HIST-11 the tools see the chat's own project's chats and no other" do
+    {:ok, project} = Projects.create("Scoped #{unique("proj")}", Workspace.root())
+    on_exit(fn -> Projects.delete(project.id) end)
+
+    token = unique("scoped")
+
+    mine =
+      save([Message.user("a chat of my project holding #{token}")],
+        title: "Mine #{token}",
+        project: project.id
+      )
+
+    theirs =
+      save([Message.user("a chat of Elia's own project holding #{token}")],
+        title: "Theirs #{token}"
+      )
+
+    # PROJ-9: a chat whose project has been deleted belongs to Elia's own.
+    {:ok, doomed} = Projects.create("Doomed #{unique("proj")}", Workspace.root())
+
+    gone =
+      save([Message.user("a chat of a deleted project holding #{token}")],
+        title: "Gone",
+        project: doomed.id
+      )
+
+    :ok = Projects.delete(doomed.id)
+
+    ctx = %{project: project}
+
+    # list_chats lists this project's chats, and Elia's own project's for a chat
+    # in it — the chat of a deleted project among them (PROJ-9).
+    assert list(%{"limit" => 100}, ctx) |> Enum.map(& &1["id"]) == [mine]
+
+    assert list(%{"limit" => 100})
+           |> Enum.map(& &1["id"])
+           |> Enum.filter(&(&1 in [mine, theirs, gone])) == [gone, theirs]
+
+    # read_chat refuses another project's chat by id ...
+    assert {:error, message} = call("read_chat", %{"id" => theirs}, ctx)
+    assert message =~ "another project"
+
+    # ... and does not consider it by title, so a title the other project's chat
+    # holds is not a second match.
+    assert {:ok, text} = call("read_chat", %{"query" => token}, ctx)
+    assert text =~ "# Mine #{token} (#{mine})"
+    assert {:ok, text} = call("read_chat", %{"query" => token})
+    assert text =~ "# Theirs #{token} (#{theirs})"
+
+    # search_chats looks for its terms in this project's chats and no others.
+    assert search(token, %{}, ctx) |> Enum.map(& &1["id"]) |> Enum.uniq() == [mine]
+
+    assert search(token) |> Enum.map(& &1["id"]) |> Enum.uniq() |> Enum.sort() ==
+             Enum.sort([gone, theirs])
+
+    # HIST-1, HIST-11: the skill and each tool say what they see, and the tool
+    # list names no project to point them at.
+    assert Chats.instructions() =~ "own project"
+
+    for name <- ~w(list_chats read_chat search_chats) do
+      assert tool(name).description =~ "own project"
+    end
+  end
 
   # HIST-3: the status a chat as a whole is in, from its saved file.
   test "HIST-3 a listed chat's status is open, done, interrupted or working" do
@@ -316,12 +390,12 @@ defmodule Elia.Skills.ChatsTest do
     assert text =~ "# A #{token} title (#{id})"
 
     assert {:error, message} = call("read_chat", %{"query" => unique("nothing")})
-    assert message =~ "No saved chat's title matches"
+    assert message =~ "No chat of this chat's own project has a title matching"
 
     # Several chats matching: name them, so the model can pick one by id.
     other = save([Message.user("hi")], title: "A #{token} other title")
     assert {:error, message} = call("read_chat", %{"query" => token})
-    assert message =~ "2 chats' titles match"
+    assert message =~ "2 chats of this chat's own project have a title matching"
     assert message =~ id
     assert message =~ other
   end
@@ -504,8 +578,10 @@ defmodule Elia.Skills.ChatsTest do
     assert tool("search_chats").description =~ "title"
   end
 
-  defp search(query, extra \\ %{}) do
-    {:ok, json} = call("search_chats", Map.merge(%{"query" => query, "limit" => 100}, extra))
+  defp search(query, extra \\ %{}, ctx \\ %{}) do
+    {:ok, json} =
+      call("search_chats", Map.merge(%{"query" => query, "limit" => 100}, extra), ctx)
+
     Jason.decode!(json)
   end
 

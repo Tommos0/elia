@@ -12,6 +12,10 @@ one literal string (HIST-9), so a chat that reached the same conclusion in other
 words cannot be found at all — which is the case that matters, because a
 question is rarely worded the way the answer was.
 
+A search is confined to the chat it runs in: it reports the chats of that
+chat's own project and no other (HIST-11, SEARCH-13), so an answer found in
+another project is not offered as this project's history.
+
 This spec adds an index the server keeps in memory over the text of the saved
 chats, and reads a query as terms that must all be there, ordered so that the
 chat which is *about* the subject comes first. The files stay the only record:
@@ -38,8 +42,9 @@ describes: the change that implements this spec strikes that requirement in
   chat saved, replaced or deleted by this server, by another one or by an
   outside process is indexed as it is now at the next search, without a restart.
 - **SEARCH-5** The index is built when a search first needs it: that build
-  decodes every saved chat's messages once, and a later search decodes no chat
-  it has already indexed whose file has not changed (SEARCH-4).
+  decodes the messages of every chat the search considers once (SEARCH-13), and
+  a later search decodes no chat it has already indexed whose file has not
+  changed (SEARCH-4).
 - **SEARCH-6** A search decodes the chats it reports matches from — for the
   snippet of SEARCH-10 — and no other: once the index is built, a query whose
   terms match nothing decodes no chat's messages.
@@ -61,8 +66,15 @@ describes: the change that implements this spec strikes that requirement in
   or blank is a tool error saying so; `limit` is 20 by default and at most 100,
   and a value outside that is clamped rather than refused.
 - **SEARCH-12** The `chats` skill's instructions (HIST-1) say how a query is
-  read: its terms, that every one of them has to be there, and that a chat's
-  title counts as well as its messages.
+  read: its terms, that every one of them has to be there, that a chat's title
+  counts as well as its messages, and that a search sees the chats of the chat's
+  own project and no other (HIST-11). The tool's own description says so too.
+- **SEARCH-13** A search's candidates are the newest 1,000 saved chats of the
+  project the chat it runs in belongs to (HIST-11), as one project's chats are
+  listed (PROJ-31, STORE-52), and the index is brought up to date with those
+  chats and no others (SEARCH-5), so another project's chats are neither
+  searched nor decoded. `search_chats` takes no `project` argument: a search
+  cannot be pointed at another project.
 
 ## Out of scope
 
@@ -98,7 +110,10 @@ file.
   and `Elia.Store.Index` (the index itself, beside `Elia.Store.Cache`:
   `Elia.Store.list/1` and `Elia.Store.load/1` are what it reads the chats with).
 - `Elia.Skills.Chats` (the query, the order, the snippets and the tool error,
-  SEARCH-7 to SEARCH-11, and its instructions, SEARCH-12).
+  SEARCH-7 to SEARCH-11, the project a search is confined to, SEARCH-13, and
+  its instructions, SEARCH-12).
+- `Elia.Projects` (the `chats_of/1` a listing takes for one project's chats,
+  PROJ-31, which is where a search's candidates come from, SEARCH-13).
 - `specs/chat-history.md` (HIST-9 struck as superseded).
 
 ## Tests
@@ -108,4 +123,5 @@ file.
   decodes while it uses it — SEARCH-1 to SEARCH-6).
 - `test/elia/skills/chats_test.exs` (the terms of a query, the message a title
   alone matches, the order of the matches, the snippets, the tool's errors and
-  limit, and the skill's instructions — SEARCH-7 to SEARCH-12).
+  limit, the project a search is confined to, and the skill's instructions —
+  SEARCH-7 to SEARCH-13).

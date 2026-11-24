@@ -68,6 +68,11 @@ things that cost a round trip each:
   exact-string replacement that fails when the text matches zero times or
   twice — `python3 - <<'PY'` with `assert s.count(old) == 1`, which is in the
   jail — and check the result with `git diff`.
+- A replacement written from `python3` fails to match when the old text differs by
+  a byte, and one written from `perl` fails when the old text holds an `@`: a perl
+  string in double quotes interpolates, so a source line holding the module
+  attributes `@scan` or `@list_max` has to be written as `\@scan` to match it. The
+  file's own text is not a template.
 - Quoting a block to replace it in a later call means quoting the file as
   `mix format` last left it: a formatter run reflows exactly the long line you
   are aiming at, so re-read the block after formatting rather than trusting the
@@ -114,6 +119,14 @@ unless it is asked for). Whoever derives something over every chat — the
 dashboard's cards (DASH-3), the header's active chats control (ACTIVE-2, ACTIVE-3)
 — reads with a bound of its own (1000) and does it again on each activity event
 it follows.
+
+One project's chats are the ones `Elia.Projects.chats_of/1` keeps — the predicate
+`Store.list/2`'s `where:` takes (PROJ-31, STORE-52) — and it is the predicate to use
+rather than comparing a chat's `project_id` yourself: a chat with no `project_id` and
+one whose project has been deleted both belong to Elia's own project (PROJ-9), which
+`Elia.Projects.chat_project_id/2` also resolves a listed chat through. The three
+`chats` tools list, read and search only the chat's own project's chats (HIST-11),
+which is where a scoped search gets its candidates.
 
 ## Measuring search cost
 
