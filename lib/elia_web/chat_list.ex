@@ -716,7 +716,7 @@ defmodule EliaWeb.ChatList do
     one toggle per group (UI-106), driven by the presses below. --%>
     <div class="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
       <p class="text-xs font-medium uppercase tracking-wider text-base-content/50">Chats</p>
-      <div id={"#{@scope}chat-filters"} class="flex items-center gap-0.5">
+      <div id={"#{@scope}chat-filters"} class="flex items-center gap-1">
         <button
           :for={{group, label, icon} <- @filter_groups}
           type="button"
@@ -728,7 +728,7 @@ defmodule EliaWeb.ChatList do
           title={label}
           class={filter_button_class(Map.fetch!(@state.filters, group))}
         >
-          <.icon name={icon} class="size-3.5" />
+          <.icon name={icon} class="size-4" />
         </button>
       </div>
     </div>
@@ -999,11 +999,11 @@ defmodule EliaWeb.ChatList do
   # theme (its primary is the blue UI-105's icons would otherwise wear).
   defp filter_button_class(true),
     do:
-      "grid size-6 place-items-center rounded-none border border-primary/40 bg-primary/10 text-primary transition dark:border-base-content/40 dark:bg-base-content/10 dark:text-base-content"
+      "grid size-7 place-items-center rounded-none border border-primary/40 bg-primary/10 text-primary transition dark:border-base-content/40 dark:bg-base-content/10 dark:text-base-content"
 
   defp filter_button_class(false),
     do:
-      "grid size-6 place-items-center rounded-none border border-base-300 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
+      "grid size-7 place-items-center rounded-none border border-base-300 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
 
   # UI-45: task chats nested under their parent; orphans stay at the top level.
   defp chat_tree(chats) do
