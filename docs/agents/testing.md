@@ -332,7 +332,11 @@ excluded`). Run that one yourself instead:
 - `settings_live_test.exs`'s "hot reload deploys what the chats merged, and the
   page stays responsive" (CONF-20, around line 893) failed in partition 2 of a
   full run and passed when the file was run alone, twice over; it is the flake
-  above, not your change's.
+  above, not your change's. So is the next test in that file, "the skip-tests
+  checkbox leaves the suite out of the deploy it starts", and
+  `test/elia/tasks_test.exs`'s "a parent starts a sub-task, goes on, and collects
+  its result": each failed once in a full run on a busy machine (a different
+  file each time) and passed alone.
 - The suite runs with the host's jail off (`config/test.exs`), and
   `Elia.Net.available?/1` is `Elia.Shell.jailed?/1 and Proxy.available?/1` — so a
   test that wants the *allowlisted* branch of NET-1's default (a chat whose file
