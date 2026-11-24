@@ -133,6 +133,19 @@ Playwright.
   `mouse_click`). What the browser then *sends* — the click that follows a long
   press, a `contextmenu` the hook cancels — is the reason such a test is a
   browser one at all.
+- `evaluate/2` with a *function* string (`"() => { ... }"`) returns the function
+  itself, not what it returns, so a probe that way reads `nil`. Write the JS as
+  an expression that evaluates to the value (`"(() => { ... })()"`, an IIFE), as
+  `chat_row_menu_test.exs` does when it dispatches a `contextmenu` and reads
+  whether the hook cancelled it.
+- Which element a chat row is in depends on the page, and a phone width decides
+  it: on a page that keeps the list itself (a chat page) the rows are in
+  `#sidebar`, hidden until `#chats-toggle` opens it (UI-36), while
+  `#chats-drawer` exists only on a page without a list of its own — and the
+  drawer's rows carry the `drawer-` prefix on every id (`#drawer-chat-row-<id>`,
+  UI-92, UI-93). A browser test or a preview that wants a row at 430px picks its
+  selectors by which page it is on, and a preview is taken at that width with
+  `ELIA_PREVIEW_WIDTH=430 bin/preview`.
 - A closed `<details>` still lays its hidden content out in Chromium — it is in
   the DOM, and has a height — so a test that the card is collapsed asks
   `element.checkVisibility()`, not `offsetHeight`, and opens it by clicking the
