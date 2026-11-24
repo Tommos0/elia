@@ -166,7 +166,11 @@ defmodule Elia.NetworkAccessTest do
              )
 
     assert output =~ Elia.Net.skipped_notice()
-    assert output =~ "proxy=\n"
+
+    # This command runs unjailed, so it has the host's own environment — a
+    # chat's `mix test` runs with the harness's proxy in its own (NET-1). What
+    # this asserts is the address Elia adds, which is none.
+    assert output =~ "proxy=#{System.get_env("http_proxy") || ""}\n"
   end
 
   # NET-19: a caller with no chat has no chat's setting, and runs as it did.
