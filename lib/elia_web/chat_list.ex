@@ -2,8 +2,8 @@ defmodule EliaWeb.ChatList do
   @moduledoc """
   The chat list: its state, the markup it is drawn with and the events that
   drive it (UI-4 to UI-6, UI-31 to UI-36, UI-45 to UI-47, UI-59, UI-63 to UI-65,
-  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93), and the project whose
-  chats it lists (PROJ-28 to PROJ-31).
+  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-108), and the
+  project whose chats it lists (PROJ-28 to PROJ-31).
 
   The list is drawn in two places — the chat page's own sidebar (UI-4, UI-35,
   UI-36) and the drawer every page that keeps no list of its own opens (UI-91) —
@@ -23,6 +23,23 @@ defmodule EliaWeb.ChatList do
   # UI-4, UI-84: the list's first page, and how many chats each "Load more
   # chats" adds.
   @chat_page 30
+
+  # UI-105: the filters the list is shown under, and the buttons that drive
+  # them — the group each toggles, the name its button carries and the icon it
+  # shows.
+  @filter_groups [
+    {"running", "Running chats", "hero-arrow-path"},
+    {"idle", "Idle chats", "hero-moon"},
+    {"done", "Finished chats", "hero-check-circle"}
+  ]
+
+  # UI-105, UI-108: what the filters start as — one boolean per group, all on
+  # until a press (UI-106) or the tab's stored value (UI-108) says otherwise.
+  @filters Map.new(@filter_groups, fn {group, _label, _icon} -> {group, true} end)
+
+  # UI-106: the status (UI-59) each group hides. A chat showing any other
+  # status is never hidden.
+  @filter_status %{"running" => "working", "idle" => "idle", "done" => "done"}
 
   @doc """
   UI-32, UI-36, UI-91 to UI-93: the chat list's state and events, on every page
@@ -55,6 +72,9 @@ defmodule EliaWeb.ChatList do
         input: [],
         paused: [],
         running: [],
+        # UI-105, UI-108: the filters the list is shown under, all on until a
+        # press (UI-106) or the tab's stored value (UI-108) says otherwise.
+        filters: @filters,
         # UI-34: the clock the list's relative times read.
         now: nil
       })
@@ -152,6 +172,32 @@ defmodule EliaWeb.ChatList do
     do: {:halt, assign_limit(socket, max(limit, @chat_page))}
 
   defp handle_event("chat_page", _params, socket), do: {:halt, socket}
+
+  # UI-105, UI-106: a press on one of the list's filter buttons — the group is
+  # that button's own, and a press flips whether the list shows that group.
+  # UI-108: the state a press leaves is handed to the browser to keep, so the
+  # next page of the session shows the list under the same filters.
+  defp handle_event("toggle_filter", %{"group" => group}, socket) do
+    case socket.assigns.chat_list.filters do
+      %{^group => shown} ->
+        filters = Map.put(socket.assigns.chat_list.filters, group, not shown)
+
+        {:halt, socket |> put_state(filters: filters) |> push_event("chat_filter", filters)}
+
+      _other ->
+        {:halt, socket}
+    end
+  end
+
+  # UI-108: the filters the tab stored, handed back by the list's hook as it
+  # mounts. The server decides them: three booleans, one per toggle, and
+  # anything else — a key missing, a value that isn't a boolean, a hand-written
+  # event — leaves them as they are, which is the all-on default (UI-105).
+  defp handle_event("chat_filter", %{"running" => r, "idle" => i, "done" => d}, socket)
+       when is_boolean(r) and is_boolean(i) and is_boolean(d),
+       do: {:halt, put_state(socket, filters: %{"running" => r, "idle" => i, "done" => d})}
+
+  defp handle_event("chat_filter", _params, socket), do: {:halt, socket}
 
   # UI-64, UI-65, SESS-29: delete a chat from the list — the open one or any
   # other, running or not. Deleting the chat the page shows leaves for `/chats`,
@@ -324,30 +370,41 @@ defmodule EliaWeb.ChatList do
     doc: "the open project, which \"New chat\" starts a chat in (UI-31, PROJ-28)"
 
   @doc """
-  UI-4, UI-5, UI-31 to UI-34, UI-36, UI-64, UI-84, UI-91, UI-92: the chat list.
-  The chat page draws it as its own sidebar (UI-4, UI-35, UI-36) and the drawer
-  the other pages open draws the same, from the same state (UI-91).
+  UI-4, UI-5, UI-31 to UI-34, UI-36, UI-64, UI-84, UI-91, UI-92, UI-105 to
+  UI-107: the chat list. The chat page draws it as its own sidebar (UI-4,
+  UI-35, UI-36) and the drawer the other pages open draws the same, from the
+  same state (UI-91).
   """
   def chat_list(assigns) do
+    statuses = Map.take(assigns.state, [:awaiting, :input, :paused, :running, :interrupted])
+
     assigns =
       assign(assigns,
         active: assigns.active || assigns.state.active,
         open_project: assigns.open_project || assigns.state.open_project,
-        statuses: Map.take(assigns.state, [:awaiting, :input, :paused, :running, :interrupted])
+        statuses: statuses,
+        filter_groups: @filter_groups,
+        # UI-106, UI-107: the chats the filters leave listed, so the list draws
+        # those and can tell "the filters hide them all" from "nothing saved"
+        # (UI-5).
+        shown: shown_chats(assigns.state.chats, statuses, assigns.state.filters)
       )
 
     ~H"""
-    <%!-- UI-85: how much of the chat list this tab has loaded, so opening
-    another chat — which mounts a page again — re-lists the same pages rather
-    than starting from the first one (UI-4). The server decides the number
-    (UI-84): the hook hands back what it stored and writes down what it is told.
-    Without it, or with nothing stored, the list is the first page, as before.
+    <%!-- UI-85, UI-108: what this tab has the list shown under — how much of it
+    it has loaded, so opening another chat — which mounts a page again —
+    re-lists the same pages rather than starting from the first one (UI-4), and
+    which filters it hides chats by (UI-105), so another chat opens under the
+    same filters. The server decides both (UI-84, UI-108): the hook hands back
+    what it stored and writes down what it is told. Without it, or with nothing
+    stored, the list is the first page, unfiltered.
     It hangs off this list (`#chat-list`), and its name is resolved against the
     module the markup is compiled in — `EliaWeb.ChatList` — so the two belong in
     this file together: a `phx-hook` in another module's template would name a
     hook that is not there. --%>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatPageSize">
       const KEY = "elia:chat-page"
+      const FILTER_KEY = "elia:chat-filter"
 
       export default {
         mounted() {
@@ -355,15 +412,40 @@ defmodule EliaWeb.ChatList do
             try { sessionStorage.setItem(KEY, String(limit)) } catch (_e) {}
           })
 
+          this.handleEvent("chat_filter", (filters) => {
+            try { sessionStorage.setItem(FILTER_KEY, JSON.stringify(filters)) } catch (_e) {}
+          })
+
           let limit = null
           try { limit = parseInt(sessionStorage.getItem(KEY), 10) } catch (_e) {}
           if (limit) this.pushEvent("chat_page", {limit})
+
+          let filters = null
+          try { filters = JSON.parse(sessionStorage.getItem(FILTER_KEY)) } catch (_e) {}
+          if (filters && typeof filters === "object") this.pushEvent("chat_filter", filters)
         }
       }
     </script>
-    <p class="px-4 pt-4 pb-2 text-xs font-medium uppercase tracking-wider text-base-content/50">
-      Chats
-    </p>
+    <%!-- UI-105: the filters the list is shown under, at the top of the list —
+    one toggle per group (UI-106), driven by the presses below. --%>
+    <div class="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+      <p class="text-xs font-medium uppercase tracking-wider text-base-content/50">Chats</p>
+      <div id={"#{@scope}chat-filters"} class="flex items-center gap-0.5">
+        <button
+          :for={{group, label, icon} <- @filter_groups}
+          type="button"
+          id={"#{@scope}filter-#{group}"}
+          phx-click="toggle_filter"
+          phx-value-group={group}
+          aria-pressed={to_string(Map.fetch!(@state.filters, group))}
+          aria-label={label}
+          title={label}
+          class={filter_button_class(Map.fetch!(@state.filters, group))}
+        >
+          <.icon name={icon} class="size-3.5" />
+        </button>
+      </div>
+    </div>
     <%!-- UI-31, PROJ-26: start a chat in the open project — the open chat's own
     project when the page shows one (PROJ-28). --%>
     <.link
@@ -380,8 +462,11 @@ defmodule EliaWeb.ChatList do
       class="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4"
     >
       <%!-- UI-4, PROJ-31: the open project's chats, newest first, with a task
-      chat nested under the parent it belongs to (UI-45). --%>
-      <%= for {chat, children} <- chat_tree(@state.chats) do %>
+      chat nested under the parent it belongs to (UI-45) — UI-106: as many of
+      them as the filters leave shown, so a task chat whose parent a filter
+      hides is listed at the top level, as one whose parent is not loaded is
+      (UI-45). --%>
+      <%= for {chat, children} <- chat_tree(@shown) do %>
         <.chat_row
           chat={chat}
           active={chat.id == @active}
@@ -404,7 +489,12 @@ defmodule EliaWeb.ChatList do
           />
         </div>
       <% end %>
+      <%!-- UI-5: nothing saved in the open project; UI-107: chats saved, and
+      every one the list holds hidden by the filters. --%>
       <p :if={@state.chats == []} class="px-3 py-2 text-sm text-base-content/50">No chats yet</p>
+      <p :if={@state.chats != [] and @shown == []} class="px-3 py-2 text-sm text-base-content/50">
+        No chats match the filters
+      </p>
     </nav>
     <%!-- UI-4, UI-84: the list's next page. Below the list's scroll box
     (`#chat-list`), not inside it, so the button is visible without scrolling to
@@ -479,6 +569,30 @@ defmodule EliaWeb.ChatList do
     </div>
     """
   end
+
+  # UI-106: the chats the filters leave listed — a chat is hidden when its
+  # status (UI-59) is the one a group's toggle hides and that toggle is off
+  # (UI-105); every other status is never hidden, so a chat waiting for the
+  # user (UI-47, UI-58, UI-76) and one a restart cut short (UI-72) stay listed
+  # whatever the filters say.
+  defp shown_chats(chats, statuses, filters) do
+    Enum.filter(chats, fn chat ->
+      status = ChatStatus.for_chat(chat, statuses)
+
+      Enum.all?(filters, fn {group, shown} ->
+        shown or status != Map.fetch!(@filter_status, group)
+      end)
+    end)
+  end
+
+  # UI-105, UI-106: a filter button — tinted, as the app's other pressed toggles
+  # are (UI-60), for a group the list shows, and dimmed for one it hides.
+  defp filter_button_class(true),
+    do: "rounded-lg border border-primary/40 bg-primary/10 px-1.5 py-1 text-primary transition"
+
+  defp filter_button_class(false),
+    do:
+      "rounded-lg border border-base-300 px-1.5 py-1 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
 
   # UI-45: task chats nested under their parent; orphans stay at the top level.
   defp chat_tree(chats) do

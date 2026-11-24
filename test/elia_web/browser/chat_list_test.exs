@@ -1,6 +1,6 @@
 defmodule EliaWeb.ChatListBrowserTest do
   @moduledoc """
-  The chat list's pages (UI-4, UI-84, UI-85 in specs/chat-ui.md). UI-85 says a
+  The chat list's pages (UI-4, UI-84, UI-85, UI-108 in specs/chat-ui.md). UI-85 says a
   page the tab has loaded is still the one listed when another chat is opened,
   which mounts the chat page again — that is the browser's own session storage
   and a live navigation, both JavaScript, so it is asked of a real headless
@@ -53,11 +53,65 @@ defmodule EliaWeb.ChatListBrowserTest do
            "the button is inside #chat-list, which scrolls"
   end
 
+  # UI-108: the filters a tab has set are kept there, so opening another chat —
+  # which mounts the page again — shows the list under the same filters.
+  test "the filters a tab sets are kept in another chat (UI-108)", %{conn: conn} do
+    ids = save_chats(3)
+    oldest = hd(ids)
+    newest = List.last(ids)
+    done = save_done_chat()
+
+    conn = conn |> visit("/c/#{newest}") |> connected()
+
+    assert listed?(conn, oldest)
+    assert listed?(conn, done)
+
+    # UI-105, UI-106: the finished filter hides the chat marked done, and the
+    # button says so.
+    conn = conn |> click("#filter-done") |> hidden(done)
+
+    assert pressed(conn, "done") == "false"
+    refute listed?(conn, done)
+
+    # UI-108: opening another chat mounts the page again, and the tab's filters
+    # are the ones the list is shown under.
+    conn = conn |> click("#chat-link-#{oldest}") |> in_chat(oldest)
+
+    assert pressed(conn, "done") == "false"
+    assert listed?(conn, oldest)
+    assert hidden(conn, done)
+  end
+
+  # UI-105: what the filter button of a group says about itself — "true" while
+  # the list shows that group.
+  defp pressed(conn, group) do
+    js(conn, "window.document.querySelector('#filter-#{group}').getAttribute('aria-pressed')")
+  end
+
+  # UI-105, UI-106: a filter hides the rows of its group, which is a render of
+  # its own, so the row going is waited for.
+  defp hidden(conn, id),
+    do:
+      wait_for(
+        conn,
+        "window.document.querySelector('#chat-link-#{id}') === null",
+        "chat #{id} to be hidden"
+      )
+
   defp listed(conn, id), do: wait_for(conn, listed_js(id), "chat #{id} to be listed")
 
   defp listed_js(id), do: "window.document.querySelector('#chat-link-#{id}') !== null"
 
   defp listed?(conn, id), do: js(conn, listed_js(id)) == true
+
+  # UI-108: one chat of the tab's marked done, so a filter has a chat of its own
+  # to hide.
+  defp save_done_chat do
+    id = Agent.new_id()
+    :ok = Store.save(id, [Message.user("finished work")], project: "harness", done: true)
+    on_exit(fn -> Store.delete(id) end)
+    id
+  end
 
   # UI-84: the list is read again, and the button with it, before the next read.
   defp button?(conn), do: wait_for(conn, button_js(), "the Load more chats button")

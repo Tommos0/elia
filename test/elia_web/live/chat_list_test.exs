@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatListTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, FakeLLM, Workspace}
+  alias Elia.{Agent, FakeLLM, Store, Workspace}
   alias Elia.LLM.Message
 
   setup do
@@ -154,6 +154,261 @@ defmodule EliaWeb.ChatListTest do
       refute has_element?(view, "#chat-link-#{hd(ids)}")
       assert has_element?(view, "#load-more-chats")
     end)
+  end
+
+  # UI-105: the filters sit at the top of the list — above the "New chat" button
+  # and the list's own scroll box — one toggle per group, and all three are
+  # pressed, so nothing is hidden from a user who never presses one.
+  test "the filters are at the top of the list, one per group, all on", %{conn: conn} do
+    with_empty_store(fn ->
+      ids = save_chats(2)
+      newest = List.last(ids)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{newest}")
+
+      assert has_element?(view, "#chat-filters")
+      refute has_element?(view, "#chat-list #chat-filters")
+
+      assert has_element?(
+               view,
+               "#filter-running[aria-pressed='true'][title='Running chats']" <>
+                 "[aria-label='Running chats']"
+             )
+
+      assert has_element?(view, "#filter-idle[aria-pressed='true'][title='Idle chats']")
+      assert has_element?(view, "#filter-done[aria-pressed='true'][title='Finished chats']")
+
+      html = render(view)
+
+      assert before?(html, "id=\"chat-filters\"", "id=\"new-chat\"")
+      assert before?(html, "id=\"new-chat\"", "id=\"chat-list\"")
+    end)
+  end
+
+  # UI-106: a toggle governs the chats of its own status (UI-59) and no others —
+  # the idle filter hides the idle chat, the finished filter the done one — and
+  # pressing it again lists them again, without a reload.
+  test "a toggle hides the chats of its status, and pressing it again lists them", %{conn: conn} do
+    with_empty_store(fn ->
+      ids = save_chats(2)
+      open = List.last(ids)
+      finished = hd(ids)
+      :ok = Store.save(finished, [Message.user("finished work")], done: true)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+
+      assert has_element?(view, "#chat-status-#{open}[data-status='idle']")
+      assert has_element?(view, "#chat-status-#{finished}[data-status='done']")
+
+      view |> element("#filter-idle") |> render_click()
+
+      assert has_element?(view, "#filter-idle[aria-pressed='false']")
+      refute has_element?(view, "#chat-link-#{open}")
+      assert has_element?(view, "#chat-link-#{finished}")
+
+      view |> element("#filter-idle") |> render_click()
+
+      assert has_element?(view, "#filter-idle[aria-pressed='true']")
+      assert has_element?(view, "#chat-link-#{open}")
+
+      view |> element("#filter-done") |> render_click()
+
+      assert has_element?(view, "#filter-done[aria-pressed='false']")
+      refute has_element?(view, "#chat-link-#{finished}")
+      assert has_element?(view, "#chat-link-#{open}")
+    end)
+  end
+
+  # UI-106: the running filter hides the chat whose turn is running, and a chat
+  # that is in none of the three groups is never hidden: the same chat is listed
+  # again the moment it needs the user, with the running filter still off.
+  test "the running filter hides a working chat, never one that needs the user",
+       %{conn: conn} do
+    with_empty_store(fn ->
+      open = Agent.new_id()
+      busy = Agent.new_id()
+      :ok = Store.save(open, [Message.user("the open chat")])
+      :ok = Store.save(busy, [Message.user("go and do it")])
+
+      {:ok, pid} = Agent.ensure_started(busy)
+      on_exit(fn -> DynamicSupervisor.terminate_child(Elia.Agent.Supervisor, pid) end)
+
+      # APPR-14: a new chat starts with every tool that can need approval
+      # auto-approved, so the call is turned off before the turn runs.
+      :ok = Agent.set_auto_approve(busy, "shell", false)
+
+      FakeLLM.push(
+        held_turn(
+          self(),
+          FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "ls"})])
+        )
+      )
+
+      :ok = Agent.send_message(busy, "go")
+      assert_receive {:model_waiting, loop}, 2_000
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+      assert has_element?(view, "#chat-status-#{busy}[data-status='working']")
+
+      view |> element("#filter-running") |> render_click()
+
+      assert has_element?(view, "#filter-running[aria-pressed='false']")
+      refute has_element?(view, "#chat-link-#{busy}")
+      assert has_element?(view, "#chat-link-#{open}")
+
+      # APPR-3: the call needs the user, so the chat is one that needs them —
+      # listed again, with the running filter still off.
+      send(loop, :go)
+
+      await_element(view, "#chat-status-#{busy}[data-status='awaiting_approval']")
+
+      assert has_element?(view, "#chat-link-#{busy}")
+      assert has_element?(view, "#filter-running[aria-pressed='false']")
+    end)
+  end
+
+  # UI-107: chats saved, and every one the list holds hidden by the filters.
+  test "a list the filters hide entirely says so", %{conn: conn} do
+    with_empty_store(fn ->
+      ids = save_chats(2)
+      newest = List.last(ids)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{newest}")
+
+      refute has_element?(view, "#chat-list", "No chats match the filters")
+
+      view |> element("#filter-idle") |> render_click()
+
+      assert has_element?(view, "#chat-list", "No chats match the filters")
+      refute has_element?(view, "#chat-list", "No chats yet")
+      refute has_element?(view, "#chat-link-#{newest}")
+      refute has_element?(view, "#chat-status-#{newest}")
+    end)
+  end
+
+  # UI-105, UI-107: with nothing saved in the open project the empty state is
+  # the one it always was (UI-5), whatever the filters are set to — here in the
+  # drawer, which is drawn on a page that keeps no list of its own (UI-91).
+  test "an empty project says no chats yet, filters or not", %{conn: conn} do
+    with_empty_store(fn ->
+      {:ok, view, _html} = live(conn, ~p"/sessions")
+
+      view |> element("#chats-toggle") |> render_click()
+      view |> element("#drawer-filter-done") |> render_click()
+
+      assert has_element?(view, "#drawer-filter-done[aria-pressed='false']")
+      assert has_element?(view, "#chats-drawer #drawer-chat-list", "No chats yet")
+      refute has_element?(view, "#chats-drawer #drawer-chat-list", "No chats match the filters")
+    end)
+  end
+
+  # UI-105, UI-92: the row is drawn with the list wherever the list is, so the
+  # drawer every other page opens carries it — under its own ids, and driving
+  # the one list.
+  test "the drawer carries the filters too", %{conn: conn} do
+    with_empty_store(fn ->
+      ids = save_chats(2)
+      newest = List.last(ids)
+
+      {:ok, view, _html} = live(conn, ~p"/sessions")
+
+      assert has_element?(view, "#drawer-chat-filters")
+      assert has_element?(view, "#drawer-filter-running[aria-pressed='true']")
+
+      view |> element("#chats-toggle") |> render_click()
+      assert has_element?(view, "#chats-drawer #drawer-chat-link-#{newest}")
+
+      view |> element("#drawer-filter-idle") |> render_click()
+
+      assert has_element?(view, "#drawer-filter-idle[aria-pressed='false']")
+      refute has_element?(view, "#drawer-chat-link-#{newest}")
+    end)
+  end
+
+  # UI-108: a press hands the filters to the browser to keep, and a page that
+  # mounts takes the tab's back — the server deciding, so anything that is not
+  # three booleans leaves them as they are.
+  test "the filters are handed to the browser and taken back", %{conn: conn} do
+    with_empty_store(fn ->
+      ids = save_chats(2)
+      newest = List.last(ids)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{newest}")
+
+      view |> element("#filter-idle") |> render_click()
+
+      assert_push_event(view, "chat_filter", %{
+        "running" => true,
+        "idle" => false,
+        "done" => true
+      })
+
+      # Another view of the same chat, as opening another chat gives (UI-2): the
+      # list is unfiltered until the hook hands the tab's filters back.
+      {:ok, other, _html} = live(conn, ~p"/c/#{newest}")
+      assert has_element?(other, "#chat-link-#{newest}")
+
+      render_hook(other, "chat_filter", %{"running" => true, "idle" => false, "done" => true})
+
+      assert has_element?(other, "#filter-idle[aria-pressed='false']")
+      refute has_element?(other, "#chat-link-#{newest}")
+
+      # A value that isn't a boolean, and a key missing, are ignored.
+      render_hook(other, "chat_filter", %{"running" => "false", "idle" => false, "done" => true})
+      render_hook(other, "chat_filter", %{"running" => true})
+
+      assert has_element?(other, "#filter-idle[aria-pressed='false']")
+      refute has_element?(other, "#chat-link-#{newest}")
+    end)
+  end
+
+  # A model call that holds a turn open until the test lets it go, so the chat
+  # is really running one while the list is watched (SESS-4, LOOP) — and then
+  # ends with `message`, so what the turn does next is the test's to choose.
+  defp held_turn(test_pid, message) do
+    fn _request, _on_event ->
+      send(test_pid, {:model_waiting, self()})
+
+      receive do
+        :go -> :ok
+      end
+
+      {:ok,
+       %{
+         message: message,
+         stop_reason: if(Message.tool_calls(message) == [], do: :end_turn, else: :tool_use),
+         model: "fake",
+         usage: %{}
+       }}
+    end
+  end
+
+  # The list follows a chat's status (UI-6), so what it shows lands a moment
+  # after the change: rendering the page again is what drains the event.
+  defp await_element(view, selector, tries \\ 200)
+
+  defp await_element(_view, selector, 0), do: flunk("#{selector} never showed")
+
+  defp await_element(view, selector, tries) do
+    if has_element?(view, selector) do
+      true
+    else
+      Process.sleep(10)
+      await_element(view, selector, tries - 1)
+    end
+  end
+
+  # True when `first` appears before `second` in `html`.
+  defp before?(html, first, second) do
+    a = :binary.match(html, first)
+    b = :binary.match(html, second)
+
+    assert match?({_, _}, a), "#{first} is not in the list's markup"
+    assert match?({_, _}, b), "#{second} is not in the list's markup"
+
+    {a_at, _} = a
+    {b_at, _} = b
+    a_at < b_at
   end
 
   # N chats, oldest first, so the list's pages can be named (STORE-12 order).

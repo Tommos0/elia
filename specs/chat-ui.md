@@ -86,6 +86,53 @@ stream in, approves or denies tool calls, and switches between saved chats.
   value that isn't a whole number of chats, or is smaller than that first page,
   is ignored, so the list never shrinks below it. A fresh browser session — a
   new tab, or storage cleared — starts at the first page again (UI-4).
+- **UI-105** The chat list carries its filters at the top of the list, above the
+  "New chat" button (UI-31) and the list's own scroll box (UI-92): one row
+  (`#chat-filters`) of three toggle buttons, `#filter-running`, `#filter-idle`
+  and `#filter-done`, one per group. Each is a button with an icon, an accessible
+  name naming its group ("Running chats", "Idle chats", "Finished chats", read as
+  its `title` and `aria-label`) and `aria-pressed` saying whether that group is
+  shown, and all three start pressed, so a list nothing has filtered lists every
+  chat it holds (UI-4) and nothing is hidden from a user who never touches them.
+  The row is drawn with the list wherever the list is — the chat page's sidebar
+  (UI-4) and the drawer the other pages open (UI-91, UI-92) — from the one state
+  both draw (UI-92), so both have it; the drawer's copy prefixes its ids as the
+  rest of its markup does (`#drawer-filter-running`).
+- **UI-106** A toggle governs exactly the chats whose status indicator (UI-59)
+  shows the status it names, as that status is at the moment: running hides the
+  chats showing `working`, idle the ones showing `idle`, finished the ones
+  showing `done`. A chat showing any other status is never hidden —
+  `awaiting_approval` (UI-47), `awaiting_input` (UI-76), `paused` (UI-58) and
+  `interrupted` (UI-72) — so a chat that needs the user, and one whose turn a
+  restart cut short, stay listed however the filters are set. Pressing a pressed
+  toggle unpresses it and the rows of that group leave the list at once, without
+  a reload; pressing it again lists them again. A row is hidden and shown by its
+  status at the moment, so a chat whose status changed while its group was off
+  (UI-6) is listed again — under its new status — and not under the old one. What
+  the list holds is untouched: a filter hides rows and never changes which chats
+  are listed (UI-4) or how many, so "Load more chats" (UI-84) lists the next page
+  of the store's order (STORE-12) exactly as it does with every filter pressed.
+- **UI-107** The list's empty state follows the filters. With chats saved in the
+  open project (PROJ-28, UI-5) but every chat the list holds hidden, the list
+  says so in place of its rows — "No chats match the filters" — and "Load more
+  chats" (UI-84) is unaffected: it is there while the project holds more chats
+  than are listed, so a chat the filters hide can still be reached by loading
+  more. With no chats saved in the project it is "No chats yet", whatever the
+  filters are set to (UI-5), and with the filters hiding nothing the list is
+  exactly what UI-4 to UI-6 and UI-84 describe.
+- **UI-108** The filters a tab has set are remembered, as the size it has loaded
+  the list to is (UI-85). They are kept in the browser's session storage
+  (`elia:chat-filter`) and handed back to the page as it mounts, so opening
+  another chat, or opening the drawer on a page that has one (UI-91), shows the
+  list under the filters the tab last set rather than under all three pressed.
+  The server is what decides them: what it reads there is three booleans, one for
+  each toggle, and anything else — a missing key, a value that isn't a boolean,
+  nothing stored at all — leaves all three pressed (UI-105); and it hands the
+  state it decided to the browser to keep whenever a toggle is pressed, so what a
+  later page reads is what the list showed. It is an enhancement, not the working
+  part: with the hook absent (a page whose assets were not rebuilt, HOT-8), with
+  nothing stored, or in a fresh browser session — a new tab, or storage cleared —
+  the list starts with all three pressed (UI-105).
 - **UI-34** Each sidebar chat shows when it was started in human-readable
   relative form ("just now", "10 minutes ago", "3 hours ago", "2 days ago",
   then a date after a week), in a `<time>` element whose `datetime` is the
@@ -808,7 +855,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   BROWSER-5).
 - `test/elia_web/live/chat_list_test.exs` (the list's pages: the "Load more chats"
   button, the pages that stay loaded, and a list that had no more to begin with —
-  UI-2, UI-4, UI-65, UI-84, UI-85; the list holding one project's chats, PROJ-31).
+  UI-2, UI-4, UI-65, UI-84, UI-85; the filters at the top of the list, the chats
+  they hide and the empty state they leave — UI-105 to UI-107; the list holding
+  one project's chats, PROJ-31).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
   its menu, choosing a project, and the projects page behind the menu's entry —
   PROJ-28 to PROJ-30).
@@ -821,8 +870,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/live/dashboard_test.exs` (the rows and indicators it shows,
   UI-32, UI-34, UI-45 to UI-47, UI-59).
 - `test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when
-  another chat is opened, and the button outside the list's scroll box, UI-84,
-  UI-85; a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+  another chat is opened, the button outside the list's scroll box, and the
+  filters a tab remembers — UI-84, UI-85, UI-108 — a browser test, so it runs
+  with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
