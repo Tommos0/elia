@@ -68,6 +68,10 @@ things that cost a round trip each:
   exact-string replacement that fails when the text matches zero times or
   twice — `python3 - <<'PY'` with `assert s.count(old) == 1`, which is in the
   jail — and check the result with `git diff`.
+- Quoting a block to replace it in a later call means quoting the file as
+  `mix format` last left it: a formatter run reflows exactly the long line you
+  are aiming at, so re-read the block after formatting rather than trusting the
+  text from before it.
 
 ## Adding a skill
 
