@@ -1,6 +1,6 @@
 # Chat titles
 
-Status: Implemented
+Status: Draft
 
 A chat's title is what its sidebar row, its page title and the chat list show,
 and today it is always derived from the first user message, cut to 60
@@ -8,7 +8,9 @@ characters (STORE-7): a chat that opens with a long request — a spec, a bug
 report, a pasted stack trace — is listed under an arbitrary prefix of it. This
 spec lets a chat carry a title of its own, written by the agent from the request
 it has in front of it, and keeps the derivation as the fallback, so a chat
-without one is exactly as it is today.
+without one is exactly as it is today. A chat can also be named by hand, from
+its row in the chat list (TITLE-8, UI-102), and a name the user typed is the
+user's: the agent leaves it alone (TITLE-9).
 
 The trigger is the agent's own tool call, inside a turn it is already running:
 the model has the whole request in context (more than a side-channel call would
@@ -61,8 +63,12 @@ expensive because of this feature.
   turns to something else.
 - **TITLE-6** `set_title` refuses a blank title (TITLE-2), as an error result
   to the model naming the reason; nothing is saved and nothing is broadcast. It
-  refuses nothing else. *Changed:* it used to refuse a chat whose session has
-  task metadata (TITLE-3); a sub-task may name itself like any chat.
+  also refuses a chat whose title was set by hand (TITLE-9), with an error
+  naming that reason — that name is the user's, so overwriting it is the one
+  thing the model must not do — saving and broadcasting nothing. It refuses
+  nothing else. *Changed:* it used to refuse only a blank title; before that it
+  also refused a chat whose session has task metadata (TITLE-3), and a sub-task
+  may name itself like any chat.
 
 ### The trigger
 
@@ -72,10 +78,35 @@ expensive because of this feature.
   only by the STORE-7 derivation (TITLE-1) is therefore a normal outcome, not a
   failure, and no turn is made slower or more expensive by this feature.
 
+### Naming a chat by hand
+
+- **TITLE-8** A chat can be named by hand from its row in the chat list
+  (UI-102): `Elia.Agent.rename/2` (chat id, text) takes the text as a name,
+  shaped as TITLE-2 shapes any title, and when it is a name at all it gives the
+  chat that title of its own (TITLE-1) — saved with the chat (STORE-32) and
+  broadcast as `{:title, title}` (SESS-6, SESS-33), so its row (UI-4, UI-74), the
+  page title (UI-3) and the chat settings header all read it at once — and
+  returns it. A name that is blank once trimmed changes nothing and returns no
+  name (TITLE-2), so the row goes back to what it showed. Renaming reaches a
+  chat whose session isn't running by starting it, the way the chat settings
+  page does (CSET-1), so the session that saves the chat next cannot write the
+  older name back over it; a chat with no messages yet is saved with its new
+  name, as a chat started from the UI is saved when it starts (STORE-22) — which
+  is the case TITLE-4's save of a chat with no messages skips.
+- **TITLE-9** A title set by hand is the user's: the chat records that it was
+  set by hand, in a field of its own (STORE-55), so TITLE-6's refusal survives a
+  restart and a session that resumes the chat holds to it, while the agent names
+  a chat whose title is its own or derived (TITLE-1) as freely as before. The
+  field is written only for a name set by hand — one the model set carries none
+  — and a chat saved before this feature has none, so it reads exactly as it did
+  (STORE-55, TITLE-1): the change needs no migration. A second hand-set name
+  replaces the first, and the record with it.
+
 ## Out of scope
 
-- Renaming a chat by hand in the UI. A stored title makes that easy to add
-  later, but nothing in the sidebar or the settings page edits a title now.
+- Naming a chat anywhere but its row in the chat list: the chat page's own
+  title row (UI-96) and the chat settings page show the name (TITLE-1), and
+  nothing there edits it (TITLE-8).
 - A harness-side provider call that generates a title, and any timer or
   turn-count trigger (TITLE-7). If compliance ever proves poor, this is the
   upgrade, and it writes the same stored field.
@@ -84,15 +115,21 @@ expensive because of this feature.
 
 ## Implementation
 
-`Elia.Store` (the saved field, the listing's precedence, the accessor for a
-view with an id), `Elia.Skills.Titles` (the skill and its `set_title` tool),
-`Elia.Agent` and `Elia.Agent.Session` (`set_title/2`, saving, the `{:title,
-title}` event, the snapshot field), `EliaWeb.ChatLive` (the page title, the
-sidebar row, the tool card), `config/config.exs` (the built-in skill list).
+`Elia.Store` (the saved fields, the listing's precedence, the accessors for a
+view with an id and for a title set by hand), `Elia.Skills.Titles` (the skill
+and its `set_title` tool), `Elia.Agent` and `Elia.Agent.Session` (`set_title/2`
+and `rename/2`, saving, the `{:title, title}` event, the snapshot field),
+`EliaWeb.ChatLive` (the page title, the sidebar row, the tool card),
+`EliaWeb.ChatList` (the row's menu and the rename input, UI-101, UI-102),
+`config/config.exs` (the built-in skill list).
 
 ## Tests
 
 `test/elia/chat_titles_test.exs` (the shape and the fallback, saving and
 loading, the listing's precedence, and a spawn's title becoming the child's own
-with `set_title` working in the child, and its blank refusal, TITLE-1 - TITLE-7), `test/elia_web/live/chat_title_test.exs` (the page
-title and the row, `{:title, title}` mid-turn, the card's summary, UI-74).
+with `set_title` working in the child, its blank refusal, a name set by hand
+saving and outliving the model's, and the refusal that follows it,
+TITLE-1 - TITLE-9), `test/elia_web/live/chat_title_test.exs` (the page
+title and the row, `{:title, title}` mid-turn, the card's summary, UI-74), and
+`test/elia_web/live/chat_list_test.exs` (naming a chat by hand from its row —
+TITLE-8, UI-102).

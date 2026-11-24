@@ -1,6 +1,6 @@
 # Conversation persistence
 
-Status: Implemented
+Status: Draft
 
 Chats are saved to disk so they survive restarts and can be listed and
 reopened. A saved chat's shape is stated in one place — the table under STORE-1
@@ -39,6 +39,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   | `limits` | a map of only the limits that aren't the default (STORE-27, LIMIT-1) | when the chat sets a limit of its own | yes — a chat that sets none carries no entry (STORE-27) |
   | `effort` | `"low"`, `"medium"` or `"high"` | when the chat has a reasoning effort of its own (STORE-37, LLM-39) | yes — the configured default is not written (LLM-38) |
   | `title` | a string | when the chat's own title isn't blank (STORE-32, TITLE-1) | yes — a blank or missing title is not written (STORE-32) |
+  | `title_by` | the string `"user"` | only when the chat's title was set by hand (STORE-55, TITLE-9) | yes — a title the model set, and a title derived from the first message (STORE-7), are not written (STORE-55) |
   | `turn` | a map: the turn's `id` and `started_at`, and `resumed: true` for a turn an automatic resume started (STORE-30, RESUME-5) | while a turn is in flight | yes — the turn's end takes the entry off the file (STORE-30) |
   | `done` | `true` | only when the chat is marked done (STORE-34) | yes — a chat is open by default (STORE-34) |
   | `cwd` | an absolute path (a string) | when the chat's working directory isn't its workspace root (STORE-46, WD-7) | yes — a chat working in its workspace root carries no entry (STORE-46) |
@@ -291,6 +292,13 @@ values a save can carry, deleting a chat, and the two tables themselves.
   stores it as `title` only when it isn't blank, so an empty one drops the
   entry from the file; `load_title/1` returns it, or `nil` when the chat is
   missing, unreadable, corrupt or has none.
+- **STORE-55** `save/3` takes `title_by:` (the string `"user"`) and stores it as
+  `title_by` only when the chat's title was set by hand (TITLE-9), so a chat
+  whose title the model set, and a chat with no title of its own, carry no
+  entry; `title_by/1` returns it, or `nil` when the chat is missing, unreadable,
+  corrupt, or was saved by a version that didn't write the field. The field
+  changes no older key's meaning: a chat saved before it reads as one whose
+  title was not set by hand, exactly as it did (TITLE-9).
 - **STORE-30** `save/3` takes `turn:` (a map with the turn's `id` and
   `started_at`, and `resumed: true` for a turn an automatic resume started,
   RESUME-5) and stores it as `turn`; a save that doesn't give one writes no
@@ -393,8 +401,8 @@ what it wrote: a malformed file is one of the files it writes nothing for
   STORE-35).
 - `test/elia/working_directory_test.exs` (the saved working directory and its
   loader, STORE-46).
-- `test/elia/chat_titles_test.exs` (the stored title and the listing's
-  precedence, STORE-32, STORE-33).
+- `test/elia/chat_titles_test.exs` (the stored title, the field a name set by
+  hand carries, and the listing's precedence, STORE-32, STORE-33, STORE-55).
 - `test/elia/auto_approve_test.exs` (the auto-approved set saved and loaded,
   STORE-14, STORE-15).
 - `test/elia_web/live/chat_title_test.exs` and

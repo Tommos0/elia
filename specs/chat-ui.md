@@ -1,6 +1,6 @@
 # Chat UI
 
-Status: Implemented
+Status: Draft
 
 A single LiveView where the user chats with the agent, watches responses
 stream in, approves or denies tool calls, and switches between saved chats.
@@ -197,9 +197,10 @@ stream in, approves or denies tool calls, and switches between saved chats.
   belongs to a chat (`/c/<id>/settings`, `/c/<id>/terminal`) that chat is
   highlighted (UI-4) and "New chat" starts in its project (UI-31); elsewhere none
   is highlighted and it starts in the default project (PROJ-8).
-- **UI-93** A chat row in the drawer opens that chat (UI-2), and its delete
-  button deletes it as UI-64 and UI-65 describe: the row leaves the list with a
-  "Chat deleted." flash, while the page the user is on stays where it is.
+- **UI-93** A chat row in the drawer opens that chat (UI-2), and the delete
+  entry of its row menu (UI-101) deletes it as UI-64 and UI-65 describe: the row
+  leaves the list with a "Chat deleted." flash, while the page the user is on
+  stays where it is.
   Deleting the chat that page belongs to (`/c/<id>/settings`,
   `/c/<id>/terminal`) leaves for `/chats` instead (UI-65, UI-77), as deleting
   the open chat does.
@@ -238,10 +239,40 @@ stream in, approves or denies tool calls, and switches between saved chats.
   `Elia.Agent.awaiting_input/0`.
 
 - **UI-64** Every chat row in the sidebar, task chats included (UI-45), has a
-  delete button (`#delete-chat-<id>`, a trash icon with the accessible label
-  "Delete chat") beside its link (`#chat-link-<id>`) as a sibling of it, not
-  nested inside the link. Clicking it asks for confirmation first, with
-  `data-confirm` naming the chat, and only then deletes it.
+  delete entry in the row's own menu (`#delete-chat-<id>`, with the accessible
+  label "Delete chat"), which asks for confirmation first, with `data-confirm`
+  naming the chat, and only then deletes it. The menu is the list's one way to
+  delete a chat: a row carries no delete control of its own. *Changed:* a row
+  used to carry a trash button (`#delete-chat-<id>`) of its own beside its link
+  (`#chat-link-<id>`).
+- **UI-101** A chat row opens a menu of its own on a long press of it — a press
+  held for about half a second — on a right-click on it with a pointer, and from
+  the keyboard, the context-menu key or Shift+F10, while the row's link has
+  focus. The menu (`#chat-row-menu-<id>`) is in the row's markup from the first
+  render, hidden until the gesture opens it, so opening it costs no round trip
+  and it opens at once however busy the chat is. It holds "Rename"
+  (`#rename-chat-<id>`) and the delete entry (UI-64), in that order. The gesture
+  is the page's, not the browser's: the menu the browser would open for a row —
+  Chrome's own on Android, with its selection handles and "Open in new tab" —
+  never appears for it, because the row's `contextmenu` is claimed rather than
+  left to the browser. A press that becomes a scroll or a drag — the finger
+  moving, or the pointer travelling, before the press is up — opens no menu and
+  leaves the list scrolling as it did. One menu is open at a time: opening
+  another row's closes the first. It closes on Escape, which puts focus back on
+  the row's link, on a press outside it, and once an entry is chosen (UI-64,
+  UI-102). It is drawn above the list rather than clipped by its scroll box, and
+  within the screen's width (UI-78), so a row at the list's edge shows all of
+  it. A chat row in the drawer (UI-92, UI-93) opens the same menu the same way.
+- **UI-102** Choosing "Rename" (UI-101) renames the chat in its row: the input
+  (`#chat-rename-<id>`) takes the link's place in the row — the row's link is
+  not rendered while it is open, so no control is nested in another and a press
+  on the row cannot navigate away mid-rename — holding the chat's title with all
+  of it selected and focused, so it can be typed over at once. Enter saves it
+  (TITLE-8) and the row shows the new title; Escape, a press outside the input
+  and losing focus cancel it, leaving the row as it was and saving nothing. A
+  title that is blank once trimmed (TITLE-2) is no title at all: it saves
+  nothing either, exactly as cancelling does. The row's own `title` attribute
+  remains the chat's description (UI-33) and is not what the input holds.
 - **UI-65** Confirming a delete removes the chat (SESS-29): its row leaves the
   sidebar and a "Chat deleted." flash appears. Deleting the chat that is open
   navigates to `/chats` (the most recent chat, or a fresh chat when there is
@@ -779,16 +810,18 @@ too: it draws the title the page title carries (TITLE-1), so the two cannot
 disagree.
 
 The chat list lives in one place: `EliaWeb.ChatList` draws it (the "New chat"
-button, the rows with their status indicators and delete
-buttons, the empty state and "Load more chats"), and its hook in the session's
+button, the rows with their status indicators, the menu a row opens and the
+rename input it shows (UI-101, UI-102), the empty state and "Load more chats"),
+and its hook in the session's
 `on_mount` list gives every page the list's state — the listed chats of the
 open project and whether more are saved in it, the page size (UI-84, UI-85),
 the projects and the open one (PROJ-28, PROJ-31), the statuses a row
 is marked with (UI-47, UI-58, UI-59, UI-72, UI-76) and whether the drawer is
 open — and handles the events that drive it (`toggle_chats`, `close_chats`,
-`more_chats`, `chat_page`, `delete_chat`, and `open_project`, which makes a
-project the open one, PROJ-29). A page that draws the drawer therefore
-needs no wiring of its own, and one page's sidebar and another page's drawer are
+`more_chats`, `chat_page`, `delete_chat`, `rename_chat`, and `open_project`,
+which makes a project the open one, PROJ-29). A page that draws the drawer
+therefore needs no wiring of its own, and one page's sidebar and another page's
+drawer are
 one list with one state, kept in step by construction. `EliaWeb.Layouts` renders
 the header's "Chats" button on every page, the open project's switcher beside
 the logo (PROJ-29), and the drawer (`#chats-drawer`, with
@@ -814,9 +847,10 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/live/chat_live_test.exs` (the page and its empty state, the
   harness messages, the streaming drafts and the reasoning, the tool cards and
   their badges, a multi-line command's collapsed card — UI-98, UI-99 — the
-  sidebar and its rows, a delete, the Markdown in a reply, and what `/chats`
+  sidebar and its rows, its row menu and renaming a chat in a row, a delete,
+  the Markdown in a reply, and what `/chats`
   opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37, UI-45, UI-59,
-  UI-63 to UI-66, UI-77).
+  UI-63 to UI-66, UI-77, UI-101, UI-102).
 - No test: UI-5, UI-11, UI-13, UI-22 to UI-24, UI-49 — no test in the
   tree asserts them: the sidebar's "No chats yet" state, the "Working" indicator
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding
@@ -875,6 +909,11 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+- `test/elia_web/browser/chat_row_menu_test.exs` (a row's menu in a real
+  browser: the long press and the right-click that open it, that the browser's
+  own menu does not follow them, a press that becomes a scroll opening none, and
+  Escape and a press outside closing it — UI-101, UI-102; a browser test, so it
+  runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
   browser: Enter sending a message, the transcript at its end, the reader's own
   move up stopping the following and their return to the end starting it again,
