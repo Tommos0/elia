@@ -221,7 +221,18 @@ Playwright.
   `config/test.exs`'s `screenshot_dir` with it — the driver then fails with
   "Could not find Playwright in `./assets`", which reads like a broken install.
   Read the list and `Keyword.put` into it, as `preview_test.exs` does. In
-  `browser_context_opts`, `color_scheme` is an atom (`:dark`), not a string.
+  `browser_context_opts`, `color_scheme` is an atom (`:dark`), not a string,
+  and `device_scale_factor` is a float (`4.0`), not an integer.
+- `screenshot/3` takes only `full_page`, `omit_background` and `timeout`: there
+  is no `selector` or `clip`, so there is no picture of a single element that
+  way. To read a small element's colours, sizes or radius, `evaluate` its
+  `getComputedStyle` (and `getBoundingClientRect`) instead of picturing it;
+  `PlaywrightEx.Page.screenshot/2` does take `x`/`y`/`width`/`height` if a
+  picture really is what is wanted.
+- A probe run straight after a `click` reads that element's **hover** state: the
+  pointer stays where it clicked, so a `hover:` colour is what comes back and
+  the element looks unlike its resting self. Click something else first, or
+  probe a control the pointer is not on.
 
 ### UI previews
 

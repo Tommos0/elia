@@ -16,6 +16,16 @@ Files: styles in `assets/css/app.css`, JS in `assets/js/app.js`, shared componen
 
 - daisyUI is loaded as a plugin in `app.css` and is available. Prefer Tailwind utilities for custom layout, and match the existing components and styles first.
 - **Never** use `@apply` in raw CSS.
+- The theme is the `data-theme` attribute on `<html>` (`light` or `dark`), set by
+  the root layout's own script from the stored preference or the system's, and
+  `app.css` defines the variant for it —
+  `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *))` — so a
+  `dark:` utility is how a colour that differs by theme is written. The palette
+  itself is the two daisyUI theme blocks in `app.css` (`--color-primary`,
+  `--color-base-content`, …); the dark theme's primary is blue where its
+  `base-content` is the off-white text colour, which is what a control that has
+  to be tinted *and* off-white in dark mode wants (`text-primary
+  dark:text-base-content`).
 - A class is only in the stylesheet once the assets have been rebuilt
   (`mix assets.build`, or the dev watchers in `config/dev.exs`). A deploy
   rebuilds the live tree's front end itself — installing the trunk's Node
