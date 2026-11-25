@@ -110,23 +110,40 @@ defmodule Elia.Skills do
   @doc """
   The system prompt's pieces, in order, each as `{kind, text}`: the agent
   instructions (`:base`), the project instructions when there are any
-  (`:project`), then one `{:skill, skill}` section per skill. The texts carry
-  their leading separator and concatenate to `system_prompt/2`, so the context
-  indicator can size each one.
+  (`:project`), the project's secrets when it has any (`:secrets`, SECRET-12),
+  then one `{:skill, skill}` section per skill. The texts carry their leading
+  separator and concatenate to `system_prompt/3`, so the context indicator can
+  size each one.
   """
-  @spec system_sections([Elia.Skill.t()], binary() | nil) :: [{term(), binary()}]
-  def system_sections(skills \\ current(), project \\ project_instructions()) do
+  @spec system_sections([Elia.Skill.t()], binary() | nil, [binary()]) :: [{term(), binary()}]
+  def system_sections(skills \\ current(), project \\ project_instructions(), secrets \\ []) do
     project_section =
       if project,
         do: [{:project, "\n\n## Project instructions (#{@project_file})\n" <> project}],
         else: []
 
+    secrets_section =
+      case secrets do
+        [] -> []
+        names -> [{:secrets, "\n\n## Project secrets\n" <> secrets_text(names)}]
+      end
+
     [{:base, String.trim(@base_prompt)}] ++
-      project_section ++ Enum.map(skills, &{{:skill, &1}, "\n\n" <> skill_section(&1)})
+      project_section ++
+      secrets_section ++ Enum.map(skills, &{{:skill, &1}, "\n\n" <> skill_section(&1)})
   end
 
-  def system_prompt(skills \\ current(), project \\ project_instructions()) do
-    skills |> system_sections(project) |> Enum.map_join(&elem(&1, 1))
+  def system_prompt(skills \\ current(), project \\ project_instructions(), secrets \\ []) do
+    skills |> system_sections(project, secrets) |> Enum.map_join(&elem(&1, 1))
+  end
+
+  # SECRET-12: what the agent is told about a project's secrets — their names,
+  # never their values (SECRET-6) — so it can write code that reads them.
+  defp secrets_text(names) do
+    "This project's secrets are the variables of `.env` in the project's folder, " <>
+      "and every command and terminal you run here has them in its environment. " <>
+      "Read one by its name; never ask the user for a value, and never print one: " <>
+      Enum.map_join(names, ", ", &"\`#{&1}\`") <> "."
   end
 
   @doc """

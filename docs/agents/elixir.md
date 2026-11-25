@@ -27,6 +27,10 @@ Read this before writing or changing Elixir code.
 - `DynamicSupervisor` and `Registry` need a name in the child spec (`{DynamicSupervisor, name: Elia.MySup}`).
 - Use `Task.async_stream/3` for concurrent enumeration with back-pressure. You'll usually want `timeout: :infinity`.
 - `:ets.foldl/3` is OTP's `(function, accumulator, table)` — **not** Elixir's pipe-friendly order (`table |> :ets.foldl(fun, acc)`). The wrong order raises `ArgumentError` that a `rescue` can swallow into an empty result, so a table that looks empty is worth checking against the argument order first.
+- Some module attributes are Elixir's own and cannot be used as your own:
+  `@file` is the source file's path, so a module attribute named `@file` never
+  holds what you set it to and reading it warns *undefined module attribute
+  `@file`*. Name it something else (`@env_file`).
 - HTTP: use `Req`. **Avoid** `:httpoison`, `:tesla` and `:httpc`.
 
 ## Project conventions

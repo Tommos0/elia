@@ -46,6 +46,11 @@ npm-debug.log
 # Elia harness data (saved conversations).
 /.elia/
 
+# A project's secrets (SECRET-1). Elia's own project is the live tree, where a
+# deploy stashes untracked files (DEPLOY-37); an ignored file is not untracked,
+# so this is what keeps the tree's own `.env` out of that stash.
+/.env
+
 # Files the user attached to a chat (UPLOAD): a chat's own uploads, written into
 # the workspace it works in, are never part of its work.
 /uploads/

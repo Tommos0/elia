@@ -1158,7 +1158,13 @@ defmodule Elia.Agent.Session do
     llm = llm_request(state)
     summarizer = Keyword.get(state.loop_opts, :summarizer, Compaction.default_summarizer(llm))
 
-    opts = opts |> Map.new() |> Map.merge(%{summarizer: summarizer, llm: llm})
+    # SECRET-8: the project travels with the fold, so the summariser's own
+    # request is redacted as the turn's is.
+    opts =
+      opts
+      |> Map.new()
+      |> Map.merge(%{summarizer: summarizer, llm: llm, project: project(state)})
+
     {elided, fold?} = Compaction.elide(state.messages, before, opts)
 
     state = apply_compaction(state, elided)
@@ -1299,10 +1305,15 @@ defmodule Elia.Agent.Session do
 
   # The system prompt and tool definitions of the request, which are not part of
   # the view's messages but are part of the estimated request (CTX-1).
-  defp overhead(state), do: Context.build([], skills(state), instructions(state)).total
+  defp overhead(state),
+    do: Context.build([], skills(state), instructions(state), secrets(state)).total
 
   defp context(state, messages),
-    do: Context.build(messages, skills(state), instructions(state))
+    do: Context.build(messages, skills(state), instructions(state), secrets(state))
+
+  # SECRET-12: the names of the project's secrets, which the system prompt of the
+  # request carries and the estimate therefore counts.
+  defp secrets(state), do: Elia.Secrets.names(project(state))
 
   defp skills(state),
     do: Elia.Skills.resolve(Keyword.get(state.loop_opts, :skills), project(state))

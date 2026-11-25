@@ -1996,6 +1996,45 @@ defmodule Elia.AgentTest do
     id
   end
 
+  # SECRET-6, SECRET-8, SECRET-10, SECRET-12: a project's secret never reaches
+  # the model — not in the system prompt, not in what a command printed — while
+  # the transcript keeps what the command actually printed.
+  test "a secret a command printed is redacted from the request and kept in the transcript" do
+    dir = tmp_dir("secrets")
+    File.write!(Path.join(dir, ".env"), "STRIPE_KEY=sk_live_secret_value\n")
+    id = start_project_session(other_project(dir), auto_approve: [])
+
+    FakeLLM.push(
+      FakeLLM.assistant([FakeLLM.tool_call("c1", "shell", %{"command" => "cat .env"})])
+    )
+
+    FakeLLM.push(FakeLLM.assistant([Message.text("Read it.")]))
+
+    :ok = Agent.send_message(id, "read the env file")
+    await_status(id, :awaiting_approval)
+    :ok = Agent.approve(id, "c1")
+    await_status(id, :idle)
+
+    [first, second] = FakeLLM.requests()
+
+    # SECRET-12: the model is told the name, never the value.
+    assert first.system =~ "## Project secrets"
+    assert first.system =~ "STRIPE_KEY"
+    refute first.system =~ "sk_live_secret_value"
+
+    # SECRET-6, SECRET-8: the result the command produced is redacted on its way
+    # to the model, and the request carries no occurrence of the value at all.
+    [_, _call, %Message{role: :tool, content: [result]}] = second.messages
+    assert result.content =~ "[redacted:STRIPE_KEY]"
+    refute inspect(second) =~ "sk_live_secret_value"
+
+    # SECRET-10: the transcript keeps what the command printed, so the user reads
+    # the real thing.
+    tool_message = Enum.find(Agent.snapshot(id).messages, &match?(%Message{role: :tool}, &1))
+    assert [%{content: kept}] = tool_message.content
+    assert kept =~ "sk_live_secret_value"
+  end
+
   # PROJ-9, SESS-7
   test "a chat belongs to its project" do
     project = other_project(tmp_dir("belongs"))

@@ -208,11 +208,16 @@ defmodule Elia.Terminal.Session do
     # `Elia.Shell`, the same ones a command runs with — a terminal is not a way
     # around any of them. The jail holds the chat's workspace, the tree the
     # session belongs to, not the directory it starts in (TERM-2, ISOL-13).
+    # SECRET-5: what the caller passes as `:env` — the project's secrets — is
+    # added to the session's environment, in the jail's `--setenv` arguments and
+    # in the port's own environment alike.
+    env = [{"TERM", "xterm-256color"}] ++ Keyword.get(opts, :env, [])
+
     session_opts =
       Elia.Net.prepare(
         workspace: workspace,
         jail: jail,
-        env: [{"TERM", "xterm-256color"}],
+        env: env,
         network: Keyword.get(opts, :network),
         session_id: chat_id
       )
@@ -232,7 +237,7 @@ defmodule Elia.Terminal.Session do
         :hide,
         args: args,
         cd: workspace,
-        env: Shell.port_env(env: [{"TERM", "xterm-256color"}])
+        env: Shell.port_env(env: env)
       ])
 
     state = %__MODULE__{

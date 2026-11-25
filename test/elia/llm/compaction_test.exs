@@ -638,6 +638,30 @@ defmodule Elia.LLM.CompactionTest do
     assert is_function(Compaction.default_summarizer(), 1)
   end
 
+  @moduletag :tmp_dir
+
+  # SECRET-8: the summary is made from the turns that aged out, so the request
+  # the default summarizer sends is redacted as the turn's own request is.
+  test "the default summarizer's request is redacted", %{tmp_dir: dir} do
+    File.write!(Path.join(dir, ".env"), "STRIPE_KEY=sk_live_summary_value\n")
+
+    summarizer = Compaction.default_summarizer(%{provider: __MODULE__}, %{}, %{folder: dir})
+
+    assert {:ok, "Summary."} = summarizer.("the key is sk_live_summary_value")
+
+    assert_receive {:summariser_request, request}
+    assert [message] = request.messages
+    assert Message.text_content(message) =~ "[redacted:STRIPE_KEY]"
+    refute inspect(request) =~ "sk_live_summary_value"
+  end
+
+  # A provider that captures the request it is given and answers with a summary,
+  # so this test can see what the default summarizer would send.
+  def stream(request, _on_event) do
+    send(self(), {:summariser_request, request})
+    {:ok, %{message: %Message{role: :assistant, content: [Message.text("Summary.")]}}}
+  end
+
   ## The mid-turn pass (COMPACT-29)
 
   # A summarizer that fails the test if a mid-turn pass ever reaches for one

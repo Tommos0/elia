@@ -121,6 +121,23 @@ defmodule Elia.Skills.TerminalTest do
              {:required, :always}
   end
 
+  # SECRET-5: a terminal session is a command of the chat's, so the project's
+  # secrets are in its environment as a `shell` call's are.
+  test "a project's secrets reach the terminal's environment", %{id: id, dir: dir, ctx: ctx} do
+    File.write!(Path.join(dir, ".env"), "STRIPE_KEY=sk_live_term_value\n")
+    ctx = Map.put(ctx, :project, %{folder: dir})
+
+    assert {:ok, _} =
+             TerminalSkill.run_start(%{"command" => "printenv STRIPE_KEY; sleep 60"}, ctx)
+
+    :ok = Terminal.subscribe(id)
+    assert_receive {:terminal_screen, screen}, 15_000
+    collect_until("sk_live_term_value", screen)
+
+    assert {:ok, screen} = TerminalSkill.run_read(%{}, ctx)
+    assert screen =~ "sk_live_term_value"
+  end
+
   # TERM-26: what the terminal shows, as text and as what it is — a running
   # session, or one that has ended and how — and an error where a chat has no
   # terminal at all.

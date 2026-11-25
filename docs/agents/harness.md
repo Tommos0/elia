@@ -64,7 +64,10 @@ things that cost a round trip each:
 - A hand-written unified diff is easy to get wrong, and `patch` reports it
   badly: `malformed patch` is your line counts, `Hunk #N FAILED` is your
   context, and a multi-hunk patch stops at the first hunk it cannot place,
-  leaving the rest silently out. For a multi-line block, prefer an
+  leaving the rest silently out. A hunk that reports success *with fuzz*
+  (`Hunk #1 succeeded at 27 with fuzz 2`) has matched the wrong lines: it
+  applied somewhere near them and dropped or duplicated one, so treat fuzz as a
+  failure, re-read the block, and delete the `<file>.orig` it leaves behind. For a multi-line block, prefer an
   exact-string replacement that fails when the text matches zero times or
   twice — `python3 - <<'PY'` with `assert s.count(old) == 1`, which is in the
   jail — and check the result with `git diff`.

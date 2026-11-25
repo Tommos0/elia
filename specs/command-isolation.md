@@ -112,7 +112,10 @@ genuinely needs the rest of the machine (ISOL-16).
   reaches no command.
   *Changed:* a command in allowlist mode is given the proxy's address as well,
   `http_proxy`, `https_proxy` and `all_proxy` (NET-13), which is the one place
-  the allowlist adds to the list.
+  the network allowlist adds to the list. A chat's own secrets are added to a
+  command's environment too (SECRET-5) — the project's, read from its own
+  `.env` (SECRET-1), never the server's own environment, which is what this
+  requirement keeps out.
 - **ISOL-24** A command never builds in the environment the server happens to
   run in: `MIX_ENV` is absent whichever path it takes. A jailed command has
   none (ISOL-8), and an unjailed one (ISOL-12, ISOL-16) runs in a shell that

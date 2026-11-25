@@ -20,7 +20,8 @@ how much of it the provider served from its prompt cache.
   coloured progress bar.
 - **CTX-3** The estimate derives locally from the exact pieces sent to the
   model: the system prompt (agent instructions, the project instructions from
-  the chat's project's `AGENTS.md` when present, and each skill's
+  the chat's project's `AGENTS.md` when present, the names of the project's
+  secrets when it has any (SECRET-12), and each skill's
   instructions),
   the tool definitions, and every message of the **request view** (COMPACT-2):
   user text, assistant text, reasoning, tool calls and tool results, plus the

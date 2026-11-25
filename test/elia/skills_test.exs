@@ -29,6 +29,27 @@ defmodule Elia.SkillsTest do
     assert [{:base, _}, {{:skill, @skill}, _}] = Skills.system_sections([@skill], nil)
   end
 
+  # SECRET-12, SKILL-5, PROJ-15: a project's secrets are named — never valued —
+  # between the project instructions and the skills, and there is no such section
+  # for a project that has none.
+  test "the secrets section names a project's secrets and carries no value" do
+    sections = Skills.system_sections([@skill], "Be nice.", ["STRIPE_KEY", "DB_PASSWORD"])
+
+    assert [{:base, _}, {:project, _}, {:secrets, secrets}, {{:skill, @skill}, _}] = sections
+    assert secrets =~ "## Project secrets"
+    assert secrets =~ "`STRIPE_KEY`, `DB_PASSWORD`"
+
+    prompt = Skills.system_prompt([@skill], "Be nice.", ["STRIPE_KEY"])
+    assert prompt =~ "## Project secrets"
+    assert [_, _, secrets, _] = String.split(prompt, "\n\n## ", parts: 4)
+    assert secrets =~ "STRIPE_KEY"
+
+    assert [{:base, _}, {:project, _}, {{:skill, @skill}, _}] =
+             Skills.system_sections([@skill], "Be nice.", [])
+
+    refute Skills.system_prompt([@skill], "Be nice.", []) =~ "Project secrets"
+  end
+
   # SKILL-15, SKILL-16
   test "the base prompt asks for occasional progress notes" do
     [{:base, base}] = Skills.system_sections([], nil)

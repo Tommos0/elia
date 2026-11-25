@@ -2427,7 +2427,14 @@ defmodule EliaWeb.ChatLive do
 
     socket
     |> assign(skills: skills)
-    |> put_context(Context.put_skills(socket.assigns.context, skills, instructions))
+    |> put_context(
+      Context.put_skills(
+        socket.assigns.context,
+        skills,
+        instructions,
+        Elia.Secrets.names(socket.assigns.project)
+      )
+    )
     |> noreply()
   end
 
@@ -2490,7 +2497,12 @@ defmodule EliaWeb.ChatLive do
     view = Compaction.view(messages, compaction)
 
     context =
-      Context.new(view.messages, skills, Elia.Skills.project_instructions(project.folder))
+      Context.new(
+        view.messages,
+        skills,
+        Elia.Skills.project_instructions(project.folder),
+        Elia.Secrets.names(project)
+      )
       |> Context.calibrate(usage)
 
     socket

@@ -93,8 +93,9 @@ project's (PROJ-42, PROJ-46).
 ### Instructions and skills
 
 - **PROJ-15** The system prompt of a chat in project P is the base prompt, then
-  P's `AGENTS.md` when it has one, then one section per skill (SKILL-5;
-  SKILL-10–SKILL-13 apply to P's folder instead of Elia's root).
+  P's `AGENTS.md` when it has one, then a section naming P's secrets when it has
+  any (SECRET-12), then one section per skill (SKILL-5; SKILL-10–SKILL-13 apply
+  to P's folder instead of Elia's root).
 - **PROJ-16** The `harness` skill keeps the instructions that apply in every
   project — prefer a folder skill over changing code, reload skills, and run
   the tests before finishing — with the tools `reload_skills` and

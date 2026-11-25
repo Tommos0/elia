@@ -914,20 +914,25 @@ defmodule Elia.LLM.Compaction do
 
   defp summarizer(opts, options) do
     Map.get(opts, :summarizer) ||
-      default_summarizer(Map.get(opts, :llm, %{}), options)
+      default_summarizer(Map.get(opts, :llm, %{}), options, Map.get(opts, :project))
   end
 
   @doc """
   The default summarizer: one model call through `Elia.LLM.stream/2` with the
   same provider request as the turn (`:llm`).
   """
-  @spec default_summarizer(map(), map()) :: (binary() -> {:ok, binary()} | {:error, term()})
-  def default_summarizer(llm \\ %{}, _options \\ %{}) do
+  @spec default_summarizer(map(), map(), map() | nil) ::
+          (binary() -> {:ok, binary()} | {:error, term()})
+  def default_summarizer(llm \\ %{}, _options \\ %{}, project \\ nil) do
     fn input ->
       request =
         llm
         |> Map.new()
         |> Map.merge(%{system: @summary_system, messages: [Message.user(input)]})
+        # SECRET-8: the summary is made from the same turns the request view
+        # holds, so its own request is redacted too — otherwise a secret would
+        # leave through this call instead of the turn's.
+        |> Elia.Secrets.redact(project)
 
       case Elia.LLM.stream(request) do
         {:ok, %{message: message}} ->

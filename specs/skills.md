@@ -25,7 +25,8 @@ the same instruction, so the skill held a second copy of it and nothing more.
 - **SKILL-4** Load errors are logged and returned per folder as
   `{relative_folder, reason}`.
 - **SKILL-5** The system prompt is a base prompt, then the project
-  instructions section (SKILL-10) when there is one, then one section per
+  instructions section (SKILL-10) when there is one, then the section naming
+  the project's secrets when it has any (SECRET-12), then one section per
   skill: `## Skill: <name>`, the description, and the instructions.
 - **SKILL-6** `reload_skills` rescans the skills folder. It returns the loaded
   skills with their tool names, plus an error result listing any folders that

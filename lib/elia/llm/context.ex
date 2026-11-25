@@ -13,7 +13,8 @@ defmodule Elia.LLM.Context do
   Buckets:
 
     * `:system` "System prompt" - children "Agent instructions", "Project
-      instructions" (when `AGENTS.md` is injected) and one "Skill: <name>"
+      instructions" (when `AGENTS.md` is injected), "Project secrets" (when the
+      project has secrets, SECRET-12) and one "Skill: <name>"
       per skill
     * `:tools` "Tool definitions"
     * `:messages` "Messages" - children "User", "Assistant", "Reasoning"
@@ -47,32 +48,50 @@ defmodule Elia.LLM.Context do
 
   @type breakdown :: %{total: non_neg_integer(), buckets: [bucket()]}
 
-  @doc "A context of `messages` under `skills` (default: current skills) and project instructions."
-  @spec new([Message.t()], [Elia.Skill.t()], binary() | nil) :: t()
-  def new(messages \\ [], skills \\ Skills.current(), project \\ Skills.project_instructions()) do
+  @doc """
+  A context of `messages` under `skills` (default: current skills), the project
+  instructions and the names of the project's secrets (default: none, SECRET-12).
+  """
+  @spec new([Message.t()], [Elia.Skill.t()], binary() | nil, [binary()]) :: t()
+  def new(
+        messages \\ [],
+        skills \\ Skills.current(),
+        project \\ Skills.project_instructions(),
+        secrets \\ []
+      ) do
     %__MODULE__{}
-    |> put_skills(skills, project)
+    |> put_skills(skills, project, secrets)
     |> add_messages(messages)
   end
 
-  @doc "Token breakdown for `messages` under `skills` (default: current skills) and project instructions."
-  @spec build([Message.t()], [Elia.Skill.t()], binary() | nil) :: breakdown()
-  def build(messages, skills \\ Skills.current(), project \\ Skills.project_instructions()),
-    do: messages |> new(skills, project) |> breakdown()
+  @doc """
+  Token breakdown for `messages` under `skills` (default: current skills), the
+  project instructions and the names of the project's secrets.
+  """
+  @spec build([Message.t()], [Elia.Skill.t()], binary() | nil, [binary()]) :: breakdown()
+  def build(
+        messages,
+        skills \\ Skills.current(),
+        project \\ Skills.project_instructions(),
+        secrets \\ []
+      ),
+      do: messages |> new(skills, project, secrets) |> breakdown()
 
   @doc """
-  Replaces the system-prompt and tool-definition buckets for `skills` and the
-  project instructions (default: the workspace's `AGENTS.md`, if any).
+  Replaces the system-prompt and tool-definition buckets for `skills`, the
+  project instructions (default: the workspace's `AGENTS.md`, if any) and the
+  names of the project's secrets.
   """
-  @spec put_skills(t(), [Elia.Skill.t()], binary() | nil) :: t()
+  @spec put_skills(t(), [Elia.Skill.t()], binary() | nil, [binary()]) :: t()
   def put_skills(
         %__MODULE__{} = context,
         skills,
-        project \\ Skills.project_instructions()
+        project \\ Skills.project_instructions(),
+        secrets \\ []
       ) do
     children =
       skills
-      |> Skills.system_sections(project)
+      |> Skills.system_sections(project, secrets)
       |> Enum.map(fn {kind, text} ->
         {id, label} = section_label(kind)
         %{id: id, label: label, count: 1, tokens: Tokens.estimate(text)}
@@ -100,6 +119,7 @@ defmodule Elia.LLM.Context do
 
   defp section_label(:base), do: {:base, "Agent instructions"}
   defp section_label(:project), do: {:project, "Project instructions"}
+  defp section_label(:secrets), do: {:secrets, "Project secrets"}
   defp section_label({:skill, skill}), do: {"skill:#{skill.name}", "Skill: #{skill.name}"}
 
   @doc "Folds `messages` into the context, in order."

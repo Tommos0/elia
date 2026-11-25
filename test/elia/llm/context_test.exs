@@ -166,6 +166,21 @@ defmodule Elia.LLM.ContextTest do
     assert project.tokens == Tokens.estimate(text)
   end
 
+  # CTX-3, CTX-4, SECRET-12: the names of the project's secrets show as a child
+  # of the system prompt, sized from the section the loop sends.
+  test "system bucket lists the project's secrets when it has any" do
+    context = Context.put_skills(Context.new([], skills()), skills(), nil, ["STRIPE_KEY"])
+    system = hd(Context.breakdown(context).buckets)
+
+    assert [%{id: :base}, %{id: :secrets, label: "Project secrets"} = secrets | skills] =
+             system.children
+
+    assert length(skills) == 2
+
+    [_, {:secrets, text} | _] = Elia.Skills.system_sections(skills(), nil, ["STRIPE_KEY"])
+    assert secrets.tokens == Tokens.estimate(text)
+  end
+
   # PROJ-15, CTX-4: new/3 and build/3 take the project instructions.
   test "build/3 takes the project instructions" do
     with_rule = Context.build([], skills(), "Always run the tests.")

@@ -187,7 +187,10 @@ defmodule Elia.Skills.Terminal do
     case Terminal.start(chat_id,
            command: command(input),
            workspace: workspace(ctx),
-           jail: jail_on
+           jail: jail_on,
+           # SECRET-5: a terminal is a command of the chat's, so it gets the
+           # project's secrets in its environment as a `shell` call does.
+           env: Elia.Secrets.variables(ctx[:project])
          ) do
       {:ok, _pid} ->
         {:ok, started_message(chat_id, input["command"], jail_on, ctx)}

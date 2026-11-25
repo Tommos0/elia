@@ -249,13 +249,22 @@ defmodule Elia.Agent.Loop do
     # ladder may run deeper mid-turn.
     ctx = trim(ctx, history)
 
+    # SECRET-6, SECRET-8: the request is the one place a secret could reach a
+    # model, so it is redacted as it is built — the whole of it, whatever a
+    # result, a file or a skill put in it — while the history keeps the real
+    # text (SECRET-10).
     request =
       Map.merge(ctx.llm_opts, %{
         system:
-          Elia.Skills.system_prompt(skills, Elia.Skills.project_instructions(ctx.workspace)),
+          Elia.Skills.system_prompt(
+            skills,
+            Elia.Skills.project_instructions(ctx.workspace),
+            Elia.Secrets.names(ctx.project)
+          ),
         tools: Enum.map(Map.values(tools), &Map.take(&1, [:name, :description, :input_schema])),
         messages: with_images(ctx, request_messages(ctx, history))
       })
+      |> Elia.Secrets.redact(ctx.project)
 
     ask(ctx, request, history, step, tools, 0, 0)
   end

@@ -202,6 +202,13 @@ defmodule Elia.Skills.Shell do
   # its own id. A step the harness runs for no chat gets no such variable
   # (DEPLOY-18).
   defp chat_env(ctx) do
+    Elia.Secrets.variables(ctx[:project]) ++ chat_id_env(ctx)
+  end
+
+  # SECRET-5: the project's own secrets come first, so a name the chat's own
+  # environment sets wins it (SHELL-14); they are read from the project's `.env`
+  # (SECRET-1), never from the server's environment, which ISOL-8 keeps out.
+  defp chat_id_env(ctx) do
     case ctx[:session_id] do
       id when is_binary(id) and id != "" -> [{"ELIA_CHAT_ID", id}]
       _no_chat -> []

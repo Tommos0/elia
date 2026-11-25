@@ -5,11 +5,41 @@ defmodule Elia.Skills.ShellTest do
 
   alias Elia.Skills.Shell
 
+  @moduletag :tmp_dir
+
   test "returns output and exit code" do
     assert {:ok, "hi\n\n[exit: 0]"} = Shell.run(%{"command" => "echo hi"})
     assert {:error, output} = Shell.run(%{"command" => "echo oops >&2; exit 3"})
     assert output =~ "oops"
     assert output =~ "[exit: 3]"
+  end
+
+  # SECRET-5, SECRET-3: a command of a chat in a project has that project's
+  # secrets in its environment, read from the project's own `.env` (SECRET-1) —
+  # and the directory the chat works in does not decide which file that is. A
+  # command that belongs to no chat is given none of them.
+  test "a project's secrets reach the command's environment", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, "sub"))
+    File.write!(Path.join(dir, ".env"), "STRIPE_KEY=sk_live_env_value\n")
+
+    ctx = %{
+      session_id: "chatX",
+      project: %{folder: dir},
+      workspace: dir,
+      cwd: Path.join(dir, "sub")
+    }
+
+    assert {:ok, output} = Shell.run(%{"command" => "printenv STRIPE_KEY"}, ctx)
+    assert output =~ "sk_live_env_value"
+
+    # A jailed command gets them in the jail's own `--setenv` arguments (ISOL-8).
+    assert {:ok, output} =
+             Shell.run(%{"command" => "printenv STRIPE_KEY"}, Map.put(ctx, :jail, true))
+
+    assert output =~ "sk_live_env_value"
+
+    assert {:error, output} = Shell.run(%{"command" => "printenv STRIPE_KEY"}, %{})
+    assert output =~ "[exit: 1]"
   end
 
   # SHELL-15: the shell is how the model works with files. The instructions and
