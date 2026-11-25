@@ -40,6 +40,15 @@ Read this before writing or changing Elixir code.
 - Tools are `Elia.Tool` structs (`run`, `approval`). Skills are registered in `Elia.Skills`.
 - A chat in Elia's own project works in the live tree the server runs from, and makes its own git worktree inside it before it changes code, merging that branch into the trunk itself; its code reaches the running app only through a deploy (`Elia.Deploy`). See `docs/agents/harness.md`.
 
+## Stored data
+
+Read this before deciding whether a change can break old data (`AGENTS.md` says when the question has to be answered and what to say about it).
+
+- What outlives the process: the saved chats in `.elia/sessions/` (`Elia.Store` — a chat's messages, its `cwd` (STORE-46), the done flag (STORE-19), a sub-task's metadata (STORE-16..STORE-18), its `settings` map (SESS-41)), the settings database, folder skills and their `tools.json`, and `AGENTS.md` itself. Nothing else in the tree is user data.
+- The cheap way to stay backward compatible is to read a saved chat for the keys it has and rewrite nothing (`test/elia/store_test.exs` loads a file an earlier version wrote, carrying a `status`, `title`, `brief`, `parent_call_id` or `start_commit`).
+- Where a key is *added* to a map a long-lived process holds — a session's `settings` (SESS-41, SESS-47), a compaction state, task metadata — an old state reads the new key at its default (`Elia.Agent.Session.settings/1`). A hot reload keeps that state (DEPLOY-6), so a missing default is a `KeyError` on mount, which 500s every chat with a live session; a restart builds the sessions afresh and is safe without it.
+- When the new code cannot read the old shape, say so in the spec or the commit message and migrate it: a read-time fallback, a one-off rewrite of the stored files, and a test that loads a fixture written in the old shape. Don't go looking through the user's own files to check — the question is about the shapes the code reads and writes.
+
 ## Mix
 
 - Read the docs and options with `mix help task_name` before using a task.

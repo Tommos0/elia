@@ -30,6 +30,17 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - `await_task` can outlast the harness's own request: in one chat both `await_task` and `ask_user` came back as "the harness crashed while running this tool" at the boundary, while the sub-task itself carried on untouched (a turn's end, a stop or a crash doesn't end one — SUBTASK-16). Polling survives that: a `shell` call of `sleep 280`, then `list_chats` with `children: true` for its `status`, and its `report.md` beside `brief.md` when it reaches `done`. It costs a round trip per few minutes, and nothing is lost either way, since the child commits on its own branch.
 - Merging a child rewrites its commits, so after `git merge --ff-only chat/<child id>` and a rebase, `git branch -d chat/<child id>` refuses with "not fully merged": the child's branch tip is no longer an ancestor of yours. Check the work is in `master` (it is — the merge was a fast-forward) and delete with `-D`. Same for your own branch once `git push . HEAD:master` has landed it.
 
+## Sub-tasks: what not to reintroduce
+
+Compressed out of `AGENTS.md`'s sub-task bullets, which now keep the rule and the pointer. A sub-task is an ordinary chat whose chat is marked done or not, and nothing else about it is special, so none of these may come back:
+
+- A task status vocabulary (`running`, `blocked`, `failed`, `unfinished`, `cancelled`): a task ends when its chat is marked done (`specs/subtasks.md`, SUBTASK-33), and its own chat's status is the only status there is (`EliaWeb.ChatStatus`).
+- A per-task watcher, a registry of running children or a per-task entry (retired SUBTASK-28, SUBTASK-31): a parent lists its children with `list_chats`'s `children` (HIST-2, `Elia.Store.children/1`).
+- A child-only step or time limit: a child runs under the same turn limits as any chat (`specs/turn-limits.md`).
+- A `finish_task` tool: `mark_done` ends it (DONE-6), and `list_tasks` as a listing: `list_chats` with `children` is the listing.
+- A parent-side record of a child's commit and files: `await_task` gives `{"task_id", "summary"}` and nothing else (SUBTASK-9), and what the parent merges is the child's own branch (SUBTASK-23).
+- A brief or report kept anywhere but `.tasks/<n>/brief.md` and the `report.md` beside it, which are scratch and never committed (`.gitignore` holds `/.tasks/`).
+
 ## Recovery
 
 - There is no checkpoint to roll back to (`specs/checkpoints.md`, retired): a chat's work is on its own branch, and a deploy refuses to load a tree whose suite or compile fails (DEPLOY-5, HOT-4). `/recover` is back for the failure that gate does not catch — a deploy that passes its suite and still leaves the UI unusable: plain HTML, no bundle and no JavaScript, putting the app back on a revision it has already run (RECOVER-10..RECOVER-15, DEPLOY-25, DEPLOY-26, `specs/recovery.md`).
