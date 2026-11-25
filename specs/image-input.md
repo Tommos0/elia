@@ -74,9 +74,13 @@ a model that cannot see pictures is asked exactly what it is asked today.
   selection carries no capability, and the provider's own answer applies until
   that model is chosen again (VISION-7).
 - **VISION-12** The harness offers a call that looks at a picture: it names a
-  path in the chat's workspace, reads that file, and records on its result the
-  path, the media type and the size it read (LLM-6, LLM-32), while its text says
-  which picture it saw.
+  path in the chat's workspace, resolved against the chat's working directory
+  (WD-1, WD-13), reads that file, and records on its result the path that file
+  has in the workspace (WD-3's form), the media type and the size it read
+  (LLM-6, LLM-32), while its text says which picture it saw. So a chat that has
+  moved with `cd` names a picture the way it names it to any other call, and
+  what the result keeps — and every later request re-reads (VISION-3) — is the
+  workspace's own path.
 - **VISION-13** A look that cannot be answered fails, as an error result saying
   which it was: a path that leaves the chat's workspace, a file that isn't there,
   isn't a regular file or can't be read, a file that isn't an image (VISION-2),
@@ -94,8 +98,10 @@ a model that cannot see pictures is asked exactly what it is asked today.
   image viewer (IMG-1) like any other, from the saved chat as well as from a
   call just made.
 - **VISION-17** What the agent is told about a look names what it is for: the
-  tool's description says that it reads one picture of the chat's workspace, and
-  the instructions that a picture there — a screenshot the user uploaded
+  tool's description says that it reads one picture of the chat's workspace, that
+  a relative path resolves against the chat's working directory (WD-1, WD-13)
+  while what the result names is the path the workspace has for it; and the
+  instructions that a picture there — a screenshot the user uploaded
   (UPLOAD-10), or one the agent made itself (PREVIEW) — is looked at with the
   tool when the answer may depend on what is in it.
 
@@ -133,12 +139,17 @@ stores no image (VISION-3): the bytes of a file the user attached are read from
 the chat's workspace and never enter `.elia`, so the saved transcript keeps the
 shape it has. A call's result gains the key that records the picture it looked
 at (VISION-12), which no provider is sent (LLM-6) and an older version of Elia
-reads and ignores.
+reads and ignores. The path that key holds was and remains a path of the
+workspace (VISION-12): a result saved by an older version names the same file
+it named then — the chat's working directory is the base of a path a look is
+given, never of the path it stored — so an older saved chat resolves and sends
+the same pictures, and nothing is rewritten when it loads.
 
 ## Implementation
 
-`Elia.Skills.Image` (the call that looks, and the file it reads — VISION-12,
-VISION-13, VISION-17), `Elia.LLM.Images` (the formats and their signatures,
+`Elia.Skills.Image` (the call that looks, the file it reads, and the working
+directory it resolves the path it is given against — VISION-12, VISION-13,
+VISION-17, WD-13), `Elia.LLM.Images` (the formats and their signatures,
 reading a file and the bounds — VISION-2, VISION-3, VISION-5, VISION-6),
 `Elia.Agent.Loop` (the request it builds, and the pictures it takes from the
 request view — VISION-4, VISION-9, VISION-14, VISION-15) and `Elia.Agent.Session`
@@ -159,9 +170,11 @@ looked — VISION-16).
   leaves it, the bounds and the order they take the newest first — VISION-2,
   VISION-3, VISION-5, VISION-6).
 - `test/elia/skills/image_test.exs` (the call that looks: the picture recorded
-  on its result, and each refusal — a path that leaves the workspace, a file
-  that isn't there, one that isn't an image, one over the bound, and a model
-  that accepts none — VISION-12, VISION-13, VISION-17).
+  on its result, a relative path resolved against the chat's working directory
+  and recorded as the workspace's own path, and each refusal — a path that
+  leaves the workspace, a file that isn't there, one that isn't an image, one
+  over the bound, and a model that accepts none — VISION-12, VISION-13,
+  VISION-17, WD-13).
 - `test/elia/agent_test.exs` (the request the loop builds: the picture in the
   result's own turn, a model that accepts none, a file that is gone, an
   attachment that is not sent by itself, and the picture a later step of the

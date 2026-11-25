@@ -2,11 +2,12 @@
 
 Status: Implemented
 
-A chat has a working directory: the directory its `shell` call (SHELL) resolves
-a relative path against. It starts as the chat's workspace root (PROJ-12,
-WS-4), and the `cd` tool changes it, so a chat can work inside one part of a
-tree — the package of a monorepo, a subdirectory of a project — without
-repeating the prefix in every path it names.
+A chat has a working directory: the directory its `shell` call (SHELL) and the
+look its `image` skill makes (VISION-12, WD-13) resolve a relative path
+against. It starts as the chat's workspace root (PROJ-12, WS-4), and the `cd`
+tool changes it, so a chat can work inside one part of a tree — the package of
+a monorepo, a subdirectory of a project — without repeating the prefix in every
+path it names.
 
 It is the chat's own state, like its title or its jail setting: saved with the
 chat (STORE-46), so a restart, a deploy or a resumed turn doesn't send the chat
@@ -56,6 +57,12 @@ standing somewhere else.
   (SHELL-2).
 - **WD-12** `cd` called with no chat to change the directory of returns an error
   result naming that, and changes nothing.
+- **WD-13** A path the look of the `image` skill is given (VISION-12) resolves
+  against the chat's working directory as a `shell` call's command does (WD-1,
+  SHELL-2), while what that look records names the path relative to the
+  workspace root (WD-3's form), so a result reads the same wherever the chat
+  stands. What a path may name is unchanged: the look judges the path it is
+  given as one of the chat's workspace (WS-8, VISION-13).
 
 ## Stored data
 
@@ -95,10 +102,11 @@ the file changes shape, and no other stored data is read or written.
 resolution and refusal of WD-5), `Elia.Skills.Workdir` (the skill and its `cd`
 tool), `Elia.Agent.Session` (the `:cwd` state, `{:set_cwd, path}` and `:cwd`
 calls, saving and loading of WD-2 and WD-7) with `Elia.Agent.set_cwd/2`, and
-`Elia.Store`'s `cwd:` option and `load_cwd/1` (STORE-46). The caller that
-resolves a relative path through it is `Elia.Skills.Shell` (SHELL-2), and
-`Elia.Agent.Loop` refreshes the step's working directory from the session at the
-start of each step (WD-10).
+`Elia.Store`'s `cwd:` option and `load_cwd/1` (STORE-46). The callers that
+resolve a relative path through it are `Elia.Skills.Shell` (SHELL-2) and
+`Elia.Skills.Image`, which names what it read relative to the workspace root
+(`Elia.Workspace.relative/2`, WD-13), and `Elia.Agent.Loop` refreshes the step's
+working directory from the session at the start of each step (WD-10).
 
 ## Tests
 
@@ -106,3 +114,6 @@ start of each step (WD-10).
   shell resolving through it, `cd` setting it and reporting it, each refusal,
   its persistence across a session and a restart, the step boundary and the
   instructions — WD-1 to WD-7, WD-9 to WD-12, and the stored key of STORE-46).
+- `test/elia/skills/image_test.exs` (the look resolving a relative path through
+  the chat's working directory while what it records stays the workspace's own
+  path — WD-13).

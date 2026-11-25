@@ -73,3 +73,7 @@ belongs under a header menu goes below `z-40`.
   is merged therefore kills the links already given to the user: copy the files
   to the project's own `tmp/preview/` first, or leave the worktree until they
   have looked.
+
+- Which is what a chat's own look needs: `view_image` resolves a relative path
+  against the chat's working directory (WD-13), so a chat `cd`'d into its worktree
+  reads the preview it just took as `tmp/preview/<file>.png`.

@@ -27,6 +27,42 @@ defmodule Elia.Skills.ImageTest do
     assert facts == %{image: %{path: "shot.png", media_type: "image/png", size: 16}}
   end
 
+  # WD-13, VISION-12: a look names its file the way a command does — through the
+  # chat's working directory — while what it records is the path that file has in
+  # the workspace, so a result reads the same wherever the chat stands.
+  test "a look resolves its path against the chat's working directory", %{dir: dir} do
+    lib = Path.join(dir, "lib")
+    File.mkdir_p!(Path.join([dir, "tmp", "preview"]))
+    File.write!(Path.join([dir, "tmp", "preview", "shot.png"]), @png)
+    File.mkdir_p!(lib)
+
+    here = %{workspace: dir, cwd: lib, vision: true}
+
+    # the same file, named from the working directory rather than the root
+    assert {:ok, message, facts} =
+             Elia.Tool.call(tool(), %{"path" => "../tmp/preview/shot.png"}, here)
+
+    assert message =~ "tmp/preview/shot.png"
+
+    assert facts ==
+             %{image: %{path: "tmp/preview/shot.png", media_type: "image/png", size: 16}}
+
+    # a path of the working directory itself is the working directory's file
+    File.write!(Path.join(lib, "shot.png"), @png <> "more")
+    assert {:ok, _message, facts} = Elia.Tool.call(tool(), %{"path" => "shot.png"}, here)
+    assert facts.image == %{path: "lib/shot.png", media_type: "image/png", size: 20}
+
+    # a path of the root is still the root's file
+    assert {:ok, _message, facts} =
+             Elia.Tool.call(tool(), %{"path" => "tmp/preview/shot.png"}, %{here | cwd: dir})
+
+    assert facts.image.path == "tmp/preview/shot.png"
+
+    # and what a path may name is unchanged: leaving the workspace is refused
+    assert {:error, message} = Elia.Tool.call(tool(), %{"path" => "../../nope.png"}, here)
+    assert message =~ "not a path in the chat's workspace"
+  end
+
   # VISION-13: a look that can't be answered fails with the reason, naming the
   # path — a file that isn't there, isn't an image, is over the bound, or isn't in
   # the workspace at all.
@@ -71,6 +107,8 @@ defmodule Elia.Skills.ImageTest do
 
   # SKILL-1, SKILL-2, SKILL-7: the skill bundles its instructions with the one
   # tool that carries them out.
+  # VISION-17: what the agent is told about the look says where its path comes
+  # from and what the result will name.
   test "the skill is one tool with its path" do
     assert Image.name() == "image"
     assert Image.description() =~ "picture"
@@ -79,5 +117,7 @@ defmodule Elia.Skills.ImageTest do
     assert [%Elia.Tool{name: "view_image", approval: :never} = tool] = Image.tools()
     assert tool.input_schema["required"] == ["path"]
     assert tool.description =~ "5 MB"
+    assert tool.description =~ "working directory"
+    assert tool.input_schema["properties"]["path"]["description"] =~ "working directory"
   end
 end

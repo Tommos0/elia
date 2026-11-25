@@ -245,11 +245,11 @@ is shown before it is deployed. `test/elia_web/browser/preview_test.exs` is the
 run itself, tagged `:preview` and excluded like these tests, so it never starts
 a browser during `mix test`.
 
-A picture is looked at with the `view_image` tool, whose path is resolved
-against the workspace root rather than the chat's own working directory: a
-preview taken in `tmp/worktrees/<chat id>/` is read as
-`tmp/worktrees/<chat id>/tmp/preview/<file>.png` even though the chat is `cd`'d
-there (WD-1, WD-9).
+A picture is looked at with the `view_image` tool, and its path resolves against
+the chat's own working directory as a command's does (WD-13), so a chat `cd`'d
+into `tmp/worktrees/<chat id>/` reads the preview it just took as
+`tmp/preview/<file>.png` — what the call's card and the saved result name is
+that path relative to the workspace root (WD-1, WD-9).
 
 A picture is only as tall as the viewport, `full_page: true` included: the app
 shell has a height of its own and the transcript scrolls inside it (UI-78), so
