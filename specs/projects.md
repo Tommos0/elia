@@ -14,7 +14,9 @@ header changes it. Opening a chat opens that chat's project, so the header, the
 list and the page agree about where the user is. A project has a page of its own
 as well — `/p/<id>` — holding what it is (PROJ-51), the chats that belong to it
 (PROJ-52) and the settings that act on it (PROJ-54), and opening it opens the
-project just as opening a chat does.
+project just as opening a chat does. A project's folder is a git repository of
+its own (PROJ-36), and the page is where that repository's trunk is pushed to
+the remotes the folder has configured (PROJ-56 to PROJ-58).
 
 A project is made from the header's own switcher: its last entry opens a modal
 holding the form that names a project and the control for the root it is made
@@ -287,6 +289,32 @@ project's (PROJ-42, PROJ-46).
   Files button (`#project-files-<id>`, PROJ-48) and the delete button
   (`#delete-project-<id>`, which asks for confirmation before deleting) — the
   last two only on a project that is not Elia's own (PROJ-7, PROJ-48).
+- **PROJ-56** Where the project's folder is a git repository with a remote, the
+  page offers pushing the folder's `master` to each of them (DEPLOY-41): one
+  "Push master" button per remote (`#project-push-<project id>-<remote>`), each
+  row naming the remote it pushes to
+  (`#project-push-remote-<project id>-<remote>`), in the order `git remote`
+  lists them (DEPLOY-44), and beside each one the standing of `master` against
+  that remote
+  (`#project-push-status-<project id>-<remote>`, DEPLOY-43). It sends the
+  folder's `master` whatever branch the folder has checked out, so a tree
+  working on `live` pushes its trunk (DEPLOY-41).
+- **PROJ-57** A project whose folder has no remote offers no push button: the
+  page says what is missing instead (`#project-push-missing-<project id>`) —
+  that the folder has no remote, with the `git remote add` that would give it
+  one, or, where the folder is no git repository at all, git's own reason
+  (DEPLOY-44).
+- **PROJ-58** A push from the page runs in the background, off the page's own
+  process, so the page stays responsive: while one runs every remote's button is
+  disabled, the one that started it shows a spinner instead of its icon, and a
+  click on any of them does nothing, so a push is never started twice. Its
+  result is reported in a line of
+  its own (`#project-push-result-<project id>-<remote>`) — what the push did, or
+  git's refusal (DEPLOY-41) — and the standing beside that button is read again
+  (DEPLOY-43). It belongs to the page and is stored nowhere, so a page that
+  mounts reports none, and leaving the page while a push runs stops it: the only
+  thing it leaves is git's own state, the branch on that remote as it was or as
+  pushed.
 
 ### Creating a project by its name
 
@@ -352,6 +380,9 @@ project's (PROJ-42, PROJ-46).
   interface offers: the page makes a folder of its own.
 - Creating a project is something the interface does. The agent has no tool for
   it, and `Elia.Projects.create/1` is not reachable from a chat.
+- Pushing a project's trunk (PROJ-56) is the user's own git configuration put to
+  use: Elia adds, changes and removes no remote, and a folder's remotes are
+  whatever it has (PROJ-36, DEPLOY-44).
 
 ## Stored data
 
@@ -388,7 +419,11 @@ indistinguishable afterwards.
 
 The project's own page (PROJ-51) adds nothing stored: it reads the registry
 (PROJ-2) and the saved chats (STORE-6) as they are, and writes only what the
-controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
+controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8). Neither
+does the push it offers (PROJ-56 to PROJ-58): it reads the folder's own git
+repository (DEPLOY-44) and writes nothing of its own — what a push moves is the
+remote's branch and the folder's `<remote>/master` ref, which are git's — so
+nothing is migrated and a project saved by an older Elia still reads.
 
 ## Implementation
 
@@ -427,8 +462,10 @@ controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
 - `test/elia_web/live/project_live_test.exs` (a project's own page: the project
   it names, the chats it lists with their status, its paging, an id that names
   no project, the New chat control (PROJ-51, PROJ-52), the Files button
-  (PROJ-48) and the Delete button (PROJ-54) on it — and the project's allowlist
-  field and its Save, PROJ-50).
+  (PROJ-48) and the Delete button (PROJ-54) on it, the project's allowlist field
+  and its Save (PROJ-50), and one push button per remote of the project's
+  folder with the standing beside each, a folder that has none, and a push
+  reported in its own line (PROJ-56 to PROJ-58)).
 - `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).

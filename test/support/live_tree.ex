@@ -141,14 +141,15 @@ defmodule Elia.LiveTree do
 
       dir = Elia.LiveTree.create()
       origin = Elia.LiveTree.origin(dir, Path.join(System.tmp_dir!(), "origin.git"))
+      backup = Elia.LiveTree.origin(dir, Path.join(System.tmp_dir!(), "backup.git"), "backup")
   """
-  @spec origin(binary(), binary()) :: binary()
-  def origin(dir, remote) do
+  @spec origin(binary(), binary(), binary()) :: binary()
+  def origin(dir, remote, name \\ "origin") do
     File.mkdir_p!(remote)
     git!(remote, ["init", "--quiet", "--bare"])
     git!(remote, ["symbolic-ref", "HEAD", "refs/heads/" <> trunk()])
-    git!(dir, ["remote", "add", "origin", remote])
-    git!(dir, ["config", "branch.#{trunk()}.remote", "origin"])
+    git!(dir, ["remote", "add", name, remote])
+    git!(dir, ["config", "branch.#{trunk()}.remote", name])
     git!(dir, ["config", "branch.#{trunk()}.merge", "refs/heads/" <> trunk()])
     remote
   end

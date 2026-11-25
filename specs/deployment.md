@@ -298,37 +298,46 @@ tree's front end (`/recover`, RECOVER-10).
   that isn't set up for deployment is left alone and a boot never fails on it
   (DEPLOY-14).
 
-### Pushing the trunk to origin
+### Pushing a project's trunk to a remote
 
-A push is the one thing Elia does for its own repository that has to reach the
-user's credentials, and a credential store, an SSH key and `~/.gitconfig` are
-outside a command's jail on purpose (ISOL-5), so a jailed push could not
-authenticate. That one command therefore runs unjailed; everything a deploy runs,
-and everything a chat runs, stays jailed (ISOL-1, ISOL-14). A push is no deploy:
-it merges nothing, tests nothing, loads nothing and is never rolled back.
+A project's folder is a repository of its own (PROJ-36), and its own page is
+where that repository's trunk is pushed to the remotes the folder has
+configured (PROJ-56 to PROJ-58). A push is the one thing Elia does with the
+user's own git configuration that has to reach their credentials, and a
+credential store, an SSH key and `~/.gitconfig` are outside a command's jail on
+purpose (ISOL-5), so a jailed push could not authenticate. That one command
+therefore runs unjailed; everything a deploy runs, and everything a chat runs,
+stays jailed (ISOL-1, ISOL-14). A push is no deploy: it merges nothing, tests
+nothing, loads nothing and is never rolled back.
 
-- **DEPLOY-41** The trunk can be pushed to the repository's `origin` remote from
-  the Settings page (CONF-37): `git push origin master`, and nothing else — no
-  merge, no suite, no load, and no other branch. It is not an operation of the
-  runner (DEPLOY-15, DEPLOY-16): it takes no step of a deploy (DEPLOY-21), writes
-  nothing to the record (DEPLOY-23) and has no rollback. `Elia.Deploy.push/1`
-  returns what the push did — `{:ok, message}` with git's own output, or
-  `{:error, reason}` for a refusal: a non-fast-forward because `origin` has
-  commits the trunk does not, a remote that is not there, a credential that did
-  not work.
+- **DEPLOY-41** A repository's `master` can be pushed to one of its remotes as
+  `git push <remote> master` run in that repository's folder, and nothing else —
+  no merge, no suite, no load, no other branch, and no command other than that
+  one. It is not an operation of the runner (DEPLOY-15, DEPLOY-16): it takes no
+  step of a deploy (DEPLOY-21), writes nothing to the record (DEPLOY-23) and has
+  no rollback. `Elia.Deploy.push/2` returns what the push did — `{:ok, message}`
+  with git's own output, or `{:error, reason}` for a refusal: a non-fast-forward
+  because the remote has commits the folder does not, a remote that is not
+  there, a credential that did not work.
 - **DEPLOY-42** A push runs unjailed (`Elia.Shell.run/2` with `jail: false`) as
-  `git push origin master` — a fixed command with nothing of the caller's in it
-  — asked not to prompt (`GIT_TERMINAL_PROMPT=0`), so a missing credential fails
-  with git's message rather than waiting on a terminal that is not there, and
-  bounded by a timeout the way a deploy's other git calls are.
-- **DEPLOY-43** `Elia.Deploy.origin/1` says how the trunk stands against
-  `origin`, answering from the tree's own `origin/master` remote-tracking ref
-  with no fetch of its own, so asking costs no network request:
-  `{:ok, %{pending: n}}` for the commits on `master` that ref does not have,
-  `{:ok, %{pending: nil}}` when the tree has no `origin/master` ref yet (nothing
-  has been pushed from it), and `{:error, reason}` when the repository has no
-  `origin` remote, the reason naming it. A push that succeeds leaves that ref at
-  the trunk, so `pending` is 0 afterwards.
+  `git push <remote> master` — a fixed command whose only part of the caller's
+  is the remote name, one of the folder's own configured remotes (DEPLOY-44),
+  quoted the way every other git argument is — asked not to prompt
+  (`GIT_TERMINAL_PROMPT=0`), so a missing credential fails with git's message
+  rather than waiting on a terminal that is not there, and bounded by a timeout
+  the way a deploy's other git calls are.
+- **DEPLOY-43** `Elia.Deploy.pending/2` says how a folder's `master` stands
+  against one of its remotes, answering from the folder's own `<remote>/master`
+  remote-tracking ref with no fetch of its own, so asking costs no network
+  request: `{:ok, %{pending: n}}` for the commits on `master` that ref does not
+  have, `{:ok, %{pending: nil}}` when the folder has no such ref yet (nothing
+  has been pushed to that remote from it), and `{:error, reason}` when the
+  folder has no such remote, the reason naming it. A push that succeeds leaves
+  that ref at the trunk, so `pending` is 0 afterwards.
+- **DEPLOY-44** `Elia.Deploy.remotes/1` names the remotes a folder's repository
+  has configured, as `git remote` reports them — `{:ok, []}` for a repository
+  with none — and `{:error, reason}` when git cannot answer, which a folder that
+  is no git repository, and one that is gone (PROJ-27), both do.
 
 ### What a deploy is doing
 
@@ -519,12 +528,10 @@ nothing is rewritten.
   — a tree with only `.elia/deployed` keeps that revision, with the boot's on
   top of it, and a revision already in the list keeps the time it was first
   loaded.
-- A deploy record's operation may now name a **push** (DEPLOY-41): its `kind`
-  is `push` and it has no mode. No key is added or removed, a record an older
-  Elia wrote still reads, and this version reads such an entry as a push and
-  reports it as one; an older Elia reading a record from it names that operation
-  a deploy, which is only the wording of a report, and it is never mistaken for
-  one that merged or loaded anything.
+- A push writes nothing to a deploy record (DEPLOY-41): it is no operation of
+  the runner, so the record keeps the shape it had — an operation's `kind` is
+  still `:deploy` or `:rollback` (DEPLOY-23) — and a record an older Elia wrote
+  still reads.
 - Nothing else outlives the process here: the saved sessions and the settings
   database gain and lose no key.
 
@@ -545,7 +552,8 @@ goes with the harness's own: ISOL-7, ISOL-22, ISOL-27, ISOL-28), SHELL
 (`$ELIA_CHAT_ID`, SHELL-14).
 
 `Elia.Deploy` (the trunk and `live`, the deploy, hot reload and restart,
-`push/1` — the trunk to `origin`, DEPLOY-41 to DEPLOY-43 — and `origin/1`,
+`push/2` — a repository's `master` to one of its remotes, DEPLOY-41 to
+DEPLOY-43 — with `remotes/1` and `pending/2` (DEPLOY-44),
 `deployable/1`, `status/1`, the inert request reloader, the steps a
 deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
 `last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), `record_boot/1` (the
@@ -568,10 +576,11 @@ workspace), `Elia.Skills.{Files,Shell,Folder}` (the
 `ELIA_CHAT_ID` a command gets, SHELL-14, and the instruction a chat carries,
 DEPLOY-28 to DEPLOY-30),
 `EliaWeb.SettingsLive` (the
-deployment section: the steps, the record, going back, the push control and what
-it says about `origin` (CONF-37), what a tree that
+deployment section: the steps, the record, going back, what a tree that
 isn't set up for deployment is missing, and the restart control it offers only
-where the marker says a restart can be survived — DEPLOY-33), `EliaWeb.Endpoint`
+where the marker says a restart can be survived — DEPLOY-33),
+`EliaWeb.ProjectLive` (the push controls a project's page offers, PROJ-56 to
+PROJ-58), `EliaWeb.Endpoint`
 (inert request reloader, the recovery plug, RECOVER-10), `bin/serve` (the loop
 that brings the server back, RESTART-1, and the supervised marker it exports,
 DEPLOY-33, RESTART-12), `README.md` and `bin/preview` (what a fresh clone has to
@@ -598,8 +607,9 @@ leaves the live tree as it found it (DEPLOY-38, DEPLOY-39), the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
 restart, the runner, a deploy that leaves the suite out (DEPLOY-40), the loaded
 revision a boot records and what a deploy brought, the uncommitted changes
-it puts aside (DEPLOY-37), and the push of the trunk to `origin` (DEPLOY-41 to
-DEPLOY-43), DEPLOY-1 to DEPLOY-33, DEPLOY-36 to DEPLOY-43),
+it puts aside (DEPLOY-37), and the push of a repository's `master` to one of
+its remotes, with the remotes it has and the standing of each (DEPLOY-41 to
+DEPLOY-44), DEPLOY-1 to DEPLOY-33, DEPLOY-36 to DEPLOY-44),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to

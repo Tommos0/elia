@@ -173,7 +173,7 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   the browser — so a reload, a new visit and a page that comes back after a
   restart deploy (CONF-22) all start with the tests running. It is disabled
   while an operation runs, the way the buttons are (CONF-20).
-- **CONF-37** Where the live tree's repository has an `origin` remote (DEPLOY-43)
+- ~~**CONF-37** Where the live tree's repository has an `origin` remote (DEPLOY-43)
   the Deployment section offers pushing the trunk to it (DEPLOY-41): a "Push"
   button, `#deploy-push`, beside the deploy buttons but a secondary control
   rather than a third deploy mode (its title says it pushes `master` to
@@ -184,8 +184,10 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   push needs neither a deploy nor `live`, so this control is offered whether or
   not the live tree is set up for deployment (DEPLOY-14), unlike the deploy
   buttons (CONF-19), and it is offered while a deploy runs as well, since it is
-  not one.
-- **CONF-38** A push from the section runs in the background, off the page's own
+  not one.~~ Retired: a push belongs to the project whose repository it sends to
+  and is offered on that project's own page, one control per configured remote
+  (PROJ-56 to PROJ-58).
+- ~~**CONF-38** A push from the section runs in the background, off the page's own
   process, so the page stays responsive: while one runs the button is disabled
   and shows a spinner, and a click while one runs does nothing. Its result is
   reported in a line of its own, `#deploy-push-result` — what the push did, or
@@ -194,7 +196,8 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   belongs to the page and is stored nowhere, so a page that mounts reports none,
   and leaving the page while a push runs stops it — the only thing it leaves is
   git's own state, the branch on `origin` as it was or as pushed — and the
-  tree's own `origin/master` catches up on the next push (DEPLOY-43).
+  tree's own `origin/master` catches up on the next push (DEPLOY-43).~~ Retired:
+  the project's own page offers and reports a push now (PROJ-58).
 
 ### Sections
 
@@ -211,8 +214,8 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   what a re-render the user did not ask for leaves is the browser's own state
   (CONF-27).
 - **CONF-26** What a collapsed section holds is in the page all the same, so
-  its controls keep their ids (CONF-9–CONF-11, CONF-17, CONF-19, CONF-37,
-  CONF-38, PUSH-2–PUSH-8) and their state: a check that is running, a deploy in
+  its controls keep their ids (CONF-9–CONF-11, CONF-17, CONF-19,
+  PUSH-2–PUSH-8) and their state: a check that is running, a deploy in
   flight and the push section's own reading of the browser (PUSH-20) are the
   same
   whether or not the section is expanded, and expanding one after something
@@ -280,8 +283,7 @@ reads and writes the same key.
   checking, saving and removing a key, the credits line and its refresh,
   appearance and its UI scale control, the Deployment section, the checkbox
   that leaves the suite out (CONF-36), its steps,
-  the elapsed time, the push of the trunk to `origin` and what the section says
-  about it (CONF-37, CONF-38), the collapsible sections — CONF-7 to CONF-38).
+  the elapsed time, the collapsible sections — CONF-7 to CONF-36).
 - `test/elia_web/browser/settings_sections_test.exs` (the four sections in a
   real browser: all four collapsed on load, a header expanding and collapsing
   one, and an open one that a re-render the user did not ask for leaves open —

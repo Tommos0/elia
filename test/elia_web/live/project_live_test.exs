@@ -3,7 +3,7 @@ defmodule EliaWeb.ProjectLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, Projects}
+  alias Elia.{Agent, Deploy, LiveTree, Projects}
   alias Elia.LLM.Message
 
   setup do
@@ -206,5 +206,131 @@ defmodule EliaWeb.ProjectLiveTest do
 
     refute has_element?(view, "#project-allowlist-error-#{project.id}")
     assert Projects.allowlist(project) == ["cdn.example.net"]
+  end
+
+  # PROJ-56, DEPLOY-41, DEPLOY-44: a project's folder is a repository of its own
+  # (PROJ-36), and its page offers one push of the trunk per remote that folder
+  # has configured, each with the standing of `master` against that remote
+  # beside it — and a push sends the trunk, not the branch checked out.
+  test "offers one push per remote the folder has, and pushes it", %{conn: conn} do
+    folder = repo()
+    {:ok, project} = Projects.create("Widgets", folder)
+    origin = remote(folder, "origin")
+    remote(folder, "backup")
+
+    {:ok, view, _html} = live(conn, ~p"/p/#{project.id}")
+
+    assert has_element?(view, "#project-push-#{project.id}-origin", "Push master")
+    assert has_element?(view, "#project-push-#{project.id}-backup", "Push master")
+
+    # PROJ-56: each row says which remote it is for.
+    assert has_element?(view, "#project-push-remote-#{project.id}-origin", "origin")
+    assert has_element?(view, "#project-push-remote-#{project.id}-backup", "backup")
+
+    assert has_element?(
+             view,
+             "#project-push-status-#{project.id}-origin",
+             "has not been pushed to this remote"
+           )
+
+    refute has_element?(view, "#project-push-missing-#{project.id}")
+
+    # PROJ-56: the folder is on `live` — the trunk is what a button sends.
+    assert LiveTree.branch(folder) == "live"
+
+    view |> element("#project-push-#{project.id}-origin") |> render_click()
+    render_async(view)
+
+    assert has_element?(
+             view,
+             "#project-push-result-#{project.id}-origin",
+             "Pushed master to origin"
+           )
+
+    assert has_element?(view, "#project-push-status-#{project.id}-origin", "everything on master")
+    assert LiveTree.sha(origin, "master") == LiveTree.sha(folder, "master")
+
+    # PROJ-56: the other remote's control and standing are as they were.
+    assert has_element?(
+             view,
+             "#project-push-status-#{project.id}-backup",
+             "has not been pushed to this remote"
+           )
+
+    assert Deploy.pending(folder, "backup") == {:ok, %{pending: nil}}
+    refute has_element?(view, "#project-push-result-#{project.id}-backup")
+  end
+
+  # PROJ-57, DEPLOY-44: a folder with no remote to push to gets no button, and
+  # the page says what is missing instead — that it has no remote, with the
+  # command that would give it one, or git's own reason for a folder that is no
+  # repository at all.
+  test "says what is missing where the folder has no remote (PROJ-57)", %{conn: conn} do
+    {:ok, project} = Projects.create("Bare", repo())
+
+    {:ok, view, _html} = live(conn, ~p"/p/#{project.id}")
+
+    refute has_element?(view, "#project-push-#{project.id}-origin")
+    assert has_element?(view, "#project-push-missing-#{project.id}", "has no remote to push to")
+    assert has_element?(view, "#project-push-missing-#{project.id}", "git remote add origin")
+
+    {:ok, plain} = Projects.create("Plain", make_dir("plain"))
+
+    {:ok, other, _html} = live(conn, ~p"/p/#{plain.id}")
+
+    refute has_element?(other, "#project-push-#{plain.id}-origin")
+    assert has_element?(other, "#project-push-missing-#{plain.id}", "not a git repository")
+  end
+
+  # PROJ-58, DEPLOY-41, DEPLOY-44: a push runs off the page's own process, so
+  # the page stays responsive: while one runs every remote's button is disabled,
+  # a click while one runs changes nothing, and only the remote it was for gets
+  # a result — reported in a line of its own, and nothing of a deploy's.
+  test "a push runs in the background and is reported in its own line (PROJ-58)", %{
+    conn: conn
+  } do
+    folder = repo()
+    {:ok, project} = Projects.create("Widgets", folder)
+    remote(folder, "origin")
+    remote(folder, "backup")
+
+    {:ok, view, _html} = live(conn, ~p"/p/#{project.id}")
+
+    view |> element("#project-push-#{project.id}-origin") |> render_click()
+
+    assert has_element?(view, "#project-push-#{project.id}-origin[disabled]")
+    assert has_element?(view, "#project-push-#{project.id}-backup[disabled]")
+
+    # A click while one runs changes nothing: the other remote is not pushed and
+    # gets no result of its own.
+    render_click(view, "push_master", %{"remote" => "backup"})
+    refute has_element?(view, "#project-push-result-#{project.id}-backup")
+
+    render_async(view)
+
+    assert has_element?(view, "#project-push-result-#{project.id}-origin", "Pushed master")
+    refute has_element?(view, "#project-push-#{project.id}-origin[disabled]")
+    assert Deploy.pending(folder, "backup") == {:ok, %{pending: nil}}
+
+    # PROJ-56, PROJ-58: a remote the folder does not have is not one to push to,
+    # so a stale or forged click leaves the page as it is.
+    render_click(view, "push_master", %{"remote" => "nope"})
+    refute has_element?(view, "#project-push-result-#{project.id}-nope")
+    assert Deploy.pending(folder, "origin") == {:ok, %{pending: 0}}
+  end
+
+  # PROJ-56: a project's folder is a git repository of its own (PROJ-36), with
+  # the branches a tree has: `master` for its trunk, and `live` checked out.
+  defp repo do
+    dir = LiveTree.create()
+    on_exit(fn -> LiveTree.remove(dir) end)
+    dir
+  end
+
+  # A bare repository outside the folder, the way a remote is (DEPLOY-44).
+  defp remote(folder, name) do
+    path = Path.join(System.tmp_dir!(), "elia-#{name}-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf!(path) end)
+    LiveTree.origin(folder, path, name)
   end
 end

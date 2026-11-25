@@ -42,12 +42,6 @@ defmodule EliaWeb.SettingsLive do
         # (DEPLOY-40). The page's own state, and unchecked whenever it loads:
         # nothing about it is stored.
         deploy_skip_tests: false,
-        # CONF-37, CONF-38: the result of the last push of the trunk this page
-        # made, and whether one is running. A push is no deploy: it is not the
-        # runner's operation, so nothing of it is stored or broadcast, and a
-        # page that mounts reports none.
-        push_trunk: nil,
-        push_trunk_pending: false,
         # CONF-24: the clock the section's elapsed time is read against. It is
         # an assign because a render only recomputes what a tracked assign says
         # has changed, so the tick moves this one.
@@ -735,46 +729,6 @@ defmodule EliaWeb.SettingsLive do
               </button>
             </div>
 
-            <%!-- CONF-37, CONF-38, DEPLOY-41..DEPLOY-43: pushing the trunk to
-            `origin` is no deploy and no step of one — it merges nothing, tests
-            nothing and has no rollback — so it has a control, a line and a
-            result of its own, and it is offered whether or not this tree is set
-            up for deployment. --%>
-            <div class="mt-4 rounded-xl bg-base-200/50 p-3 text-xs">
-              <div class="flex flex-wrap items-center gap-2">
-                <button
-                  :if={push_offered?(@deploy_origin)}
-                  type="button"
-                  id="deploy-push"
-                  phx-click="deploy-push"
-                  disabled={@push_trunk_pending}
-                  title="Push master to origin"
-                  class="flex h-8 items-center gap-1.5 rounded-lg border border-base-300 px-3 font-medium transition hover:bg-base-200 disabled:opacity-50"
-                >
-                  <.spinner :if={@push_trunk_pending} />
-                  <.icon
-                    :if={!@push_trunk_pending}
-                    name="hero-arrow-up-tray"
-                    class="size-3.5"
-                  /> Push
-                </button>
-                <span id="deploy-origin" class="break-words text-base-content/60">
-                  {origin_status(@deploy_origin)}
-                </span>
-              </div>
-              <p
-                :if={@push_trunk}
-                id="deploy-push-result"
-                class={[
-                  "mt-2 break-words",
-                  @push_trunk.kind == :ok && "text-success",
-                  @push_trunk.kind != :ok && "text-error"
-                ]}
-              >
-                {@push_trunk.text}
-              </p>
-            </div>
-
             <%!-- CONF-21, CONF-22, DEPLOY-21, DEPLOY-22: what an operation is
             doing, and what the last one did — from the runner, and from the
             record when the runner has nothing (a page that comes back after a
@@ -1457,35 +1411,6 @@ defmodule EliaWeb.SettingsLive do
 
   defp deploy_status({:error, reason}), do: reason
 
-  # CONF-37, DEPLOY-43: whether there is anything to push to — a repository with
-  # an `origin` remote — and how the trunk stands against it.
-  defp push_offered?({:ok, _origin}), do: true
-  defp push_offered?({:error, _reason}), do: false
-
-  defp origin_status({:error, reason}), do: reason
-  # DEPLOY-43: no `origin/master` of the tree's own says nothing has been pushed
-  # from this tree — not what the remote holds, which asking here does not fetch.
-  defp origin_status({:ok, %{pending: nil}}),
-    do: "master has not been pushed from this tree yet."
-
-  defp origin_status({:ok, %{pending: 0}}),
-    do: "origin has everything on master: nothing to push."
-
-  defp origin_status({:ok, %{pending: 1}}), do: "1 commit on master is not pushed yet."
-
-  defp origin_status({:ok, %{pending: pending}}),
-    do: "#{pending} commits on master are not pushed yet."
-
-  # CONF-38, DEPLOY-41: what the push did, in its own line. An unknown outcome
-  # is reported rather than crashing the page that found it.
-  defp push_trunk_result({:ok, message}), do: %{kind: :ok, text: message}
-  defp push_trunk_result({:error, reason}), do: %{kind: :error, text: reason}
-
-  defp push_trunk_result({:exit, reason}),
-    do: %{kind: :error, text: "The push failed: #{Exception.format_exit(reason)}"}
-
-  defp push_trunk_result(other), do: %{kind: :error, text: inspect(other)}
-
   defp short(sha), do: String.slice(sha, 0, 12)
 
   defp mask(key), do: "••••" <> String.slice(key, -4, 4)
@@ -1644,21 +1569,6 @@ defmodule EliaWeb.SettingsLive do
     {:noreply, deploy_assigns(socket)}
   end
 
-  # CONF-37, CONF-38, DEPLOY-41: pushing the trunk to `origin` is no deploy — it
-  # is not the runner's operation (DEPLOY-15, DEPLOY-16) and has no steps and no
-  # rollback — so it runs off this process the way the page's other background
-  # work does, and a click while one runs changes nothing.
-  def handle_event("deploy-push", _params, socket) do
-    if socket.assigns.push_trunk_pending do
-      {:noreply, socket}
-    else
-      {:noreply,
-       socket
-       |> assign(push_trunk_pending: true, push_trunk: nil)
-       |> start_async(:push_trunk, fn -> Deploy.push() end)}
-    end
-  end
-
   # PUSH-3: the page subscribed and reports the subscription it made, so that
   # device can be sent to. An unusable one is refused rather than stored.
   def handle_event("push-subscribe", %{"subscription" => subscription}, socket) do
@@ -1754,26 +1664,6 @@ defmodule EliaWeb.SettingsLive do
   end
 
   # PUSH-8: what the test notification did.
-  # CONF-37, CONF-38, DEPLOY-43: what the push did, in its own line — and the
-  # tree's `origin/master` ref has moved with a push that worked, so how the
-  # trunk stands is read again.
-  def handle_async(:push_trunk, {:ok, result}, socket) do
-    {:noreply,
-     assign(socket,
-       push_trunk_pending: false,
-       push_trunk: push_trunk_result(result),
-       deploy_origin: Deploy.origin()
-     )}
-  end
-
-  def handle_async(:push_trunk, {:exit, reason}, socket) do
-    {:noreply,
-     assign(socket,
-       push_trunk_pending: false,
-       push_trunk: push_trunk_result({:exit, reason})
-     )}
-  end
-
   def handle_async(:push_test, {:ok, result}, socket) do
     {:noreply, assign(socket, push_status: push_result(result))}
   end
@@ -1966,9 +1856,6 @@ defmodule EliaWeb.SettingsLive do
 
     assign(socket,
       deployment: deployment,
-      # CONF-37, DEPLOY-43: how the trunk stands against `origin`, read from the
-      # tree's own remote-tracking ref — no fetch, so no network request.
-      deploy_origin: Deploy.origin(),
       # DEPLOY-33: whether a restart can be survived is the tree's to answer, and
       # the section asks it rather than assuming it can be.
       restartable: Deploy.restartable?(),

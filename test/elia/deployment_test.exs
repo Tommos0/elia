@@ -2384,80 +2384,126 @@ defmodule Elia.DeploymentTest do
     assert reason =~ "0000000"
   end
 
-  ## Pushing the trunk to origin (DEPLOY-41 to DEPLOY-43)
+  ## Pushing a project's trunk to a remote (DEPLOY-41 to DEPLOY-44)
 
-  # DEPLOY-41, DEPLOY-43: the trunk goes to `origin` with one `git push origin
-  # master`, the tree's own `origin/master` ref follows it, and nothing of a
-  # deploy happens: no step, no record entry, no load, no rollback.
-  test "push/1 sends the trunk to origin", %{tree: tree} do
+  # DEPLOY-41, DEPLOY-43, DEPLOY-44: `master` goes to the remote it names with
+  # one `git push <remote> master`, the folder's own `<remote>/master` ref
+  # follows it, and nothing of a deploy happens: no step, no record entry, no
+  # load, no rollback. The branch checked out is nothing to it: what is sent is
+  # the trunk (PROJ-56).
+  test "push/2 sends the trunk to the remote it names", %{tree: tree} do
     remote = remote(tree)
 
-    # DEPLOY-43: nothing has been pushed from this tree, so it has no
-    # `origin/master` of its own — and what a push would send is the trunk.
-    assert {:ok, %{pending: nil}} = Deploy.origin()
+    # DEPLOY-44: the folder's own remotes, as git lists them.
+    assert {:ok, ["origin"]} = Deploy.remotes(tree)
 
-    assert {:ok, message} = Deploy.push()
+    # PROJ-56: the tree works on `live` and its trunk has a change that branch
+    # does not, so a push that sent the branch checked out would send another
+    # commit than the one asserted below.
+    {_, 0} = git(tree, ["checkout", "master"])
+    trunk_commit(tree, "feat: a change only the trunk has")
+    {_, 0} = git(tree, ["checkout", "live"])
+    assert branch(tree) == "live"
+    assert LiveTree.sha(tree, "master") != LiveTree.sha(tree, "live")
+
+    # DEPLOY-43: nothing has been pushed to it from this folder, so it has no
+    # `origin/master` of its own — and what a push would send is the trunk.
+    assert {:ok, %{pending: nil}} = Deploy.pending(tree, "origin")
+
+    assert {:ok, message} = Deploy.push(tree, "origin")
     assert message =~ "Pushed master to origin"
     assert message =~ "master -> master"
     assert LiveTree.sha(remote, "master") == LiveTree.sha(tree, "master")
 
-    # DEPLOY-43: the ref the tree holds has caught up with the remote.
-    assert {:ok, %{pending: 0}} = Deploy.origin()
+    # DEPLOY-43: the ref the folder holds has caught up with the remote.
+    assert {:ok, %{pending: 0}} = Deploy.pending(tree, "origin")
 
     # DEPLOY-41: a push is no deploy — git says it had nothing to send, and the
     # runner took no step and the record nothing (DEPLOY-21, DEPLOY-23).
-    assert {:ok, message} = Deploy.push()
+    assert {:ok, message} = Deploy.push(tree, "origin")
     assert message =~ "nothing to push"
     assert Runner.running() == nil
     assert Runner.last() == nil
     assert Deploy.read_record(tree) == %{running: nil, last: nil, loaded: []}
   end
 
-  # DEPLOY-43: a tree whose trunk the remote does not have at all — nothing has
-  # ever been pushed from it — says so rather than counting commits.
-  test "origin/1 counts what origin is missing (DEPLOY-43)", %{tree: tree} do
-    remote(tree)
-    {_, 0} = git(tree, ["checkout", "master"])
-    trunk_commit(tree, "feat: a change nobody pushed")
+  # DEPLOY-44: a folder with several remotes has every one of them, and each is
+  # pushed to by name — one says nothing about another (PROJ-56).
+  test "remotes/1 names every remote a folder has (DEPLOY-44)", %{tree: tree} do
+    backup = remote(tree, "backup")
+    origin = remote(tree, "origin")
 
-    assert {:ok, %{pending: nil}} = Deploy.origin()
+    assert {:ok, ["backup", "origin"]} = Deploy.remotes(tree)
 
-    assert {:ok, _message} = Deploy.push()
-    trunk_commit(tree, "feat: one more change")
-    assert {:ok, %{pending: 1}} = Deploy.origin()
+    assert {:ok, _message} = Deploy.push(tree, "backup")
+    assert LiveTree.sha(backup, "master") == LiveTree.sha(tree, "master")
+    assert {:ok, %{pending: 0}} = Deploy.pending(tree, "backup")
+    # DEPLOY-43: the other remote has nothing yet.
+    assert {:ok, %{pending: nil}} = Deploy.pending(tree, "origin")
+
+    assert {:ok, _message} = Deploy.push(tree, "origin")
+    assert LiveTree.sha(origin, "master") == LiveTree.sha(tree, "master")
   end
 
-  # DEPLOY-41, DEPLOY-43: a repository with no `origin` remote has nothing to
-  # push to and says so, rather than failing obscurely.
-  test "a tree with no origin remote is reported as such (DEPLOY-41)" do
-    assert {:error, reason} = Deploy.origin()
+  # DEPLOY-44: a folder with no remotes has an empty list rather than an error,
+  # and one that is no git repository at all has git's own reason — which a
+  # folder that is gone answers the same way (PROJ-27, PROJ-57).
+  test "a folder that is no git repository has no remotes (DEPLOY-44)" do
+    plain = Path.join(System.tmp_dir!(), "elia-plain-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(plain)
+    on_exit(fn -> File.rm_rf!(plain) end)
+
+    assert {:error, reason} = Deploy.remotes(plain)
+    assert is_binary(reason) and reason != ""
+
+    gone = Path.join(plain, "gone")
+    assert {:error, _reason} = Deploy.remotes(gone)
+  end
+
+  # DEPLOY-43: a folder whose trunk a remote does not have at all — nothing has
+  # ever been pushed to it — says so rather than counting commits.
+  test "pending/2 counts what a remote is missing (DEPLOY-43)", %{tree: tree} do
+    remote(tree)
+    {_, 0} = git(tree, ["checkout", "master"])
+
+    assert {:ok, %{pending: nil}} = Deploy.pending(tree, "origin")
+
+    assert {:ok, _message} = Deploy.push(tree, "origin")
+    trunk_commit(tree, "feat: one more change")
+    assert {:ok, %{pending: 1}} = Deploy.pending(tree, "origin")
+  end
+
+  # DEPLOY-41, DEPLOY-43: a remote the folder does not have is nothing to push
+  # to and says so, rather than failing obscurely.
+  test "a folder with no such remote is reported as such (DEPLOY-41)" do
+    assert {:error, reason} = Deploy.pending(Workspace.runtime_root(), "origin")
     assert reason =~ "no origin remote"
 
-    assert {:error, message} = Deploy.push()
+    assert {:error, message} = Deploy.push(Workspace.runtime_root(), "origin")
     assert message =~ "Could not push master to origin"
   end
 
-  # DEPLOY-41: a push the remote refuses — there, because origin has commits the
+  # DEPLOY-41: a push the remote refuses — there, because it has commits the
   # trunk does not — comes back as the page's own message rather than as a
-  # crash: what the section next to the control reports.
+  # crash: what the project's next control to it reports (PROJ-58).
   test "a refused push is reported (DEPLOY-41)", %{tree: tree} do
     remote(tree)
     {_, 0} = git(tree, ["checkout", "master"])
     trunk_commit(tree, "feat: the trunk's change")
-    assert {:ok, _message} = Deploy.push()
+    assert {:ok, _message} = Deploy.push(tree, "origin")
 
-    # The trunk is moved back behind what origin now has: the push a remote
+    # The trunk is moved back behind what the remote now has: the push a remote
     # refuses, because it would drop commits.
     LiveTree.git!(tree, ["reset", "--hard", "HEAD~1"])
 
-    assert {:error, reason} = Deploy.push()
+    assert {:error, reason} = Deploy.push(tree, "origin")
     assert reason =~ "Could not push master to origin"
     assert reason =~ "rejected"
   end
 
   # DEPLOY-42, ISOL-5: the push is the one thing Elia runs outside the jail,
   # because what it needs — a credential store, an SSH key, `~/.gitconfig` — is
-  # outside it on purpose. The remote is outside the tree the jail holds, so a
+  # outside it on purpose. The remote is outside the folder the jail holds, so a
   # jailed `git push` could not reach it (ISOL-13): this passes only because the
   # push leaves the jail.
   @tag skip:
@@ -2476,17 +2522,18 @@ defmodule Elia.DeploymentTest do
     trunk_commit(tree, "feat: a change to send")
 
     assert Elia.Shell.jailed?()
-    assert {:ok, message} = Deploy.push()
+    assert {:ok, message} = Deploy.push(tree, "origin")
     assert message =~ "Pushed master to origin"
     assert LiveTree.sha(remote, "master") == LiveTree.sha(tree, "master")
   end
 
-  # A bare repository outside the live tree, the way a remote is: what a jail
-  # does not hold (ISOL-13), and what the push still has to reach (DEPLOY-42).
-  defp remote(tree) do
-    path = Path.join(System.tmp_dir!(), "elia-origin-#{System.unique_integer([:positive])}")
+  # A bare repository outside the tree, the way a remote is: what a jail does
+  # not hold (ISOL-13), and what the push still has to reach (DEPLOY-42). A
+  # project's folder may have more than one, so the test names it (DEPLOY-44).
+  defp remote(tree, name \\ "origin") do
+    path = Path.join(System.tmp_dir!(), "elia-#{name}-#{System.unique_integer([:positive])}")
     on_exit(fn -> File.rm_rf!(path) end)
-    LiveTree.origin(tree, path)
+    LiveTree.origin(tree, path, name)
   end
 
   defp slice(sha), do: String.slice(sha, 0, 7)
