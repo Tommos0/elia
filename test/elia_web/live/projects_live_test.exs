@@ -46,9 +46,13 @@ defmodule EliaWeb.ProjectsLiveTest do
     assert has_element?(view, "#project-name-#{project.id}", "My App")
     assert has_element?(view, "#project-folder-#{project.id}", project.folder)
     assert has_element?(view, "#project-chats-#{project.id}", "1 chat")
-    # Elia's own project can't be deleted; the other can.
-    refute has_element?(view, "#delete-project-harness")
-    assert has_element?(view, "#project-#{project.id} #delete-project-#{project.id}")
+    # PROJ-23, PROJ-53: a row links to the project's own page, where what acts
+    # on a project is (PROJ-51, PROJ-54) — nothing here does.
+    assert has_element?(view, "#project-open-#{project.id}[href='/p/#{project.id}']")
+    refute has_element?(view, "#delete-project-#{project.id}")
+    refute has_element?(view, "#project-files-#{project.id}")
+    refute has_element?(view, "#project-allowlist-#{project.id}")
+    refute has_element?(view, "#project-color-#{project.id}-auto")
   end
 
   # PROJ-23, PROJ-39: the form takes a name; the folder is made under the
@@ -154,84 +158,5 @@ defmodule EliaWeb.ProjectsLiveTest do
     # apostrophe is escaped in the markup, so this reads the element's text).
     assert has_element?(view, "#flash-error", "No Repo")
     assert has_element?(view, "#flash-error", "git repository")
-  end
-
-  # PROJ-48: a project's Files button makes that project the open one (PROJ-8,
-  # PROJ-28) and opens the Files page, which browses it (EXPL-15).
-  test "a project's Files button opens its files", %{conn: conn} do
-    dir = make_dir("files")
-    {:ok, project} = Projects.create("Browsable", dir)
-    File.write!(Path.join(dir, "note.txt"), "hello\n")
-    {:ok, view, _html} = live(conn, ~p"/projects")
-
-    # Elia's own project has no button: its files are the page's default.
-    refute has_element?(view, "#project-files-harness")
-    assert has_element?(view, "#project-#{project.id} #project-files-#{project.id}")
-
-    assert {:error, {:live_redirect, %{to: "/files"}}} =
-             view |> element("#project-files-#{project.id}") |> render_click()
-
-    assert Projects.default().id == project.id
-
-    {:ok, files, _html} = live(conn, ~p"/files")
-    assert has_element?(files, "#project-name", "Browsable")
-    assert has_element?(files, "[data-entry='note.txt']")
-  end
-
-  # PROJ-50, NET-11, NET-28: a project's allowlist is a field showing its
-  # entries, one per line, saved when its Save is pressed — and a list holding
-  # an entry that isn't one of NET-7's forms changes nothing and is named for
-  # that project.
-  test "shows and saves a project's allowlist", %{conn: conn} do
-    dir = make_dir("allowlist")
-    {:ok, project} = Projects.create("Widgets", dir)
-    {:ok, view, _html} = live(conn, ~p"/projects")
-
-    assert has_element?(view, "#project-allowlist-#{project.id}")
-    assert has_element?(view, "#save-project-allowlist-#{project.id}")
-
-    view
-    |> form("#project-allowlist-form-#{project.id}", %{
-      allowlist: "API.example.com\n*.example.org\n"
-    })
-    |> render_submit()
-
-    assert Projects.allowlist(project) == ["api.example.com", "*.example.org"]
-    assert has_element?(view, "#project-allowlist-#{project.id}", "api.example.com")
-    refute has_element?(view, "#project-allowlist-error-#{project.id}")
-
-    # A list holding an entry that isn't one of NET-7's forms saves nothing and
-    # names the entry (NET-11).
-    view
-    |> form("#project-allowlist-form-#{project.id}", %{allowlist: "api.example.com\nnot a host"})
-    |> render_submit()
-
-    assert has_element?(view, "#project-allowlist-error-#{project.id}", "not a host")
-    assert Projects.allowlist(project) == ["api.example.com", "*.example.org"]
-
-    # Saving a good list again clears the message.
-    view
-    |> form("#project-allowlist-form-#{project.id}", %{allowlist: "cdn.example.net\n"})
-    |> render_submit()
-
-    refute has_element?(view, "#project-allowlist-error-#{project.id}")
-    assert Projects.allowlist(project) == ["cdn.example.net"]
-
-    # Elia's own project has the field too (PROJ-3, PROJ-49).
-    assert has_element?(view, "#project-allowlist-harness")
-  end
-
-  # PROJ-23: deleting asks for confirmation and removes the project.
-  test "deletes a project", %{conn: conn} do
-    dir = make_dir("delete")
-    {:ok, project} = Projects.create("Gone", dir)
-    {:ok, view, _html} = live(conn, ~p"/projects")
-
-    assert has_element?(view, "#delete-project-#{project.id}[data-confirm]")
-
-    view |> element("#delete-project-#{project.id}") |> render_click()
-
-    refute has_element?(view, "#delete-project-#{project.id}")
-    assert Projects.get(project.id) == nil
   end
 end

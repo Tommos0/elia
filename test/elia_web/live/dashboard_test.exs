@@ -417,6 +417,7 @@ defmodule EliaWeb.DashboardTest do
       assert has_element?(view, "#dash-project-#{project.id}", "Another one")
       assert has_element?(view, "#dash-project-#{project.id}", root)
       assert has_element?(view, "#dash-project-chats-#{project.id}", "1")
+      assert has_element?(view, "#dash-project-open-#{project.id}[href='/p/#{project.id}']")
       assert has_element?(view, "#dash-project-new-#{project.id}[href='/p/#{project.id}/new']")
       assert has_element?(view, "#all-projects[href='/projects']")
 

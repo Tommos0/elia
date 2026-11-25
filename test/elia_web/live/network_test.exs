@@ -145,8 +145,8 @@ defmodule EliaWeb.NetworkTest do
 
   # NET-24, NET-28, CSET-7: the section shows the entries the chat's project
   # allows, one per line, and the page's Save is the numeric settings' — a
-  # project's entries are changed on the projects page (PROJ-50), and the chat's
-  # own by its own Save (NET-38).
+  # project's entries are changed on the project's own page (PROJ-50, PROJ-51),
+  # and the chat's own by its own Save (NET-38).
   test "the section shows the project's entries, and the save keeps the mode", %{
     conn: conn,
     id: id

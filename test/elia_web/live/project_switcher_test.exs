@@ -97,8 +97,9 @@ defmodule EliaWeb.ProjectSwitcherTest do
     end)
   end
 
-  # PROJ-30, PROJ-23: the menu's entry leads to a page holding every project,
-  # the form that creates one and the button that deletes one.
+  # PROJ-30, PROJ-23, PROJ-53: the menu's entry leads to a page holding every
+  # project, the form that creates one and, per project, the link to its own
+  # page (PROJ-51) — which is where a project is deleted (PROJ-54).
   test "the menu's entry leads to the projects page", %{conn: conn} do
     with_projects(fn %{widgets: widgets} ->
       {:ok, view, _html} = live(conn, ~p"/c/#{saved_chat(widgets.id)}")
@@ -109,8 +110,8 @@ defmodule EliaWeb.ProjectSwitcherTest do
       {:ok, page, _html} = live(conn, ~p"/projects")
 
       assert has_element?(page, "#new-project")
-      assert has_element?(page, "#project-#{widgets.id} #delete-project-#{widgets.id}")
-      refute has_element?(page, "#delete-project-harness")
+      assert has_element?(page, "#project-open-#{widgets.id}[href='/p/#{widgets.id}']")
+      refute has_element?(page, "#delete-project-#{widgets.id}")
     end)
   end
 

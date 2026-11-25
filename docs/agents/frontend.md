@@ -57,3 +57,11 @@ belongs under a header menu goes below `z-40`.
 - **Never** call `<.flash_group>` outside `layouts.ex`.
 - Use `<.icon name="hero-x-mark" class="w-5 h-5"/>` for icons. Never use `Heroicons` modules.
 - Use `<.input>` from `core_components.ex` for form inputs. If you pass your own `class`, no default classes are inherited, so your classes must style the input fully.
+
+## UI previews
+
+- `bin/preview <path>…` screenshots a page whole, but a page that scrolls is
+  only captured as far as the viewport: what is below it is not in the picture,
+  however tall `full_page` claims to be. A long page — a project's own page with
+  30 chats under its header — hides its lower sections unless the viewport is
+  made tall enough: `ELIA_PREVIEW_HEIGHT=2600 bin/preview /p/harness`.

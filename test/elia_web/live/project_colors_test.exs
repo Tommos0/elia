@@ -47,12 +47,12 @@ defmodule EliaWeb.ProjectColorsTest do
     end)
   end
 
-  # PROJ-45: the projects page picks a project's colour — a swatch per palette
-  # entry, painted in it (PROJ-42), and the automatic one — and the project's own
-  # icon wears the choice (PROJ-47).
-  test "the projects page picks a project's colour", %{conn: conn} do
+  # PROJ-45: the project's own page (PROJ-51) picks its colour — a swatch per
+  # palette entry, painted in it (PROJ-42), and the automatic one — and the
+  # project's own icon wears the choice (PROJ-47).
+  test "a project's own page picks a project's colour", %{conn: conn} do
     with_projects(fn %{widgets: widgets} ->
-      {:ok, view, _html} = live(conn, ~p"/projects")
+      {:ok, view, _html} = live(conn, ~p"/p/#{widgets.id}")
 
       for color <- Projects.palette() do
         assert has_element?(

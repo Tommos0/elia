@@ -96,9 +96,10 @@ left off in exactly as `/` used to (UI-1, UI-71).
 
 - **DASH-9** A "Projects" card (`#projects`) has one row
   (`#dash-project-<id>`) per project (`Elia.Projects.list/0`, PROJ-23's list),
-  with its name, its folder (shown truncated with the whole path in the `title`)
-  and how many chats it has (`#dash-project-chats-<id>`), a "New chat" link
-  (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26), and a single link
+  with its name, a link (`#dash-project-open-<id>`) to the project's own page
+  (PROJ-51, PROJ-53), its folder (shown truncated with the whole path in the
+  `title`) and how many chats it has (`#dash-project-chats-<id>`), a "New chat"
+  link (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26), and a single link
   (`#all-projects`) to `/projects`.
 
 ### Machine and deployment
@@ -155,7 +156,8 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/1` (STORE-29),
 
 - `test/elia_web/live/dashboard_test.exs` (the page and its header, the
   "Continue" card and a done chat being skipped, "Needs attention", "Recent
-  chats" and the room its title gets, the refresh, "Projects", "System",
+  chats" and the room its title gets, the refresh, "Projects" and the link a
+  project's row carries to its own page, "System",
   "Deploy" and "What's new" — DASH-1, DASH-3 to DASH-11, DASH-13, DASH-14).
 - `test/elia_web/live/chat_live_test.exs` (the dashboard as `/`, DASH-1, DASH-2;
   what `/chats` opens, UI-77).

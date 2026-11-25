@@ -11,7 +11,10 @@ kept apart from the ones that apply in every project.
 One project is open at a time: it is the one the header names beside the logo,
 the chat list holds its chats and no other project's, and the switcher in the
 header changes it. Opening a chat opens that chat's project, so the header, the
-list and the page agree about where the user is.
+list and the page agree about where the user is. A project has a page of its own
+as well — `/p/<id>` — holding what it is (PROJ-51), the chats that belong to it
+(PROJ-52) and the settings that act on it (PROJ-54), and opening it opens the
+project just as opening a chat does.
 
 Every project has a colour — one the user picks from a palette, or the one its
 name gives it — and the app's own badge at the top left is painted in the open
@@ -145,20 +148,22 @@ project's (PROJ-42, PROJ-46).
   to the colour its name derives (PROJ-43); a name the palette does not hold is
   `{:error, :unknown_color}` and stores nothing. Elia's own project takes one
   like any other.
-- **PROJ-45** The projects page (PROJ-23) carries the picker for a project's
-  colour: a swatch per palette entry (`#project-color-<id>-<name>`, painted in
-  that entry's `hex`) and one for the derived colour
-  (`#project-color-<id>-auto`), with the project's current choice marked
-  `data-selected="true"`. Pressing a swatch stores it (PROJ-44) and shows the
-  page with it chosen; pressing the automatic one clears the stored colour.
+- **PROJ-45** A project's own page (PROJ-51) carries the picker for that
+  project's colour: a swatch per palette entry
+  (`#project-color-<id>-<name>`, painted in that entry's `hex`) and one for the
+  derived colour (`#project-color-<id>-auto`), with the project's current choice
+  marked `data-selected="true"`. Pressing a swatch stores it (PROJ-44) and
+  shows the page with it chosen; pressing the automatic one clears the stored
+  colour.
 - **PROJ-46** The header's app icon — the badge at the top left, `#app-icon` —
   is painted in the open project's colour (PROJ-28, PROJ-43) on every page, and
   follows the open project when the switcher changes it (PROJ-29); with no open
   project it is the theme's primary.
 - **PROJ-47** A project's colour stands beside its name wherever the interface
   lists it: a swatch in a row of the switcher's menu (`#project-swatch-<id>`,
-  PROJ-29) and the project's own icon on the projects page (`#project-icon-<id>`,
-  PROJ-23), each painted in the colour the header's icon uses for it (PROJ-46).
+  PROJ-29) and the project's own icon on the project's own page
+  (`#project-icon-<id>`, PROJ-51), each painted in the colour the header's icon
+  uses for it (PROJ-46).
 
 ### The allowlist
 
@@ -169,7 +174,7 @@ project's (PROJ-42, PROJ-46).
   (PROJ-2); Elia's own project, which the registry never holds (PROJ-3), keeps
   it in the settings database under a key of its own. A project with no list has
   an empty one.
-- **PROJ-50** The projects page (PROJ-23) shows each project's allowlist as a
+- **PROJ-50** A project's own page (PROJ-51) shows the project's allowlist as a
   field (`#project-allowlist-<id>`) holding its entries one per line, with a Save
   (`#save-project-allowlist-<id>`) that applies it when it is pressed; a list
   holding an entry that is not one of NET-7's forms changes nothing and the page
@@ -178,11 +183,14 @@ project's (PROJ-42, PROJ-46).
 ### The interface
 
 - **PROJ-23** `/projects` lists every project with its name, folder and number
-  of chats (`#project-<id>`), a form to create one from a name (`#new-project`),
-  and a delete button (`#delete-project-<id>`) for every project except Elia's.
-  Deleting asks for confirmation.
-- **PROJ-48** A project's row carries a Files button (`#project-files-<id>`) on
-  every project but Elia's own: pressing it makes that project the open one
+  of chats (`#project-<id>`) and a link to the project's own page
+  (`#project-open-<id>`, PROJ-51), and carries the form that creates a project
+  from a name (`#new-project`) and the projects root control (PROJ-40). What
+  acts on one project — its colour, its allowlist, its Files and its deletion —
+  is on that project's own page and not here (PROJ-54).
+- **PROJ-48** A project's own page (PROJ-51) carries a Files button
+  (`#project-files-<id>`) on every project but Elia's own: pressing it makes
+  that project the open one
   (PROJ-8, PROJ-28) and opens the Files page (EXPL-6), which browses it
   (EXPL-15).
 - ~~**PROJ-24** The chat sidebar groups chats by project: a header per project
@@ -204,9 +212,11 @@ project's (PROJ-42, PROJ-46).
   (PROJ-28), which is the open chat's project when the page shows one.
 - **PROJ-28** The open project — the project the interface works in — is
   `Elia.Projects.default/0` (PROJ-8): the one the switcher (PROJ-29) last
-  opened, or a chat was last started in (PROJ-11, PROJ-26), and it is still
-  that one after a restart. Opening a chat opens its project: a page showing a
-  chat (UI-2) makes that chat's project (PROJ-9) the open one. The open project
+  opened, a chat was last started in (PROJ-11, PROJ-26), or a project's own
+  page (PROJ-51) last showed, and it is still that one after a restart. Opening
+  a chat opens its project: a page showing a chat (UI-2) makes that chat's
+  project (PROJ-9) the open one, and a project's own page (PROJ-51) makes that
+  project the open one. The open project
   is what the header names (PROJ-29) and the only project whose chats the chat
   list holds (PROJ-31, UI-4).
 - **PROJ-29** Every page's header shows the open project next to the logo: its
@@ -224,6 +234,37 @@ project's (PROJ-42, PROJ-46).
   every project, with the form that creates one and the button that deletes one
   — rather than for creating alone. The header itself carries no "Projects" link
   (PROJ-25).
+
+### A project's own page
+
+- **PROJ-51** `/p/<project id>` is a project's own page
+  (`EliaWeb.ProjectLive`), showing the project the id names (PROJ-5): its name
+  (`#project-name-<id>`), its folder (`#project-folder-<id>`, PROJ-1) and its
+  icon painted in its colour (`#project-icon-<id>`, PROJ-43, PROJ-47), a "New
+  chat" control (`#project-new-chat`) leading to `/p/<project id>/new`
+  (PROJ-26), the chats that belong to it (PROJ-52) and the controls that act on
+  it (PROJ-54). The page's title is the project's name. Opening it makes that
+  project the open one (PROJ-8, PROJ-28). An id that names no project redirects
+  to the projects page (PROJ-23).
+- **PROJ-52** The page lists the project's chats (PROJ-31) newest first (UI-4,
+  STORE-12), each a row (`#project-chat-<chat id>`) linking to `/c/<id>` (UI-2)
+  with the chat's title (STORE-7, TITLE-1), when it was started in relative form
+  (UI-34) and the status it shows in the chat list (UI-59, DONE-2,
+  `EliaWeb.ChatStatus`); a sub-task chat (STORE-17) is not listed on its own,
+  since it is reached from the chat that spawned it (UI-45). The first page is
+  the 30 chats the chat list's first page holds (UI-4), and while the project
+  has more chats than that a "Load more chats" button (`#project-load-more`)
+  lists the next 30. A project with no chats says so (`#project-no-chats`).
+- **PROJ-53** A project's row on the projects page links to its own page
+  (`#project-open-<id>`, PROJ-23), and so does a row of the dashboard's projects
+  card (`#dash-project-open-<id>`, DASH-9).
+- **PROJ-54** The page carries what acts on the project, each as its own
+  requirement describes: the colour picker (`#project-color-<id>-<name>`,
+  `#project-color-<id>-auto`, PROJ-45), the allowlist field
+  (`#project-allowlist-<id>`, `#save-project-allowlist-<id>`, PROJ-50), the
+  Files button (`#project-files-<id>`, PROJ-48) and the delete button
+  (`#delete-project-<id>`, which asks for confirmation before deleting) — the
+  last two only on a project that is not Elia's own (PROJ-7, PROJ-48).
 
 ### Creating a project by its name
 
@@ -323,13 +364,18 @@ fields in the same file (PROJ-2), and the folder it made is a folder like any
 other, so a project created this way and one attached to an existing folder are
 indistinguishable afterwards.
 
+The project's own page (PROJ-51) adds nothing stored: it reads the registry
+(PROJ-2) and the saved chats (STORE-6) as they are, and writes only what the
+controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
+
 ## Implementation
 
 `Elia.Projects`, `Elia.Settings`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
 `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
-`EliaWeb.ProjectsLive`, `EliaWeb.ChatLive`, `EliaWeb.ChatList`,
+`EliaWeb.ProjectsLive`, `EliaWeb.ProjectLive`, `EliaWeb.ChatLive`,
+`EliaWeb.ChatList`,
 `EliaWeb.FilesLive`,
 `EliaWeb.Router`, `EliaWeb.Layouts`.
 
@@ -352,23 +398,28 @@ indistinguishable afterwards.
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
-- `test/elia_web/live/projects_live_test.exs` (the Projects page, PROJ-23; the
-  Files button in a project's row, PROJ-48; creating from a name, the projects
-  root control and what the page says after a creation whose repository was not
-  set up, a project's allowlist field and its Save — PROJ-39 to PROJ-41,
-  PROJ-50).
+- `test/elia_web/live/projects_live_test.exs` (the projects page — every project
+  with its folder and its number of chats, and the link to a project's own page;
+  creating from a name, the projects root control and what the page says after a
+  creation whose repository was not set up — PROJ-23, PROJ-39 to PROJ-41,
+  PROJ-53).
+- `test/elia_web/live/project_live_test.exs` (a project's own page: the project
+  it names, the chats it lists with their status, its paging, an id that names
+  no project, the New chat control (PROJ-51, PROJ-52), the Files button
+  (PROJ-48) and the Delete button (PROJ-54) on it — and the project's allowlist
+  field and its Save, PROJ-50).
 - `test/elia_web/live/chat_live_test.exs` (a chat started in a project, and
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
   its menu, choosing a project, the entry to the projects page and no
   "Projects" link — PROJ-28 to PROJ-30).
-- `test/elia_web/live/project_colors_test.exs` (the picker on the projects page,
-  the header's app icon in the open project's colour, and the swatch beside a
-  project's name — PROJ-45 to PROJ-47).
+- `test/elia_web/live/project_colors_test.exs` (the picker on a project's own
+  page, the header's app icon in the open project's colour, and the swatch
+  beside a project's name — PROJ-45 to PROJ-47).
 - `test/elia_web/live/chat_list_test.exs` (a list holding the open project's
   chats only, a chat whose project is gone under Elia's own — PROJ-31).
-- `test/elia_web/live/dashboard_test.exs` (the projects card and the default
-  project, PROJ-8, PROJ-9).
+- `test/elia_web/live/dashboard_test.exs` (the projects card, its row's link to
+  a project's own page, and the default project — PROJ-8, PROJ-9, PROJ-53).
 - `test/elia_web/live/files_live_test.exs` (the project a page browses, and one
   whose folder is gone — PROJ-12, PROJ-27).

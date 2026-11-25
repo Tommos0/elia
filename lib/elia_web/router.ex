@@ -70,6 +70,9 @@ defmodule EliaWeb.Router do
       # the user watches it.
       live "/c/:id/terminal", TerminalLive
       live "/p/:project_id/new", ChatLive, :new
+      # PROJ-51: a project's own page — what the project is, the chats that
+      # belong to it and the controls that act on it.
+      live "/p/:project_id", ProjectLive
       live "/projects", ProjectsLive
       live "/sessions", SessionsLive
       live "/system", SystemLive

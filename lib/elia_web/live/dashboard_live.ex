@@ -417,7 +417,13 @@ defmodule EliaWeb.DashboardLive do
         >
           <.icon name="hero-rectangle-stack" class="size-4 shrink-0 text-base-content/40" />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium">{project.name}</span>
+            <.link
+              navigate={~p"/p/#{project.id}"}
+              id={"dash-project-open-#{project.id}"}
+              class="block truncate text-sm font-medium transition hover:underline"
+            >
+              {project.name}
+            </.link>
             <span
               class="block truncate font-mono text-xs text-base-content/50"
               title={project.folder}

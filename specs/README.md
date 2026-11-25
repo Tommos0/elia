@@ -102,7 +102,7 @@ it.
 
 | Spec | Prefix | Summary |
 | --- | --- | --- |
-| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md`, skills and allowlist of hosts its chats may reach; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon |
+| [Projects](projects.md) | `PROJ` | Project folders; chats belong to one, which supplies its own `AGENTS.md`, skills and allowlist of hosts its chats may reach; one project is open at a time, named in the header, and the chat list holds its chats; a project can be created from a name, which makes its folder and its git repository; its colour paints the header's app icon; each project has a page of its own, with its chats and its settings |
 | [Project secrets](project-secrets.md) | `SECRET` | A project keeps its secrets in a `.env` file in its folder: the values reach the commands of its chats and every occurrence of one is redacted from what a chat sends to a model, which is told the names alone |
 | [Bundle refresh](bundle-refresh.md) | `BUNDLE` | An open page loads the bundle a deploy served, and keeps the page's own state while it does |
 | [Chat search](chat-search.md) | `SEARCH` | An in-memory index over the saved chats, so `search_chats` can find a chat by what it was about, within the chat's own project |
