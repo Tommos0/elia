@@ -39,6 +39,13 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 ## Waiting on a sub-task
 
 - `await_task` can outlast the harness's own request: in one chat both `await_task` and `ask_user` came back as "the harness crashed while running this tool" at the boundary, while the sub-task itself carried on untouched (a turn's end, a stop or a crash doesn't end one — SUBTASK-16). Polling survives that: a `shell` call of `sleep 280`, then `list_chats` with `children: true` for its `status`, and its `report.md` beside `brief.md` when it reaches `done`. It costs a round trip per few minutes, and nothing is lost either way, since the child commits on its own branch.
+- After an app restart, `await_task` can come back early with a stale summary — a
+  message the child sent before the restart, not its result — while the child is
+  still working, and for a child that is already `done` it can give an earlier
+  message rather than its last. The wait is not lost: check `list_chats` with
+  `children: true` for its `status`, or `read_chat`, whose header says `working`
+  or `done`, and await again. A summary that reads like a mid-task remark is the
+  tell, and nothing about the child's work is affected.
 - Merging a child rewrites its commits, so after `git merge --ff-only chat/<child id>` and a rebase, `git branch -d chat/<child id>` refuses with "not fully merged": the child's branch tip is no longer an ancestor of yours. Check the work is in `master` (it is — the merge was a fast-forward) and delete with `-D`. Same for your own branch once `git push . HEAD:master` has landed it.
 
 ## Sub-tasks: what not to reintroduce

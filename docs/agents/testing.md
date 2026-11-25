@@ -317,6 +317,11 @@ excluded`). Run that one yourself instead:
   cheaper a call. A test whose subject is not the suite step should ask for it
   (`deployment_test.exs` has helpers); the ones whose subject *is* it — DEPLOY-5,
   DEPLOY-18, DEPLOY-19, DEPLOY-21, DEPLOY-23, ISOL-14 — run the real suite.
+- A chat's own `ELIA_CHAT_ID` does not break the suite: `test/elia/skills/shell_test.exs`
+  (SHELL-14) passes with it set and with it unset, because the harness scrubs the
+  variable for a command that belongs to no chat. Plain `mix precommit` from a
+  chat's shell is fine; `env -u ELIA_CHAT_ID` is not needed (checked 2026-11-25
+  after a sub-task concluded otherwise).
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8) — unless the change is one you judge safe without a run, and then say
   in your last message why the skip was safe (`AGENTS.md`).
