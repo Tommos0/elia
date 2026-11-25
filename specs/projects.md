@@ -225,10 +225,10 @@ project's (PROJ-42, PROJ-46).
   open it reads "Elia" (PROJ-3). Pressing it lists every project
   (`#project-option-<id>`, in `list/0` order, PROJ-4), the open one marked with
   `data-open="true"`, and choosing one makes it the open project (PROJ-8,
-  PROJ-28) and opens its chat list: `/chats` for that project (UI-77), which
-  resumes its most recent chat or starts a chat in it — except on the Files
-  page, which it switches in place instead (EXPL-29). The menu closes when a
-  project is chosen, on Escape, and on a press outside it.
+  PROJ-28) and opens its own page (`/p/<id>`, PROJ-51), which lists that
+  project's chats (PROJ-52) and is where a chat in it is opened or started —
+  except on the Files page, which it switches in place instead (EXPL-29). The
+  menu closes when a project is chosen, on Escape, and on a press outside it.
 - **PROJ-30** The switcher's menu ends with an entry (`#manage-projects-link`)
   leading to the projects page (PROJ-23), labelled for what that page holds —
   every project, with the form that creates one and the button that deletes one
@@ -257,7 +257,9 @@ project's (PROJ-42, PROJ-46).
   lists the next 30. A project with no chats says so (`#project-no-chats`).
 - **PROJ-53** A project's row on the projects page links to its own page
   (`#project-open-<id>`, PROJ-23), and so does a row of the dashboard's projects
-  card (`#dash-project-open-<id>`, DASH-9).
+  card (`#dash-project-open-<id>`, DASH-9). The switcher's menu is the third way
+  in: choosing a project there opens its own page (`#project-option-<id>`,
+  PROJ-29).
 - **PROJ-54** The page carries what acts on the project, each as its own
   requirement describes: the colour picker (`#project-color-<id>-<name>`,
   `#project-color-<id>-auto`, PROJ-45), the allowlist field
@@ -412,8 +414,8 @@ controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
-  its menu, choosing a project, the entry to the projects page and no
-  "Projects" link — PROJ-28 to PROJ-30).
+  its menu, choosing a project opening that project's own page, the entry to the
+  projects page and no "Projects" link — PROJ-28 to PROJ-30, PROJ-53).
 - `test/elia_web/live/project_colors_test.exs` (the picker on a project's own
   page, the header's app icon in the open project's colour, and the swatch
   beside a project's name — PROJ-45 to PROJ-47).

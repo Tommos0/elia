@@ -27,22 +27,11 @@ defmodule EliaWeb.ChatLive do
   end
 
   # UI-77: `/chats` — the chat list's entry point, where deleting the open chat
-  # lands (UI-65) and where choosing a project goes (PROJ-29) — resumes the most
+  # lands (UI-65) — resumes the most
   # recent chat *of the open project* (PROJ-28, PROJ-31), and only starts a chat
   # in that project (PROJ-8) when it has none to resume. The app's start URL and
   # the header logo open the dashboard instead (`/`, DASH-1), and the sidebar's
   # "New chat" (UI-31) goes to the open project, `/p/<id>/new` above.
-  #
-  # PROJ-29: `/chats?project=<id>` is the switcher's entry — it opens that
-  # project and then its chat list. An id the registry no longer holds leaves
-  # the open project as it was (PROJ-8).
-  def mount(%{"project" => id} = params, session, %{assigns: %{live_action: :new}} = socket) do
-    case Elia.Projects.get(id) do
-      nil -> mount(Map.delete(params, "project"), session, socket)
-      project -> mount_chat_list(project, socket)
-    end
-  end
-
   def mount(_params, _session, %{assigns: %{live_action: :new}} = socket),
     do: mount_chat_list(Elia.Projects.default(), socket)
 
@@ -52,8 +41,8 @@ defmodule EliaWeb.ChatLive do
       else: {:ok, push_navigate(socket, to: ~p"/")}
   end
 
-  # PROJ-29, UI-77: `/chats` for a project — it opens the project and then
-  # resumes that project's most recent chat, or starts one when it has none.
+  # UI-77: `/chats` for the open project (PROJ-28) — it resumes that project's
+  # most recent chat, or starts one in it when it has none (PROJ-8, PROJ-31).
   defp mount_chat_list(project, socket) do
     :ok = Elia.Projects.set_default(project.id)
 

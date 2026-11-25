@@ -198,8 +198,8 @@ defmodule EliaWeb.Layouts do
   # the header used to show the app's own — and the menu it opens: every project,
   # the open one marked `data-open="true"`, and, below them, the entry to the
   # projects page (PROJ-23), where a project is created and deleted. Choosing a
-  # project opens it and its chat list (PROJ-8, PROJ-28, UI-77) — or, on a page
-  # that switches in place, opens it and browses it there (EXPL-29). The control is
+  # project opens it and its own page (PROJ-8, PROJ-28, PROJ-51, PROJ-53) — or,
+  # on a page that switches in place, opens it and browses it there (EXPL-29). The control is
   # drawn like the settings page's pickers: the trigger asks to close while the
   # menu is open (so a press on it is not also a press outside), and the menu
   # closes on Escape and on a press outside it. Its layer is the active chats
@@ -253,9 +253,9 @@ defmodule EliaWeb.Layouts do
     """
   end
 
-  # PROJ-29, EXPL-29: one project in the switcher's menu — a link that opens
-  # that project and its chat list, or, where the page switches in place, a
-  # button that asks the page to switch to it without leaving.
+  # PROJ-29, EXPL-29: one project in the switcher's menu — a link to that
+  # project's own page (PROJ-51), or, where the page switches in place, a button
+  # that asks the page to switch to it without leaving.
   attr :project, :map, required: true
   attr :open, :map, required: true
   attr :switch, :atom, required: true
@@ -264,7 +264,7 @@ defmodule EliaWeb.Layouts do
     ~H"""
     <.link
       :if={@switch == :navigate}
-      navigate={~p"/chats?project=#{@project.id}"}
+      navigate={~p"/p/#{@project.id}"}
       id={"project-option-#{@project.id}"}
       data-open={to_string(@project.id == @open.id)}
       class={project_option_class(@project, @open)}

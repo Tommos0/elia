@@ -63,10 +63,11 @@ defmodule EliaWeb.ProjectSwitcherTest do
     end)
   end
 
-  # PROJ-29, PROJ-28: choosing a project from the menu opens it and its chat
-  # list — `/chats?project=<id>`, which resumes that project's most recent chat
-  # (UI-77) and makes it the open project (PROJ-8).
-  test "choosing a project opens it and its chat list", %{conn: conn} do
+  # PROJ-29, PROJ-51, PROJ-53: choosing a project from the menu opens that
+  # project's own page — not its chat list — and the page it opens is the one
+  # that makes the project open (PROJ-8, PROJ-28). Its chats are on the page
+  # itself (PROJ-52), so a chat in that project is resumed from there.
+  test "choosing a project opens its own page", %{conn: conn} do
     with_projects(fn %{widgets: widgets} ->
       mine = saved_chat(nil)
       theirs = saved_chat(widgets.id)
@@ -74,26 +75,15 @@ defmodule EliaWeb.ProjectSwitcherTest do
       {:ok, view, _html} = live(conn, ~p"/settings")
       view |> element("#project-switcher") |> render_click()
 
-      assert has_element?(
-               view,
-               "#project-option-#{widgets.id}[href='/chats?project=#{widgets.id}']"
-             )
+      assert has_element?(view, "#project-option-#{widgets.id}[href='/p/#{widgets.id}']")
 
-      # `/chats` resumes that project's chat, not Elia's own (PROJ-31, UI-77), and
-      # the project it was asked for is the one that is open afterwards.
-      assert {:error, {:live_redirect, %{to: "/c/" <> id}}} =
-               live(conn, ~p"/chats?project=#{widgets.id}")
+      # The page that link names is the project's own (PROJ-51): it opens the
+      # project, and lists its chats and Elia's own project's nowhere.
+      {:ok, page, _html} = live(conn, ~p"/p/#{widgets.id}")
 
-      assert id == theirs
-      refute id == mine
       assert Projects.default().id == widgets.id
-
-      # A project that is not in the registry leaves the open one alone (PROJ-8).
-      assert {:error, {:live_redirect, %{to: "/c/" <> resumed}}} =
-               live(conn, ~p"/chats?project=nosuchproject")
-
-      assert resumed == theirs
-      assert Projects.default().id == widgets.id
+      assert has_element?(page, "#project-chat-#{theirs} a[href='/c/#{theirs}']")
+      refute has_element?(page, "#project-chat-#{mine}")
     end)
   end
 
