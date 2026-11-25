@@ -9,6 +9,12 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - `skills/**` changes apply without asking, but a folder skill's tools always ask the user before running.
 - Elixir changes (`lib/`, `config/`, `test/`) need the user's approval.
 
+## The instructions the prompt carries
+
+- The system prompt is the base prompt, then `AGENTS.md` (SKILL-10), then one section per skill (SKILL-5); `Elia.Skills.system_sections/2` builds it and `Elia.LLM.Context`'s breakdown sizes each piece. Measured in this tree: the base prompt ~150 tokens, `AGENTS.md` ~3.9k, the eleven skill sections ~4.4k, so `AGENTS.md` is the single biggest thing a chat reads every request.
+- That text is **pinned by tests and specs**, so compressing it is not a free edit: `test/elia/self_modification_test.exs` (`the project's AGENTS.md carries the worktree recipe`) asserts ~13 exact phrases in `AGENTS.md`, `test/elia/skills_test.exs` the `bin/preview`/`ELIA_PREVIEW_THEME=dark`/`ELIA_PREVIEW_WIDTH=430` ones, and DEPLOY-28 to DEPLOY-30, VERIFY-11 (the timeout default and maximum), PREVIEW-9 and DONE-6 each pin a fact to `AGENTS.md`. The skill sections are pinned the same way by their own tests (`harness_test`, `shell_test`, `tasks_test`, `chats_test`, `working_directory_test`). Check both before cutting, and run the suite rather than judging the edit a docs one.
+- The details behind a compressed bullet belong in this file: it is read on demand, where `AGENTS.md` is read every request.
+
 ## The live tree and a chat's own worktree
 
 - The live tree (`Elia.Workspace.runtime_root/0`, `config :elia, :runtime_root`, default: where the server was started) is where the server runs, where the code reloader reloads and where Elia's data (`.elia`) lives (DEPLOY-2). It is also the workspace of every chat in Elia's own project: the file and shell tools resolve against it and `ctx[:workspace]` is it (DEPLOY-1, PROJ-12), and a jailed command is confined to it (ISOL-13).
@@ -65,6 +71,9 @@ Compressed out of `AGENTS.md`'s sub-task bullets, which now keep the rule and th
 - A UI change — a template, `assets/css/`, a hook — can be seen *before* it is deployed: `bin/preview` in the chat's workspace screenshots its own code in a real headless browser, in the test env, and prints a Markdown image link per page (PREVIEW, `specs/ui-preview.md`). Nothing is deployed, no API key is involved and no live data is read; the pictures land in the gitignored `tmp/preview/`, and the running app serves a chat's own ones at `/preview/<chat id>/<file>` (PREVIEW-7). Paste the links into a reply to show the user. Preview in dark mode at a mobile width by default: `ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=430 bin/preview …` (PREVIEW-3, PREVIEW-13). `/settings`'s Deployment section renders only on a tree set up for deployment (CONF-19, DEPLOY-14), and a chat's own worktree is on `chat/<id>` rather than `live` — so a preview of `/settings` shows that section's warning and no deploy control at all. A picture of that section needs a live tree of its own: a throwaway preview test that points `:runtime_root` at `LiveTree.create/0`, clicks `#deployment summary` and screenshots it, deleted before the commit (a picture the chat wants to keep goes in the live tree's own `tmp/preview/`, which is served after a worktree is removed, PREVIEW-7). A chat's worktree has no `origin` remote of its own, so a picture of the Push control needs `LiveTree.origin/2` to give the throwaway tree a bare remote outside it (DEPLOY-43), and the `#deploy-origin` line only counts commits once something has been pushed from the tree — one `Deploy.push/1` in the test's setup. `PhoenixTest.Playwright.evaluate/3` returns the *connection* and hands the value to a function, so read a value out of the page with `evaluate(conn, js, fn value -> send(self(), {:value, value}) end)` and `assert_receive`.
 
 ## Editing a file
+
+- `git commit -m` takes **one** argument: give a multi-line message through a heredoc, `git commit -F - <<'EOF' … EOF`. A bare newline inside the command ends it there and the rest of the message runs as its own command — the commit lands with a truncated message and the shell reports `No such file or directory` for the line after it. `git commit --amend -F - <<'EOF'` fixes the message without a second commit.
+
 
 There are no file tools, so a change is a `shell` command (SHELL-15). Two
 things that cost a round trip each:
