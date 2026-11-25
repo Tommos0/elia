@@ -10,17 +10,27 @@ defmodule EliaWeb.ChatRowMenu do
   colocated hook's name is resolved against the module its markup is compiled
   in, so a `phx-hook` in another module's markup would name a hook that is not
   there.
+
+  The menu holds "Rename", the done entry (UI-109, UI-110) and the delete entry
+  (UI-64), and the done entry is offered for the status the row shows and no
+  other: the caller hands the row that status (`EliaWeb.ChatStatus`), the markup
+  draws the entry hidden for a chat that isn't idle, and the hook that owns the
+  menu keeps it in step with the row as its status changes — the row is
+  re-rendered then, while the menu is never patched (UI-103).
   """
 
   use EliaWeb, :html
 
-  # UI-103, UI-104: the events a row's menu and its box send. The chat list's
-  # are the default, and the header's rows name their own (ACTIVE-10), so a
-  # rename started in one is not taken for a rename started in the other.
+  # UI-103, UI-104, UI-109: the events a row's menu and its box send. The chat
+  # list's are the default, and the header's rows name their own (ACTIVE-10), so
+  # a rename started in one is not taken for a rename started in the other. The
+  # done entry is the list's own event however the row is drawn (UI-110,
+  # ACTIVE-12), since the flag it sets is the chat's and not the row's.
   @events %{
     start: "start_rename",
     submit: "rename_chat",
     cancel: "cancel_rename",
+    done: "mark_chat_done",
     delete: "delete_chat"
   }
 
@@ -34,6 +44,10 @@ defmodule EliaWeb.ChatRowMenu do
 
   attr :class, :string, default: "flex", doc: "the row's own classes"
 
+  attr :status, :string,
+    required: true,
+    doc: "the status the row shows (UI-59, UI-109): the done entry is offered while it is `idle`"
+
   attr :renaming, :boolean,
     default: false,
     doc: "whether this row is the one showing a box to type a name in (UI-104)"
@@ -45,9 +59,11 @@ defmodule EliaWeb.ChatRowMenu do
   slot :inner_block, required: true, doc: "the row's link, drawn by the caller (UI-4)"
 
   @doc """
-  UI-103, UI-104, ACTIVE-8 to ACTIVE-10: a chat's row — the link the caller
-  draws in the slot, the box a name is typed in while the row is being renamed,
-  and the menu the row opens, with the gesture that opens it.
+  UI-103, UI-104, UI-109, ACTIVE-8 to ACTIVE-10: a chat's row — the link the
+  caller draws in the slot, the box a name is typed in while the row is being
+  renamed, and the menu the row opens, with the gesture that opens it. `status`
+  is the status the row's own indicator shows (`EliaWeb.ChatStatus`), which is
+  what the menu's done entry is offered by (UI-109).
   """
   def row(assigns) do
     ~H"""
@@ -78,6 +94,18 @@ defmodule EliaWeb.ChatRowMenu do
             this.press = null
             this.from = null
             this.openedAt = 0
+
+            // UI-109: the done entry is offered for a chat the row shows as
+            // idle and for nothing else. The menu is never patched (UI-103)
+            // while the row is re-rendered whenever its chat's status changes,
+            // so the entry is brought in step here rather than by the server.
+            this.syncDone = () => {
+              const entry = this.menu && this.menu.querySelector("[data-row-done]")
+              if (!entry) return
+              const status = this.row.querySelector("[data-status]")
+              const idle = !!status && status.getAttribute("data-status") === "idle"
+              entry.style.display = idle ? "" : SHUT
+            }
 
             this.cancelPress = () => {
               if (this.press) clearTimeout(this.press)
@@ -242,6 +270,10 @@ defmodule EliaWeb.ChatRowMenu do
             window.addEventListener(ANNOUNCE, this.onOtherOpen)
             window.addEventListener("phx:navigate", this.onNavigate)
             window.addEventListener("popstate", this.onNavigate)
+
+            // UI-109: right, though the markup already draws it — the row's
+            // status is the one authority either side of the wire.
+            this.syncDone()
           },
 
           // A re-render patches the row's children — the link becomes the name's
@@ -253,6 +285,8 @@ defmodule EliaWeb.ChatRowMenu do
             this.menu = this.row.querySelector("[data-row-menu]")
             this.link = this.row.querySelector("[data-row-link]")
             if (this.isOpen()) this.setOpen(true)
+            // UI-109: the row's chat may have started working, or stopped.
+            this.syncDone()
           },
 
           destroyed() {
@@ -296,7 +330,7 @@ defmodule EliaWeb.ChatRowMenu do
       <%= if !@renaming do %>
         {render_slot(@inner_block)}
       <% end %>
-      <.menu chat={@chat} scope={@scope} events={@events} />
+      <.menu chat={@chat} scope={@scope} events={@events} status={@status} />
     </div>
     """
   end
@@ -304,6 +338,7 @@ defmodule EliaWeb.ChatRowMenu do
   attr :chat, :map, required: true
   attr :scope, :string, default: ""
   attr :events, :map, default: @events
+  attr :status, :string, required: true
 
   # UI-64, UI-103: the menu a chat's row opens. It is in the row's markup from
   # the first render and it is the client's, not the server's: LiveView draws it
@@ -333,6 +368,22 @@ defmodule EliaWeb.ChatRowMenu do
         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
       >
         <.icon name="hero-pencil" class="size-4 shrink-0 opacity-70" /> Rename
+      </button>
+      <%!-- UI-109, UI-110: marking the chat done, offered for a chat the row
+      shows as idle (UI-59) and hidden for every other status. The hook that
+      owns the menu keeps that in step with the row as its status changes, so
+      this is the first render's answer alone (UI-103). --%>
+      <button
+        type="button"
+        id={"#{@scope}done-chat-#{@chat.id}"}
+        data-row-done
+        phx-click={@events.done}
+        phx-value-id={@chat.id}
+        style={if @status == "idle", do: nil, else: "display: none"}
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+      >
+        <.icon name="hero-check-circle" class="size-4 shrink-0 opacity-70" />
+        <span class="truncate">Mark as done</span>
       </button>
       <%!-- UI-64: the list's one way to delete a chat, confirmed with
       `data-confirm` naming the chat and labelled "Delete chat". --%>

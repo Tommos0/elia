@@ -243,8 +243,8 @@ defmodule EliaWeb.ActiveChatsTest do
 
       assert has_element?(view, "#active-chat-row-menu-#{second}[phx-update='ignore']")
 
-      # ACTIVE-9: Rename first, then the delete entry (UI-64), under the
-      # control's own ids.
+      # ACTIVE-9: Rename first, then the done entry (UI-109), then the delete
+      # entry (UI-64), under the control's own ids.
       assert has_element?(
                view,
                "#active-chat-row-menu-#{second} #active-rename-chat-#{second}",
@@ -297,6 +297,41 @@ defmodule EliaWeb.ActiveChatsTest do
       render_hook(view, "active_cancel_rename", %{})
       refute has_element?(view, "#active-chat-rename-#{second}")
       assert has_element?(view, "#active-chat-#{second}")
+    end)
+  end
+
+  # ACTIVE-9, ACTIVE-12, UI-109, UI-110: the header's rows carry the chat list's
+  # done entry, and choosing it marks the chat done — a chat whose session isn't
+  # running, on a page that is not its own — after which the row leaves the menu,
+  # which lists the chats that aren't done (ACTIVE-2), and the count follows
+  # (ACTIVE-3).
+  test "a row's done entry marks the chat done, and the row leaves the menu",
+       %{conn: conn} do
+    with_empty_store(fn ->
+      # A chat with something said in it — the flag a row shows is saved with
+      # the chat, and an empty one is saved with its first message (SESS-35,
+      # STORE-34).
+      idle = save_chat("Plant the tree", messages: [Message.user("Plant the tree")])
+      on_exit(fn -> Agent.delete(idle) end)
+
+      {:ok, view, _html} = live(conn, ~p"/sessions")
+
+      assert has_element?(view, "#active-chats-count", "1")
+      view |> element("#active-chats-toggle") |> render_click()
+
+      assert has_element?(
+               view,
+               "#active-chat-row-menu-#{idle} #active-done-chat-#{idle}",
+               "Mark as done"
+             )
+
+      refute Agent.live?(idle)
+      view |> element("#active-done-chat-#{idle}") |> render_click()
+
+      assert Store.load_done(idle) == true
+      refute has_element?(view, "#active-chat-#{idle}")
+      refute has_element?(view, "#active-chats-count")
+      assert has_element?(view, "#active-chats-empty")
     end)
   end
 

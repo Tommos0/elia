@@ -2,7 +2,7 @@ defmodule EliaWeb.ChatList do
   @moduledoc """
   The chat list: its state, the markup it is drawn with and the events that
   drive it (UI-4 to UI-6, UI-31 to UI-36, UI-45 to UI-47, UI-59, UI-63 to UI-65,
-  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-108), and the
+  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-110), and the
   project whose chats it lists (PROJ-28 to PROJ-31).
 
   The list is drawn in two places — the chat page's own sidebar (UI-4, UI-35,
@@ -234,6 +234,21 @@ defmodule EliaWeb.ChatList do
       # as cancelling leaves it. No row being renamed at all (a stale client)
       # is nothing to do either.
       _refused -> {:halt, put_state(socket, renaming: nil)}
+    end
+  end
+
+  # UI-109, UI-110: mark a chat done from its row's menu — the entry the menu
+  # offers while the row shows the chat as idle. It is the chat list's own event
+  # however the row is drawn, so the header's rows send it too (ACTIVE-12), and
+  # the chat need not be open: `set_done/2` reaches a chat whose session isn't
+  # running by starting one. The list is read again, so the row's indicator
+  # shows the chat as done and the entry is no longer offered (UI-59, UI-109).
+  defp handle_event("mark_chat_done", %{"id" => id}, socket) do
+    if Elia.Store.valid_id?(id) do
+      {:ok, _done} = Elia.Agent.set_done(id, true)
+      {:halt, refresh(socket)}
+    else
+      {:halt, socket}
     end
   end
 
@@ -578,6 +593,7 @@ defmodule EliaWeb.ChatList do
       id={"#{@scope}chat-row-#{@chat.id}"}
       chat={@chat}
       scope={@scope}
+      status={@status}
       renaming={@renaming}
     >
       <.chat_link

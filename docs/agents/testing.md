@@ -329,6 +329,15 @@ excluded`). Run that one yourself instead:
   waits 5s for `{:status, :idle}` after approving a command that really runs
   `mix test`, which takes longer than that on this machine. It is not your
   change's — stash your work and run the file before chasing it.
+- `test/elia_web/browser/chat_row_menu_test.exs`'s "the header's rows open the
+  same menu on a long press" fails on `master`: the test dispatches a
+  `contextmenu` while the row's menu is open and expects the menu to stay, where
+  the hook's rule is that a `contextmenu` which is not the press that opened the
+  menu shuts it (UI-103) — the test's expectation that is stale, not the hook's.
+  Checked by stashing the work and running
+  `ELIA_BROWSER_TESTS=1 mix test --only real_browser test/elia_web/browser/chat_row_menu_test.exs`
+  (1 failure, at the `click` after the dispatch). The file is a real-browser one
+  (BROWSER-5), so the default run never sees it.
 - `settings_live_test.exs`'s "hot reload deploys what the chats merged, and the
   page stays responsive" (CONF-20, around line 893) failed in partition 2 of a
   full run and passed when the file was run alone, twice over; it is the flake

@@ -122,6 +122,7 @@ defmodule EliaWeb.ActiveChats do
     start: "active_start_rename",
     submit: "active_rename_chat",
     cancel: "active_cancel_rename",
+    done: "mark_chat_done",
     delete: "delete_chat"
   }
 
@@ -201,6 +202,7 @@ defmodule EliaWeb.ActiveChats do
             id={"active-chat-row-#{chat.id}"}
             chat={chat}
             scope="active-"
+            status={chat.status}
             renaming={@state.renaming == chat.id}
             events={@row_events}
             class="flex border-b border-base-300/60 last:border-b-0 transition hover:bg-base-200"

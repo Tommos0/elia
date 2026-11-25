@@ -467,6 +467,53 @@ defmodule EliaWeb.ChatListTest do
     end)
   end
 
+  # UI-109, UI-110, UI-59, DONE-2: the menu a row opens offers the done entry
+  # while the row shows the chat as idle, and hides it for any other status;
+  # choosing it marks the chat done from the list, without the chat being
+  # opened. What the hook makes of a status that changes while the page is open
+  # is a browser's to see (`chat_row_menu_test.exs`, UI-109).
+  test "a row's done entry is offered for an idle chat, and marks it done",
+       %{conn: conn} do
+    with_empty_store(fn ->
+      [idle, cut_short] = save_chats(2)
+      on_exit(fn -> Agent.delete(idle) end)
+
+      # STORE-31, UI-72: a turn a restart cut short, so the row is not idle.
+      :ok =
+        Store.save(cut_short, [Message.user("where I left off")],
+          turn: %{id: "t1", started_at: DateTime.utc_now()}
+        )
+
+      # A page that keeps no chat list of its own, so the drawer is the list
+      # (UI-91, UI-92).
+      {:ok, view, _html} = live(conn, ~p"/system")
+      view |> element("#chats-toggle") |> render_click()
+
+      # UI-109: offered for the idle chat — not hidden — and hidden for the one
+      # whose row is not idle.
+      assert has_element?(view, "#drawer-done-chat-#{idle}[data-row-done]", "Mark as done")
+      refute has_element?(view, "#drawer-done-chat-#{idle}[style='display: none']")
+
+      assert has_element?(view, "#drawer-chat-status-#{cut_short}[data-status='interrupted']")
+
+      assert has_element?(
+               view,
+               "#drawer-done-chat-#{cut_short}[data-row-done][style='display: none']"
+             )
+
+      # UI-110: choosing it marks the chat done — no session of it is running —
+      # and the row follows at once: the list shows the chat done (UI-59,
+      # DONE-2). The menu is never patched (UI-103), so the entry going with the
+      # status is the hook's own work, which a browser sees
+      # (`chat_row_menu_test.exs`, UI-109).
+      refute Agent.live?(idle)
+      view |> element("#drawer-done-chat-#{idle}") |> render_click()
+
+      assert Store.load_done(idle) == true
+      assert has_element?(view, "#drawer-chat-status-#{idle}[data-status='done']")
+    end)
+  end
+
   # N chats, oldest first, so the list's pages can be named (STORE-12 order).
   defp save_chats(n) do
     for _ <- 1..n do

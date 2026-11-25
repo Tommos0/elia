@@ -1,7 +1,8 @@
 defmodule EliaWeb.ChatRowMenuBrowserTest do
   @moduledoc """
   A chat row's own menu in a real browser (UI-103 in `specs/chat-ui.md`, UI-104
-  for what it opens, and ACTIVE-8 to ACTIVE-10 in `specs/active-chats.md` for
+  for what it opens, UI-109 and UI-110 for the done entry it holds, and
+  ACTIVE-8 to ACTIVE-10 in `specs/active-chats.md` for
   the header's rows, which open the same menu). Which event a gesture sends, whether the browser's own
   context menu follows it, what a press that turns into a scroll does, whether
   Escape reaches the row's link and where a `position: fixed` panel lands are
@@ -30,7 +31,7 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
     other = Agent.new_id()
     :ok = Store.save(open, [Message.user("the chat the page shows")])
     :ok = Store.save(other, [Message.user("the chat a press is about")])
-    on_exit(fn -> Enum.each([open, other], &Store.delete/1) end)
+    on_exit(fn -> Enum.each([open, other], &Agent.delete/1) end)
 
     %{open: open, other: other}
   end
@@ -64,6 +65,39 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
       return {x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2)}
     })()
     """)
+  end
+
+  # UI-109: whether a row's done entry is there to be seen — the entry itself,
+  # and not the menu it sits in (UI-103).
+  defp done_entry_shown?(id) do
+    """
+    (() => {
+      const el = document.querySelector('#done-chat-#{id}')
+      return !!el && getComputedStyle(el).display !== 'none'
+    })()
+    """
+  end
+
+  # UI-59, SESS-19: a chat's status as the page shows it, which is what a row's
+  # own status change arrives as on a page that is not the chat's.
+  defp status?(id, status) do
+    "document.querySelector('#chat-status-#{id}')?.dataset.status === '#{status}'"
+  end
+
+  defp publish_status(id, status) do
+    Phoenix.PubSub.broadcast(Elia.PubSub, Elia.Agent.activity_topic(), {:chat_status, id, status})
+    :ok
+  end
+
+  # Something the page settles into a moment after the change that caused it.
+  defp await_js(conn, expression, tries \\ 50) do
+    arrived =
+      Enum.reduce_while(1..tries, nil, fn _, _ ->
+        if js(conn, expression), do: {:halt, true}, else: Process.sleep(100) && {:cont, nil}
+      end)
+
+    assert arrived, "#{expression} never became true"
+    conn
   end
 
   # UI-103: a press, as a browser makes one — the pointer down on the point,
@@ -366,5 +400,52 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
 
     assert js(conn, "document.activeElement.id") == "active-chat-rename-#{other}",
            "the header's rename input did not take the focus (ACTIVE-10)"
+  end
+
+  # UI-109, UI-110, UI-59, DONE-2: the done entry a row's menu holds — offered
+  # for a row that shows its chat as idle, gone as soon as the row shows another
+  # status, back when it is idle again, and marking the chat done when it is
+  # chosen. The menu is never patched (UI-103), so keeping the entry in step
+  # with the row is the hook's own work — which is why this is a browser test.
+  test "the done entry follows the row's status, and marks the chat done", %{
+    conn: conn,
+    open: open,
+    other: other
+  } do
+    conn = open_page(conn, "/c/#{open}")
+
+    # UI-109: the other chat is idle, so its row offers the entry.
+    assert js(conn, done_entry_shown?(other)),
+           "the idle chat's row did not offer the done entry (UI-109)"
+
+    # UI-109, UI-59: a turn starts in it (UI-49) — the row shows it working and
+    # the entry goes with it, with no reload.
+    publish_status(other, :running)
+    conn = await_js(conn, status?(other, "working"))
+
+    refute js(conn, done_entry_shown?(other)),
+           "the working chat's row still offered the done entry (UI-109)"
+
+    # UI-109: idle again, and it is offered again.
+    publish_status(other, :idle)
+    conn = await_js(conn, status?(other, "idle"))
+
+    assert js(conn, done_entry_shown?(other)),
+           "the idle chat's row did not offer the done entry again (UI-109)"
+
+    # UI-110: choosing it marks the chat done — the press opens no chat — and
+    # the row shows done with the entry gone (UI-59, DONE-2, UI-109).
+    conn = press_hold(conn, "#chat-link-#{other}", @long_press)
+    assert open?(conn, other)
+
+    conn = click(conn, "#done-chat-#{other}")
+
+    assert path(conn) == "/c/#{open}", "choosing the done entry opened the chat (UI-110)"
+    assert Store.load_done(other) == true, "the chat was not marked done (UI-110)"
+
+    conn = await_js(conn, status?(other, "done"))
+
+    refute js(conn, done_entry_shown?(other)),
+           "the done chat's row still offered the done entry (UI-109)"
   end
 end

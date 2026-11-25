@@ -256,10 +256,16 @@ defmodule Elia.Agent do
   saved with the chat's metadata (SUBTASK-13), and a parent's `await_task`
   returns the result (SUBTASK-27). The end is recorded once: a chat marked done
   again, or reopened and marked done again (DONE-9), keeps the result it has.
+
+  A chat whose session isn't running is reached by starting it, as renaming it
+  from its row is (TITLE-8): marking a chat done is offered from its row in the
+  chat list (UI-109, UI-110), where the chat need not be open.
   """
   @spec set_done(binary(), boolean()) :: {:ok, boolean()}
-  def set_done(id, on?) when is_boolean(on?),
-    do: GenServer.call(Session.via(id), {:set_done, on?})
+  def set_done(id, on?) when is_boolean(on?) do
+    {:ok, _pid} = ensure_started(id)
+    GenServer.call(Session.via(id), {:set_done, on?})
+  end
 
   @doc """
   Sets the chat's model (MODEL-1) through the one write path (SESS-41). Also
