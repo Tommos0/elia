@@ -65,3 +65,11 @@ belongs under a header menu goes below `z-40`.
   however tall `full_page` claims to be. A long page — a project's own page with
   30 chats under its header — hides its lower sections unless the viewport is
   made tall enough: `ELIA_PREVIEW_HEIGHT=2600 bin/preview /p/harness`.
+
+- A preview writes its pictures into the `tmp/preview/` of the tree it ran in —
+  the chat's worktree — and the route that serves them
+  (`/preview/<chat id>/<file>`) looks there first and then in the chat's own
+  folder (PREVIEW-7, `Elia.Preview.path/3`). Removing the worktree once the work
+  is merged therefore kills the links already given to the user: copy the files
+  to the project's own `tmp/preview/` first, or leave the worktree until they
+  have looked.
