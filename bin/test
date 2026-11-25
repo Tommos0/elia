@@ -9,13 +9,16 @@
 # Environment:
 #   ELIA_TEST_PARTITIONS  how many partitions to start (default 4)
 #   ELIA_TEST_CMD         the command a partition runs (default: mix test)
+#   ELIA_TEST_RETRY       1 (default) runs a failed partition once more, 0 does not
 #
-# Exit status is 0 only when every partition passed.
+# Exit status is 0 only when every partition passed, a partition that failed and
+# passed on the retry included.
 
 cd "$(dirname "$0")/.." || exit 1
 
 partitions=${ELIA_TEST_PARTITIONS:-4}
 cmd=${ELIA_TEST_CMD:-"mix test"}
+retry=${ELIA_TEST_RETRY:-1}
 
 plan_only=0
 if [ "$1" = "--plan" ]; then
@@ -38,6 +41,9 @@ tmpdir_of() { echo "$(run_of "$1" "$2")/tmp"; }
 workspace_of() { echo "$(run_of "$1" "$2")/workspace"; }
 settings_of() { echo "$(run_of "$1" "$2")/settings/settings.dets"; }
 port_of() { echo $((4002 + $1 - 1)); }
+# A retry gets a port of its own, clear of every first-pass partition's
+# (SUITE-14).
+retry_port_of() { echo $((4002 + partitions + $1 - 1)); }
 
 # How slow a file is, in rough ExUnit milliseconds, measured with
 # `mix test --slowest` on a 4-core machine. A file not listed weighs 1, so a
@@ -85,6 +91,11 @@ if [ "$plan_only" = 1 ]; then
     echo "single run: $cmd $*"
   else
     echo "run: <run> — one \`mktemp -d\` directory per run, removed when it ends (SUITE-11)"
+    if [ "$retry" = 1 ]; then
+      echo "retry: on — a partition that failed is run once more (SUITE-14)"
+    else
+      echo "retry: off — ELIA_TEST_RETRY=0"
+    fi
     plan_root="<run>"
     split | while read -r p weight files; do
       echo "partition $p (weight $weight)"
@@ -108,6 +119,10 @@ if [ "$partitions" -lt 1 ]; then
   echo "bin/test: ELIA_TEST_PARTITIONS must be at least 1" >&2
   exit 2
 fi
+case "$retry" in
+  0 | 1) ;;
+  *) echo "bin/test: ELIA_TEST_RETRY must be 0 or 1" >&2; exit 2 ;;
+esac
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/elia-test-run-XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -123,25 +138,34 @@ fi
 
 split > "$tmp/plan"
 
-: > "$tmp/runs"
-while read -r p weight files; do
-  log="$tmp/p$p.log"
-
+# One attempt at one partition (SUITE-2): its own state and its own port under
+# the run's directory (SUITE-1, SUITE-11), its log beside them, and the seconds
+# it ran written there as it exits — so a partition's printed time is its own and
+# not the moment the waiting loop reached it (SUITE-15).
+# $1 the partition, $2 its files, $3 the attempt's suffix (`3` or `3-retry`,
+# which names its directory, log and time), $4 its port. Sets `launch_pid`: the
+# attempt has to be started by this shell, not by a command substitution, or
+# `wait` could not wait for it.
+launch() {
+  suffix=$3
   (
     # SUITE-1, SUITE-11: the partition's own state, under the run's directory,
     # which the trap above removes with the logs when the run ends.
-    ELIA_TEST_RUN=$(run_of "$tmp" "$p")
-    TMPDIR=$(tmpdir_of "$tmp" "$p")
-    ELIA_TEST_WORKSPACE=$(workspace_of "$tmp" "$p")
-    ELIA_TEST_SETTINGS=$(settings_of "$tmp" "$p")
-    ELIA_TEST_PORT=$(port_of "$p")
+    ELIA_TEST_RUN=$(run_of "$tmp" "$suffix")
+    TMPDIR=$(tmpdir_of "$tmp" "$suffix")
+    ELIA_TEST_WORKSPACE=$(workspace_of "$tmp" "$suffix")
+    ELIA_TEST_SETTINGS=$(settings_of "$tmp" "$suffix")
+    ELIA_TEST_PORT=$4
     export ELIA_TEST_RUN TMPDIR ELIA_TEST_WORKSPACE ELIA_TEST_SETTINGS ELIA_TEST_PORT
     mkdir -p "$TMPDIR"
-    exec $cmd --no-compile $files
-  ) > "$log" 2>&1 &
-
-  echo "$p $! $(date +%s)" >> "$tmp/runs"
-done < "$tmp/plan"
+    began=$(date +%s)
+    $cmd --no-compile $2
+    attempt_status=$?
+    echo "$(($(date +%s) - began))" > "$tmp/p$suffix.time"
+    exit $attempt_status
+  ) > "$tmp/p$suffix.log" 2>&1 &
+  launch_pid=$!
+}
 
 # A partition's ExUnit summary line, for the one-line report (SUITE-7).
 summary() {
@@ -150,19 +174,63 @@ summary() {
   echo "$line"
 }
 
-failed=0
-while read -r p pid started; do
+# The seconds the attempt with suffix $1 ran: the number it wrote as it exited,
+# or `?` for an attempt that never got to write one (SUITE-15).
+time_of() {
+  if [ -f "$tmp/p$1.time" ]; then cat "$tmp/p$1.time"; else echo '?'; fi
+}
+
+# The first pass: every partition at once, its files kept for a retry (SUITE-2).
+: > "$tmp/runs"
+while read -r p weight files; do
+  echo "$files" > "$tmp/p$p.files"
+  launch "$p" "$files" "$p" "$(port_of "$p")"
+  echo "$p $launch_pid $p" >> "$tmp/runs"
+done < "$tmp/plan"
+
+failed=""
+while read -r p pid suffix; do
   if wait "$pid"; then
-    printf 'partition %s: passed in %ss  %s\n' "$p" "$(($(date +%s) - started))" "$(summary "$tmp/p$p.log")"
+    printf 'partition %s: passed in %ss  %s\n' "$p" "$(time_of "$suffix")" "$(summary "$tmp/p$suffix.log")"
   else
-    failed=1
-    printf 'partition %s: FAILED after %ss\n' "$p" "$(($(date +%s) - started))"
-    echo "----- partition $p output -----"
-    cat "$tmp/p$p.log"
-    echo "----- end of partition $p -----"
+    printf 'partition %s: FAILED in %ss\n' "$p" "$(time_of "$suffix")"
+    failed="$failed $p"
   fi
 done < "$tmp/runs"
 
+# SUITE-14: after the first pass has been waited on, a partition that failed is
+# run once more — its own files, its own fresh state, a directory and a port of
+# its own, never the ones the first attempt used. SUITE-16: with the retry off
+# the run stops after the first pass.
+still_failed="$failed"
+if [ "$retry" = 1 ] && [ -n "$failed" ]; then
+  remaining=""
+  for p in $failed; do
+    suffix="$p-retry"
+    launch "$p" "$(cat "$tmp/p$p.files")" "$suffix" "$(retry_port_of "$p")"
+    if wait "$launch_pid"; then
+      printf 'partition %s: FAILED, then passed on the retry in %ss  %s\n' \
+        "$p" "$(time_of "$suffix")" "$(summary "$tmp/p$suffix.log")"
+    else
+      printf 'partition %s: FAILED again on the retry in %ss\n' "$p" "$(time_of "$suffix")"
+      remaining="$remaining $p"
+    fi
+  done
+  still_failed="$remaining"
+fi
+
+# A partition that failed shows its output (SUITE-5, SUITE-7): the retry's where
+# there was one, the first attempt's where the retry was off.
+for p in $still_failed; do
+  if [ -f "$tmp/p$p-retry.log" ]; then log="$tmp/p$p-retry.log"; else log="$tmp/p$p.log"; fi
+  echo "----- partition $p output -----"
+  cat "$log"
+  echo "----- end of partition $p -----"
+done
+
 printf 'total: %ss\n' "$(($(date +%s) - start))"
 
-exit "$failed"
+# SUITE-5: 0 only when every partition passed, a partition that failed and passed
+# on the retry included.
+if [ -n "$still_failed" ]; then exit 1; fi
+exit 0

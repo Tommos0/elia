@@ -309,6 +309,16 @@ excluded`). Run that one yourself instead:
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8) — unless the change is one you judge safe without a run, and then say
   in your last message why the skip was safe (`AGENTS.md`).
+- `bin/test` retries a partition that failed once, on the same files with its own
+  fresh run state and a port of its own, and reports it: `partition 3: FAILED,
+  then passed on the retry in 12s`. A run that reports a partition that way is
+  reporting the flake below, so a chat does not re-run `mix precommit` by hand for
+  it; a partition that failed both times is a real failure and its output is
+  printed. `ELIA_TEST_RETRY=0` turns the retry off (SUITE-14 to SUITE-16). Each
+  partition also prints its own seconds, so a run's imbalance is visible
+  (SUITE-15). A partition is started by the script's own shell, never from a
+  command substitution: `pid=$(start ...)` leaves the job a grandchild of the
+  shell, `wait` then cannot wait for it, and every partition reads as failed.
 - A suite run started from a chat's shell inherits **the running server's own
   environment**, and two variables change what tests see there: `ELIA_SUPERVISED`
   (DEPLOY-33, RESTART-12) makes the two deploy tests that expect a server nothing
@@ -325,7 +335,9 @@ excluded`). Run that one yourself instead:
   environment) fails on `proxy=`: it expects no proxy and sees the one of the
   chat. It is not your change: run `env -u http_proxy -u https_proxy -u
   all_proxy mix test test/elia/network_access_test.exs`, which passes.
-- A partition can fail on a test that passes on its own. In this tree partition
+- A partition can fail on a test that passes on its own; the runner has already
+  retried it once by then (`bin/test` above, SUITE-14), so a partition it reports
+  as failed failed twice. In this tree partition
   2 failed twice in a row — once on `test/elia_web/live/chat_upload_test.exs`
   and once on an `Elia.LLM.AnthropicTest` case — while the machine was busy with
   other runs, and each file passed when run alone (`mix test test/<file>`). When

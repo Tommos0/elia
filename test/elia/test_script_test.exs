@@ -27,13 +27,16 @@ defmodule Elia.TestScriptTest do
   defp run(args, env \\ []) do
     # A partitioned run sets these for its partitions, so a test of the script
     # would otherwise inherit them; start from none and test the defaults.
-    clean = for var <- ["ELIA_TEST_PARTITIONS", "ELIA_TEST_CMD"], do: {var, nil}
+    clean =
+      for var <- ["ELIA_TEST_PARTITIONS", "ELIA_TEST_CMD", "ELIA_TEST_RETRY"],
+          do: {var, nil}
+
     System.cmd("sh", [@script | args], env: clean ++ env, stderr_to_stdout: true)
   end
 
   defp blocks(out) do
     out
-    |> String.split("partition ")
+    |> String.split("\npartition ")
     |> Enum.drop(1)
     |> Enum.map(fn block ->
       [header | _] = String.split(block, "\n", parts: 2)
@@ -90,6 +93,8 @@ defmodule Elia.TestScriptTest do
     # SUITE-3, SUITE-11: the run's own directory differs every run, so the plan
     # names it once, as `<run>`, instead of printing a path that would.
     assert out =~ "run: <run> — "
+    # SUITE-16: the plan names the retry, and names it the same way every run.
+    assert out =~ "retry: on"
 
     assert Enum.sort(planned) == Enum.sort(files)
     assert length(planned) == length(Enum.uniq(planned))
@@ -167,7 +172,8 @@ defmodule Elia.TestScriptTest do
     refute File.exists?(run_root), "the run's directory goes with the run"
   end
 
-  # SUITE-11: a run that ends because a partition failed cleans up after itself too.
+  # SUITE-11, SUITE-14: a run that ends because a partition failed cleans up after
+  # itself too — the retried partition's own directory included.
   test "the run's directory goes with a run whose partition failed", %{dir: dir} do
     marker = Path.join(dir, "run")
     fake = fake!(dir, "echo \"$ELIA_TEST_RUN\" >> '#{marker}'\nexit 1\n")
@@ -177,8 +183,12 @@ defmodule Elia.TestScriptTest do
     assert status != 0
     assert out =~ "FAILED"
 
-    partition_dir = marker |> File.read!() |> String.trim()
-    refute File.exists?(Path.dirname(partition_dir)), "a failed run cleans up too"
+    dirs = marker |> File.read!() |> String.split("\n", trim: true)
+    assert length(dirs) == 2, "the failed partition is retried, in a directory of its own"
+    assert length(Enum.uniq(dirs)) == 2
+    assert dirs |> Enum.map(&Path.dirname/1) |> Enum.uniq() |> length() == 1
+
+    for d <- dirs, do: refute(File.exists?(Path.dirname(d)), "a failed run cleans up too")
   end
 
   # SUITE-2, SUITE-7: the partitions all run, and each one's summary and the
@@ -201,7 +211,9 @@ defmodule Elia.TestScriptTest do
   end
 
   # SUITE-5: a failing partition fails the run and shows its output, and the
-  # other partitions still run to the end.
+  # other partitions still run to the end. The retry is off here, so this is the
+  # first pass's own behaviour (SUITE-16); a failure that survives the retry is
+  # the next test.
   test "a failing partition fails the run, and the others still run", %{dir: dir} do
     marker = Path.join(dir, "ran")
 
@@ -217,6 +229,7 @@ defmodule Elia.TestScriptTest do
       run([], [
         {"ELIA_TEST_CMD", fake},
         {"ELIA_TEST_PARTITIONS", "3"},
+        {"ELIA_TEST_RETRY", "0"},
         {"ELIA_TEST_MARKER", marker}
       ])
 
@@ -246,9 +259,146 @@ defmodule Elia.TestScriptTest do
     refute out =~ "partition 1"
   end
 
-  # SUITE-8: the gate is partitioned too.
+  # SUITE-8, SUITE-17: the gate is partitioned too, and so makes a retry with it,
+  # while the deploy's own suite run stays a plain `mix test` and never the script.
   test "mix precommit runs its test step through bin/test" do
     assert "cmd bin/test" in Mix.Project.config()[:aliases][:precommit]
+
+    harness = File.read!("lib/elia/harness.ex")
+    refute harness =~ "bin/test"
+    refute harness =~ "ELIA_TEST_RETRY"
+  end
+
+  # SUITE-5, SUITE-7, SUITE-14: a partition that fails once and passes on the
+  # retry passes the run, and the report says so — a flake reads as a flake
+  # without a second run, and the first attempt's output is not dumped.
+  test "a partition that fails once and passes on the retry passes the run", %{dir: dir} do
+    marker = Path.join(dir, "runs")
+
+    fake =
+      fake!(dir, """
+      echo run >> '#{marker}'
+      if [ "$(wc -l < '#{marker}')" -gt 1 ]; then
+        echo '7 tests, 0 failures'
+        exit 0
+      fi
+      echo 'boom: flaky test'
+      echo '7 tests, 1 failure'
+      exit 1
+      """)
+
+    {out, 0} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "1"}])
+
+    assert length(ran(marker)) == 2
+    assert out =~ "partition 1: FAILED, then passed on the retry in"
+    assert out =~ "7 tests, 0 failures"
+    assert out =~ "total: "
+    refute out =~ "boom: flaky test"
+  end
+
+  # SUITE-5, SUITE-14: a partition that fails both attempts fails the run, and
+  # its output is printed.
+  test "a partition that fails both attempts fails the run and shows its output",
+       %{dir: dir} do
+    marker = Path.join(dir, "runs")
+
+    fake =
+      fake!(dir, """
+      echo run >> '#{marker}'
+      echo 'boom: always broken'
+      echo '2 tests, 1 failure'
+      exit 1
+      """)
+
+    {out, status} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "1"}])
+
+    assert status == 1
+    assert length(ran(marker)) == 2
+    assert out =~ "partition 1: FAILED again on the retry in"
+    assert out =~ "boom: always broken"
+    assert out =~ "2 tests, 1 failure"
+  end
+
+  # SUITE-14: the retry runs the partition's own files on its own fresh state and
+  # a port clear of every first-pass partition's (SUITE-1, SUITE-11).
+  test "each partition's retry gets its own fresh state", %{dir: dir} do
+    marker = Path.join(dir, "attempts")
+
+    fake =
+      fake!(dir, """
+      echo "$ELIA_TEST_PORT|$ELIA_TEST_RUN|$TMPDIR" >> '#{marker}'
+      exit 1
+      """)
+
+    {_, status} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "2"}])
+    assert status != 0
+
+    attempts =
+      marker
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.split(&1, "|"))
+
+    assert length(attempts) == 4, "each of the two partitions ran twice"
+
+    ports = attempts |> Enum.map(&Enum.at(&1, 0)) |> Enum.sort()
+    assert ports == ["4002", "4003", "4004", "4005"]
+
+    runs = attempts |> Enum.map(&Enum.at(&1, 1))
+    assert length(Enum.uniq(runs)) == 4
+
+    bases =
+      runs
+      |> Enum.map(&String.replace_suffix(&1, "-retry", ""))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    assert length(bases) == 2
+
+    for [_, run, tmp] <- attempts, do: assert(String.starts_with?(tmp, run <> "/"))
+  end
+
+  # SUITE-16: the switch turns the retry off, and the plan stays deterministic and
+  # says which it is (SUITE-4).
+  test "ELIA_TEST_RETRY=0 stops the retry", %{dir: dir} do
+    marker = Path.join(dir, "runs")
+    fake = fake!(dir, "echo run >> '#{marker}'\necho '1 test, 1 failure'\nexit 1\n")
+
+    {out, status} =
+      run([], [
+        {"ELIA_TEST_CMD", fake},
+        {"ELIA_TEST_PARTITIONS", "1"},
+        {"ELIA_TEST_RETRY", "0"}
+      ])
+
+    assert status == 1
+    assert length(ran(marker)) == 1
+    assert out =~ "partition 1: FAILED in"
+    refute out =~ "retry"
+
+    {plan, 0} = run(["--plan"], [{"ELIA_TEST_RETRY", "0"}])
+    {again, 0} = run(["--plan"], [{"ELIA_TEST_RETRY", "0"}])
+    assert plan =~ "retry: off"
+    assert plan == again
+  end
+
+  # SUITE-15: a partition prints the seconds it ran, not the moment the waiting
+  # loop reached its pid — so the fast partition behind the slow one reports its
+  # own time.
+  test "a partition prints its own time, not the queue's", %{dir: dir} do
+    fake =
+      fake!(dir, """
+      [ "$ELIA_TEST_PORT" = "4002" ] && sleep 2
+      echo '1 test, 0 failures'
+      """)
+
+    {out, 0} = run([], [{"ELIA_TEST_CMD", fake}, {"ELIA_TEST_PARTITIONS", "2"}])
+
+    assert [slow] = Regex.run(~r/partition 1: passed in (\d+)s/, out, capture: :all_but_first)
+    assert [fast] = Regex.run(~r/partition 2: passed in (\d+)s/, out, capture: :all_but_first)
+
+    assert String.to_integer(slow) >= 2
+    assert String.to_integer(fast) < 2
   end
 
   # SUITE-1, SUITE-12: the config reads a run's scratch state from the environment
@@ -268,5 +418,15 @@ defmodule Elia.TestScriptTest do
 
     port = Application.fetch_env!(:elia, EliaWeb.Endpoint)[:http][:port]
     assert port == String.to_integer(System.get_env("ELIA_TEST_PORT") || "4002")
+  end
+
+  # SUITE-18: the named flake list is still where a chat looks, and it now says
+  # the runner retries a failed partition itself.
+  test "the testing doc names the flakes and says the runner retries" do
+    doc = File.read!("docs/agents/testing.md")
+
+    assert doc =~ "chat_upload_test.exs"
+    assert doc =~ "retries a partition that failed once"
+    assert doc =~ "does not re-run"
   end
 end

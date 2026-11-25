@@ -41,17 +41,20 @@ machines that have spare cores, without weakening a single test.
 - **SUITE-4** `bin/test --plan` prints the split — the partitions, the files in
   each and the command it would run — and starts nothing.
 
-- **SUITE-5** `bin/test` exits 0 only when every partition passed. A partition
-  that fails makes the exit status non-zero and its output is shown (SUITE-7),
-  and the other partitions still run to the end.
+- **SUITE-5** `bin/test` exits 0 only when every partition passed — including a
+  partition that failed its first attempt and passed on the retry (SUITE-14). A
+  partition that failed on both attempts makes the exit status non-zero and its
+  output is shown (SUITE-7), and the other partitions still run to the end.
 
 - **SUITE-6** Arguments make it a single run: `bin/test <files or flags>` runs
   one plain `mix test` with those arguments and no partitions, so a file, a
   `--failed` or a `--only` run behaves exactly as it does today.
 
 - **SUITE-7** A partitioned run prints, for each partition, whether it passed
-  and its ExUnit summary line, then the total wall time. A passing partition's
-  full output is not printed.
+  first time, failed and then passed on the retry, or failed, each with its
+  ExUnit summary line, then the total wall time; the time a partition prints is
+  its own (SUITE-15). A passing partition's full output is not printed, and a
+  partition that failed on both attempts has its output printed.
 
 - **SUITE-8** `mix precommit` runs its test step through `bin/test`, so the gate
   is partitioned too. `mix test` on its own is unchanged: single process, one
@@ -95,6 +98,26 @@ machines that have spare cores, without weakening a single test.
   that machine once it is older than a day, and never while it is fresh. A run
   prunes as it starts, so leftovers cannot accumulate.
 
+- **SUITE-14** After the first pass of a partitioned run has been waited on,
+  `bin/test` runs each partition that failed once more, with that partition's own
+  files and its own fresh run state under a new run directory (SUITE-1,
+  SUITE-11); a retry never shares a directory or a port with the first attempt.
+
+- **SUITE-15** A partition reports the seconds it ran, from its own start to its
+  own exit — its own time, not the moment the waiting loop reached its pid.
+
+- **SUITE-16** `ELIA_TEST_RETRY` turns the retry off (`0`) and leaves it on by
+  default (`1`), so a run with it off makes one attempt per partition. The plan
+  `bin/test --plan` prints stays deterministic either way (SUITE-4).
+
+- **SUITE-17** `mix precommit` runs its test step through `bin/test` (SUITE-8)
+  and so makes a retry with it, while the deploy's own suite run
+  (`Elia.Harness.run_tests/3`, VERIFY-1) keeps one plain `mix test` and no retry.
+
+- **SUITE-18** `docs/agents/testing.md` still names the tests that flake under
+  load and says the runner retries a failed partition once, so a chat does not
+  re-run `mix precommit` by hand for a flake.
+
 ## Configuration
 
 | Env var | Meaning | Default |
@@ -106,6 +129,7 @@ machines that have spare cores, without weakening a single test.
 | `ELIA_TEST_PORT` | Endpoint port of one run | `4002` |
 | `TMPDIR` | Where a test's own temp paths go | `<run>/tmp` |
 | `ELIA_TEST_CMD` | Command a partition runs, for the script's own tests | `mix test` |
+| `ELIA_TEST_RETRY` | Whether a failed partition is run once more | `1` (on) |
 
 A partitioned run's state lives under the directory `bin/test` makes for it, each
 partition's under its own subdirectory of that, and a single run's under the one it
@@ -133,16 +157,34 @@ directory of its own either way (VERIFY-1, ISOL-14).
 - SUITE-6, SUITE-7 and SUITE-8 are covered by running `bin/test` on a one-file
   argument and reading what it prints (SUITE-6, SUITE-7), and by asserting the
   `precommit` alias (SUITE-8).
+- `test/elia/test_script_test.exs` (SUITE-5, SUITE-7, SUITE-14, SUITE-15,
+  SUITE-16) covers the retry through a fake `ELIA_TEST_CMD` that fails its first
+  invocation and passes its second — a marker file counts them: a partition that
+  flakes passes the run and is reported as having passed on the retry, a
+  partition that fails both attempts fails the run with its output printed,
+  `ELIA_TEST_RETRY=0` stops the second attempt, the retry gets its own run state
+  and port, and a partition's printed time is its own.
+- `test/elia/test_script_test.exs` (SUITE-17, SUITE-18) asserts the `precommit`
+  alias and reads `docs/agents/testing.md`, so the named flake list and the
+  runner retry are both still written down.
 - `test/elia/fake_llm_test.exs` covers SUITE-9: a session started before the
   test's provider is refused, and the turn the test scripted is still there for
   the chat the test started.
 - `test/elia/auto_resume_test.exs` covers SUITE-10: a chat saved in the shared
   scratch store is not resumed by the test that runs the scan.
 
+## Stored data
+
+Nothing on disk changes shape: `bin/test` reads the test files and writes only
+its own run directory, which it removes when the run ends (SUITE-11), so there is
+nothing to migrate.
+
 ## Implementation
 
 - `bin/test` — the runner (POSIX `sh`, like `bin/serve`): the run directory it
-  makes, its partitions' state under it, and its removal (SUITE-11).
+  makes, its partitions' state under it, its removal (SUITE-11), the retry of a
+  failed partition with its own fresh state, and each partition's own time
+  (SUITE-14 to SUITE-16).
 - `config/test.exs` — the derived paths and the env overrides (SUITE-1, SUITE-12).
 - `test/test_helper.exs`, and a helper beside it under `test/support/` so the
   pruning is testable — the run directory a single run reads, the scratch
@@ -154,4 +196,6 @@ directory of its own either way (VERIFY-1, ISOL-14).
 - `test/elia/auto_resume_test.exs` — the store the scan runs against (SUITE-10).
 - `docs/agents/testing.md` and `AGENTS.md` — how to run the suite, and why: the
   "never run two test runs at once" rule went with the shared paths it guarded,
-  and what is left is the port a browser run binds (SUITE-1).
+  and what is left is the port a browser run binds (SUITE-1). `testing.md` also
+  says the runner retries a failed partition once, beside the flake list
+  (SUITE-18).
