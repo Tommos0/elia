@@ -53,9 +53,16 @@ defmodule EliaWeb.Router do
     # state and its events, which is the drawer the header's "Chats" button
     # opens on the pages that keep no list of their own; ACTIVE-1: and
     # `EliaWeb.ActiveChats` gives every page the active chats control's state
-    # and its events, which is the count and its menu in the header.
+    # and its events, which is the count and its menu in the header; PROJ-55:
+    # and `EliaWeb.NewProject` the state and events of the new-project modal the
+    # header's switcher opens.
     live_session :default,
-      on_mount: [EliaWeb.ClientTracker, EliaWeb.ChatList, EliaWeb.ActiveChats] do
+      on_mount: [
+        EliaWeb.ClientTracker,
+        EliaWeb.ChatList,
+        EliaWeb.ActiveChats,
+        EliaWeb.NewProject
+      ] do
       # DASH-1: `/` is the dashboard, the app's start URL (PWA-1) and the
       # header logo's target; it starts no chat.
       live "/", DashboardLive, :index
@@ -73,7 +80,6 @@ defmodule EliaWeb.Router do
       # PROJ-51: a project's own page — what the project is, the chats that
       # belong to it and the controls that act on it.
       live "/p/:project_id", ProjectLive
-      live "/projects", ProjectsLive
       live "/sessions", SessionsLive
       live "/system", SystemLive
       live "/logs", LogsLive

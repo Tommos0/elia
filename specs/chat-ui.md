@@ -181,7 +181,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   in the header leaves the open chat. A page that has no list of its own keeps
   the button at every width, and the drawer is that page's chat list (UI-91).
 - **UI-91** The drawer is on every page that has no chat list of its own — the
-  dashboard (DASH-2), projects, files, sessions, system, logs, settings, and a
+  dashboard (DASH-2), files, sessions, system, logs, settings, and a
   chat's own settings (CSET) and terminal (TERM) pages. Nothing is inline on
   those pages, so the drawer opens at every width and the header's button is
   there at every width (UI-32, UI-36). It starts closed, and opening or closing
@@ -929,8 +929,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   one project's chats, PROJ-31; the done entry in a row's menu — offered for an
   idle chat alone and marking the chat done when it is chosen — UI-109, UI-110).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
-  its menu, choosing a project, and the projects page behind the menu's entry —
-  PROJ-28 to PROJ-30).
+  its menu, choosing a project, and the new-project modal its entry opens —
+  PROJ-28 to PROJ-30, PROJ-55).
 - `test/elia_web/live/chat_drawer_test.exs` (the drawer on the pages that have
   no chat list of their own — the dashboard, files, settings and a chat's
   terminal: the button at every width, the backdrop and Escape, the list it

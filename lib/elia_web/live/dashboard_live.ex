@@ -193,7 +193,12 @@ defmodule EliaWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats}>
+    <Layouts.app
+      flash={@flash}
+      chats={@chat_list}
+      active_chats={@active_chats}
+      new_project={@new_project}
+    >
       <div id="home-scroll" class="h-full overflow-y-auto">
         <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
           <header>
@@ -398,16 +403,7 @@ defmodule EliaWeb.DashboardLive do
   defp projects_card(assigns) do
     ~H"""
     <section id="projects" class="rounded-2xl border border-base-300 p-5">
-      <div class="flex items-center justify-between gap-2">
-        <h2 class="text-xs font-medium tracking-wider text-base-content/50 uppercase">Projects</h2>
-        <.link
-          navigate={~p"/projects"}
-          id="all-projects"
-          class="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
-        >
-          All projects <.icon name="hero-arrow-right" class="size-3.5" />
-        </.link>
-      </div>
+      <h2 class="text-xs font-medium tracking-wider text-base-content/50 uppercase">Projects</h2>
 
       <ul class="mt-3 space-y-1">
         <li

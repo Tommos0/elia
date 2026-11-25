@@ -16,6 +16,11 @@ as well — `/p/<id>` — holding what it is (PROJ-51), the chats that belong to
 (PROJ-52) and the settings that act on it (PROJ-54), and opening it opens the
 project just as opening a chat does.
 
+A project is made from the header's own switcher: its last entry opens a modal
+holding the form that names a project and the control for the root it is made
+under (PROJ-30, PROJ-39, PROJ-40, PROJ-55), so there is no page for creating
+one.
+
 Every project has a colour — one the user picks from a palette, or the one its
 name gives it — and the app's own badge at the top left is painted in the open
 project's (PROJ-42, PROJ-46).
@@ -182,12 +187,18 @@ project's (PROJ-42, PROJ-46).
 
 ### The interface
 
-- **PROJ-23** `/projects` lists every project with its name, folder and number
+- ~~**PROJ-23** `/projects` lists every project with its name, folder and number
   of chats (`#project-<id>`) and a link to the project's own page
   (`#project-open-<id>`, PROJ-51), and carries the form that creates a project
   from a name (`#new-project`) and the projects root control (PROJ-40). What
   acts on one project — its colour, its allowlist, its Files and its deletion —
-  is on that project's own page and not here (PROJ-54).
+  is on that project's own page and not here (PROJ-54).~~ Retired: the projects
+  page is gone. The switcher's menu already lists every project (PROJ-29) and
+  the dashboard's card lists them with their folder and their chat count
+  (DASH-9), so a page holding that list was a second copy of it; the form that
+  creates a project and the projects root control moved into the modal the
+  switcher's entry opens (PROJ-30, PROJ-55), which the header of every page
+  carries.
 - **PROJ-48** A project's own page (PROJ-51) carries a Files button
   (`#project-files-<id>`) on every project but Elia's own: pressing it makes
   that project the open one
@@ -205,7 +216,7 @@ project's (PROJ-42, PROJ-46).
   next to the header's "Chats" control (UI-32, the chat list's drawer toggle
   wherever there is no chat list on the page itself).~~ Retired: the header
   shows the open project next to the logo instead (PROJ-29), and the projects
-  page (PROJ-23) is reached from the switcher's menu (PROJ-30).
+  are reached from the switcher's menu (PROJ-30).
 - **PROJ-26** `/p/<project id>/new` starts a chat in that project (PROJ-11) and
   redirects to `/c/<new id>`; an unknown project id redirects to `/`. The
   sidebar's "New chat" button (UI-31) starts a chat in the open project
@@ -229,11 +240,21 @@ project's (PROJ-42, PROJ-46).
   project's chats (PROJ-52) and is where a chat in it is opened or started —
   except on the Files page, which it switches in place instead (EXPL-29). The
   menu closes when a project is chosen, on Escape, and on a press outside it.
-- **PROJ-30** The switcher's menu ends with an entry (`#manage-projects-link`)
-  leading to the projects page (PROJ-23), labelled for what that page holds —
-  every project, with the form that creates one and the button that deletes one
-  — rather than for creating alone. The header itself carries no "Projects" link
-  (PROJ-25).
+- **PROJ-30** The switcher's menu ends with an entry (`#new-project-link`),
+  labelled "New project" for what it does — it opens the modal that creates one
+  (PROJ-55) — rather than for a page it leads to. The header itself carries no
+  "Projects" link (PROJ-25).
+- **PROJ-55** The new-project modal (`#new-project-modal`) is drawn on every
+  page whose header carries the switcher (PROJ-29): a dialog over the page,
+  holding the form that creates a project from a name (`#new-project`, PROJ-39)
+  and the projects root it is made under (`#projects-root-path`,
+  `#projects-root-input`, `#save-project-root`, PROJ-40), with the message each
+  shows when it fails (`#project-error`, `#projects-root-error`). It opens on
+  the switcher's entry (PROJ-30) — the switcher's menu closes with it — and
+  closes with its own control (`#new-project-close`), on Escape and on a press
+  outside it, leaving the page it was opened on as it was. A creation that
+  succeeds closes it, names the project in the flash (PROJ-39, PROJ-41), and
+  the project is in the switcher's list when its menu is opened again (PROJ-29).
 
 ### A project's own page
 
@@ -245,7 +266,7 @@ project's (PROJ-42, PROJ-46).
   (PROJ-26), the chats that belong to it (PROJ-52) and the controls that act on
   it (PROJ-54). The page's title is the project's name. Opening it makes that
   project the open one (PROJ-8, PROJ-28). An id that names no project redirects
-  to the projects page (PROJ-23).
+  to the dashboard (DASH-1, PROJ-26).
 - **PROJ-52** The page lists the project's chats (PROJ-31) newest first (UI-4,
   STORE-12), each a row (`#project-chat-<chat id>`) linking to `/c/<id>` (UI-2)
   with the chat's title (STORE-7, TITLE-1), when it was started in relative form
@@ -255,10 +276,9 @@ project's (PROJ-42, PROJ-46).
   the 30 chats the chat list's first page holds (UI-4), and while the project
   has more chats than that a "Load more chats" button (`#project-load-more`)
   lists the next 30. A project with no chats says so (`#project-no-chats`).
-- **PROJ-53** A project's row on the projects page links to its own page
-  (`#project-open-<id>`, PROJ-23), and so does a row of the dashboard's projects
-  card (`#dash-project-open-<id>`, DASH-9). The switcher's menu is the third way
-  in: choosing a project there opens its own page (`#project-option-<id>`,
+- **PROJ-53** A row of the dashboard's projects card links to the project's own
+  page (`#dash-project-open-<id>`, DASH-9), and the switcher's menu is the other
+  way in: choosing a project there opens its own page (`#project-option-<id>`,
   PROJ-29).
 - **PROJ-54** The page carries what acts on the project, each as its own
   requirement describes: the colour picker (`#project-color-<id>-<name>`,
@@ -303,19 +323,19 @@ project's (PROJ-42, PROJ-46).
   folder, what it holds and the project are still made, and `create/1` returns
   them as `{:ok, project, :no_repository}` rather than `{:ok, project}`
   (PROJ-41).
-- **PROJ-39** The projects page's form (`#new-project`) takes a name and nothing
-  else: creating makes the project's folder under the projects root (PROJ-32,
-  PROJ-34), and the page shows that root beside the form (PROJ-40). Each error
-  it can get reads as a message in `#project-error` — `:blank_name`,
-  `:folder_exists` and `:folder_failed` — and nothing is added to the listing.
-- **PROJ-40** The page shows the projects root and sets it: `#projects-root-path`
-  holds it, an input (`#projects-root-input`) with a save button
-  (`#save-project-root`) stores what the input holds (PROJ-33) and the page then
-  shows the new root; a blank entry is shown in `#projects-root-error` and
-  leaves the stored root alone.
+- **PROJ-39** The modal's form (`#new-project`, PROJ-55) takes a name and
+  nothing else: creating makes the project's folder under the projects root
+  (PROJ-32, PROJ-34), and the modal shows that root beside the form (PROJ-40).
+  Each error it can get reads as a message in `#project-error` — `:blank_name`,
+  `:folder_exists` and `:folder_failed` — and nothing is added.
+- **PROJ-40** The modal shows the projects root and sets it:
+  `#projects-root-path` holds it, an input (`#projects-root-input`) with a save
+  button (`#save-project-root`) stores what the input holds (PROJ-33) and the
+  modal then shows the new root; a blank entry is shown in
+  `#projects-root-error` and leaves the stored root alone.
 - **PROJ-41** A creation whose repository was not set up (PROJ-38) says so in
-  the flash: the project is named and the page says its git repository was not
-  set up, rather than reporting a plain success.
+  the flash: the project is named and the message says its git repository was
+  not set up, rather than reporting a plain success.
 
 ## Out of scope
 
@@ -376,7 +396,7 @@ controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
 `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
-`EliaWeb.ProjectsLive`, `EliaWeb.ProjectLive`, `EliaWeb.ChatLive`,
+`EliaWeb.NewProject`, `EliaWeb.ProjectLive`, `EliaWeb.ChatLive`,
 `EliaWeb.ChatList`,
 `EliaWeb.FilesLive`,
 `EliaWeb.Router`, `EliaWeb.Layouts`.
@@ -400,11 +420,10 @@ controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
 - `test/elia/skills/harness_test.exs` (the instructions that apply in every
   project, PROJ-16).
 - `test/elia/tasks_test.exs` (a sub-task's project, PROJ-10).
-- `test/elia_web/live/projects_live_test.exs` (the projects page — every project
-  with its folder and its number of chats, and the link to a project's own page;
-  creating from a name, the projects root control and what the page says after a
-  creation whose repository was not set up — PROJ-23, PROJ-39 to PROJ-41,
-  PROJ-53).
+- `test/elia_web/live/new_project_test.exs` (the modal the switcher's entry
+  opens, on a page and on a chat's own page: creating from a name, one project
+  at a time, the projects root control, and what the flash says after a creation
+  whose repository was not set up — PROJ-39 to PROJ-41, PROJ-55).
 - `test/elia_web/live/project_live_test.exs` (a project's own page: the project
   it names, the chats it lists with their status, its paging, an id that names
   no project, the New chat control (PROJ-51, PROJ-52), the Files button
@@ -414,8 +433,9 @@ controls it carries already wrote (PROJ-44, PROJ-49, PROJ-7, PROJ-8).
   opening a chat of another project making it the open one — PROJ-8, PROJ-11,
   PROJ-12, PROJ-26, PROJ-28).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
-  its menu, choosing a project opening that project's own page, the entry to the
-  projects page and no "Projects" link — PROJ-28 to PROJ-30, PROJ-53).
+  its menu, choosing a project opening that project's own page, the entry that
+  opens the new-project modal and no "Projects" link — PROJ-28 to PROJ-30,
+  PROJ-53).
 - `test/elia_web/live/project_colors_test.exs` (the picker on a project's own
   page, the header's app icon in the open project's colour, and the swatch
   beside a project's name — PROJ-45 to PROJ-47).

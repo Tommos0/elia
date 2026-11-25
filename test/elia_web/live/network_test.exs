@@ -66,7 +66,7 @@ defmodule EliaWeb.NetworkTest do
     # them; NET-38: and the entries this chat names of its own, in a field with
     # a Save of its own.
     assert has_element?(view, "#network-hosts")
-    assert has_element?(view, "#network-hosts-link")
+    assert has_element?(view, "#network-hosts-link[href='/p/harness']")
     assert has_element?(view, "#chat-network-hosts")
     assert has_element?(view, "#save-chat-network-hosts")
   end

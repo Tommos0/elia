@@ -95,12 +95,13 @@ left off in exactly as `/` used to (UI-1, UI-71).
 ### Projects
 
 - **DASH-9** A "Projects" card (`#projects`) has one row
-  (`#dash-project-<id>`) per project (`Elia.Projects.list/0`, PROJ-23's list),
-  with its name, a link (`#dash-project-open-<id>`) to the project's own page
-  (PROJ-51, PROJ-53), its folder (shown truncated with the whole path in the
-  `title`) and how many chats it has (`#dash-project-chats-<id>`), a "New chat"
-  link (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26), and a single link
-  (`#all-projects`) to `/projects`.
+  (`#dash-project-<id>`) per project (`Elia.Projects.list/0`), with its name, a
+  link (`#dash-project-open-<id>`) to the project's own page (PROJ-51, PROJ-53),
+  its folder (shown truncated with the whole path in the `title`) and how many
+  chats it has (`#dash-project-chats-<id>`), and a "New chat" link
+  (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26). *Changed:* the card
+  used to end with a single link to the projects page (`#all-projects`), which
+  is gone with that page (PROJ-23).
 
 ### Machine and deployment
 

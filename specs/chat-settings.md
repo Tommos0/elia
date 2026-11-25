@@ -61,8 +61,8 @@ what are my limits?" from the conversation rather than by asking.
   the Limits and Context sections alike. A half-typed number is never a setting.
   *Changed:* the form used to save the Network section's host list too; the
   entries a chat names of its own have a Save of their own in that section
-  (NET-38), and its project's are changed on the projects page
-  (NET-24, PROJ-50).
+  (NET-38), and its project's are changed on the project's own page
+  (NET-24, PROJ-50, PROJ-51).
   The save is all or nothing: a value that isn't one (LIMIT-7, COMPACT-30)
   changes nothing — no limit and no option — and the page shows the message for
   the first bad value (`#settings-error`), keeping what was typed so it can be
@@ -165,7 +165,7 @@ what are my limits?" from the conversation rather than by asking.
 `EliaWeb.ChatSettingsLive` (the page, which the model picker, the auto-approve
 picker, the jail switch and the "Compact" button move to),
 `EliaWeb.ChatLive` (the settings link and the jail warning),
-`EliaWeb.ProjectsLive` (a project's allowlist, which the Network section links
+`EliaWeb.ProjectLive` (a project's allowlist, which the Network section links
 to), `EliaWeb.Router`, `Elia.Skills.Settings` (the tool that reads them,
 CSET-14).
 
@@ -174,7 +174,7 @@ CSET-14).
 `test/elia_web/live/chat_settings_test.exs` (the page, its sections, CSET-1 to
 CSET-7, CSET-11 to CSET-13), `test/elia_web/live/network_test.exs` (the Network
 section, NET-11, NET-22 to NET-25, NET-32, NET-38),
-`test/elia_web/live/projects_live_test.exs` (a project's allowlist field,
+`test/elia_web/live/project_live_test.exs` (a project's allowlist field,
 PROJ-50), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/auto_approve_test.exs` and
 `test/elia_web/live/jail_test.exs` (the moved controls),

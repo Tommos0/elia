@@ -419,7 +419,9 @@ defmodule EliaWeb.DashboardTest do
       assert has_element?(view, "#dash-project-chats-#{project.id}", "1")
       assert has_element?(view, "#dash-project-open-#{project.id}[href='/p/#{project.id}']")
       assert has_element?(view, "#dash-project-new-#{project.id}[href='/p/#{project.id}/new']")
-      assert has_element?(view, "#all-projects[href='/projects']")
+      # DASH-9: the card's link to the projects page went with the page
+      # (PROJ-23); a project is created from the header's switcher (PROJ-55).
+      refute has_element?(view, "#all-projects")
 
       # Deleting the chat leaves the count right on the next render.
       Store.delete(mine)

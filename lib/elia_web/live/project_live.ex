@@ -81,15 +81,14 @@ defmodule EliaWeb.ProjectLive do
   end
 
   # PROJ-54, PROJ-7: deleting the project the page is about leaves the page with
-  # nothing to show, so it goes back to the projects page. The project's chats
-  # are kept (PROJ-7).
+  # nothing to show, so it goes home, to the dashboard (DASH-1). The project's
+  # chats are kept (PROJ-7).
   def handle_event("delete", _params, socket) do
     project = socket.assigns.project
 
     case Projects.delete(project.id) do
       :ok ->
-        {:noreply,
-         socket |> put_flash(:info, "Project deleted.") |> push_navigate(to: ~p"/projects")}
+        {:noreply, socket |> put_flash(:info, "Project deleted.") |> push_navigate(to: ~p"/")}
 
       {:error, :harness_project} ->
         {:noreply, put_flash(socket, :error, "Elia's own project can't be deleted.")}
@@ -110,13 +109,13 @@ defmodule EliaWeb.ProjectLive do
     "#{inspect(entry)} is not a host, a *.suffix or one of those with a port."
   end
 
-  # PROJ-51: the project the id names, or the projects page when it names none.
-  # Opening it opens the project (PROJ-8, PROJ-28), which is why the chat list's
-  # state — what the header names (PROJ-29) — is read again here.
+  # PROJ-51: the project the id names, or the dashboard when it names none
+  # (PROJ-23). Opening it opens the project (PROJ-8, PROJ-28), which is why the
+  # chat list's state — what the header names (PROJ-29) — is read again here.
   defp load(socket, id) do
     case Projects.get(id) do
       nil ->
-        push_navigate(socket, to: ~p"/projects")
+        push_navigate(socket, to: ~p"/")
 
       project ->
         :ok = Projects.set_default(project.id)
@@ -178,14 +177,19 @@ defmodule EliaWeb.ProjectLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats}>
+    <Layouts.app
+      flash={@flash}
+      chats={@chat_list}
+      active_chats={@active_chats}
+      new_project={@new_project}
+    >
       <div class="h-full overflow-y-auto">
         <div class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
           <.link
-            navigate={~p"/projects"}
+            navigate={~p"/"}
             class="inline-flex items-center gap-1.5 text-xs font-medium text-base-content/60 transition hover:text-base-content"
           >
-            <.icon name="hero-arrow-left" class="size-3.5" /> Projects
+            <.icon name="hero-arrow-left" class="size-3.5" /> Home
           </.link>
 
           <%!-- PROJ-51, PROJ-47: what the project is — its name, its folder and

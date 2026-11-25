@@ -16,7 +16,7 @@ defmodule EliaWeb.ChatDrawerTest do
 
   # UI-91: the pages that keep no chat list of their own. A chat's own settings
   # and terminal pages are ones too, and are the tests below.
-  @pages ~w(/ /projects /files /sessions /system /logs /settings)
+  @pages ~w(/ /files /sessions /system /logs /settings)
 
   # UI-32, UI-36, UI-91: on every page without a chat list of its own the
   # header's Chats control is the drawer's button, at every width, and it shows

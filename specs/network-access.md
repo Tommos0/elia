@@ -182,8 +182,8 @@ decrypted — so an allowlist is by host name, which is what the user writes.
 - **NET-23** Choosing a mode applies it at the moment it is clicked, like a
   switch rather than the page's one Save (CSET-4, CSET-7).
 - **NET-24** In allowlist mode the section lists the project's entries, one per
-  line as text (`#network-hosts`), and links to the projects page
-  (`#network-hosts-link`) where they are changed (PROJ-50).
+  line as text (`#network-hosts`), and links to the project's own page
+  (`#network-hosts-link`, PROJ-51) where they are changed (PROJ-50).
 - **NET-25** Where the limit cannot be built (NET-20) the section says so and
   its control is disabled (`#network-unavailable`), rather than showing a chat
   as limited where it is not (UI-68).
@@ -200,7 +200,7 @@ decrypted — so an allowlist is by host name, which is what the user writes.
   is pressed; a list holding an entry that is not one of NET-7's forms changes
   nothing and the section shows the message for it (`#chat-network-hosts-error`,
   NET-11, CSET-7). Beside it the section shows the project's entries and the link
-  to the projects page (NET-24).
+  to the project's own page (NET-24).
 
 ### Telling the model
 
@@ -277,7 +277,7 @@ child's copy), `Elia.Projects` (a project's allowlist and where it is stored),
 own entries, and the lists an effective setting holds), `Elia.Skills.Network`
 (the tool, and which list an answer fills), `EliaWeb.ChatSettingsLive` (the
 section, its field for the chat's own entries and the project's shown beside
-them), `EliaWeb.ProjectsLive` (a project's field), `EliaWeb.ChatLive` (the
+them), `EliaWeb.ProjectLive` (a project's field), `EliaWeb.ChatLive` (the
 request card's decisions).
 
 ## Tests
@@ -321,7 +321,7 @@ request card's decisions).
   notice in the composer — NET-11, NET-22 to NET-25, NET-32, NET-38).
 - `test/elia_web/live/chat_live_test.exs` (a chat the New chat button starts
   comes up allowlisted — NET-1, STORE-22).
-- `test/elia_web/live/projects_live_test.exs` (a project's allowlist field, its
+- `test/elia_web/live/project_live_test.exs` (a project's allowlist field, its
   Save, and the message for a list holding an entry that is not one of NET-7's
   forms — PROJ-50).
 - No test: NET-5 and NET-18 — that a change reaches only later commands, and

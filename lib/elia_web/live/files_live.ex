@@ -323,6 +323,7 @@ defmodule EliaWeb.FilesLive do
       flash={@flash}
       chats={@chat_list}
       active_chats={@active_chats}
+      new_project={@new_project}
       project_switch={:switch}
     >
       <div class="flex h-full flex-col lg:flex-row">

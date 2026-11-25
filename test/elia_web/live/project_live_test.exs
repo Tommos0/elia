@@ -118,9 +118,9 @@ defmodule EliaWeb.ProjectLiveTest do
     refute has_element?(view, "#project-chat-#{child}")
   end
 
-  # PROJ-51: an id that names no project goes to the projects page (PROJ-23).
-  test "an id that names no project goes to the projects page", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/projects"}}} = live(conn, ~p"/p/no-such-project")
+  # PROJ-51: an id that names no project goes home, to the dashboard (DASH-1).
+  test "an id that names no project goes to the dashboard", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, ~p"/p/no-such-project")
   end
 
   # PROJ-54, PROJ-7: Elia's own project has its page too, but nothing that
@@ -155,7 +155,7 @@ defmodule EliaWeb.ProjectLiveTest do
   end
 
   # PROJ-54: deleting asks for confirmation, removes the project and leaves the
-  # page with nothing to show, so it goes back to the projects page (PROJ-23).
+  # page with nothing to show, so it goes home, to the dashboard (PROJ-23).
   test "deletes a project after confirmation", %{conn: conn} do
     {:ok, project} = Projects.create("Gone", make_dir("delete"))
 
@@ -163,7 +163,7 @@ defmodule EliaWeb.ProjectLiveTest do
 
     assert has_element?(view, "#delete-project-#{project.id}[data-confirm]")
 
-    assert {:error, {:live_redirect, %{to: "/projects"}}} =
+    assert {:error, {:live_redirect, %{to: "/"}}} =
              view |> element("#delete-project-#{project.id}") |> render_click()
 
     assert Projects.get(project.id) == nil

@@ -8,7 +8,8 @@ defmodule EliaWeb.ProjectSwitcherTest do
 
   # PROJ-29: the header names the open project beside the logo, where it used to
   # show the app's own name, and the control it is opens a menu of every project
-  # — the open one marked — with the way to the projects page at its end.
+  # — the open one marked — with the new-project modal's entry at its end
+  # (PROJ-30, PROJ-55).
   test "the header names the open project, and its menu lists them all", %{conn: conn} do
     with_projects(fn %{widgets: widgets} ->
       {:ok, view, _html} = live(conn, ~p"/settings")
@@ -27,8 +28,10 @@ defmodule EliaWeb.ProjectSwitcherTest do
       assert has_element?(view, "#project-option-harness[data-open='true']", "Elia")
       assert has_element?(view, "#project-option-#{widgets.id}[data-open='false']", "Widgets")
 
-      # PROJ-30: and its last entry leads to the projects page (PROJ-23).
-      assert has_element?(view, "#project-menu #manage-projects-link[href='/projects']")
+      # PROJ-30, PROJ-55: and its last entry opens the new-project modal, which
+      # is closed until it is chosen.
+      assert has_element?(view, "#project-menu #new-project-link", "New project")
+      refute has_element?(view, "#new-project-modal")
 
       # PROJ-29: Escape closes the menu without choosing, as a press outside it
       # does, and neither one navigates.
@@ -40,7 +43,7 @@ defmodule EliaWeb.ProjectSwitcherTest do
 
       render_click(view, "close_projects", %{})
       refute has_element?(view, "#project-menu")
-      refute_redirected(view, "/projects")
+      refute_redirected(view, "/p/#{widgets.id}")
     end)
   end
 
@@ -87,21 +90,27 @@ defmodule EliaWeb.ProjectSwitcherTest do
     end)
   end
 
-  # PROJ-30, PROJ-23, PROJ-53: the menu's entry leads to a page holding every
-  # project, the form that creates one and, per project, the link to its own
-  # page (PROJ-51) — which is where a project is deleted (PROJ-54).
-  test "the menu's entry leads to the projects page", %{conn: conn} do
+  # PROJ-30, PROJ-55: the menu's entry opens the new-project modal over the page
+  # it was opened on — a dialog rather than a page of its own — and the menu
+  # closes with it.
+  test "the menu's entry opens the new-project modal", %{conn: conn} do
     with_projects(fn %{widgets: widgets} ->
       {:ok, view, _html} = live(conn, ~p"/c/#{saved_chat(widgets.id)}")
       view |> element("#project-switcher") |> render_click()
 
-      assert has_element?(view, "#manage-projects-link[href='/projects']")
+      assert has_element?(view, "#new-project-link", "New project")
+      refute has_element?(view, "#new-project-modal")
 
-      {:ok, page, _html} = live(conn, ~p"/projects")
+      view |> element("#new-project-link") |> render_click()
 
-      assert has_element?(page, "#new-project")
-      assert has_element?(page, "#project-open-#{widgets.id}[href='/p/#{widgets.id}']")
-      refute has_element?(page, "#delete-project-#{widgets.id}")
+      refute has_element?(view, "#project-menu")
+      assert has_element?(view, "#new-project-modal[role='dialog']")
+      assert has_element?(view, "#new-project-modal #new-project")
+      # The page behind it is still the chat's own (PROJ-51).
+      assert has_element?(view, "header #project-switcher", "Widgets")
+
+      view |> element("#new-project-close") |> render_click()
+      refute has_element?(view, "#new-project-modal")
     end)
   end
 

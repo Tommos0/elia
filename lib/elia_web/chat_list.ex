@@ -108,6 +108,19 @@ defmodule EliaWeb.ChatList do
   end
 
   @doc """
+  PROJ-29, PROJ-55: the projects the switcher's menu lists, read again, so the
+  project the new-project modal just made is in the menu opened after it
+  (PROJ-30, PROJ-39).
+  """
+  def refresh_projects(socket), do: put_projects(socket)
+
+  @doc """
+  PROJ-30, PROJ-55: the switcher's menu closed — what opening the new-project
+  modal does, so the menu it was opened from does not stand behind the dialog.
+  """
+  def close_menu(socket), do: put_state(socket, projects_open: false)
+
+  @doc """
   UI-5, UI-6, UI-63, UI-72, UI-92: the list read again from the store — the
   chats at the page size loaded (UI-84, UI-85) and the statuses that go with
   them — so a list that is on screen is as fresh as this read. The chat page

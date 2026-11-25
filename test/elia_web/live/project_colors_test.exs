@@ -24,9 +24,9 @@ defmodule EliaWeb.ProjectColorsTest do
       assert has_element?(chat, "#app-icon[style*='#{theirs}']")
       refute has_element?(chat, "#app-icon[style*='#{mine}']")
 
-      # Opening that chat made Widgets the open project (PROJ-28), so the
-      # projects page wears its colour too.
-      {:ok, projects, _html} = live(conn, ~p"/projects")
+      # Opening that chat made Widgets the open project (PROJ-28), so that
+      # project's own page wears its colour too.
+      {:ok, projects, _html} = live(conn, ~p"/p/#{widgets.id}")
       assert has_element?(projects, "#app-icon[style*='#{theirs}']")
     end)
   end

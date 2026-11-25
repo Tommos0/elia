@@ -52,6 +52,12 @@ defmodule EliaWeb.Layouts do
   # drawer draws. Every page in the live session has it assigned.
   attr :chats, :map, default: nil, doc: "the chat list's state (UI-91, UI-92)"
 
+  # PROJ-55: the new-project modal's state (`EliaWeb.NewProject`), which is what
+  # the modal the switcher's entry opens is drawn from. Required like the active
+  # chats control, so a page that does not hand it over fails to compile rather
+  # than losing the modal.
+  attr :new_project, :map, required: true, doc: "the new-project modal's state (PROJ-55)"
+
   # ACTIVE-1: the active chats control's state (`EliaWeb.ActiveChats`). Every
   # page in the live session has it assigned, and the header draws the control
   # from it. Required, so a page that does not hand it over fails to compile
@@ -174,6 +180,10 @@ defmodule EliaWeb.Layouts do
       </main>
     </div>
 
+    <%!-- PROJ-30, PROJ-55: the new-project modal, wherever the header carries
+    the switcher above. --%>
+    <EliaWeb.NewProject.modal :if={@new_project.open} state={@new_project} />
+
     <.flash_group flash={@flash} />
     """
   end
@@ -196,8 +206,8 @@ defmodule EliaWeb.Layouts do
 
   # PROJ-29, PROJ-30, UI-94: the open project beside the logo — its name where
   # the header used to show the app's own — and the menu it opens: every project,
-  # the open one marked `data-open="true"`, and, below them, the entry to the
-  # projects page (PROJ-23), where a project is created and deleted. Choosing a
+  # the open one marked `data-open="true"`, and, below them, the entry that opens
+  # the new-project modal (PROJ-55), which is where a project is created. Choosing a
   # project opens it and its own page (PROJ-8, PROJ-28, PROJ-51, PROJ-53) — or,
   # on a page that switches in place, opens it and browses it there (EXPL-29). The control is
   # drawn like the settings page's pickers: the trigger asks to close while the
@@ -241,13 +251,14 @@ defmodule EliaWeb.Layouts do
           switch={@switch}
         />
         <div class="my-1 border-t border-base-300"></div>
-        <.link
-          navigate={~p"/projects"}
-          id="manage-projects-link"
-          class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+        <button
+          type="button"
+          id="new-project-link"
+          phx-click="open_new_project"
+          class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
         >
-          <.icon name="hero-cog-6-tooth" class="size-4 shrink-0" /> Manage projects
-        </.link>
+          <.icon name="hero-plus" class="size-4 shrink-0" /> New project
+        </button>
       </div>
     </div>
     """

@@ -67,7 +67,8 @@ the top bar (`phx:page-loading-*` in `assets/js/app.js`).
 - **FEED-9** This is every page's feedback, not the chat page's: the header and
   its theme toggle, the sidebar (a chat row tapped to go to that chat dims until
   the chat is there), the composer and the buttons in an approval card, the
-  chat settings page, the projects, settings, files and logs pages.
+  chat settings page, the settings, files and logs pages, and the modal the
+  header's switcher opens (PROJ-30, PROJ-55).
 
 ## Out of scope
 
@@ -90,7 +91,7 @@ the top bar (`phx:page-loading-*` in `assets/js/app.js`).
 - The templates' own `active:scale-*` classes come out as the shared rule
   replaces them (`lib/elia_web/live/chat_live.ex`,
   `lib/elia_web/live/chat_settings_live.ex`,
-  `lib/elia_web/live/settings_live.ex`, `lib/elia_web/live/projects_live.ex`).
+  `lib/elia_web/live/settings_live.ex`, `lib/elia_web/new_project.ex`).
 
 ## Tests
 

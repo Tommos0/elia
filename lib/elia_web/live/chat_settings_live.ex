@@ -81,7 +81,12 @@ defmodule EliaWeb.ChatSettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} chats={@chat_list} active_chats={@active_chats}>
+    <Layouts.app
+      flash={@flash}
+      chats={@chat_list}
+      active_chats={@active_chats}
+      new_project={@new_project}
+    >
       <div class="h-full overflow-y-auto">
         <div class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
           <.link
@@ -102,7 +107,10 @@ defmodule EliaWeb.ChatSettingsLive do
           >
             <.icon name="hero-rectangle-stack" class="size-4 shrink-0" />
             <span>Project</span>
-            <.link navigate={~p"/projects"} class="font-medium text-base-content hover:underline">
+            <.link
+              navigate={~p"/p/#{@project.id}"}
+              class="font-medium text-base-content hover:underline"
+            >
               {@project.name}
             </.link>
           </p>
@@ -205,6 +213,7 @@ defmodule EliaWeb.ChatSettingsLive do
                   entries={@network_entries}
                   own={@network_own}
                   own_error={@network_own_error}
+                  project_id={@project.id}
                   project_name={@project.name}
                 />
               </div>
@@ -522,6 +531,7 @@ defmodule EliaWeb.ChatSettingsLive do
   attr :own, :string, required: true
   attr :own_error, :string, default: nil
   attr :project_name, :string, required: true
+  attr :project_id, :string, required: true
 
   # NET-22, NET-23, NET-25: the chat's network setting — one control per mode,
   # applied the moment it is clicked like the jail switch (CSET-4, UI-67), with
@@ -616,10 +626,10 @@ defmodule EliaWeb.ChatSettingsLive do
           >{@hosts}</pre>
           <.link
             id="network-hosts-link"
-            navigate={~p"/projects"}
+            navigate={~p"/p/#{@project_id}"}
             class="inline-block text-xs text-primary hover:underline"
           >
-            Change {@project_name}'s allowlist on the projects page
+            Change {@project_name}'s allowlist on its own page
           </.link>
         </div>
       </div>

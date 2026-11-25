@@ -78,6 +78,8 @@ defmodule EliaWeb.ChatSettingsTest do
     assert has_element?(view, "#chat-settings-title", "Add a settings page")
     assert has_element?(view, "#chat-settings-back[href='/c/#{id}']")
     assert has_element?(view, "#chat-settings-project", "Elia")
+    # CSET-2, PROJ-51: and it leads to that project's own page.
+    assert has_element?(view, "#chat-settings-project a[href='/p/harness']")
 
     assert Agent.snapshot(id).status == :idle
   end

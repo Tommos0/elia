@@ -41,6 +41,8 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 
 - Comments are `<%!-- comment --%>`.
 - To show literal `{` or `}` in `<pre>`/`<code>`, put `phx-no-curly-interpolation` on the parent tag.
+- A function component sees **only the attributes passed to it**, not the caller's assigns: `assigns[:x]` inside `Layouts.app` is `nil` for an assign the page holds and did not hand over. So a new piece of the header's state is a new attr on `Layouts.app` **and** an edit at all ten `<Layouts.app ...>` call sites (the new-project modal, PROJ-55). `required: true` on the attr makes a page that misses it a compile error rather than a header quietly missing a control, which is what `active_chats` does. The failure the other way round is a shape with no error at all: the modal simply never rendered in the test.
+- The heavy state that hangs off every page (`EliaWeb.ChatList`, `EliaWeb.ActiveChats`, `EliaWeb.NewProject`) is one module per control, registered in the router's `on_mount` and attached as a `:handle_event` hook, so a page wires nothing; a hook that does not know an event returns `{:cont, socket}` and the next one sees it. `EliaWeb.NewProject` needs two functions of the chat list's own state, so they are public on `EliaWeb.ChatList` (`refresh_projects/1`, `close_menu/1`) rather than a second copy of `projects_open` two modules disagree about.
 
 ## LiveView
 
@@ -68,6 +70,18 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 - A colocated hook's name is resolved against the module its markup is compiled in (`ColocatedHook` builds `"<module>.<Name>"`), so markup that moves to another module takes its hooks with it and the compiler then reports the *caller* as undefined — `<.Foo.bar>` is a **local** component call (a leading dot means local), a remote one has no dot at all (`<Foo.bar>`). Both traps were hit moving a chat row's menu into `EliaWeb.ChatRowMenu` (ACTIVE-8). So a hook a second module draws is compiled where the markup lives, and `phx-hook=".Name"` in the caller just names it.
 - External hooks go in `assets/js/` and are passed to the `LiveSocket` constructor in `app.js` (`assets/js/highlight.js` is an example).
 - Push to the client with `push_event/3`, and always return or rebind the socket. Handle it in the hook with `this.handleEvent`. Clients push with `this.pushEvent` and the server replies with `{:reply, map, socket}`.
+
+## Showing a modal before it is deployed
+
+`bin/preview` navigates and screenshots; it cannot click (PREVIEW, "scripted
+interaction" is out of scope). So a preview of anything the user opens — a
+modal, a menu — is taken by temporarily forcing that state open in the
+worktree's own code (a `closed()` returning `open: true`, a `projects_open:
+true`), running `bin/preview`, and reverting the edit before the commit: say in
+the reply that the picture was taken that way. Two states worth showing means
+two runs — a preview overwrites its own file names (PREVIEW-4) — and a picture
+worth keeping can be copied aside under a name of its own in `tmp/preview/`,
+which the same route serves.
 
 ## Forms
 
