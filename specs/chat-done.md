@@ -12,7 +12,8 @@ left off (STORE-29).
 This feature gives a chat a **done** flag of its own, saved with it like its
 title (STORE-32) and shown as its status (DONE-2). Typically the chat's agent
 marks it done as its last step, right after merging its branch into `master`
-(DONE-6); the user can also do it by hand from the open chat (DONE-4). Done is
+(DONE-6); the user can also do it by hand from the open chat (DONE-4), or
+from the chat's own row in the chat list (UI-109, UI-110). Done is
 bookkeeping, not a lock: a message in a done chat continues it as always and
 reopens it (DONE-9), so nothing has to be undone before going on.
 

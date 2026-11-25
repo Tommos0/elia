@@ -251,7 +251,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   focus. The menu (`#chat-row-menu-<id>`) is in the row's markup from the first
   render, hidden until the gesture opens it, so opening it costs no round trip
   and it opens at once however busy the chat is. It holds "Rename"
-  (`#rename-chat-<id>`) and the delete entry (UI-64), in that order. The gesture
+  (`#rename-chat-<id>`), the done entry (UI-109) and the delete entry (UI-64),
+  in that order. The gesture
   is the page's, not the browser's: the menu the browser would open for a row —
   Chrome's own on Android, with its selection handles and "Open in new tab" —
   never appears for it, because the row's `contextmenu` is claimed rather than
@@ -263,6 +264,8 @@ stream in, approves or denies tool calls, and switches between saved chats.
   UI-104). It is drawn above the list rather than clipped by its scroll box, and
   within the screen's width (UI-78), so a row at the list's edge shows all of
   it. A chat row in the drawer (UI-92, UI-93) opens the same menu the same way.
+  *Changed:* the menu held two entries — "Rename" and the delete entry — before
+  the done entry (UI-109) was added.
 - **UI-104** Choosing "Rename" (UI-103) renames the chat in its row: the input
   (`#chat-rename-<id>`) takes the link's place in the row — the row's link is
   not rendered while it is open, so no control is nested in another and a press
@@ -273,6 +276,30 @@ stream in, approves or denies tool calls, and switches between saved chats.
   title that is blank once trimmed (TITLE-2) is no title at all: it saves
   nothing either, exactly as cancelling does. The row's own `title` attribute
   remains the chat's description (UI-33) and is not what the input holds.
+
+A chat's row is also where a chat that is finished is marked done, without the
+chat being opened first: the composer's own control (DONE-4) is on the chat's
+page, and a chat the user has stopped working in is one they are looking at in
+the list.
+
+- **UI-109** A chat row's menu (UI-103) holds a done entry, "Mark as done"
+  (`#done-chat-<id>`), and the row offers it exactly while the status it shows
+  (UI-59) is `idle`: a chat that is not done (DONE-2) and has no turn running, is
+  not waiting for the user (UI-47, UI-76), is not paused (UI-58) and was not cut
+  short by a restart (UI-72). Every other status is offered nothing — a working
+  chat, one that needs the user, a paused one, an interrupted one and a done one.
+  What it is offered by is the status the row shows now, not the one the row was
+  drawn with: a chat that becomes idle while the page is open is offered it, and
+  one that stops being idle is not, both without a reload. It is one menu
+  (UI-103), so every row has it: the sidebar's, the drawer's (UI-92) and the
+  header's (ACTIVE-9).
+- **UI-110** Choosing "Mark as done" (UI-109) marks the chat done (DONE-1), as
+  the composer's control does (DONE-4) and with no confirmation asked, and the
+  row follows at once, without a reload: its indicator shows `done` (DONE-2) and
+  the entry is no longer offered (UI-109). The chat need not be open and no
+  session of it need be running — one is started for it, as naming it from its
+  row does (TITLE-8) — and a task chat's row has the entry too, where marking the
+  chat done is what ends the task (DONE-3).
 - **UI-65** Confirming a delete removes the chat (SESS-29): its row leaves the
   sidebar and a "Chat deleted." flash appears. Deleting the chat that is open
   navigates to `/chats` (the most recent chat, or a fresh chat when there is
@@ -818,9 +845,9 @@ open project and whether more are saved in it, the page size (UI-84, UI-85),
 the projects and the open one (PROJ-28, PROJ-31), the statuses a row
 is marked with (UI-47, UI-58, UI-59, UI-72, UI-76) and whether the drawer is
 open — and handles the events that drive it (`toggle_chats`, `close_chats`,
-`more_chats`, `chat_page`, `delete_chat`, `rename_chat`, and `open_project`,
-which makes a project the open one, PROJ-29). A page that draws the drawer
-therefore needs no wiring of its own, and one page's sidebar and another page's
+`more_chats`, `chat_page`, `delete_chat`, `rename_chat`, `mark_chat_done` and
+`open_project`, which makes a project the open one, PROJ-29). A page that draws
+the drawer therefore needs no wiring of its own, and one page's sidebar and another page's
 drawer are
 one list with one state, kept in step by construction. `EliaWeb.Layouts` renders
 the header's "Chats" button on every page, the open project's switcher beside
@@ -828,6 +855,14 @@ the logo (PROJ-29), and the drawer (`#chats-drawer`, with
 its backdrop, UI-36) on every page that is not `chats_sidebar` — which
 `EliaWeb.ChatLive` is, since it lays the list out as its own page's sidebar
 (UI-4, UI-35, UI-36).
+
+The menu a row opens is `EliaWeb.ChatRowMenu`'s markup, drawn by the chat list's
+rows and by the header's active chats (ACTIVE-8), one module because a colocated
+hook's name is resolved against the module its markup is compiled in. Whether its
+done entry (UI-109) is offered is the row's own status: the markup draws it
+hidden for a chat that isn't idle, and the hook that owns the menu keeps it in
+step with the status the row shows, since the menu itself is never patched
+(UI-103).
 
 The composer's draft (UI-89) is the browser's own: `EliaWeb.ChatLive`'s
 colocated hook keeps it in `localStorage` and puts it back on mount, and nothing
@@ -891,7 +926,8 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   button, the pages that stay loaded, and a list that had no more to begin with —
   UI-2, UI-4, UI-65, UI-84, UI-85; the filters at the top of the list, the chats
   they hide and the empty state they leave — UI-105 to UI-107; the list holding
-  one project's chats, PROJ-31).
+  one project's chats, PROJ-31; the done entry in a row's menu — offered for an
+  idle chat alone and marking the chat done when it is chosen — UI-109, UI-110).
 - `test/elia_web/live/project_switcher_test.exs` (the project the header names,
   its menu, choosing a project, and the projects page behind the menu's entry —
   PROJ-28 to PROJ-30).
@@ -912,8 +948,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/browser/chat_row_menu_test.exs` (a row's menu in a real
   browser: the long press and the right-click that open it, that the browser's
   own menu does not follow them, a press that becomes a scroll opening none, and
-  Escape and a press outside closing it — UI-103, UI-104; a browser test, so it
-  runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+  Escape and a press outside closing it — UI-103, UI-104; the done entry, offered
+  for an idle chat and gone for any other as the row's status changes — UI-109; a
+  browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_browser_test.exs` (the chat page's hooks in a real
   browser: Enter sending a message, the transcript at its end, the reader's own
   move up stopping the following and their return to the end starting it again,

@@ -161,7 +161,7 @@ it.
 | [Socket origin](socket-origin.md) | `SOCK` | A socket handshake is bound to a page this server served: the request's own origin, and a session proof for the terminal |
 | [Installable web app](pwa.md) | `PWA` | Manifest, icons, service worker and per-build asset URLs so the app installs on a phone and comes back on a new build, and documents served to be revalidated |
 | [Push notifications](push-notifications.md) | `PUSH` | Web Push: a chat that needs you notifies your device through the browser's push service |
-| [Active chats](active-chats.md) | `ACTIVE` | The header counts the chats waiting for the user and lists the active ones — every chat that isn't done, across all projects — each row a link to the chat and a long press on it opening the chat's own menu, to rename or delete it |
+| [Active chats](active-chats.md) | `ACTIVE` | The header counts the chats waiting for the user and lists the active ones — every chat that isn't done, across all projects — each row a link to the chat and a long press on it opening the chat's own menu, to rename, mark done or delete it |
 | [Notifications](notifications.md) | `NOTIF` | Retired: the header lists the active chats (ACTIVE) instead of keeping a record of what needed the user; Web Push is untouched |
 | [Recovery](recovery.md) | `RECOVER` | `/recover`: plain HTML that needs none of the tree's front end, sending the app back to a revision it has run when a deploy has broken the UI |
 | [Sub-tasks](subtasks.md) | `SUBTASK` | `spawn_task` hands work to a child chat, which is an ordinary chat that ends by being marked done; `await_task` waits for it and brings back what it said |
