@@ -491,7 +491,7 @@ defmodule EliaWeb.ChatLiveTest do
       # UI-103: the row opens it, so the hook is on the row itself.
       assert has_element?(
                view,
-               "#chat-row-#{id}[phx-hook='EliaWeb.ChatList.ChatRowMenu'][data-row-chat='#{id}']"
+               "#chat-row-#{id}[phx-hook='EliaWeb.ChatRowMenu.ChatRowMenu'][data-row-chat='#{id}']"
              )
 
       # UI-103: in the markup from the first render, and hidden until then.
@@ -570,7 +570,7 @@ defmodule EliaWeb.ChatLiveTest do
     refute has_element?(view, "#chat-link-#{other}")
     assert has_element?(view, "#chat-rename-#{other}[value='the other chat']")
     assert has_element?(view, "#chat-rename-#{other}[maxlength='60']")
-    assert has_element?(view, "#chat-rename-#{other}[phx-hook='EliaWeb.ChatList.ChatRename']")
+    assert has_element?(view, "#chat-rename-#{other}[phx-hook='EliaWeb.ChatRowMenu.ChatRename']")
     refute has_element?(view, "#chat-rename-#{other} #chat-row-menu-#{other}")
 
     view

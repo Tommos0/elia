@@ -65,6 +65,7 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 
 - `phx-hook` always needs a unique `id`. If the hook manages its own DOM, also set `phx-update="ignore"`.
 - Inline scripts: **always** use a colocated hook (`<script :type={Phoenix.LiveView.ColocatedHook} name=".Name">`). The name must start with `.`. Never write raw `<script>` tags.
+- A colocated hook's name is resolved against the module its markup is compiled in (`ColocatedHook` builds `"<module>.<Name>"`), so markup that moves to another module takes its hooks with it and the compiler then reports the *caller* as undefined — `<.Foo.bar>` is a **local** component call (a leading dot means local), a remote one has no dot at all (`<Foo.bar>`). Both traps were hit moving a chat row's menu into `EliaWeb.ChatRowMenu` (ACTIVE-8). So a hook a second module draws is compiled where the markup lives, and `phx-hook=".Name"` in the caller just names it.
 - External hooks go in `assets/js/` and are passed to the `LiveSocket` constructor in `app.js` (`assets/js/highlight.js` is an example).
 - Push to the client with `push_event/3`, and always return or rebind the socket. Handle it in the hook with `this.handleEvent`. Clients push with `this.pushEvent` and the server replies with `{:reply, map, socket}`.
 

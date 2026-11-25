@@ -1,6 +1,6 @@
 # Active chats
 
-Status: Draft
+Status: Implemented
 
 The header's bell was a record of what had already happened: an entry per chat
 that had needed the user, kept in a list of its own (`specs/notifications.md`,
@@ -66,12 +66,14 @@ leaving the page.
   the chat is; it is drawn above the page rather than clipped by the menu's own
   scroll box, and within the screen's width (UI-78).
 - **ACTIVE-9** The menu of a row (ACTIVE-8) holds the same entries in the same
-  order as a chat row's (UI-103): "Rename" (`#active-chat-rename-<id>`) and the
-  delete entry (UI-64, `#active-chat-delete-<id>`), both in the menu
-  `#active-chat-row-menu-<id>` — the control's own ids, so a chat listed by both
-  the header and the chat list has two menus and the two never collide.
+  order as a chat row's (UI-103): "Rename" (`#active-rename-chat-<id>`) and the
+  delete entry (UI-64, `#active-delete-chat-<id>`), both in the menu
+  `#active-chat-row-menu-<id>` — the control's own ids, the same ones a chat
+  row's menu draws under the `active-` scope (UI-103, UI-104), so a chat listed
+  by both the header and the chat list has two menus and the two never
+  collide.
 - **ACTIVE-10** Choosing "Rename" (ACTIVE-9) renames the chat in the header's
-  row: the input (`#active-chat-rename-input-<id>`) takes the row's link's place
+  row: the input (`#active-chat-rename-<id>`) takes the row's link's place
   in the row — the row's link is not rendered while it is open, so a press on
   the row cannot navigate away mid-rename — holding the chat's title with all of
   it selected and focused, so it can be typed over at once. Enter saves it

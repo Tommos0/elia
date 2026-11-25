@@ -1,19 +1,24 @@
 defmodule EliaWeb.ActiveChats do
   @moduledoc """
   The header's active chats control: its state, the events that drive it and the
-  markup it is drawn with (ACTIVE-1 to ACTIVE-7).
+  markup it is drawn with (ACTIVE-1 to ACTIVE-11).
 
   Like `EliaWeb.ChatList` it hangs off every page of the live session
   (`EliaWeb.Router`'s `on_mount`), which is what puts the control in the header
   wherever the user is without a page wiring anything of its own. The list is
   the chats themselves: every saved chat that isn't done (ACTIVE-2), across
   every project, each with the status the chat list shows for it (UI-46, UI-59),
-  and the count is the ones no turn of which is running (ACTIVE-3).
+  and the count is the ones no turn of which is running (ACTIVE-3). A row is a
+  chat's own row (`EliaWeb.ChatRowMenu`), so a chat is renamed or deleted from
+  the header without leaving the page (ACTIVE-8 to ACTIVE-11).
   """
 
   use EliaWeb, :html
 
-  alias EliaWeb.ChatStatus
+  # ACTIVE-8, ACTIVE-9: a row of the menu is a chat's own row — the menu a long
+  # press opens and the box a name is typed in — which is what the chat list
+  # draws too (UI-103, UI-104).
+  alias EliaWeb.{ChatRowMenu, ChatStatus}
 
   import Phoenix.LiveView, only: [attach_hook: 4, connected?: 1]
 
@@ -34,7 +39,10 @@ defmodule EliaWeb.ActiveChats do
   def on_mount(:default, _params, _session, socket) do
     socket =
       socket
-      |> assign(:active_chats, %{open: false, chats: [], more: 0, count: 0})
+      # ACTIVE-8, ACTIVE-10: `renaming` is the header's own — the row it is
+      # showing a box to type a name in, or nil — so a rename started in the
+      # chat list's row is not shown here (UI-104).
+      |> assign(:active_chats, %{open: false, chats: [], more: 0, count: 0, renaming: nil})
       |> attach_hook(:active_chats_events, :handle_event, &handle_event/3)
       |> attach_hook(:active_chats_status, :handle_info, &handle_info/2)
       |> subscribe()
@@ -53,6 +61,32 @@ defmodule EliaWeb.ActiveChats do
 
     {:halt, refresh(put_state(socket, open: open))}
   end
+
+  # ACTIVE-10: naming a chat from the header's row. The row's own box posts the
+  # name alone, and which chat that is is this control's own state (ACTIVE-1) —
+  # the row the box is drawn in — so the name is not carried in the form. An
+  # accepted name is the chat's own title from then on (TITLE-8, STORE-55) and
+  # the chats are read again, so the row shows it (ACTIVE-7).
+  defp handle_event("active_rename_chat", %{"title" => title}, socket) do
+    with id when is_binary(id) <- socket.assigns.active_chats.renaming,
+         {:ok, _title} <- Elia.Agent.rename(id, title) do
+      {:halt, socket |> put_state(renaming: nil) |> refresh()}
+    else
+      # TITLE-2, ACTIVE-10: a name that is blank once trimmed is no title at
+      # all, so it saves nothing and the row goes back to what it showed —
+      # exactly as cancelling leaves it. No row being renamed at all (a stale
+      # client) is nothing to do either.
+      _refused -> {:halt, put_state(socket, renaming: nil)}
+    end
+  end
+
+  defp handle_event("active_start_rename", %{"id" => id}, socket),
+    do: {:halt, put_state(socket, renaming: id)}
+
+  # ACTIVE-10: the box's Cancel button, a press outside the box and Escape
+  # (UI-104) all leave the row as it was.
+  defp handle_event("active_cancel_rename", _params, socket),
+    do: {:halt, put_state(socket, renaming: nil)}
 
   defp handle_event("close_active_chats", _params, socket),
     do: {:halt, put_state(socket, open: false)}
@@ -80,12 +114,26 @@ defmodule EliaWeb.ActiveChats do
 
   attr :state, :map, required: true, doc: "the control's state (ACTIVE-1)"
 
+  # ACTIVE-9 to ACTIVE-11: the events a row's menu and its box send. Rename is
+  # the header's own, so a rename started here is not taken for one started in
+  # the chat list (UI-104); delete is the chat list's own event, which every
+  # page of the live session handles (UI-64, UI-65).
+  @row_events %{
+    start: "active_start_rename",
+    submit: "active_rename_chat",
+    cancel: "active_cancel_rename",
+    delete: "delete_chat"
+  }
+
   @doc """
-  ACTIVE-1, ACTIVE-4 to ACTIVE-6: the header's control, with the count of the
-  chats needing the user, and the menu behind it: the active chats, each a link
-  to its chat.
+  ACTIVE-1, ACTIVE-4 to ACTIVE-6, ACTIVE-8 to ACTIVE-11: the header's control,
+  with the count of the chats needing the user, and the menu behind it: the
+  active chats, each a link to its chat and a row of its own, whose menu renames
+  or deletes the chat without leaving the page.
   """
   def control(assigns) do
+    assigns = assign(assigns, :row_events, @row_events)
+
     ~H"""
     <div class="relative">
       <%!-- ACTIVE-1: below the `sm` breakpoint only the icon and the count are
@@ -143,20 +191,37 @@ defmodule EliaWeb.ActiveChats do
           <%!-- ACTIVE-2, ACTIVE-5: newest first, each a link to its chat, with
           the project it belongs to and its status — the one indicator the chat
           list draws (UI-46, UI-59), which names itself on hover and in
-          words. --%>
-          <.link
+          words. ACTIVE-8, ACTIVE-9: the row is a chat's own row
+          (`EliaWeb.ChatRowMenu`) — its menu opens on a long press, a
+          right-click or the keyboard, and holds the same two entries the chat
+          list's rows have — drawn under the `active-` scope, so a chat listed
+          by both the header and the chat list has two menus of its own. --%>
+          <ChatRowMenu.row
             :for={chat <- @state.chats}
-            id={"active-chat-#{chat.id}"}
-            navigate={~p"/c/#{chat.id}"}
-            title={chat.title}
-            class="flex items-center gap-2 border-b border-base-300/60 px-3 py-2 last:border-b-0 transition hover:bg-base-200"
+            id={"active-chat-row-#{chat.id}"}
+            chat={chat}
+            scope="active-"
+            renaming={@state.renaming == chat.id}
+            events={@row_events}
+            class="flex border-b border-base-300/60 last:border-b-0 transition hover:bg-base-200"
           >
-            <ChatStatus.status_icon id={"active-chats-status-#{chat.id}"} status={chat.status} />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm">{chat.title}</span>
-              <span class="block truncate text-xs text-base-content/60">{chat.project}</span>
-            </span>
-          </.link>
+            <.link
+              id={"active-chat-#{chat.id}"}
+              navigate={~p"/c/#{chat.id}"}
+              data-row-link
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls={"active-chat-row-menu-#{chat.id}"}
+              title={chat.title}
+              class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2"
+            >
+              <ChatStatus.status_icon id={"active-chats-status-#{chat.id}"} status={chat.status} />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{chat.title}</span>
+                <span class="block truncate text-xs text-base-content/60">{chat.project}</span>
+              </span>
+            </.link>
+          </ChatRowMenu.row>
         </div>
       </div>
     </div>

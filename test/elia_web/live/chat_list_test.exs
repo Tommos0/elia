@@ -427,10 +427,11 @@ defmodule EliaWeb.ChatListTest do
       {:ok, view, _html} = live(conn, ~p"/system")
       view |> element("#chats-toggle") |> render_click()
 
-      # UI-103: the drawer's rows open the same menu the sidebar's do.
+      # UI-103: the drawer's rows open the same menu the sidebar's do, and the
+      # menu — markup and hook — is the shared one (EliaWeb.ChatRowMenu).
       assert has_element?(
                view,
-               "#drawer-chat-row-#{second}[phx-hook='EliaWeb.ChatList.ChatRowMenu']"
+               "#drawer-chat-row-#{second}[phx-hook='EliaWeb.ChatRowMenu.ChatRowMenu']"
              )
 
       assert has_element?(

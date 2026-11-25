@@ -1,7 +1,8 @@
 defmodule EliaWeb.ChatRowMenuBrowserTest do
   @moduledoc """
   A chat row's own menu in a real browser (UI-103 in `specs/chat-ui.md`, UI-104
-  for what it opens). Which event a gesture sends, whether the browser's own
+  for what it opens, and ACTIVE-8 to ACTIVE-10 in `specs/active-chats.md` for
+  the header's rows, which open the same menu). Which event a gesture sends, whether the browser's own
   context menu follows it, what a press that turns into a scroll does, whether
   Escape reaches the row's link and where a `position: fixed` panel lands are
   all questions only a browser answers (BROWSER-1, BROWSER-7), and
@@ -93,6 +94,12 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
 
   defp open?(conn, id) do
     js(conn, "document.querySelector('#chat-row-menu-#{id}').style.display !== 'none'")
+  end
+
+  # ACTIVE-8: the header's rows carry a menu of their own under the control's id
+  # scope, so which of the two is open is asked separately.
+  defp header_menu_open?(conn, id) do
+    js(conn, "document.querySelector('#active-chat-row-menu-#{id}').style.display !== 'none'")
   end
 
   # A key, pressed with an element focused (the library's own `press`, which
@@ -307,5 +314,57 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
            })()
            """),
            "the chat's title was not selected in the rename input (UI-104)"
+  end
+
+  # ACTIVE-8, ACTIVE-9, ACTIVE-10: a row of the header's active chats menu is a
+  # chat's own row — a long press of it opens the same menu the chat list's rows
+  # open, the browser's own menu never follows a right-click on it, the press
+  # opens no chat, and "Rename" puts the box in that row, in the header's own
+  # ids (ACTIVE-5).
+  test "the header's rows open the same menu on a long press", %{
+    conn: conn,
+    open: open,
+    other: other
+  } do
+    conn = open_page(conn, "/c/#{open}")
+    conn = click(conn, "#active-chats-toggle")
+    assert_has(conn, "#active-chats-menu")
+
+    # ACTIVE-8: the menu is in the row's markup, shut until the gesture opens it.
+    refute header_menu_open?(conn, other)
+
+    conn = press_hold(conn, "#active-chat-#{other}", @long_press)
+
+    assert header_menu_open?(conn, other),
+           "a long press on the header's row did not open its menu (ACTIVE-8)"
+
+    # UI-103: the press opened no chat — the page is the page it was.
+    assert path(conn) == "/c/#{open}",
+           "the long press opened the chat as well (UI-103, ACTIVE-8)"
+
+    # ACTIVE-8: a `contextmenu` event the header's row is sent is cancelled, so
+    # the browser's own menu is not what a right-click on it shows.
+    assert js(conn, """
+           (() => {
+             const link = document.querySelector('#active-chat-#{other}')
+             const event = new MouseEvent('contextmenu', {bubbles: true, cancelable: true})
+             link.dispatchEvent(event)
+             return event.defaultPrevented
+           })()
+           """),
+           "the header row's contextmenu was left to the browser (ACTIVE-8)"
+
+    # ACTIVE-10: Rename takes the row's link's place with the box, which the
+    # header's own server state draws.
+    conn = click(conn, "#active-rename-chat-#{other}")
+
+    refute header_menu_open?(conn, other)
+    refute_has(conn, "#active-chat-#{other}")
+
+    conn = assert_has(conn, "#active-chat-rename-#{other}[value='the chat a press is about']")
+    conn = assert_has(conn, "#active-delete-chat-#{other}")
+
+    assert js(conn, "document.activeElement.id") == "active-chat-rename-#{other}",
+           "the header's rename input did not take the focus (ACTIVE-10)"
   end
 end

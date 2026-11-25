@@ -143,7 +143,9 @@ defmodule EliaWeb.ActiveChatsTest do
       assert has_element?(view, "#active-chat-#{newest}")
       refute has_element?(view, "#active-chat-#{oldest}")
 
-      assert render(view) |> String.split(~s(id="active-chat-)) |> length() == 51
+      # `data-row-chat` is one per row, so this counts the rows the menu drew
+      # (the rows carry ids of their own, ACTIVE-8).
+      assert render(view) |> String.split("data-row-chat=") |> length() == 51
     end)
   end
 
@@ -208,6 +210,157 @@ defmodule EliaWeb.ActiveChatsTest do
       await_gone(view, "#active-chats-count")
       refute has_element?(view, "#active-chat-#{id}")
       assert has_element?(view, "#active-chats-empty")
+    end)
+  end
+
+  # ACTIVE-8, ACTIVE-9, ACTIVE-10: a row of the header's menu is a chat's own
+  # row — the shared one (EliaWeb.ChatRowMenu), whose menu a long press opens —
+  # in the markup and shut from the first render, under the control's own ids,
+  # with the two entries a chat row's menu has in the same order (UI-103, UI-64).
+  # The rename is the header's own: pressing an entry posts the name alone, the
+  # state says which row, and the row shows the new title (TITLE-8, ACTIVE-7).
+  test "a row of the menu carries the shared menu, and renames that chat", %{conn: conn} do
+    with_empty_store(fn ->
+      first = save_chat("First chat")
+      second = save_chat("Second chat")
+
+      {:ok, view, _html} = live(conn, ~p"/sessions")
+      view |> element("#active-chats-toggle") |> render_click()
+
+      # ACTIVE-8: the row is the shared one — the hook that opens its menu on a
+      # long press, a right-click or the keyboard — and the menu is in the row's
+      # markup from the first render, shut, and never patched by the server.
+      assert has_element?(
+               view,
+               "#active-chat-row-#{second}[phx-hook='EliaWeb.ChatRowMenu.ChatRowMenu']" <>
+                 "[data-row-chat='#{second}']"
+             )
+
+      assert has_element?(
+               view,
+               "#active-chat-row-#{second} > #active-chat-row-menu-#{second}[style='display: none']"
+             )
+
+      assert has_element?(view, "#active-chat-row-menu-#{second}[phx-update='ignore']")
+
+      # ACTIVE-9: Rename first, then the delete entry (UI-64), under the
+      # control's own ids.
+      assert has_element?(
+               view,
+               "#active-chat-row-menu-#{second} #active-rename-chat-#{second}",
+               "Rename"
+             )
+
+      assert has_element?(
+               view,
+               "#active-delete-chat-#{second}[aria-label='Delete chat']" <>
+                 "[data-confirm*='Second chat']"
+             )
+
+      # ACTIVE-10: Rename puts the box in that row — the chat's title in it, all
+      # of it selected and focused by the hook — and the row's link is not
+      # rendered while it is there.
+      view |> element("#active-rename-chat-#{second}") |> render_click()
+
+      assert has_element?(
+               view,
+               "#active-chat-row-#{second} > #active-rename-form-#{second}" <>
+                 " > #active-chat-rename-#{second}[value='Second chat']"
+             )
+
+      refute has_element?(view, "#active-chat-rename-#{first}")
+      refute has_element?(view, "#active-chat-#{second}")
+
+      view
+      |> form("#active-rename-form-#{second}", %{"title" => "  Named from the header  "})
+      |> render_submit()
+
+      # TITLE-8: the name is the chat's own title from then on, and the row the
+      # menu lists shows it — the list was read again (ACTIVE-7).
+      assert has_element?(view, "#active-chat-#{second}", "Named from the header")
+      assert Elia.Store.load_title(second) == "Named from the header"
+      assert Elia.Store.title_by(second) == "user"
+
+      # ACTIVE-10: the Cancel button leaves the row as it was, saving nothing,
+      # and so does a name that is blank once trimmed (TITLE-2).
+      view |> element("#active-rename-chat-#{second}") |> render_click()
+      view |> element("#active-cancel-rename-#{second}") |> render_click()
+      assert has_element?(view, "#active-chat-#{second}", "Named from the header")
+
+      view |> element("#active-rename-chat-#{second}") |> render_click()
+      view |> form("#active-rename-form-#{second}", %{"title" => "   "}) |> render_submit()
+
+      assert has_element?(view, "#active-chat-#{second}", "Named from the header")
+      assert Elia.Store.load_title(second) == "Named from the header"
+
+      # A cancel with no row being renamed (a stale client) is nothing to do.
+      render_hook(view, "active_cancel_rename", %{})
+      refute has_element?(view, "#active-chat-rename-#{second}")
+      assert has_element?(view, "#active-chat-#{second}")
+    end)
+  end
+
+  # ACTIVE-10: the header's box is the header's own. A page with both copies of
+  # a chat's row — a chat page, whose sidebar lists the same chat — renames the
+  # chat in the row the box was opened in, and the other shows the chat as it
+  # was (UI-104).
+  test "the header's box is its own, not the chat list's row's", %{conn: conn} do
+    with_empty_store(fn ->
+      open = save_chat("The chat the page shows")
+      other = save_chat("The other chat")
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+
+      # The header's own menu, and a rename started in it.
+      view |> element("#active-chats-toggle") |> render_click()
+      view |> element("#active-rename-chat-#{other}") |> render_click()
+
+      assert has_element?(view, "#active-chat-rename-#{other}")
+      # The sidebar's row of the same chat is not being renamed: its link is
+      # there, and its own input is not.
+      assert has_element?(view, "#chat-link-#{other}")
+      refute has_element?(view, "#chat-rename-#{other}")
+
+      # The name typed in the header's box renames that chat: the header's row
+      # shows it (ACTIVE-10) and the chat's own title is the name from then on
+      # (TITLE-8). The sidebar's row of the same chat keeps its link rather than
+      # a box of its own — what is renamed is the chat, and which row a box is in
+      # is each copy's own (UI-104, ACTIVE-10).
+      view
+      |> form("#active-rename-form-#{other}", %{"title" => "Renamed from the header"})
+      |> render_submit()
+
+      assert has_element?(view, "#active-chat-#{other}", "Renamed from the header")
+      assert has_element?(view, "#chat-link-#{other}")
+      refute has_element?(view, "#chat-rename-#{other}")
+      assert Elia.Store.load_title(other) == "Renamed from the header"
+    end)
+  end
+
+  # ACTIVE-11, UI-64, UI-65, ACTIVE-7: the delete entry of the header's menu —
+  # the chat list's own event (UI-64) — deletes the chat, and the row leaves the
+  # menu without a reload. Deleting the chat the page shows leaves for `/chats`
+  # (UI-77).
+  test "the menu's delete entry deletes the chat, and the row leaves", %{conn: conn} do
+    with_empty_store(fn ->
+      open = save_chat("The chat the page shows")
+      other = save_chat("The other chat")
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{open}")
+      view |> element("#active-chats-toggle") |> render_click()
+      assert has_element?(view, "#active-chat-#{other}")
+
+      view |> element("#active-delete-chat-#{other}") |> render_click()
+
+      # UI-65, SESS-29: the chat is gone, and its row left the menu.
+      await_gone(view, "#active-chat-#{other}")
+      refute Elia.Store.exists?(other)
+      refute_redirected(view)
+      assert has_element?(view, "#active-chat-#{open}")
+
+      # UI-65, UI-77: deleting the chat the page shows leaves the chat page.
+      view |> element("#active-delete-chat-#{open}") |> render_click()
+      assert_redirect(view, "/chats")
     end)
   end
 
