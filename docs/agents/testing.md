@@ -303,9 +303,20 @@ excluded`). Run that one yourself instead:
   falls back to one plain `mix test` (SUITE-6).
 - The split is by file, weighted by how slow each one measured: the deploy tests
   and the restart tests each lead their own partition. A new file needs no entry
-  — it weighs 1 and lands on the lightest partition (SUITE-3). The weights are
-  a comment away in `bin/test`; re-measure with `mix test --slowest 20` when a
-  partition feels lopsided.
+  — an unlisted file gets the default (190) and lands on the lightest partition
+  (SUITE-3). The weights are a comment away in `bin/test`; each one is a file's
+  own `Finished in …` from `mix test <file>` run alone on a 4-core machine, so
+  re-measure that way when a partition feels lopsided (`mix test --slowest` gives
+  per-test times, a different unit). Partitions cost more together than alone —
+  56/51/45/51s alone against 92/82/55/72s in one run on 2026-11-25 — so compare
+  partitions within a run, not across runs.
+- A deploy test pays for a real `mix test` in its throwaway tree unless it asks
+  not to: `Deploy.deploy/2`, `hot_reload/2`, `restart/2` and `Runner.start/2`
+  take `skip_tests: true`, DEPLOY-40's deploy that leaves the suite out — the
+  same deploy in every other respect (merge, deps, front end, load), about 0.55s
+  cheaper a call. A test whose subject is not the suite step should ask for it
+  (`deployment_test.exs` has helpers); the ones whose subject *is* it — DEPLOY-5,
+  DEPLOY-18, DEPLOY-19, DEPLOY-21, DEPLOY-23, ISOL-14 — run the real suite.
 - Before finishing: `mix precommit`, which runs its test step through `bin/test`
   (SUITE-8) — unless the change is one you judge safe without a run, and then say
   in your last message why the skip was safe (`AGENTS.md`).

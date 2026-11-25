@@ -129,7 +129,7 @@ defmodule Elia.DeploymentTest do
     assert "post-checkout" in ran(marker)
     File.rm(marker)
 
-    assert {:ok, _message} = Deploy.deploy()
+    assert {:ok, _message} = deploy_untested()
     assert ran(marker) == []
   end
 
@@ -342,6 +342,28 @@ defmodule Elia.DeploymentTest do
     end)
   end
 
+  ## Deploying without the suite (DEPLOY-40)
+
+  # DEPLOY-40: a deploy asked to leave the live tree's suite out. It is the same
+  # deploy in every other respect — it merges, fetches the trunk's dependencies,
+  # makes the front end current and loads — so a test whose subject is one of
+  # those, and not the suite step itself, asks for this instead of paying for a
+  # real `mix test` in its throwaway tree. That a deploy really runs the suite is
+  # still asserted, by the tests whose subject *is* it: the merge the suite holds
+  # up and the merge a failing one refuses (DEPLOY-5, DEPLOY-40), the dependency
+  # fetch that stops before it (DEPLOY-18), the front end a failed suite leaves
+  # unbuilt (DEPLOY-19), the step and the record entry the suite's own step
+  # appears in (DEPLOY-21, DEPLOY-23), and the jailed run in the live tree
+  # (ISOL-14).
+  defp deploy_untested(opts \\ []),
+    do: Deploy.deploy(Workspace.runtime_root(), Keyword.put(opts, :skip_tests, true))
+
+  defp hot_reload_untested(opts \\ []),
+    do: Deploy.hot_reload(Workspace.runtime_root(), Keyword.put(opts, :skip_tests, true))
+
+  defp restart_untested(opts \\ []),
+    do: Deploy.restart(Workspace.runtime_root(), Keyword.put(opts, :skip_tests, true))
+
   ## The steps, the record and going back (DEPLOY-21 to DEPLOY-26)
 
   # A case starts with no operation in flight: wait out one a failed case may
@@ -421,10 +443,12 @@ defmodule Elia.DeploymentTest do
     end)
   end
 
+  # DEPLOY-40: the suite is left out here — this test is about the rollback —
+  # so the two deploys it makes pay for no `mix test` in their tree.
   # A deploy run in the runner, waited out, for a test that only needs the
   # revision it loaded and not the steps of the deploy itself.
   defp reload_now do
-    assert :ok = Runner.start(:reload)
+    assert :ok = Runner.start(:reload, skip_tests: true)
     assert_receive {:packages, operation}, 120_000
     send(operation, :continue)
     assert {:ok, _message} = await_deploy()
@@ -618,7 +642,7 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
-    assert {:ok, message} = Deploy.hot_reload()
+    assert {:ok, message} = hot_reload_untested()
     assert message =~ "front end was rebuilt"
 
     # The order the deploy's own steps ran in: the front end, then the load.
@@ -660,7 +684,7 @@ defmodule Elia.DeploymentTest do
     work_on_trunk(path)
 
     live = head(tree)
-    assert {:error, message} = Deploy.hot_reload()
+    assert {:error, message} = hot_reload_untested()
 
     assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
     assert message =~ "npm install exited with 1"
@@ -679,7 +703,7 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
-    assert {:ok, message} = Deploy.deploy()
+    assert {:ok, message} = deploy_untested()
     refute message =~ "front end"
   end
 
@@ -697,7 +721,7 @@ defmodule Elia.DeploymentTest do
     LiveTree.push_to_trunk(path)
 
     live = head(tree)
-    assert {:error, message} = Deploy.deploy()
+    assert {:error, message} = deploy_untested()
 
     assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
     assert message =~ "npm install --prefix assets --no-audit --no-fund exited with 1"
@@ -718,7 +742,7 @@ defmodule Elia.DeploymentTest do
     LiveTree.push_to_trunk(path)
 
     live = head(tree)
-    assert {:error, message} = Deploy.deploy()
+    assert {:error, message} = deploy_untested()
 
     assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
     assert message =~ "mix assets.build exited with"
@@ -783,14 +807,14 @@ defmodule Elia.DeploymentTest do
     assert {:ok, %{behind?: false, loaded: nil}} = Deploy.status()
 
     # A deploy that loads records the revision it loaded.
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert {:ok, %{behind?: false, loaded: loaded}} = Deploy.status()
     assert loaded == head(tree)
 
     # Another change merges into the live tree and the load never happens — a
     # deploy interrupted between the merge and the load (DEPLOY-15).
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.deploy()
+    assert {:ok, _message} = deploy_untested()
 
     assert {:ok, %{behind?: true, pending: 0, loaded: ^loaded, live: live}} = Deploy.status()
     assert live != loaded
@@ -897,7 +921,7 @@ defmodule Elia.DeploymentTest do
 
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
 
-    assert {:ok, message} = Deploy.deploy()
+    assert {:ok, message} = deploy_untested()
     assert message =~ "put aside in the stash"
     assert message =~ "git stash pop"
 
@@ -1013,7 +1037,7 @@ defmodule Elia.DeploymentTest do
     refute message =~ "fast-forward only"
 
     File.rm!(lock)
-    assert {:ok, _message} = Deploy.deploy()
+    assert {:ok, _message} = deploy_untested()
     assert head(tree) == trunk(tree)
   end
 
@@ -1024,7 +1048,7 @@ defmodule Elia.DeploymentTest do
     file = work_on_trunk(path)
 
     before = head(tree)
-    assert {:ok, message} = Deploy.hot_reload()
+    assert {:ok, message} = hot_reload_untested()
 
     assert_received :loaded
     assert message =~ "merged into live"
@@ -1106,7 +1130,7 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
-    assert {:error, message} = Deploy.hot_reload()
+    assert {:error, message} = hot_reload_untested()
     assert message =~ "Compilation failed:"
     assert String.length(message) < 21_000
   end
@@ -1141,7 +1165,7 @@ defmodule Elia.DeploymentTest do
     work_on_trunk(path)
 
     before = head(tree)
-    assert {:ok, message} = Deploy.restart()
+    assert {:ok, message} = restart_untested()
 
     # A non-zero status is what makes `bin/serve` start the server again.
     assert_receive {:stop, status}
@@ -1422,7 +1446,7 @@ defmodule Elia.DeploymentTest do
       assert {:ok, %{pending: 1}} = Deploy.status()
 
       before = head(tree)
-      assert {:ok, message} = Deploy.deploy()
+      assert {:ok, message} = deploy_untested()
       assert message =~ "merged into live"
       assert head(tree) != before
     end)
@@ -1819,12 +1843,12 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     first = head(tree)
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     second = head(tree)
 
@@ -1874,7 +1898,7 @@ defmodule Elia.DeploymentTest do
 
     # A deploy loads a new revision, and the one before it is still a target.
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     live = head(tree)
 
@@ -1904,7 +1928,7 @@ defmodule Elia.DeploymentTest do
     live = head(tree)
     before = File.read!(served(tree, "js/app.js"))
 
-    assert {:error, message} = Deploy.hot_reload()
+    assert {:error, message} = hot_reload_untested()
     assert message =~ "Could not build the live tree's front end (DEPLOY-19)"
     assert message =~ "priv/static/assets/js/app.js"
     assert message =~ "DEPLOY-24"
@@ -1937,7 +1961,7 @@ defmodule Elia.DeploymentTest do
     live = head(tree)
     before = File.read!(served(tree, "css/app.css"))
 
-    assert {:error, message} = Deploy.hot_reload()
+    assert {:error, message} = hot_reload_untested()
     assert message =~ "priv/static/assets/css/app.css"
     assert head(tree) == live
     # DEPLOY-32: and the stylesheet a browser fetches is the one it had.
@@ -1964,7 +1988,7 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
     work_on_trunk(path)
 
-    assert {:ok, message} = Deploy.hot_reload()
+    assert {:ok, message} = hot_reload_untested()
     assert message =~ "front end was rebuilt"
     assert_receive :loaded
 
@@ -1992,12 +2016,12 @@ defmodule Elia.DeploymentTest do
 
     first = head(tree)
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     second = head(tree)
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     third = head(tree)
 
@@ -2109,7 +2133,7 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     running = head(tree)
 
@@ -2137,12 +2161,12 @@ defmodule Elia.DeploymentTest do
     {_id, path} = new_worktree()
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
     first = head(tree)
 
     work_on_trunk(path)
-    assert {:ok, _message} = Deploy.hot_reload()
+    assert {:ok, _message} = hot_reload_untested()
     assert_receive :loaded
 
     File.write!(Path.join(tree, "lib/hand_edited.ex"), "defmodule HandEdited do\nend\n")
@@ -2196,7 +2220,7 @@ defmodule Elia.DeploymentTest do
     Runner.subscribe()
 
     work_on_trunk(path)
-    assert :ok = Runner.start(:reload)
+    assert :ok = Runner.start(:reload, skip_tests: true)
     assert_receive {:assets, deploy}, 120_000
     send(deploy, :ok)
     assert {:ok, _message} = await_deploy()
@@ -2204,7 +2228,7 @@ defmodule Elia.DeploymentTest do
     first = head(tree)
 
     work_on_trunk(path)
-    assert :ok = Runner.start(:reload)
+    assert :ok = Runner.start(:reload, skip_tests: true)
     assert_receive {:assets, deploy}, 120_000
     send(deploy, :ok)
     assert {:ok, _message} = await_deploy()
@@ -2245,7 +2269,7 @@ defmodule Elia.DeploymentTest do
     work_on_trunk(path)
 
     Runner.subscribe()
-    assert :ok = Runner.start(:restart)
+    assert :ok = Runner.start(:restart, skip_tests: true)
     assert {:ok, message} = await_deploy()
     assert message =~ "Restarting the server"
     assert_receive {:stop, status}

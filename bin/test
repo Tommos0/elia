@@ -45,28 +45,55 @@ port_of() { echo $((4002 + $1 - 1)); }
 # (SUITE-14).
 retry_port_of() { echo $((4002 + partitions + $1 - 1)); }
 
-# How slow a file is, in rough ExUnit milliseconds, measured with
-# `mix test --slowest` on a 4-core machine. A file not listed weighs 1, so a
-# new file still gets a home without anyone updating this table (SUITE-3).
+# How slow a file is, in rough milliseconds of a partition's own wall time: a
+# file's own ExUnit time, from `mix test <file>` run alone on a 4-core machine
+# on 2026-11-25 (the `Finished in …` of that run), so the numbers are what a
+# file costs rather than a guess from an older tree. A file not listed gets the
+# default below, so a new file still gets a home without anyone updating this
+# table (SUITE-3).
 weight_of() {
   case "$1" in
-    test/elia/deployment_test.exs) echo 15000 ;;
-    test/elia_web/live/settings_live_test.exs) echo 8200 ;;
+    test/elia/agent_test.exs) echo 10800 ;;
+    test/elia/auto_approve_test.exs) echo 800 ;;
+    test/elia/command_isolation_test.exs) echo 2000 ;;
+    test/elia/deployment_test.exs) echo 44600 ;;
+    test/elia/llm/compaction_test.exs) echo 800 ;;
+    test/elia/llm/llama_server_test.exs) echo 7900 ;;
+    test/elia/llm/stream_timeout_test.exs) echo 3400 ;;
+    test/elia/net_proxy_test.exs) echo 3000 ;;
+    test/elia/network_access_test.exs) echo 6800 ;;
+    test/elia/push_notifier_test.exs) echo 900 ;;
+    test/elia/self_modification_test.exs) echo 6800 ;;
     test/elia/serve_script_test.exs) echo 5300 ;;
-    test/elia/tasks_test.exs) echo 3700 ;;
-    test/elia/llm/stream_timeout_test.exs) echo 2900 ;;
-    test/elia/agent_test.exs) echo 2000 ;;
-    test/elia/command_isolation_test.exs) echo 1600 ;;
-    test/elia_web/live/chat_live_test.exs) echo 1300 ;;
-    test/elia/shell_test.exs) echo 1100 ;;
-    test/elia/skills/shell_test.exs) echo 1100 ;;
-    test/elia/self_modification_test.exs) echo 7900 ;;
-    test/elia/tasks_git_test.exs) echo 600 ;;
-    test/elia_web/live/dashboard_test.exs) echo 540 ;;
+    test/elia/shell_test.exs) echo 2700 ;;
+    test/elia/skills/shell_test.exs) echo 2200 ;;
+    test/elia/skills/terminal_test.exs) echo 2600 ;;
+    test/elia/snapshot_test.exs) echo 1400 ;;
+    test/elia/step_timing_test.exs) echo 700 ;;
+    test/elia/tasks_test.exs) echo 2300 ;;
+    test/elia/terminal_test.exs) echo 5100 ;;
+    test/elia/test_script_test.exs) echo 2800 ;;
+    test/elia_web/live/active_chats_test.exs) echo 700 ;;
+    test/elia_web/live/auto_approve_test.exs) echo 800 ;;
+    test/elia_web/live/chat_drawer_test.exs) echo 700 ;;
+    test/elia_web/live/chat_list_test.exs) echo 1300 ;;
+    test/elia_web/live/chat_live_test.exs) echo 5500 ;;
+    test/elia_web/live/chat_settings_test.exs) echo 900 ;;
+    test/elia_web/live/chat_upload_test.exs) echo 2000 ;;
+    test/elia_web/live/compaction_test.exs) echo 800 ;;
+    test/elia_web/live/compact_view_test.exs) echo 700 ;;
+    test/elia_web/live/dashboard_test.exs) echo 2200 ;;
+    test/elia_web/live/files_live_test.exs) echo 1600 ;;
+    test/elia_web/live/project_switcher_test.exs) echo 800 ;;
+    test/elia_web/live/settings_live_test.exs) echo 26300 ;;
+    test/elia_web/live/task_ui_test.exs) echo 900 ;;
+    test/elia_web/live/terminal_live_test.exs) echo 700 ;;
+    test/elia_web/recovery_test.exs) echo 2000 ;;
+    test/elia_web/terminal_channel_test.exs) echo 2800 ;;
     # What a file not listed above costs, in the same units: the rest of the
-    # suite averages about 140 ms a file, so they spread out instead of all
+    # suite averages about 190 ms a file, so they spread out instead of all
     # landing on whichever partition the heavy files left lightest.
-    *) echo 140 ;;
+    *) echo 190 ;;
   esac
 }
 
