@@ -131,7 +131,7 @@ it.
 | [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, the user's stop — writes why into the transcript |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Turn retries](turn-retries.md) | `RETRY` | A model call that failed transiently — a timeout, a dropped connection, an overloaded provider — is asked again after a wait, so the turn carries on by itself |
-| [Step timing](step-timing.md) | `TIME` | Every loop step recorded beside the chat with its stamps, durations and usage, so a review of where time goes measures a turn instead of inferring it |
+| [Step timing](step-timing.md) | `TIME` | Every loop step recorded beside the chat with its stamps, durations and usage, so a review of where time goes measures a turn instead of inferring it, and a `chat_timings` tool that sums those records for a chat or a project's newest chats |
 | [Message timestamps](message-timestamps.md) | `MSGAT` | Each message is stamped with the moment it was appended and the transcript shows it as a small relative time |
 | [Tool approval](tool-approval.md) | `APPR` | Which tool calls pause for the user, how decisions apply, per-chat auto-approval |
 | [Structured user input](user-input.md) | `ASK` | `ask_user` puts a question with options to the user as a card of buttons; the turn waits and the answer comes back as the call's result |

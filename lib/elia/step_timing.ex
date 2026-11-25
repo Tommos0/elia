@@ -89,6 +89,36 @@ defmodule Elia.StepTiming do
     end
   end
 
+  @doc """
+  What a chat's records add up to (TIME-13, TIME-14): how many steps it ran, the
+  milliseconds it spent in the model, in its tools and waiting — for an
+  approval, for an answer and before a retry — the waited total of those three,
+  how many steps failed or were retried, and the tokens the records carry.
+
+  A figure a record doesn't carry as a whole number counts as zero, so one
+  edited line can't fail a summary (TIME-18), and a token count is reported only
+  when a record carries one (TIME-5).
+  """
+  @spec summary([map()]) :: map()
+  def summary(records) when is_list(records) do
+    approval = total_ms(records, :approval_wait_ms)
+    answer = total_ms(records, :answer_wait_ms)
+    retry = total_ms(records, :retry_wait_ms)
+
+    %{
+      "steps" => length(records),
+      "model_ms" => total_ms(records, :model_ms),
+      "tool_ms" => total_ms(records, :tool_ms),
+      "approval_wait_ms" => approval,
+      "answer_wait_ms" => answer,
+      "retry_wait_ms" => retry,
+      # TIME-13: the waiting is its own figure beside the work it delayed.
+      "waited_ms" => approval + answer + retry,
+      "failed_or_retried" => Enum.count(records, &troubled?/1)
+    }
+    |> tokens(records)
+  end
+
   @doc "Removes a chat's step records, which go with the chat (TIME-10)."
   @spec delete(binary()) :: :ok
   def delete(id) when is_binary(id) do
@@ -97,6 +127,41 @@ defmodule Elia.StepTiming do
   end
 
   def delete(_id), do: :ok
+
+  # TIME-13: the sum of one duration over the records, a record that doesn't
+  # carry it as a whole number contributing nothing (TIME-18).
+  defp total_ms(records, field) do
+    records
+    |> Enum.flat_map(&whole(&1, field))
+    |> Enum.sum()
+  end
+
+  # TIME-2, TIME-14: a step that took more than one attempt, and a request that
+  # came back an error or a refusal, are the trouble a summary counts.
+  defp troubled?(record) do
+    attempt = Map.get(record, :attempt)
+
+    (is_integer(attempt) and attempt > 1) or Map.get(record, :outcome) in [:error, :refused]
+  end
+
+  # TIME-14, TIME-5: the tokens the records carry, each figure reported only
+  # when some record carries that count.
+  defp tokens(figures, records) do
+    Enum.reduce([{"input_tokens", :input_tokens}, {"output_tokens", :output_tokens}], figures, fn
+      {key, field}, figures ->
+        case Enum.flat_map(records, &whole(&1, field)) do
+          [] -> figures
+          counts -> Map.put(figures, key, Enum.sum(counts))
+        end
+    end)
+  end
+
+  defp whole(record, field) do
+    case Map.get(record, field) do
+      value when is_integer(value) -> [value]
+      _other -> []
+    end
+  end
 
   defp decode(line) do
     case Jason.decode(line) do

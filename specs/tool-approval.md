@@ -38,7 +38,7 @@ refused.
   | `terminal_stop` | never (TERM-27) | both |
   | `set_title` | never (TITLE-5) | both |
   | `mark_done` | never (DONE-6) | both |
-  | `list_chats`, `read_chat`, `search_chats` | never (HIST-10) | both |
+  | `list_chats`, `read_chat`, `search_chats`, `chat_timings` | never (HIST-10) | both |
   | `cd` | never (WD-6) | both |
   | `get_chat_settings` | never (CSET-15) | both |
   | `reload_skills`, `update_ledger` | never | both |

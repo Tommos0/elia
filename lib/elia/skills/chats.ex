@@ -2,9 +2,11 @@ defmodule Elia.Skills.Chats do
   @moduledoc """
   Reading earlier chats (spec: `specs/chat-history.md`; what a search itself
   does, `specs/chat-search.md`). The built-in skill `chats` gives a chat
-  `list_chats`, `read_chat` and `search_chats`, so the agent can consult the
-  chats the user has had before this one — what was decided, which paths were
-  used, what was already tried.
+  `list_chats`, `read_chat`, `search_chats` and `chat_timings`, so the agent can
+  consult the chats the user has had before this one — what was decided, which
+  paths were used, what was already tried — and, with `chat_timings`, where
+  their time went: the step records each turn writes beside its chat
+  (`specs/step-timing.md`, TIME-11 to TIME-18).
 
   They read Elia's own saved chats (STORE-1) through the harness — no command
   is run and no approval is asked — so they work in a chat whose jail is on too
@@ -29,6 +31,8 @@ defmodule Elia.Skills.Chats do
   @read_max 200
   @search_default 20
   @search_max 100
+  @timings_default 5
+  @timings_max 20
 
   # HIST-6: what one message shows of itself before it is cut.
   @text_cap 2_000
@@ -45,7 +49,9 @@ defmodule Elia.Skills.Chats do
 
   @impl true
   def description,
-    do: "Look at earlier chats: list them, read one's transcript, search across them."
+    do:
+      "Look at earlier chats: list them, read one's transcript, search across " <>
+        "them, and see where their time went."
 
   @impl true
   def instructions do
@@ -62,11 +68,12 @@ defmodule Elia.Skills.Chats do
     its messages, so a chat whose title holds every term is reported before \
     one whose title does not.
 
-    The three tools see the chats of this chat's own project and no other: \
+    These tools see the chats of this chat's own project and no other: \
     `list_chats` lists that project's chats, `read_chat` reads one of them — \
-    an id belonging to another project is refused — and `search_chats` \
-    searches that project's chats. Another project's history is not yours to \
-    consult.
+    an id belonging to another project is refused — `search_chats` searches \
+    that project's chats, and `chat_timings` sums the step records of one of \
+    them or of the newest ones that have records. Another project's history is \
+    not yours to consult.
 
     A chat is named by its id, the one in its URL (`/c/<id>`). The tools read \
     Elia's own saved chats through the harness — not with a command — so they \
@@ -74,6 +81,17 @@ defmodule Elia.Skills.Chats do
     command's reach there, and its files are Erlang terms rather than text in \
     any case. They only read: nothing you do with them changes a chat, no \
     session is started for a chat you read, and none of them asks for approval.
+
+    `chat_timings` answers where a chat's time went, summed from the step \
+    records each turn writes beside its chat, which it reads through the \
+    harness as the other tools read the chats: how many steps it ran, the \
+    milliseconds it spent in the model, in tools and waiting — for approvals, \
+    for answers and before retries, with that waited total as a figure of its \
+    own — how many steps failed or were retried, and the tokens recorded, with \
+    a total across the chats. Give it a chat's `id`, or nothing for the newest \
+    chats of this project that have records (`limit`, 5 by default and at most \
+    20). A chat with no records is reported as having none rather than as an \
+    error.
 
     What you read is the chat as it was last saved, so a chat that is running \
     now may not have its current turn in its file yet. Start with \
@@ -184,6 +202,33 @@ defmodule Elia.Skills.Chats do
         },
         approval: :never,
         run: fn input, ctx -> search_chats(input, ctx) end
+      },
+      %Elia.Tool{
+        name: "chat_timings",
+        description:
+          "Where a chat's time went, summed from the step records of its turns: per chat " <>
+            "the number of `steps`, the `model_ms` spent on the provider, the `tool_ms` " <>
+            "spent running tools, the waits for approvals, for answers and before retries " <>
+            "with their `waited_ms` total, how many steps failed or were retried, and the " <>
+            "`input_tokens`/`output_tokens` recorded, with a `total` across the chats. " <>
+            "Give `id` for one chat of this chat's own project, or nothing for the newest " <>
+            "chats of that project that have records (`limit`, default 5, at most 20). It " <>
+            "reads and changes nothing.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "id" => %{"type" => "string", "description" => "One chat's id (as in /c/<id>)"},
+            "limit" => %{
+              "type" => "integer",
+              "description" => "How many chats with records, newest first (default 5, at most 20)"
+            }
+          },
+          "required" => []
+        },
+        # HIST-10: reading the records changes nothing on the machine, so it
+        # never needs approval, as the other chats tools never do.
+        approval: :never,
+        run: fn input, ctx -> chat_timings(input, ctx) end
       }
     ]
   end
@@ -623,6 +668,64 @@ defmodule Elia.Skills.Chats do
     if String.length(text) > @snippet,
       do: String.slice(text, 0, @snippet) <> "…",
       else: text
+  end
+
+  ## chat_timings (TIME-11 - TIME-18)
+
+  defp chat_timings(input, ctx) do
+    project = project(ctx)
+
+    case blank_to_nil(input["id"]) do
+      nil -> timed_chats(project, clamp(input["limit"], @timings_default, @timings_max))
+      id -> one_chat(id, project)
+    end
+  end
+
+  # TIME-12, HIST-8: one chat of this chat's own project, refused the way
+  # `read_chat` refuses it.
+  defp one_chat(id, project) do
+    with {:ok, id} <- check_id(id, project) do
+      report([timed_entry(Elia.Store.entry(id), Elia.StepTiming.load(id))])
+    end
+  end
+
+  # TIME-12, TIME-17: the newest chats of the project that have records, newest
+  # first (STORE-12), at most `limit` of them; a chat with no records is left
+  # out of a listing.
+  defp timed_chats(project, limit) do
+    Elia.Store.list(@scan, where: Elia.Projects.chats_of(project))
+    |> Enum.filter(&Elia.Store.valid_id?(&1.id))
+    |> Enum.flat_map(fn entry ->
+      case Elia.StepTiming.load(entry.id) do
+        [] -> []
+        records -> [timed_entry(entry, records)]
+      end
+    end)
+    |> Enum.take(limit)
+    |> report()
+  end
+
+  # A chat of the summary: the records to add up, and the entry that names it.
+  defp timed_entry(entry, records), do: %{id: entry.id, title: entry.title, records: records}
+
+  # TIME-15: the chats reported, each with the figures of its own records
+  # (TIME-13, TIME-14), and those figures summed over all of them.
+  defp report(chats) do
+    {:ok,
+     Jason.encode!(%{
+       "chats" => Enum.map(chats, &chat_figures/1),
+       "total" =>
+         chats
+         |> Enum.flat_map(& &1.records)
+         |> Elia.StepTiming.summary()
+         |> Map.put("chats", length(chats))
+     })}
+  end
+
+  defp chat_figures(%{id: id, title: title, records: records}) do
+    records
+    |> Elia.StepTiming.summary()
+    |> Map.merge(%{"id" => id, "title" => title})
   end
 
   ## Shared

@@ -35,12 +35,15 @@ defmodule Elia.Skills.ChatsTest do
   test "HIST-1 the chats skill is built in and tells the model what it can read" do
     assert Chats.name() == "chats"
     assert Chats.description() =~ "earlier chats"
-    assert Chats.tools() |> Enum.map(& &1.name) == ~w(list_chats read_chat search_chats)
+
+    assert Chats.tools() |> Enum.map(& &1.name) ==
+             ~w(list_chats read_chat search_chats chat_timings)
+
     assert Chats in Application.get_env(:elia, Elia.Skills)[:builtin]
 
     instructions = Chats.instructions()
 
-    for name <- ~w(list_chats read_chat search_chats) do
+    for name <- ~w(list_chats read_chat search_chats chat_timings) do
       assert instructions =~ "`#{name}`"
       assert tool(name).description =~ "chat"
     end
@@ -232,7 +235,7 @@ defmodule Elia.Skills.ChatsTest do
     # list names no project to point them at.
     assert Chats.instructions() =~ "own project"
 
-    for name <- ~w(list_chats read_chat search_chats) do
+    for name <- ~w(list_chats read_chat search_chats chat_timings) do
       assert tool(name).description =~ "own project"
     end
   end
@@ -594,13 +597,14 @@ defmodule Elia.Skills.ChatsTest do
     path = Path.join(Store.dir(), id <> ".term")
     before = File.read!(path)
 
-    for name <- ~w(list_chats read_chat search_chats) do
+    for name <- ~w(list_chats read_chat search_chats chat_timings) do
       assert Elia.Tool.approval(tool(name), %{}, %{}) == :never
     end
 
     assert {:ok, _} = call("list_chats", %{})
     assert {:ok, _} = call("read_chat", %{"id" => id})
     assert {:ok, _} = call("search_chats", %{"query" => "a chat to read"})
+    assert {:ok, _} = call("chat_timings", %{})
 
     # Reading a chat starts no session for it: it is not resumed (SESS-14).
     refute Elia.Agent.live?(id)

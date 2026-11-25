@@ -10,6 +10,11 @@ and a running turn's `started_at`, STORE-30), so nothing says whether a step
 cost 5s or 60s or how much of a turn was spent waiting for the user. The record
 lives beside the chat, not in it, and no turn's behaviour depends on it.
 
+A summary of those records is what makes them usable from inside a chat: the
+`chats` skill's `chat_timings` tool (TIME-11 to TIME-18) sums them for one chat
+or for a project's newest chats, so where a chat's wall clock went — and how
+much of it went to waiting rather than to work — is one call instead of a guess.
+
 ## Requirements
 
 - **TIME-1** A *step record* is written for every model request a turn makes:
@@ -74,6 +79,52 @@ lives beside the chat, not in it, and no turn's behaviour depends on it.
   list, the resume target and everything else that reads saved chats behave
   exactly as before (STORE-12, STORE-24, STORE-29).
 
+- **TIME-11** The built-in skill `chats` (`Elia.Skills.Chats`, HIST-1) provides
+  a read-only tool `chat_timings` that answers where a chat's or a project's
+  time went from the step records (TIME-1 to TIME-9) alone, and the skill's
+  instructions say what the tool is for and that it reads the records through
+  the harness rather than through a command, so a chat whose jail is on has it
+  too (ISOL-16, ISOL-13), where `.elia/sessions` is out of a command's reach
+  (ISOL-6).
+
+- **TIME-12** `chat_timings` takes `id` — one chat of the chat's own project
+  (HIST-11) — or, without it, `limit`: the newest chats of that project that
+  have records, newest first (STORE-12), 5 by default and at most 20. An `id`
+  that isn't a valid chat id (STORE-4), has no saved chat (STORE-24) or names a
+  chat of another project (HIST-11) is a tool error naming what it was given, as
+  `read_chat` answers it (HIST-8).
+
+- **TIME-13** A chat's figures come from its records (TIME-9) and nothing else:
+  `steps`, how many records it has; `model_ms`, `tool_ms`, `approval_wait_ms`,
+  `answer_wait_ms` and `retry_wait_ms`, each the sum of that duration over them
+  (TIME-3); and `waited_ms`, the sum of the three waiting figures — approval,
+  answer and retry — so the wall clock a chat spent waiting on the user or on
+  retries stands as its own figure beside the work it delayed.
+
+- **TIME-14** A chat's summary counts the trouble its records show —
+  `failed_or_retried`, how many of them have an `attempt` greater than 1 or an
+  outcome of `error` or `refused` (TIME-2) — and the tokens they carry:
+  `input_tokens` and `output_tokens`, each the sum of that count over the
+  records that carry it (TIME-5), absent when none of them does.
+
+- **TIME-15** The result is JSON: `chats`, one object per chat reported, in the
+  order it reported them, each holding the chat's `id`, its `title` (STORE-33)
+  and the figures of TIME-13 and TIME-14; and `total`, those figures summed over
+  every record of every chat reported, with `chats` saying how many chats that
+  is — so one call answers where the time of a chat, or of a project's newest
+  chats, went.
+
+- **TIME-16** `chat_timings` reads and changes nothing: no session is started
+  for a chat it reads (SESS-14), no record is written, no chat and no setting is
+  touched, and it needs no approval (HIST-10, APPR-1).
+
+- **TIME-17** A chat with no records is not an error: a listing leaves it out,
+  and one asked for by `id` is reported with `steps` 0 and every figure zero.
+
+- **TIME-18** One record that can't be read never fails a summary: a line that
+  isn't a record is skipped, as reading a chat's records skips it (TIME-9), and
+  a field that isn't a whole number counts as zero.
+
 ## Stored data
 
 Backward compatible: there is nothing to migrate. The records are a new file
@@ -83,11 +134,19 @@ has none and reads as no records (TIME-9) — and the chat's own saved term
 added, removed or reshaped. Deleting a chat (TIME-10) removes a file that may
 not be there, which is ignored.
 
+The summary (TIME-11 to TIME-18) reads those same records and writes nothing
+(TIME-16): it adds no field to a record and no file to the store, so a `.timing`
+file written before this change reads exactly as it did (TIME-9) and there is
+nothing to migrate.
+
 ## Out of scope
 
-- Pruning, rotating or aggregating the records across chats.
+- Pruning or rotating the records.
 - Showing them in the UI: no page, chart or per-step line in the transcript is
-  required by this spec. Reading them is `Elia.StepTiming.load/1` or the file.
+  required by this spec. Reading them is `Elia.StepTiming.load/1`, the
+  `chat_timings` tool (TIME-11) or the file.
+- A per-step listing from `chat_timings`: it reports a chat's totals (TIME-13,
+  TIME-14), not its records one by one.
 - A setting to turn recording off, and timing anything that isn't a loop step
   (a deploy, a compaction, a preview run).
 - Attributing time inside a tool: TIME-4 gives a call's total, not what part of
@@ -98,7 +157,9 @@ not be there, which is ignored.
 `Elia.StepTiming` (records and reads them), `Elia.Agent.Loop` (measures a step,
 reports it to the session as `{:loop_usage, usage}` already is,
 `lib/elia/agent/loop.ex:214`), `Elia.Agent.Session` (writes the record),
-`Elia.Store` (deletes it with the chat).
+`Elia.Store` (deletes it with the chat), `Elia.Skills.Chats` (the
+`chat_timings` tool, TIME-11 to TIME-18) and `Elia.StepTiming` (`summary/1`, the
+figures of TIME-13 and TIME-14).
 
 ## Tests
 
@@ -107,3 +168,7 @@ reports it to the session as `{:loop_usage, usage}` already is,
   what it names, the durations and the tools, the usage, the file it is
   appended to, when it is written, a record that can't be written, reading it
   back and deleting it with the chat — TIME-1 to TIME-10.
+- `test/elia/chat_timings_test.exs` (TIME-11 to TIME-18): the tool the `chats`
+  skill provides and what it says it is for, the chats it reads and the `id` it
+  refuses, a chat's figures and the total, a listing's newest chats with records
+  and its limit, a chat with no records and a record that can't be read.
