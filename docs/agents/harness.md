@@ -112,6 +112,12 @@ Prefer a folder skill over changing Elixir code.
 
 Folder skills don't need a spec. Built-in skills live in `lib/elia/skills/` and do.
 
+Adding or removing a tool of a built-in skill ripples past the skill: the APPR-7
+table in `specs/tool-approval.md` must name every built-in tool with the
+approval it declares, or `test/elia/tool_approval_test.exs` fails, and the tool
+names a session is offered are pinned in `test/elia/agent_test.exs` and in the
+skill's own test (`test/elia/skills/chats_test.exs` for `chats`).
+
 ## Showing a project's HTML
 
 A file opened in the Files page can never run its own script: an HTML document's
