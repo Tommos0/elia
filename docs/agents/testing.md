@@ -138,6 +138,19 @@ Playwright.
   an expression that evaluates to the value (`"(() => { ... })()"`, an IIFE), as
   `chat_row_menu_test.exs` does when it dispatches a `contextmenu` and reads
   whether the hook cancelled it.
+- A preview visits a **path** and screenshots the page, so a state only a
+  gesture shows is not in one: a chat row's own menu (UI-103) is, since its hook
+  opens it on a press held half a second. To show a user what such a state looks
+  like, take the picture with a temporary real-browser test — `use
+  EliaWeb.BrowserCase`, the viewport and colour scheme set in `setup_all` the way
+  `preview_test.exs` sets them, `Application.put_env(:elia, :workspace, File.cwd!())`
+  and `Elia.Preview.seed()` in `setup`, then hold the pointer down
+  (`PlaywrightEx.Page.mouse_down`, a `Process.sleep`, `mouse_up`) and
+  `screenshot(conn, file, full_page: false)` — and delete the file once the user
+  has the picture, so it is not committed. A picture another command removed
+  from under it is gone: the URL is served from the worktree's own
+  `tmp/preview/` first and the project folder's second (PREVIEW-7), so copy it
+  into the live tree's `tmp/preview/` if the worktree goes before the user looks.
 - Which element a chat row is in depends on the page, and a phone width decides
   it: on a page that keeps the list itself (a chat page) the rows are in
   `#sidebar`, hidden until `#chats-toggle` opens it (UI-36), while
