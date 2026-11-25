@@ -12,6 +12,12 @@ that reads `specs/` and fails on what a machine can decide. A violation is fixed
 in the change that introduces it; the ones the corpus had are repaired here (see
 Implementation).
 
+Chats of a project run in parallel, and the next free number of a prefix was
+read out of the corpus, which two chats drafting at once do at the same instant:
+they take the same number and one of them has to renumber, which SPEC-3 forbids.
+So the corpus gains one more rule — a chat reserves the numbers it is about to
+use before it drafts — and `bin/reserve` is the helper that does it.
+
 ## Requirements
 
 ### Identity
@@ -24,6 +30,41 @@ Implementation).
   next unused number of its prefix.
 - **SPEC-4** A retired requirement keeps its number, and that number is spent:
   no requirement added later takes it.
+
+### Reserving a number
+
+A reservation is a directory named for the number, under `elia-reservations/` in
+the repository's git directory (`git rev-parse --git-common-dir`). Making it is
+`mkdir`, which is atomic: of two chats that reach for the same number at the same
+instant exactly one makes the directory and the other takes the next one, so a
+number is never given to two chats. The git directory is the store because the
+live tree and every worktree of a project share it — a worktree's `.git` file
+names it, and the jail binds it (ISOL-4, ISOL-13) — it is outside the working
+tree, so git never reports it, and a chat's jailed command reaches it. A
+reservation holds nothing else: the directory is empty, and `bin/reserve` is its
+only reader.
+
+- **SPEC-19** A chat about to draft reserves the IDs it will use before it drafts
+  — `bin/reserve <PREFIX> <count>` — and drafts with the numbers it is given: the
+  next unused numbers of the prefix that no reservation holds (SPEC-3).
+- **SPEC-20** Two chats reserving the same prefix at the same time are never
+  given the same number: a number is reserved by one chat only, and a chat that
+  loses the race takes the next one.
+- **SPEC-21** Reservations live in the repository's git directory, so every
+  worktree of a project and the live tree read the same ones and a chat's jailed
+  command reaches them.
+- **SPEC-22** A reservation is bookkeeping, not corpus: it is not committed, it
+  appears in no `git status --porcelain`, and a reserved number that is never
+  used stays unused.
+- **SPEC-23** `bin/reserve <PREFIX> [<count>]` prints the IDs to use, one per
+  line, and exits 0.
+- **SPEC-24** `bin/reserve` given no prefix, a prefix that is not a requirement
+  prefix, or a count that is not a positive whole number exits non-zero, says why
+  on stderr, and reserves nothing.
+- **SPEC-25** A chat that cannot reserve — no `bin/reserve`, no git repository, a
+  store it cannot write — takes the next unused number of the prefix from the
+  corpus (SPEC-3): reserving is an addition to that rule, never a prerequisite
+  for drafting.
 
 ### Retirement
 
@@ -92,6 +133,11 @@ Implementation).
 
 ## Implementation
 
+- `bin/reserve` (SPEC-19 to SPEC-25): the corpus scan that finds the highest
+  number a `specs/*.md` defines for a prefix, the store under the repository's
+  git directory, and the numbers it prints. `AGENTS.md` and `specs/README.md` are
+  where a chat reads the rule before it drafts, and `docs/agents/harness.md` says
+  where the store is.
 - `specs/README.md`: the rules above, beside the workflow and format it already
   states, and a `## Plans` list holding `specs/plans/`. `AGENTS.md` needs no
   change: it already points at `specs/README.md`, which owns the corpus.
@@ -136,12 +182,22 @@ Implementation).
     its qualifier — SPEC-10.
   - `specs/plans/subagents.md`, referenced by `specs/subtasks.md` but in no
     list, got its row in the plans list — SPEC-8.
-- No stored shape changes: this spec and its lint read the tree's Markdown and
-  write nothing but a fixture directory, so there is no `## Stored data` section
-  and nothing to migrate.
+
+## Stored data
+
+Backward compatible: the store is `<git dir>/elia-reservations/<PREFIX>-<n>/`, an
+empty directory per reserved number, written and read by `bin/reserve` alone. No
+part of the app reads it, and a tree that has none has no reservations, which is
+what the script reads it as (SPEC-25).
 
 ## Tests
 
+- `test/elia/reserve_script_test.exs` (the numbers printed, a prefix nobody has
+  used, a reserved number skipped, concurrent reservations, two worktrees of one
+  repository, the store out of `git status`, the corpus fallback and the refusals
+  — SPEC-19, SPEC-20, SPEC-22 to SPEC-25).
+- `test/elia/command_isolation_test.exs` (a jailed command in a chat worktree
+  reaches the store through its `.git` pointer file — SPEC-21).
 - `test/elia/spec_hygiene_test.exs` covers SPEC-16 and SPEC-17 with one fixture
   per failure mode: a duplicate ID within a prefix (SPEC-2), a retired number
   reused (SPEC-3, SPEC-4), a `Status:` line with prose and one outside the four
@@ -168,3 +224,9 @@ Implementation).
 - Checking that every requirement is accounted for by a test or a `No test:`
   line, and that a `## Tests` section names a file that exists:
   `test-traceability.md` (TRACE) owns that.
+- The harness reserving for a chat: a chat runs `bin/reserve` itself, and one
+  that forgets takes the corpus' next free number as before (SPEC-25).
+- Releasing a reservation: the store keeps a number until the corpus defines it
+  (SPEC-22), and a chat that reserved one it did not use may `rmdir` that
+  directory itself — `bin/reserve` only ever takes numbers, never gives one
+  back.

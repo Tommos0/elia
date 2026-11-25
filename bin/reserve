@@ -1,0 +1,139 @@
+#!/bin/sh
+# Reserves the requirement IDs a chat is about to draft with (SPEC-19).
+#
+#   bin/reserve SPEC 3        # three SPEC numbers, printed one per line
+#   bin/reserve PROJ          # one PROJ number
+#
+# What it prints is the next unused numbers of the prefix: the corpus decides
+# what is used (SPEC-3), and the reservation store keeps two chats drafting at
+# once apart (SPEC-20). The store is `elia-reservations/` in the repository's
+# git directory, which the live tree and every worktree of the project share,
+# which a chat's jailed command reaches, and which git never reports (SPEC-21,
+# SPEC-22).
+#
+# A number is reserved by making an empty directory named for it: mkdir is
+# atomic, so of two chats that reach for the same number at the same instant
+# exactly one makes it and the other takes the next one.
+#
+# Where there is no store to reach — no git repository, one that cannot be
+# written — the corpus' next free numbers are printed anyway: reserving is an
+# addition to the corpus rule, never a prerequisite for drafting (SPEC-25).
+#
+# Exit status is 0 with the numbers, 2 with a reason for a call that cannot be
+# understood (SPEC-24).
+
+set -u
+
+prefix=${1-}
+count=${2-1}
+
+if [ -z "$prefix" ]; then
+  echo "bin/reserve: name the prefix, e.g. 'bin/reserve SPEC 3'" >&2
+  exit 2
+fi
+
+case "$prefix" in
+  *[!A-Za-z]*)
+    echo "bin/reserve: '$prefix' is not a requirement prefix (SPEC-1)" >&2
+    exit 2
+    ;;
+esac
+
+# SPEC-1 writes a prefix in capitals; reserve it that way whatever was typed.
+prefix=$(printf '%s' "$prefix" | tr 'a-z' 'A-Z')
+
+case "$count" in
+  '' | *[!0-9]*)
+    echo "bin/reserve: '$count' is not a positive whole number of IDs" >&2
+    exit 2
+    ;;
+esac
+if [ "$count" -lt 1 ]; then
+  echo "bin/reserve: '$count' is not a positive whole number of IDs" >&2
+  exit 2
+fi
+
+# The tree the script belongs to: the corpus is read from its own specs/.
+root=$(cd "$(dirname "$0")/.." && pwd) || exit 1
+
+# What the corpus already uses (SPEC-3): the highest number any spec file
+# defines for this prefix, a retired entry counting as used (SPEC-4). A file
+# that cannot be read is skipped rather than fatal.
+used=0
+for file in "$root"/specs/*.md; do
+  [ -f "$file" ] || continue
+  highest=$(
+    sed -n \
+      -e "s/^- \*\*$prefix-\([0-9][0-9]*\)\*\*.*/\1/p" \
+      -e "s/^- ~~\*\*$prefix-\([0-9][0-9]*\)\*\*.*/\1/p" \
+      "$file" | sort -n | tail -n 1
+  )
+  if [ -n "$highest" ] && [ "$highest" -gt "$used" ]; then
+    used=$highest
+  fi
+done
+
+# The store: the repository's git directory, which every worktree of the project
+# and the live tree share (SPEC-21). Where it cannot be found or made, there is
+# nothing to reserve in and the corpus decides alone (SPEC-25).
+store=""
+if command -v git >/dev/null 2>&1; then
+  common=$(git -C "$root" rev-parse --git-common-dir 2>/dev/null)
+  if [ -n "${common:-}" ]; then
+    resolved=$(cd "$root" && cd "$common" 2>/dev/null && pwd)
+    if [ -n "${resolved:-}" ]; then
+      store="$resolved/elia-reservations"
+      mkdir -p "$store" 2>/dev/null || store=""
+    fi
+  fi
+fi
+
+# The next number this call takes: the corpus' next free one, or — where there
+# is a store — the next one no reservation holds (SPEC-19, SPEC-20).
+#
+# `mkdir` is the whole decision, and it is taken without a look first: a name
+# can be reserved between any check and any mkdir, so the mkdir is what decides
+# who gets it. One that fails with the name now there is another chat's
+# reservation, and the next number is tried; one that fails with the name still
+# missing means the store cannot be written, and there the corpus' number stands
+# (SPEC-25).
+take() {
+  n=$1
+
+  if [ -z "$store" ]; then
+    echo "$n"
+    return 1
+  fi
+
+  while :; do
+    if mkdir "$store/$prefix-$n" 2>/dev/null; then
+      echo "$n"
+      return 0
+    fi
+
+    if [ -e "$store/$prefix-$n" ]; then
+      n=$((n + 1))
+      continue
+    fi
+
+    echo "$n"
+    return 1
+  done
+}
+
+numbers=""
+i=0
+while [ "$i" -lt "$count" ]; do
+  numbers="$numbers $(take "$((used + i + 1))")"
+  i=$((i + 1))
+done
+
+for n in $numbers; do
+  echo "$prefix-$n"
+done
+
+if [ -n "$store" ]; then
+  echo "bin/reserve: $count reserved under $store — not committed and not in git status (SPEC-22)" >&2
+else
+  echo "bin/reserve: no reservation store here, so these are the corpus' next free numbers (SPEC-25)" >&2
+fi

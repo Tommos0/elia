@@ -60,7 +60,9 @@ and the tests that pin them.
 - **Spec-driven.** Every feature has a spec in `specs/` and every requirement an
   ID, and the suite fails on a spec that breaks the corpus's rules, on a
   requirement no test accounts for, and on a citation of an ID no spec defines
-  (SPEC, TRACE, CITE).
+  (SPEC, TRACE, CITE). Chats run in parallel, so a chat reserves the requirement
+  IDs it is about to use with `bin/reserve <PREFIX> <count>` before it drafts
+  (SPEC-19).
 - **A phone-sized UI.** It installs as a web app and pushes a notification when
   a chat needs you (PWA, PUSH), and `/system`, `/logs`, `/files`, `/sessions`
   and `/recover` show the machine it runs on (SYS, LOG, EXPL, CLIENT, RECOVER).

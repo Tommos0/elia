@@ -382,15 +382,16 @@ built.
 - **SUBTASK-37** The `tasks` skill's instructions tell a parent chat to number
   the sub-tasks it starts — `001`, `002`, … in the order it spawns them — and to
   hand each brief over as a file rather than in the call itself: the brief in
-  `.tasks/<n>/brief.md`, in the chat's own workspace root, with the spawn's
-  `brief` left as little more than the absolute path of that file to read
-  (SUBTASK-2, SUBTASK-5).
+  `.tasks/<chat id>/<n>/brief.md`, in the chat's own workspace root, `<chat id>`
+  being the spawning chat's own id (`$ELIA_CHAT_ID`, SHELL-14) — so two chats
+  both have a `001` — with the spawn's `brief` left as little more than the
+  absolute path of that file to read (SUBTASK-2, SUBTASK-5).
 
 - **SUBTASK-38** A child's preamble tells it that the brief it was sent names a
   file it works from and that its report belongs beside that file as
-  `report.md` — what it did, what it changed and anything the user must settle —
-  written before it marks its chat done (SUBTASK-33), the path itself being the
-  one the brief names (SUBTASK-37).
+  `report.md` — `.tasks/<chat id>/<n>/report.md` — what it did, what it changed
+  and anything the user must settle, written before it marks its chat done
+  (SUBTASK-33), the path itself being the one the brief names (SUBTASK-37).
 
 ## Out of scope
 
@@ -436,9 +437,12 @@ the child's session, `set_done/2` as the end of a task, SUBTASK-33),
 `Elia.Agent.Resumer` (a resumed child, RESUME-7), `EliaWeb.ChatStatus` and
 `EliaWeb.ChatLive` (the child's header, UI-48) and `AGENTS.md` (the `tasks`
 skill's section: how a sub-task ends and what it reports, and the rule that a
-sub-task is numbered and briefed through `.tasks/<n>/brief.md`, answered in
-`report.md` beside it — SUBTASK-37, SUBTASK-38). `.gitignore` ignores `/.tasks/`,
-which is scratch passed between two chats and never work either one commits.
+sub-task is numbered and briefed through `.tasks/<chat id>/<n>/brief.md`,
+answered in `report.md` beside it — SUBTASK-37, SUBTASK-38). The `.tasks/*`
+directories already in the tree were written under the older path and stay where
+they are: they are history, and nothing reads them. `.gitignore` ignores
+`/.tasks/`, which is scratch passed between two chats and never work either one
+commits.
 
 ## Tests
 

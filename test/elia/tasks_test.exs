@@ -360,14 +360,17 @@ defmodule Elia.TasksTest do
   end
 
   # SUBTASK-37, SUBTASK-38: the skill teaches the file convention — a parent
-  # numbers its sub-tasks and hands each brief over as `.tasks/<n>/brief.md`,
-  # passed by path, and the child answers in `report.md` beside it.
+  # numbers its sub-tasks and hands each brief over as
+  # `.tasks/<chat id>/<n>/brief.md`, passed by path, and the child answers in
+  # `report.md` beside it. The chat id is the parent's own, so two chats' `001`
+  # never meet.
   test "the skill hands a brief over as a numbered file, answered in report.md" do
     instructions = Elia.Skills.Tasks.instructions()
 
     assert instructions =~ "`001`, `002`"
-    assert instructions =~ ".tasks/001/brief.md"
-    assert instructions =~ ".tasks/001/report.md"
+    assert instructions =~ ".tasks/<chat id>/001/brief.md"
+    assert instructions =~ ".tasks/<chat id>/001/report.md"
+    assert instructions =~ "ELIA_CHAT_ID"
     assert instructions =~ "absolute"
     refute instructions =~ "the `brief` is its whole input"
 

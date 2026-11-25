@@ -7,7 +7,12 @@ it.
 ## Workflow
 
 1. **Change the spec first.** New feature: add a file. Changed behaviour: edit
-   the requirements it affects. Keep the change reviewable on its own.
+   the requirements it affects. Keep the change reviewable on its own. Before
+   you draft, reserve the IDs you are about to use — `bin/reserve <PREFIX>
+   <count>` prints them (SPEC-19) — so two chats drafting at once don't take the
+   same number; a number you reserve and don't use is left unused (SPEC-22), and
+   where the script can't run you take the next unused number as before
+   (SPEC-25).
 2. **Get the spec approved.** Stop and ask the user to approve the drafted spec
    before implementing it, unless the user explicitly asked to skip the spec
    approval for this change. Wait for that approval before touching code or
@@ -56,8 +61,9 @@ it.
 - **Identity.** A requirement is `<PREFIX>-<n>`, the prefix this file's index
   row gives it (SPEC-1). Every ID names exactly one requirement (SPEC-2); an ID
   is never renumbered or reused, and a requirement added later takes the next
-  unused number of its prefix (SPEC-3). Retiring keeps the number and spends it
-  forever (SPEC-4).
+  unused number of its prefix (SPEC-3). A chat about to draft reserves the
+  numbers it will use before it drafts (SPEC-19 to SPEC-25). Retiring keeps the
+  number and spends it forever (SPEC-4).
 - **Retirement.** A retired requirement stays where it is, struck through
   (`~~`), keeps its ID and says why in the same entry, after `Retired:`,
   `Removed:` or `Superseded by`; a spec whose requirements are all retired says
@@ -171,7 +177,7 @@ it.
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |
-| [Spec hygiene](spec-hygiene.md) | `SPEC` | The rules that keep `specs/` coherent, and the lint that fails the suite on the ones a machine can decide |
+| [Spec hygiene](spec-hygiene.md) | `SPEC` | The rules that keep `specs/` coherent — including reserving the requirement IDs a chat is about to use — and the lint that fails the suite on the ones a machine can decide |
 | [Test traceability](test-traceability.md) | `TRACE` | Every requirement is accounted for by a test file that exists or by a `No test:` line saying why, and a lint keeps it true |
 
 ## Plans

@@ -26,6 +26,11 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - The `cd` tool takes effect from the **next** step (WD-9), so a `cd` and a command that needs it must not share a message: the command runs in the old directory. When the old one is the live tree, that is a command run against the live tree — a `git checkout -- <paths>` meant for the worktree put the live tree's files back instead. Keep scratch under the worktree's own `tmp/` rather than `/tmp`, too: each `shell` call gets a fresh `/tmp` of its own (ISOL-2), so a file copied there in one call is gone in the next.
 - **Never** edit `lib/elia/harness.ex` or `lib/elia/workspace.ex` to weaken the guardrails.
 
+## Reserving a requirement ID
+
+- Before drafting a spec change, run `bin/reserve <PREFIX> <count>` (SPEC-19 to SPEC-25): it prints the IDs to draft with and reserves each by making an empty directory under `elia-reservations/` in the repository's git directory (`git rev-parse --git-common-dir`). For a chat that is the live tree's `.git`, shared with every worktree of the project, which is what makes the reservation one every chat reads (SPEC-21) and what keeps it out of `git status --porcelain` (SPEC-22).
+- A chat's jailed command reaches that store only because the jail binds the repository's git directory behind a worktree's `.git` pointer file (ISOL-4) — and it does that only when the workspace is inside the runtime root. A probe run with `runtime_root` at the worktree itself takes the "another project" branch of `Elia.Shell`'s bind list and binds no git directory, so a jailed `git` there fails with `fatal: not a git repository` and a reservation quietly falls back to the corpus (SPEC-25). Point `runtime_root` at the live tree when testing this, as `Elia.CommandIsolationTest`'s chat-worktree describe block does.
+
 ## Tests
 
 - Debugging the harness itself: every `shell` tool call gets a fresh `/tmp` and pid namespace of its own (ISOL-2), so a script one call writes is gone by the next — write the script and run it in the same command, and have it print what you need.

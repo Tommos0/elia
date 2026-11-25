@@ -54,17 +54,20 @@ defmodule Elia.Skills.Tasks do
     (for example: implement one spec, then test it) so this chat's context \
     isn't filled with the details. The sub-task does not see this chat, so hand \
     its brief over as a file rather than in the call: number the sub-tasks you \
-    start — `001`, `002`, … in the order you spawn them — and write the brief \
-    to `.tasks/001/brief.md` inside your workspace. Hold the title, the goal, \
-    the specs and requirement IDs to satisfy, the files, the constraints and \
-    what "done" means (including that it should commit), and add the child's \
-    own `task_id` to it once the spawn has returned it. Then let the `brief` \
-    here be little more than the absolute path of that file and of the report \
-    beside it: "Read /your/workspace/.tasks/001/brief.md and follow the \
-    instructions. Write your report to /your/workspace/.tasks/001/report.md." \
-    The path is absolute because the child works in your workspace but may \
-    change directory within it. The child answers in that `report.md` before it \
-    marks its chat done, so read it as well as the result `await_task` returns. \
+    start — `001`, `002`, … in the order you spawn them — and write each brief \
+    to `.tasks/<chat id>/001/brief.md` inside your workspace, `<chat id>` being \
+    this chat's own id — the `$ELIA_CHAT_ID` your shell calls are given \
+    (SHELL-14) — so two chats both have a `001`. Hold the title, the goal, the \
+    specs and requirement IDs to satisfy, the files, the constraints and what \
+    "done" means (including that it should commit), and add the child's own \
+    `task_id` to it once the spawn has returned it. Then let the `brief` here \
+    be little more than the absolute path of that file and of the report beside \
+    it: "Read /your/workspace/.tasks/<chat id>/001/brief.md and follow the \
+    instructions. Write your report to \
+    /your/workspace/.tasks/<chat id>/001/report.md." The path is absolute \
+    because the child works in your workspace but may change directory within \
+    it. The child answers in that `report.md` before it marks its chat done, so \
+    read it as well as the result `await_task` returns. \
     Neither file is work: don't commit them (`.tasks/` is ignored in Elia's own \
     tree, as `tmp/` is). Commit your own work before spawning: in Elia's own \
     project the sub-task forks from your branch's last commit, so it never sees \
@@ -119,7 +122,8 @@ defmodule Elia.Skills.Tasks do
         description:
           "Start a sub-task in a new chat and return as soon as it has started " <>
             "(`{\"task_id\", \"title\", \"status\"}` — the sub-task's own chat status). " <>
-            "Hand its brief over as a numbered file — `.tasks/<n>/brief.md` in this " <>
+            "Hand its brief over as a numbered file — `.tasks/<chat id>/<n>/brief.md`, " <>
+            "`<chat id>` being this chat's own, in this " <>
             "chat's workspace — and pass that file's absolute path as the brief. " <>
             "Collect the result later with `await_task`, and read the `report.md` " <>
             "the sub-task writes beside it. " <>
@@ -133,7 +137,7 @@ defmodule Elia.Skills.Tasks do
               "type" => "string",
               "description" =>
                 "The work the sub-task is given, by convention the absolute path of " <>
-                  "`.tasks/<n>/brief.md` to read, with the report's path beside it"
+                  "`.tasks/<chat id>/<n>/brief.md` to read, with the report's path beside it"
             },
             "model" => %{
               "type" => "string",

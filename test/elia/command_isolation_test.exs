@@ -384,5 +384,37 @@ defmodule Elia.CommandIsolationTest do
       assert output =~ "ws=#{worktree}"
       assert output =~ "at the root"
     end
+
+    # SPEC-21: the reservations `bin/reserve` keeps live in the repository's git
+    # directory, which is not inside the worktree at all — the jail binds it
+    # because the worktree's `.git` file names it (ISOL-4) — so a chat's own
+    # jailed command reaches the store, and a reservation one chat made is one
+    # the next chat sees.
+    test "a jailed command reserves a requirement ID in the live tree's git directory (SPEC-21)",
+         %{
+           tree: tree,
+           worktree: worktree
+         } do
+      File.mkdir_p!(Path.join(worktree, "bin"))
+      File.cp!(Path.expand("../../bin/reserve", __DIR__), Path.join(worktree, "bin/reserve"))
+
+      # The chat in its worktree reserves the number its corpus is next to use.
+      assert {:ok, output, 0} = jailed("sh bin/reserve SPEC", cd: worktree)
+      assert output =~ "SPEC-1"
+      # It was jailed: the store it reached is behind the `.git` pointer file
+      # the jail binds (ISOL-4), not a hole left in the isolation.
+      refute output =~ Shell.jail_skipped_notice()
+
+      reserved = Path.join([tree, ".git", "elia-reservations/SPEC-1"])
+      assert File.dir?(reserved)
+      # A reservation holds nothing but its name (SPEC-22).
+      assert File.ls!(reserved) == []
+
+      # The live tree sees that reservation, so the chat working there is given
+      # the next number instead.
+      assert {:ok, output, 0} = jailed("sh #{worktree}/bin/reserve SPEC", cd: tree)
+      assert output =~ "SPEC-2"
+      assert File.dir?(Path.join([tree, ".git", "elia-reservations/SPEC-2"]))
+    end
   end
 end
