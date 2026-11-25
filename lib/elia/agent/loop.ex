@@ -52,6 +52,14 @@ defmodule Elia.Agent.Loop do
 
   @max_steps 300
 
+  @doc """
+  The step limit a turn runs with when its chat sets none of its own (LOOP-16,
+  LIMIT-1): the chat's own step limit replaces it (LIMIT-3), and a report of the
+  chat's settings names it (CSET-16).
+  """
+  @spec default_max_steps() :: pos_integer()
+  def default_max_steps, do: @max_steps
+
   # LOOP-25: how many times one repeated call may return the identical result
   # before the turn is standing still.
   @standing_still 4
@@ -85,7 +93,7 @@ defmodule Elia.Agent.Loop do
       turn_id: opts[:turn_id],
       turn_started_at: opts[:turn_started_at],
       skills: Keyword.get(opts, :skills),
-      max_steps: Keyword.get(opts, :max_steps, @max_steps),
+      max_steps: Keyword.get(opts, :max_steps, default_max_steps()),
       # LOOP-19, LOOP-20, LOOP-22: whether a limit pauses the turn, the
       # wall-clock budget it is measured against, and the token budget.
       pause_on_limit: Keyword.get(opts, :pause_on_limit, false),

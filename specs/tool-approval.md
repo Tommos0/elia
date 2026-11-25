@@ -40,6 +40,7 @@ refused.
   | `mark_done` | never (DONE-6) | both |
   | `list_chats`, `read_chat`, `search_chats` | never (HIST-10) | both |
   | `cd` | never (WD-6) | both |
+  | `get_chat_settings` | never (CSET-15) | both |
   | `reload_skills`, `update_ledger` | never | both |
   | `ask_user` | never (ASK-1) | both |
   | `request_network_host` | never (NET-30) | both |

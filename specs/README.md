@@ -112,7 +112,7 @@ it.
 | [Chat done](chat-done.md) | `DONE` | A chat can be marked done (with it in the saved chat), shown as its status and skipped by the chat list's resume; a message reopens it |
 | [Image viewer](image-viewer.md) | `IMG` | An image in the transcript opens over the chat, closable by its own button or the back button, never in a new tab |
 | [Image input](image-input.md) | `VISION` | A picture reaches a model that accepts images as the picture itself when the agent looks at one — a call that records it on its result, read from the chat's workspace — so an upload is only a path, and one that can't see pictures is asked what it is asked today |
-| [Chat settings](chat-settings.md) | `CSET` | The per-chat settings page: model, auto-approval, jail, limits and compaction options |
+| [Chat settings](chat-settings.md) | `CSET` | The per-chat settings page: model, auto-approval, jail, limits and compaction options, and the agent's own `get_chat_settings` tool, which reads them |
 | [Turn limits](turn-limits.md) | `LIMIT` | Per-chat step limit, time budget and whether a limit pauses the turn; reaching one pauses by default, and the transcript says so |
 | [Context indicator](context-indicator.md) | `CTX` | Context size and window shown per chat, with a clickable breakdown |
 | [Compaction](compaction.md) | `COMPACT` | Keeps the full transcript but sends the model a smaller request view; pruning, a ledger and incremental summaries |

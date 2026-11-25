@@ -32,7 +32,8 @@ the same instruction, so the skill held a second copy of it and nothing more.
   skills with their tool names, plus an error result listing any folders that
   failed to load.
 - **SKILL-7** The built-in skills are `shell` ([Shell tool](shell-tool.md)),
-  `files` ([File tools](file-tools.md)), `harness` (`reload_skills`,
+  `workdir` (`cd`, [Working directory](working-directory.md), WD-1),
+  `harness` (`reload_skills`,
   `update_ledger`), `tasks` (`spawn_task`,
   `await_task`, [Sub-tasks](subtasks.md)), `terminal` (`terminal_start`,
   `terminal_send`, `terminal_read`, `terminal_stop`, [Terminal](terminal.md)),
@@ -43,7 +44,9 @@ the same instruction, so the skill held a second copy of it and nothing more.
   (`request_network_host`, [Network access](network-access.md), NET-30), `chats`
   (`list_chats`,
   `read_chat`, `search_chats`, [Reading earlier chats](chat-history.md),
-  HIST-1). A chat's built-in skills are the same whatever project it belongs to
+  HIST-1), `image` (`view_image`, [Image input](image-input.md), VISION-12) and
+  `settings` (`get_chat_settings`, [Chat settings](chat-settings.md), CSET-14).
+  A chat's built-in skills are the same whatever project it belongs to
   (PROJ-18); a sub-task session gets neither the `tasks` skill nor one of its
   own, so it has exactly the tools an ordinary chat has (SUBTASK-1).
 - **SKILL-8** The `harness` skill's instructions apply in every project: they
@@ -111,14 +114,17 @@ the same instruction, so the skill held a second copy of it and nothing more.
 config :elia, Elia.Skills,
   builtin: [
     Elia.Skills.Shell,
+    Elia.Skills.Workdir,
     Elia.Skills.Harness,
     Elia.Skills.Tasks,
     Elia.Skills.Terminal,
     Elia.Skills.Titles,
     Elia.Skills.Done,
     Elia.Skills.Chats,
+    Elia.Skills.Settings,
     Elia.Skills.UserInput,
-    Elia.Skills.Network
+    Elia.Skills.Network,
+    Elia.Skills.Image
   ]
 ```
 

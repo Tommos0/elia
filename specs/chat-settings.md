@@ -15,6 +15,10 @@ that leads to that page. The page is a detour from the conversation, so its
 single Save goes back to the chat when the chat accepts the values (CSET-11),
 where they show up; so does the Compact button (CSET-12).
 
+The agent can read them as well: the `get_chat_settings` tool (CSET-14) reports
+what applies to the chat it runs in, so it can answer "which model am I, and
+what are my limits?" from the conversation rather than by asking.
+
 ## Requirements
 
 ### The page
@@ -102,10 +106,55 @@ where they show up; so does the Compact button (CSET-12).
   "Default" is the way back to). The page follows the chat's `{:settings,
   settings}` event (CSET-3), so a change made in another tab shows up here.
 
+### Reading them, for the agent
+
+- **CSET-14** The built-in `settings` skill (`Elia.Skills.Settings`, listed in
+  the `builtin` config, SKILL-7) carries one tool, `get_chat_settings`, which
+  takes no input and reports the settings of the chat it runs in — in a
+  sub-task too, where they are that child's own (LIMIT-5, ISOL-18). It answers
+  with the chat's `id`, the project it belongs to (PROJ-9), its own title,
+  `nil` when it has none (SESS-33, TITLE-1), and whether it is marked done
+  (SESS-35, DONE-1).
+- **CSET-15** The tool reads the chat's running session, not its saved file
+  (SESS-7, SESS-41), so a setting is reported as it stands at that moment: one
+  changed on the settings page, in another tab or by a tool (CSET-4) shows up
+  in the next call, and a chat that has never been saved reports its settings
+  all the same (CSET-6, SESS-14). It reads and changes nothing — no setting, no
+  turn, no save — and never needs approval (APPR-7). A call with no chat to
+  read is an error result.
+- **CSET-16** The tool reports the settings the chat's page holds (CSET-5), as
+  one JSON object whose entries are one per kind of setting — `model`,
+  `effort`, `auto_approve`, `jail`, `network`, `limits` and `compaction` —
+  beside the chat's identity (CSET-14): the model in use, with its provider
+  key, its model id, its display name and its context window when it is known
+  (MODEL-1, CTX-7); the chat's reasoning effort (CSET-13, LLM-39); the
+  auto-approved tool names (APPR-8); the jail setting (ISOL-16) and whether a
+  jail can be built on this host at all (ISOL-12); the network setting, with
+  its mode, the entries the chat names of its own and the ones its project
+  names (NET-1, NET-36, NET-28); the four turn limits (LIMIT-1); and the chat's
+  compaction options (COMPACT-9). No API key is part of it: a provider's key is
+  the settings database's, never a chat's (CONF-5).
+- **CSET-17** Every value reported is the one that applies, and the report says
+  where it came from: the model resolves as a turn resolves it — the chat's own
+  selection (MODEL-1), the stored default (MODEL-15) or the configured default
+  (MODEL-2) — the effort says whether it is the chat's own or the provider's
+  configured default applies (CSET-13, LLM-38), and each turn limit the chat
+  can leave empty is reported with the value that applies and whether it is the
+  chat's own, one it left empty standing in the loop's own default (LIMIT-1,
+  LIMIT-9, LOOP-16).
+
 ## Out of scope
 
 - Changing a chat's project (PROJ-9) after it is started: its workspace is its
   project's (PROJ-12).
+- Reading or changing another chat's settings: the tool reports the chat it
+  runs in, and one chat's settings are set from its own page (CSET-1, LIMIT-5).
+- Changing a setting with a tool: `get_chat_settings` only reads them, so a
+  setting is set on the page (CSET-5) or by the tool that owns it (TITLE-5,
+  WD-1).
+- What the chat is doing rather than what it is set to — its context size, what
+  the last request spent, and its compaction state — which the context
+  indicator and the transcript report (CTX-1, CTX-6, COMPACT-24).
 - A per-chat choice of skills (they come from the project, PROJ-15, LOOP-17) and
   per-chat model request fields other than reasoning effort — such as an
   output-token cap (`config :elia, Elia.LLM.Anthropic`) — which is a candidate
@@ -117,7 +166,8 @@ where they show up; so does the Compact button (CSET-12).
 picker, the jail switch and the "Compact" button move to),
 `EliaWeb.ChatLive` (the settings link and the jail warning),
 `EliaWeb.ProjectsLive` (a project's allowlist, which the Network section links
-to), `EliaWeb.Router`.
+to), `EliaWeb.Router`, `Elia.Skills.Settings` (the tool that reads them,
+CSET-14).
 
 ## Tests
 
@@ -131,4 +181,7 @@ PROJ-50), `test/elia_web/live/model_picker_test.exs`,
 `test/elia_web/live/chat_live_test.exs` and
 `test/elia_web/live/chat_menu_test.exs` (the composer toolbar, CSET-8 to
 CSET-10), `test/elia_web/live/compaction_test.exs` (the moved Compact button,
-UI-54).
+UI-54),
+`test/elia/skills/settings_test.exs` (`get_chat_settings`: what it reports,
+where each value comes from, and that it reads the chat it runs in, CSET-14 to
+CSET-17).
