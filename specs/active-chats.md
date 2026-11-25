@@ -13,7 +13,9 @@ and not marked done, so the list is what is still going on rather than what
 happened; a chat is counted while no turn of it is running — its turn finished,
 or it is asking for approval, an answer, or a decision about a limit or a
 restart that cut its turn short — so a chat the agent is working on is listed
-without being counted.
+without being counted. A row is a chat's own row: it opens the same menu a chat
+row does (UI-103), so a chat is renamed or deleted from the header without
+leaving the page.
 
 ## Requirements
 
@@ -54,6 +56,36 @@ without being counted.
   deleted (SESS-48) leaves it. A page that opens shows the chats as they are
   saved.
 
+- **ACTIVE-8** A row of the menu (ACTIVE-5) is a chat's own row: a long press of
+  it, a right-click on it, or the context-menu key or Shift+F10 while its link
+  has focus opens a menu of its own, and the browser's own menu never appears
+  for it. A press that becomes a scroll or a drag opens none, one menu is open
+  at a time, and Escape, a press outside it or choosing an entry closes it. The
+  menu is in the row's markup from the first render, hidden until the gesture
+  opens it, so opening it costs no round trip and it opens at once however busy
+  the chat is; it is drawn above the page rather than clipped by the menu's own
+  scroll box, and within the screen's width (UI-78).
+- **ACTIVE-9** The menu of a row (ACTIVE-8) holds the same entries in the same
+  order as a chat row's (UI-103): "Rename" (`#active-chat-rename-<id>`) and the
+  delete entry (UI-64, `#active-chat-delete-<id>`), both in the menu
+  `#active-chat-row-menu-<id>` — the control's own ids, so a chat listed by both
+  the header and the chat list has two menus and the two never collide.
+- **ACTIVE-10** Choosing "Rename" (ACTIVE-9) renames the chat in the header's
+  row: the input (`#active-chat-rename-input-<id>`) takes the row's link's place
+  in the row — the row's link is not rendered while it is open, so a press on
+  the row cannot navigate away mid-rename — holding the chat's title with all of
+  it selected and focused, so it can be typed over at once. Enter saves it
+  (TITLE-8) and the row shows the new title; Escape, a press outside the input
+  and losing focus cancel it, leaving the row as it was and saving nothing, as
+  does a title that is blank once trimmed (TITLE-2). The box is the header's
+  row's alone: a rename started in the chat list is not shown in it, nor the
+  other way round.
+- **ACTIVE-11** Choosing the delete entry (ACTIVE-9) deletes the chat as a chat
+  row's delete does (UI-64, UI-65): it asks for confirmation first, with
+  `data-confirm` naming the chat, and only then deletes it — its row leaves the
+  menu (ACTIVE-7), and deleting the chat the page shows leaves for `/chats`
+  (UI-77).
+
 ## Out of scope
 
 - A page of its own for the active chats, filtering, searching, paging beyond
@@ -61,8 +93,9 @@ without being counted.
   order but the STORE-12 one.
 - Acting on a chat from the menu — stopping it, approving a tool call,
   answering a question or resuming a paused turn (SESS-27, ASK-3): a row is a
-  link to the chat, and the dashboard's attention card is where the user is told
-  what a chat wants (DASH-5).
+  link to the chat, its own menu is for the chat's name and for deleting it
+  (ACTIVE-9 to ACTIVE-11, UI-64, UI-104), and the dashboard's attention card is
+  where the user is told what a chat wants (DASH-5).
 - What a chat's status means and how it is derived (UI-46, UI-59, UI-72): the
   menu draws the one indicator the chat list draws.
 - Push notifications (PUSH), the settings page's controls for them and the
@@ -77,7 +110,9 @@ Nothing new is stored: the list and the count are derived from the saved chats
 (STORE-1), the running sessions (SESS-19) and the projects file (PROJ), and
 nothing about them is written. The settings key the retired notification list
 used (NOTIF-12) is no longer read or written — a database that still holds it
-keeps it, nothing reads it, and nothing has to be migrated.
+keeps it, nothing reads it, and nothing has to be migrated. A chat renamed from
+the header is written exactly as one renamed in the chat list is (TITLE-8,
+STORE-55): the stored shape is the one that is already there.
 
 ## Implementation
 
@@ -92,6 +127,17 @@ keeps it, nothing reads it, and nothing has to be migrated.
   (`Elia.Agent.subscribe_activity/0`) for ACTIVE-7.
 - `EliaWeb.Layouts` — the control and its menu in the header, drawn from that
   state (ACTIVE-1, ACTIVE-5, ACTIVE-6), which is what keeps it on every page.
+- `EliaWeb.ChatRowMenu` — a chat row's own menu, the box a name is typed in, and
+  the two colocated hooks that drive them (`.ChatRowMenu`, the gesture, and
+  `.ChatRename`, the box), drawn by both the chat list's rows and the header's,
+  each under its own id scope — which is what keeps the two copies of a chat's
+  row from colliding (UI-103, UI-104, ACTIVE-8, ACTIVE-9). A colocated hook's
+  name is resolved against the module its markup is compiled in, so the one menu
+  both draw from has to be one module's markup.
+- `EliaWeb.ActiveChats` — the rename the header's rows hold, one row at a time
+  and the header's own (ACTIVE-10); the delete entry reuses the chat list's own
+  event, which every page of the live session already handles (UI-64, UI-65,
+  ACTIVE-11).
 - `Elia.Agent` — announces a chat's deletion on the activity topic as
   `{:chat_deleted, id}` (SESS-48), which is how a chat deleted on one page
   leaves the list on another; `EliaWeb.ChatLive` and `EliaWeb.DashboardLive`
@@ -110,6 +156,11 @@ keeps it, nothing reads it, and nothing has to be migrated.
   a row following to its chat (ACTIVE-5); the menu saying no chat is active
   (ACTIVE-6); the cap and "and N more" (ACTIVE-4); and the count and the menu
   following a status change, a chat marked done and a chat deleted while the
-  page is open (ACTIVE-7).
+  page is open (ACTIVE-7); and a row's own menu — in the markup and shut, its
+  entries under the control's own ids, Rename putting the box in that row and
+  saving the name, and the delete entry removing the row (ACTIVE-8 to ACTIVE-11).
+- `test/elia_web/browser/chat_row_menu_test.exs` — the gesture in a real
+  browser, for a chat list's rows and for the header's (UI-103, UI-104,
+  ACTIVE-8); a browser test, so it runs with `ELIA_BROWSER_TESTS=1` (BROWSER-5).
 - `test/elia/agent_test.exs` — deleting a chat announces it on the activity
   topic (SESS-48).
