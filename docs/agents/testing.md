@@ -108,6 +108,11 @@ Playwright.
   `Elia.FakeLLM` and the scratch workspace still apply: no deploy, no dev
   server, no API keys. They see the workspace's own code — the worktree a chat
   made for itself, when its code is there (DEPLOY-28).
+- A `<details>` collapsed by the `open` attribute **still measures**: Chromium
+  skips the content's layout rather than giving it a zero box, so a
+  `getBoundingClientRect().height > 0` probe says a closed dropdown is visible.
+  Assert `element.open` (and, if you need the rows, that they are in the DOM)
+  instead — checked 2026-11-26 on the chat list's sub-task dropdown (UI-112).
 - They are excluded from a plain `mix test`, so `mix test` and `mix precommit`
   stay fast and need no Node. Run them explicitly:
 
