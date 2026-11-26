@@ -137,13 +137,11 @@ defmodule Elia.Snapshot do
   # The path a part's header names: git writes `diff --git a/<old> b/<new>`, so
   # it is the longest of the pair's paths the header ends in ` b/<path>` with.
   defp named_path(header, paths) do
-    with true <- String.starts_with?(header, "diff --git ") do
+    if String.starts_with?(header, "diff --git ") do
       paths
       |> Enum.filter(&String.ends_with?(header, " b/" <> &1))
       |> Enum.sort_by(&byte_size/1)
       |> List.last()
-    else
-      _none -> nil
     end
   end
 
@@ -213,12 +211,14 @@ defmodule Elia.Snapshot do
   # from the two snapshots. A rename is reported as the path it became, and a
   # typechange, a copy or anything else git names is a modification.
   defp files(root, from, to) do
-    with {:ok, output} <- git_diff(root, ["diff", "--name-status", from, to]) do
-      output
-      |> String.split("\n", trim: true)
-      |> Enum.flat_map(&file/1)
-    else
-      _none -> []
+    case git_diff(root, ["diff", "--name-status", from, to]) do
+      {:ok, output} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(&file/1)
+
+      _none ->
+        []
     end
   end
 

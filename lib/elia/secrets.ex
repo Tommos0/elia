@@ -110,7 +110,7 @@ defmodule Elia.Secrets do
   # contains another is matched whole, neither is left half redacted, and a
   # placeholder a replacement wrote is never itself redacted.
   defp regex(secrets) do
-    pattern = secrets |> Enum.map(&Regex.escape(elem(&1, 0))) |> Enum.join("|")
+    pattern = Enum.map_join(secrets, "|", &Regex.escape(elem(&1, 0)))
 
     case Regex.compile(pattern) do
       {:ok, regex} -> regex
@@ -127,16 +127,14 @@ defmodule Elia.Secrets do
   # SECRET-8: everything a request carries, walked rather than enumerated, so a
   # shape this module does not know about is still covered. A struct is left as
   # it is (only `%Message{}` is part of a request, and its `meta` is never sent,
-  # LLM-5); a picture's own bytes are left alone (VISION-8).
+  # LLM-5).
   defp walk(%Message{} = message, secrets) do
     %{message | content: Enum.map(message.content, &walk(&1, secrets))}
   end
 
   defp walk(map, secrets) when is_map(map) and not is_struct(map) do
     if image?(map) do
-      Map.new(map, fn {key, value} ->
-        if data?(key), do: {key, value}, else: {key, walk(value, secrets)}
-      end)
+      Map.new(map, &image_field(&1, secrets))
     else
       Map.new(map, fn {key, value} -> {key, walk(value, secrets)} end)
     end
@@ -151,6 +149,12 @@ defmodule Elia.Secrets do
   defp walk(list, secrets) when is_list(list), do: Enum.map(list, &walk(&1, secrets))
   defp walk(text, secrets) when is_binary(text), do: replace(text, secrets)
   defp walk(other, _secrets), do: other
+
+  # VISION-8: a picture's own bytes are left alone, so `data` is not walked —
+  # everything else the image carries is.
+  defp image_field({key, value}, secrets) do
+    if data?(key), do: {key, value}, else: {key, walk(value, secrets)}
+  end
 
   defp image?(map), do: Map.get(map, :type) == :image or Map.get(map, "type") == "image"
   defp data?(key), do: key in [:data, "data"]
