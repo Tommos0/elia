@@ -46,17 +46,22 @@ defmodule Elia.Store.Index do
   def refresh(entries) do
     ensure_table()
 
-    Enum.each(entries, fn entry ->
-      case Elia.Store.identity(entry.id) do
-        nil ->
-          drop(entry.id)
-
-        identity ->
-          if is_nil(fetch(entry.id, identity)), do: put(entry.id, identity, build(entry))
-      end
-    end)
+    Enum.each(entries, &index/1)
 
     prune(MapSet.new(entries, & &1.id))
+  end
+
+  # SEARCH-4: a chat whose file no longer has the identity it was indexed with
+  # is decoded and indexed again; one whose file is gone is dropped, so a chat
+  # deleted by this server or by another one is not a chat that holds a term.
+  defp index(entry) do
+    case Elia.Store.identity(entry.id) do
+      nil ->
+        drop(entry.id)
+
+      identity ->
+        if is_nil(fetch(entry.id, identity)), do: put(entry.id, identity, build(entry))
+    end
   end
 
   # SEARCH-3: the whole index is this one table, so it is made on demand — the
@@ -92,12 +97,7 @@ defmodule Elia.Store.Index do
     # streamed through it, so looking a term up doesn't copy the whole index.
     :ets.foldl(
       fn {id, _identity, entry}, found ->
-        Enum.reduce(entry.texts, found, fn {index, text}, found ->
-          case :binary.match(text, pattern) do
-            :nomatch -> found
-            _ -> MapSet.put(found, {id, index})
-          end
-        end)
+        matches(entry.texts, id, pattern, found)
       end,
       MapSet.new(),
       @table
@@ -105,6 +105,17 @@ defmodule Elia.Store.Index do
     |> Enum.sort()
   rescue
     ArgumentError -> []
+  end
+
+  # SEARCH-1: the messages of one chat's entry that hold the term, each as the
+  # `{chat id, message index}` pair the search answers with.
+  defp matches(texts, id, pattern, found) do
+    Enum.reduce(texts, found, fn {index, text}, found ->
+      case :binary.match(text, pattern) do
+        :nomatch -> found
+        _ -> MapSet.put(found, {id, index})
+      end
+    end)
   end
 
   @doc """

@@ -48,75 +48,79 @@ defmodule Elia.Store do
   def save(id, messages, opts \\ []) do
     true = valid_id?(id)
     now = DateTime.utc_now()
-    chat = %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
-    chat = if model = opts[:model], do: Map.put(chat, :model, model), else: chat
-    chat = if task = opts[:task], do: Map.put(chat, :task, task), else: chat
-    chat = if project = opts[:project], do: Map.put(chat, :project_id, project), else: chat
+
+    %{version: 1, messages: messages, created_at: created_at(id) || now, updated_at: now}
+    |> put_given(:model, opts[:model])
+    |> put_given(:task, opts[:task])
+    |> put_given(:project_id, opts[:project])
 
     # STORE-30: the turn the chat's session is running. A save that doesn't give
     # one writes no entry, so the turn's end takes the key off the file (INTR-1).
-    chat = if turn = opts[:turn], do: Map.put(chat, :turn, turn), else: chat
+    |> put_given(:turn, opts[:turn])
 
     # STORE-32, TITLE-2: a chat with no title (or a blank one) carries no entry,
     # and the chat list derives its title from the first user message (STORE-7).
-    chat =
-      case shape_title(opts[:title]) do
-        nil -> chat
-        title -> Map.put(chat, :title, title)
-      end
+    |> put_given(:title, shape_title(opts[:title]))
 
     # STORE-55, TITLE-9: a title set by hand is the user's, recorded with the
     # chat so the model's `set_title` refuses it (TITLE-6) and a session that
     # resumes the chat holds to the refusal. A title the model set, and one
     # derived from the first message (STORE-7), carry no entry.
-    chat = if opts[:title_by] == "user", do: Map.put(chat, :title_by, "user"), else: chat
-
-    chat =
-      case opts[:compaction] do
-        %{} = compaction -> Map.put(chat, :compaction, compaction)
-        _ -> chat
-      end
-
-    chat =
-      case opts[:auto_approve] do
-        [_ | _] = names -> Map.put(chat, :auto_approve, names)
-        _ -> chat
-      end
+    |> put_when(:title_by, opts[:title_by], opts[:title_by] == "user")
+    |> put_when(:compaction, opts[:compaction], is_map(opts[:compaction]))
+    |> put_when(:auto_approve, opts[:auto_approve], match?([_ | _], opts[:auto_approve]))
 
     # STORE-25: the jail is on by default (ISOL-16), so only "off" is written.
-    chat = if opts[:jail] == false, do: Map.put(chat, :jail, false), else: chat
+    |> put_when(:jail, opts[:jail], opts[:jail] == false)
 
-    # STORE-53, NET-28: only a mode that limits the network is written, and
-    # only the mode — a chat's entries are its project's.
-    chat =
-      case Elia.Net.stored(opts[:network]) do
-        nil -> chat
-        network -> Map.put(chat, :network, network)
-      end
+    # STORE-53, NET-28: the chat's network setting, as `Elia.Net.stored/1`
+    # shapes it.
+    |> put_network(opts[:network])
 
     # STORE-34, DONE-1: a chat is open by default, so only "done" is written and
     # reopening it takes the entry off the file.
-    chat = if opts[:done] == true, do: Map.put(chat, :done, true), else: chat
+    |> put_when(:done, opts[:done], opts[:done] == true)
 
     # STORE-37: only an effort the chat has of its own is written, so a chat
     # that keeps the configured default (LLM-38) carries no entry and giving the
     # chat no effort again drops the key from the file.
-    chat = if opts[:effort] in @efforts, do: Map.put(chat, :effort, opts[:effort]), else: chat
+    |> put_when(:effort, opts[:effort], opts[:effort] in @efforts)
 
     # STORE-46, WD-7: the chat's working directory, written only when it is not
     # its workspace root, so a chat that never changed directory carries no
     # entry and moving back to the root drops the key from the file.
-    chat = if cwd = opts[:cwd], do: Map.put(chat, :cwd, cwd), else: chat
+    |> put_given(:cwd, opts[:cwd])
 
-    # STORE-27: only the limits that aren't the default (LIMIT-1) are written,
-    # so a chat that sets none carries no entry at all.
-    chat =
-      case Elia.Limits.stored(opts[:limits] || %{}) do
-        limits when map_size(limits) > 0 -> Map.put(chat, :limits, limits)
-        _none -> chat
-      end
+    # STORE-27: the turn limits the chat has of its own (LIMIT-1), as
+    # `Elia.Limits.stored/1` shapes them.
+    |> put_limits(opts[:limits])
+    |> then(&write(id, &1))
+  end
 
-    write(id, chat)
+  # STORE-14, STORE-16, STORE-19: an option the save gives no value for is a key
+  # the file carries not at all — a chat with no such thing writes no entry, and
+  # a later save that stops giving one drops the key again.
+  defp put_given(chat, key, value), do: put_when(chat, key, value, value not in [nil, false])
+
+  defp put_when(chat, key, value, true), do: Map.put(chat, key, value)
+  defp put_when(chat, _key, _value, false), do: chat
+
+  # STORE-53, NET-28: only a mode that limits the network is written, and only
+  # the mode — a chat's entries are its project's.
+  defp put_network(chat, network) do
+    case Elia.Net.stored(network) do
+      nil -> chat
+      stored -> Map.put(chat, :network, stored)
+    end
+  end
+
+  # STORE-27: only the limits that aren't the default (LIMIT-1) are written, so
+  # a chat that sets none carries no entry at all.
+  defp put_limits(chat, limits) do
+    case Elia.Limits.stored(limits || %{}) do
+      stored when map_size(stored) > 0 -> Map.put(chat, :limits, stored)
+      _none -> chat
+    end
   end
 
   @doc """
