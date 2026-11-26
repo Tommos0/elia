@@ -1,6 +1,6 @@
 # Terminal
 
-Status: Implemented
+Status: Draft
 
 A Terminal page shows a chat a real terminal: a pty running a command — the
 user's own shell, or a terminal app the agent started — drawn with xterm.js in
@@ -9,6 +9,9 @@ the browser, with keystrokes going back the other way. It answers what the
 it and take input — a REPL, `htop`, a watch-mode test run, an interactive
 installer — instead of a command that finishes and comes back as a block of
 text.
+
+TERM-1 to TERM-40 are implemented; the page's key bar (TERM-42 to TERM-49)
+is drafted here and its code has not landed yet.
 
 The session layer is **tmux, driven in control mode**. tmux is what gives the
 command a pty: the BEAM has none, and a plain port gives a child no line
@@ -191,6 +194,44 @@ setting the next one will use.
   works with the network gone and inside the installed app (PWA), like the rest
   of the UI.
 
+### Keys on the page
+
+A phone's soft keyboard has no Esc, no Tab, no arrows and no Ctrl — the keys a
+terminal needs most — and Android's keyboard sends xterm.js nothing it can read
+for them. The page therefore offers those keys itself.
+
+- **TERM-42** With a running session the page offers a key bar: buttons that send
+  keys a soft keyboard cannot produce — Esc, Tab, the four arrows, Ctrl-C,
+  Ctrl-D, and Ctrl and Alt as modifiers — so an app that needs them is usable on
+  a touch screen. A tap on the bar is the user typing: it needs no approval
+  (TERM-10) and puts nothing in the transcript (TERM-11).
+- **TERM-43** A bar button sends a *named* key, through the door the agent's own
+  keystrokes use (TERM-30, TERM-31): the name reaches tmux and is expanded there
+  for the pane's own mode, so Up is `ESC O A` for an app with application cursor
+  keys on and `ESC [ A` for one without. The browser never maps a named key to
+  bytes itself: a tap on the bar and a `terminal_send` of the same key reach the
+  app as the same keystroke.
+- **TERM-44** Ctrl and Alt are sticky: a tap arms one, the next key — from the
+  bar or from the soft keyboard — goes with that modifier, and it disarms again;
+  a tap on an armed modifier disarms it without sending anything. Ctrl and then
+  `c` on the soft keyboard types Ctrl-C into the app.
+- **TERM-45** A second tap while a modifier is armed locks it: it stays on for
+  every key that follows until it is tapped once more. The page shows the three
+  states apart — off, armed for one key, and locked.
+- **TERM-46** Holding an arrow button repeats it until the finger lifts: once
+  after a short delay and then at a steady rate, as a held key on a keyboard
+  does.
+- **TERM-47** The bar is a row of its own and the terminal is fitted to the space
+  that is left (TERM-15, TERM-22): the bar never covers the terminal's last rows,
+  and at a phone width it wraps rather than pushing the terminal sideways.
+- **TERM-48** The bar is shown where the pointer is coarse and hidden where it is
+  fine, and a toggle on the page overrides that; the choice is remembered in the
+  browser it was made in. It is offered with a running session and not before one
+  (TERM-20, TERM-21).
+- **TERM-49** What the bar sends and what is typed on the soft keyboard reach the
+  app in the order they were made and unchanged (TERM-13): a tap between two
+  typed characters arrives between them.
+
 ### Tools
 
 - **TERM-25** `terminal_start` starts a session with a command the model gives,
@@ -360,6 +401,12 @@ instructions), `EliaWeb.TerminalLive` (the page), `EliaWeb.TerminalSocket` and
 hook), the router and the endpoint (the socket), `assets/package.json`
 (xterm.js and its fit addon).
 
+The key bar (TERM-42 to TERM-49) is markup on the page in `EliaWeb.TerminalLive`,
+taps in `assets/js/terminal.js`, and a message on `EliaWeb.TerminalChannel` that
+becomes a call to `Elia.Terminal.keys/2` — the door `terminal_send` uses
+(TERM-30) — so a named key is expanded by tmux and never mapped to bytes by the
+browser (TERM-43).
+
 The exact tmux interface is settled in the implementation against the tmux the
 host has, and the spec follows if it moves: control mode's notifications
 (`%output` with escaped bytes, `%begin`/`%end` around a command's reply) for the
@@ -390,3 +437,6 @@ tools, TERM-24 to TERM-28, TERM-30 to TERM-34 and TERM-40), and
 typing into a running shell and seeing its echo, and a resize that reaches the
 pty (BROWSER-1). A test that needs tmux skips where it isn't installed
 (TERM-29), like the jail's tests where bubblewrap is missing (ISOL-12).
+
+No test: TERM-42 to TERM-49 — the key bar is drafted here and its code has not
+landed: the bar and its tests land together, and this line goes when they do.
