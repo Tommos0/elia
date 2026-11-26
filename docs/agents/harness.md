@@ -15,6 +15,31 @@ Specs: `specs/deployment.md`, `specs/hot-reload.md`, `specs/verification.md`, `s
 - That text is **pinned by tests and specs**, so compressing it is not a free edit: `test/elia/self_modification_test.exs` (`the project's AGENTS.md carries the worktree recipe`) asserts ~13 exact phrases in `AGENTS.md`, `test/elia/skills_test.exs` the `bin/preview`/`ELIA_PREVIEW_THEME=dark`/`ELIA_PREVIEW_WIDTH=430` ones, and DEPLOY-28 to DEPLOY-30, VERIFY-11 (the timeout default and maximum), PREVIEW-9 and DONE-6 each pin a fact to `AGENTS.md`. The skill sections are pinned the same way by their own tests (`harness_test`, `shell_test`, `tasks_test`, `chats_test`, `working_directory_test`). Check both before cutting, and run the suite rather than judging the edit a docs one.
 - The details behind a compressed bullet belong in this file: it is read on demand, where `AGENTS.md` is read every request.
 
+## The tools a command has
+
+- Installed by the user for the shell tools (Debian, `apt-get`): `rg` 14.1.1
+  with PCRE2 (that one was already there), `jq` 1.7, `shellcheck` 0.10.0,
+  `delta` 0.18.2, and `fd-find`, whose binary Debian installs as
+  `/usr/bin/fdfind` — there is **no `fd` on `PATH`**, the
+  `ln -s /usr/bin/fdfind /usr/local/bin/fd` that would give one has not been
+  run, so a command has to call `fdfind`. `bash`, `tmux`, `python3`,
+  `node`/`npm`, `curl`/`wget`, `git`, `rsync` and `htop` were there already.
+  `delta` is not wired into git config: it is for the user reading a diff, not
+  for a chat, so nothing routes a chat's `git diff` through it.
+- **A chat cannot install one.** A jailed command has no `/var` at all, so
+  `apt` has no package lists and nowhere to write a cache, `/usr` is bound
+  read-only, the project's allowlist holds no `deb.debian.org`, and `sudo`
+  wants a password. A new tool is the user's to add from a normal terminal
+  (`sudo apt-get install -y <pkg>`), and the chat says so rather than trying.
+- **Where an install has to land to be visible.** The jail binds `@toolchain`
+  — `/usr /lib /lib64 /bin /sbin /etc` — read-only (ISOL-1, ISOL-13), and of
+  `$HOME` only `~/.mix`, `~/.cache/ms-playwright` and the Playwright node
+  packages (ISOL-4, ISOL-5). So an apt package, or an `npm -g` one (which
+  lands in `/usr/local/lib/node_modules`), is inside the jail, while anything
+  installed into `$HOME` — `pipx`, `pip install --user`, `~/.cargo/bin` — is
+  not, even though `/home/<user>/.local/bin` is on the `PATH` the jail
+  inherits. The rule a chat carries is the compressed bullet in `AGENTS.md`.
+
 ## The live tree and a chat's own worktree
 
 - The live tree (`Elia.Workspace.runtime_root/0`, `config :elia, :runtime_root`, default: where the server was started) is where the server runs, where the code reloader reloads and where Elia's data (`.elia`) lives (DEPLOY-2). It is also the workspace of every chat in Elia's own project: the file and shell tools resolve against it and `ctx[:workspace]` is it (DEPLOY-1, PROJ-12), and a jailed command is confined to it (ISOL-13).
