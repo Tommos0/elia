@@ -351,6 +351,17 @@ excluded`). Run that one yourself instead:
   environment) fails on `proxy=`: it expects no proxy and sees the one of the
   chat. It is not your change: run `env -u http_proxy -u https_proxy -u
   all_proxy mix test test/elia/network_access_test.exs`, which passes.
+- With those three variables set a whole run fails in more places than that one
+  case, all of them the same cause: `test/elia/network_access_test.exs`'s three
+  proxy cases fail with `[net: the relay that carries commands to the proxy did
+  not start]`, `test/elia/llm/llama_server_test.exs`'s five waiting ones fail
+  with the stub's health check never answering (10s each), and
+  `chat_live_test.exs:1865` ("a command awaiting approval is open") never sees
+  the approved command's turn reach `:idle`. Every one of them passes with the
+  variables unset — `env -u http_proxy -u https_proxy -u all_proxy mix precommit`
+  is green in this tree (checked 2026-11-26, 501 tests in partition 4 and no
+  failures anywhere) — so unset them before reading a partition's failures as
+  your change's.
 - A partition can fail on a test that passes on its own; the runner has already
   retried it once by then (`bin/test` above, SUITE-14), so a partition it reports
   as failed failed twice. In this tree partition
