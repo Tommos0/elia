@@ -257,30 +257,44 @@ defmodule Elia.LLM.Compaction do
 
   defp legacy_items_of(message, index, state, keep, covered, region) do
     pins = pins_of(state.pins, index)
-    cold? = index < covered and not MapSet.member?(keep, index) and pins == []
-    inside? = in_region?(index, region) and pins != :all
+    cold? = cold?(index, pins, keep, covered)
 
     cond do
       pins == :all ->
         []
 
-      cold? and state.level >= @top_level and message.role != :user ->
+      cold? and message.role != :user and state.level >= @top_level ->
         [{index, nil}]
 
-      (cold? or inside?) and message.role == :assistant and state.level >= 1 ->
-        for {%{type: :reasoning}, block} <- Enum.with_index(message.content),
-            not block_pinned?(pins, block),
-            do: {index, block}
-
-      (cold? or inside?) and message.role == :tool and state.level >= 2 ->
-        for {%{type: :tool_result}, block} <- Enum.with_index(message.content),
-            not block_pinned?(pins, block),
-            do: {index, block}
-
       true ->
-        []
+        legacy_rung_items(message, index, pins, state.level, cold? or in_region?(index, region))
     end
   end
+
+  # A cold message is one below the working set that no pin keeps: a pin on the
+  # message, or on any one of its blocks, takes it out of the whole-step rung.
+  defp cold?(index, pins, keep, covered) do
+    index < covered and not MapSet.member?(keep, index) and pins == []
+  end
+
+  # COMPACT-14, COMPACT-15: what a rung elides of a message the cold prefix or
+  # the turn being run's own older steps reach — its reasoning at the first rung,
+  # its tool results at the second, one item per block and never a pinned one.
+  defp legacy_rung_items(%Message{role: :assistant} = message, index, pins, level, true)
+       when level >= 1 do
+    for {%{type: :reasoning}, block} <- Enum.with_index(message.content),
+        not block_pinned?(pins, block),
+        do: {index, block}
+  end
+
+  defp legacy_rung_items(%Message{role: :tool} = message, index, pins, level, true)
+       when level >= 2 do
+    for {%{type: :tool_result}, block} <- Enum.with_index(message.content),
+        not block_pinned?(pins, block),
+        do: {index, block}
+  end
+
+  defp legacy_rung_items(_message, _index, _pins, _level, _elided?), do: []
 
   @doc "The state as a plain map, for `Elia.Store`."
   @spec to_map(t()) :: map()
@@ -757,13 +771,11 @@ defmodule Elia.LLM.Compaction do
     pins = pins_of(ctx.pins, index)
     held = MapSet.new(Map.get(ctx.items, index, []))
 
-    cond do
-      pins == :all or not eligible?(index, ctx) ->
-        []
-
-      true ->
-        (rung_items(index, held, pins, ctx) ++ step_items(index, ctx))
-        |> Enum.map(fn {level, gain, items} -> tier(level, gain, items, ctx.floor) end)
+    if pins == :all or not eligible?(index, ctx) do
+      []
+    else
+      (rung_items(index, held, pins, ctx) ++ step_items(index, ctx))
+      |> Enum.map(fn {level, gain, items} -> tier(level, gain, items, ctx.floor) end)
     end
   end
 
@@ -936,14 +948,19 @@ defmodule Elia.LLM.Compaction do
 
       case Elia.LLM.stream(request) do
         {:ok, %{message: message}} ->
-          case Message.text_content(message) do
-            "" -> {:error, :empty_summary}
-            text -> {:ok, text}
-          end
+          summary_text(message)
 
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  # A model that answered with nothing has not summarized.
+  defp summary_text(message) do
+    case Message.text_content(message) do
+      "" -> {:error, :empty_summary}
+      text -> {:ok, text}
     end
   end
 
@@ -1064,18 +1081,15 @@ defmodule Elia.LLM.Compaction do
     if content == [] do
       {%{status: :elided, blocks: blocks, elided: elided, pinned: false}, nil, elided}
     else
-      status = if Enum.any?(blocks, fn {_, s} -> s == :elided end), do: :truncated, else: :sent
-
-      {%{status: status, blocks: blocks, elided: elided, pinned: false},
+      {%{status: pruned_status(blocks), blocks: blocks, elided: elided, pinned: false},
        %{message | content: content}, elided}
     end
   end
 
   defp prune(%Message{role: :tool} = message, _index, ctx, pins, items) do
     {content, blocks, elided} = elide_results(message.content, pins, items, ctx.calls)
-    status = if Enum.any?(blocks, fn {_, s} -> s == :elided end), do: :truncated, else: :sent
 
-    {%{status: status, blocks: blocks, elided: elided, pinned: false},
+    {%{status: pruned_status(blocks), blocks: blocks, elided: elided, pinned: false},
      %{message | content: content}, elided}
   end
 
@@ -1085,6 +1099,11 @@ defmodule Elia.LLM.Compaction do
   end
 
   defp prune(message, _index, _ctx, _pins, _items), do: sent(message)
+
+  # A message that lost a block is truncated; one that lost none is sent as it is.
+  defp pruned_status(blocks) do
+    if Enum.any?(blocks, fn {_, s} -> s == :elided end), do: :truncated, else: :sent
+  end
 
   # COMPACT-31, COMPACT-32, COMPACT-33: the turn being run's own older steps —
   # from the user message that begins it up to the marker the last pass elided
@@ -1266,9 +1285,10 @@ defmodule Elia.LLM.Compaction do
   defp pinned_block?(pins, index, block), do: {index, block} in pins
 
   defp pins_of(pins, index) do
-    cond do
-      pinned_message?(pins, index) -> :all
-      true -> for {i, block} <- pins, i == index, is_integer(block), do: block
+    if pinned_message?(pins, index) do
+      :all
+    else
+      for {i, block} <- pins, i == index, is_integer(block), do: block
     end
   end
 
@@ -1285,26 +1305,29 @@ defmodule Elia.LLM.Compaction do
     else
       indexed = Enum.with_index(messages)
 
-      Enum.reduce(pinned, pinned, fn i, keep ->
-        case Enum.at(messages, i) do
-          %Message{role: :assistant, content: content} ->
-            ids = for call <- content, call.type == :tool_call, do: call.id
-            pair(indexed, keep, &(&1.role == :tool and answers?(&1, ids)))
-
-          %Message{role: :tool, content: content} ->
-            ids = for result <- content, result.type == :tool_result, do: result.tool_call_id
-
-            pair(indexed, keep, fn message ->
-              message.role == :assistant and
-                Enum.any?(message.content, &(&1.type == :tool_call and &1.id in ids))
-            end)
-
-          _message ->
-            keep
-        end
-      end)
+      Enum.reduce(pinned, pinned, fn i, keep -> keep_pair(messages, indexed, keep, i) end)
     end
   end
+
+  defp keep_pair(messages, indexed, keep, i) do
+    case Enum.at(messages, i) do
+      %Message{role: :assistant, content: content} ->
+        ids = for call <- content, call.type == :tool_call, do: call.id
+        pair(indexed, keep, &(&1.role == :tool and answers?(&1, ids)))
+
+      %Message{role: :tool, content: content} ->
+        ids = for result <- content, result.type == :tool_result, do: result.tool_call_id
+        pair(indexed, keep, &answers_call?(&1, ids))
+
+      _message ->
+        keep
+    end
+  end
+
+  defp answers_call?(%Message{role: :assistant, content: content}, ids),
+    do: Enum.any?(content, &(&1.type == :tool_call and &1.id in ids))
+
+  defp answers_call?(_message, _ids), do: false
 
   defp pair(indexed, keep, match?) do
     Enum.reduce(indexed, keep, fn {message, j}, keep ->
