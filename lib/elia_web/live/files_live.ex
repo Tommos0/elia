@@ -31,27 +31,9 @@ defmodule EliaWeb.FilesLive do
     root = project.folder
     path = normalize(root, params["path"])
 
-    {dir, file, error} =
-      case Explorer.list(path, root) do
-        {:ok, _} -> {path, nil, nil}
-        {:error, :not_a_directory} -> {parent(path), path, nil}
-        {:error, reason} -> {"", nil, reason}
-      end
-
-    # EXPL-24, EXPL-25, EXPL-31: what the browser may be given of this file, by
-    # the same check the route serves by.
-    raw_view =
-      case file && Explorer.raw_file(file, root) do
-        {:ok, raw} -> raw
-        _ -> nil
-      end
-
-    # EXPL-22, EXPL-30: a file the browser renders of itself opens in the raw
-    # mode, which is the mode a missing one falls back to. It takes no reading to
-    # know, and a file with no raw view of that kind (EXPL-31) opens as source.
-    default = if raw_view && preview_kind?(raw_view.kind), do: :raw, else: :source
-
-    mode = mode(params["mode"], default, raw_view)
+    {dir, file, error} = listing(path, root)
+    raw_view = raw_view_for(file, root)
+    mode = mode(params["mode"], default_mode(raw_view), raw_view)
 
     # EXPL-8, EXPL-23: only the source mode reads the file as text, so a file the
     # browser renders is never read for bytes it doesn't show.
@@ -61,15 +43,7 @@ defmodule EliaWeb.FilesLive do
     # page's own parameters carry so the route serves the file it browsed.
     raw = raw_view && raw_path(raw_view.path, chat)
 
-    # The listing is read again after the viewer so that a vanished directory
-    # falls back to the project root instead of crashing (EXPL-9) — and so that
-    # a root which is itself unavailable reports that, rather than putting an
-    # error atom where the listing belongs (EXPL-19).
-    {dir, entries, root_error} =
-      case Explorer.list(dir, root) do
-        {:ok, entries} -> {dir, entries, nil}
-        {:error, _} -> root_listing(root)
-      end
+    {dir, entries, root_error} = listing_or_root(dir, root)
 
     # EXPL-19: an unavailable root is what the page reports, not the path that
     # couldn't be reached inside it.
@@ -94,6 +68,43 @@ defmodule EliaWeb.FilesLive do
        root_error: root_error,
        crumbs: crumbs(dir)
      )}
+  end
+
+  # The listing of the path in view: the directory to show, the file selected
+  # when the path is one, or the reason the path could not be listed at all.
+  defp listing(path, root) do
+    case Explorer.list(path, root) do
+      {:ok, _} -> {path, nil, nil}
+      {:error, :not_a_directory} -> {parent(path), path, nil}
+      {:error, reason} -> {"", nil, reason}
+    end
+  end
+
+  # EXPL-24, EXPL-25, EXPL-31: what the browser may be given of this file, by
+  # the same check the route serves by.
+  defp raw_view_for(file, root) do
+    case file && Explorer.raw_file(file, root) do
+      {:ok, raw} -> raw
+      _ -> nil
+    end
+  end
+
+  # EXPL-22, EXPL-30: a file the browser renders of itself opens in the raw
+  # mode, which is the mode a missing one falls back to. It takes no reading to
+  # know, and a file with no raw view of that kind (EXPL-31) opens as source.
+  defp default_mode(raw_view) do
+    if raw_view && preview_kind?(raw_view.kind), do: :raw, else: :source
+  end
+
+  # The listing is read again after the viewer so that a vanished directory
+  # falls back to the project root instead of crashing (EXPL-9) — and so that
+  # a root which is itself unavailable reports that, rather than putting an
+  # error atom where the listing belongs (EXPL-19).
+  defp listing_or_root(dir, root) do
+    case Explorer.list(dir, root) do
+      {:ok, entries} -> {dir, entries, nil}
+      {:error, _} -> root_listing(root)
+    end
   end
 
   # EXPL-30: which of the two modes the URL asks for. A `mode` that is missing,

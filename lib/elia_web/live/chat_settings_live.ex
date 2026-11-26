@@ -1095,20 +1095,24 @@ defmodule EliaWeb.ChatSettingsLive do
 
   defp parse_number(value) do
     case value |> to_string() |> String.trim() do
-      "" ->
-        nil
+      "" -> nil
+      trimmed -> parse_whole(trimmed)
+    end
+  end
 
-      trimmed ->
-        case Integer.parse(trimmed) do
-          {integer, ""} ->
-            integer
+  # A whole number, else the float it is, else the trimmed text itself so the
+  # caller rejects it with its own message.
+  defp parse_whole(trimmed) do
+    case Integer.parse(trimmed) do
+      {integer, ""} -> integer
+      _other -> parse_float(trimmed)
+    end
+  end
 
-          _ ->
-            case Float.parse(trimmed) do
-              {float, ""} -> float
-              _ -> trimmed
-            end
-        end
+  defp parse_float(trimmed) do
+    case Float.parse(trimmed) do
+      {float, ""} -> float
+      _other -> trimmed
     end
   end
 
@@ -1466,30 +1470,33 @@ defmodule EliaWeb.ChatSettingsLive do
   defp stream_models(socket) do
     query = socket.assigns.model_query |> String.trim() |> String.downcase()
 
-    entries =
-      Enum.flat_map(LLM.providers(), fn info ->
-        header = %{id: "g-#{info.key}", kind: :header, provider: info.key, name: info.name}
-
-        case socket.assigns.catalogs[info.key] do
-          nil ->
-            [Map.merge(header, %{status: :no_key, count: nil})]
-
-          {:ok, models} ->
-            matches = Enum.filter(models, &model_matches?(&1, query))
-            status = if matches == [], do: :empty, else: :ok
-
-            count =
-              if query == "", do: length(models), else: "#{length(matches)}/#{length(models)}"
-
-            [Map.merge(header, %{status: status, count: count})] ++
-              Enum.map(matches, &model_entry_data(info.key, &1))
-
-          other ->
-            [Map.merge(header, %{status: other, count: nil})]
-        end
-      end)
+    entries = Enum.flat_map(LLM.providers(), &provider_entries(socket, &1, query))
 
     stream(socket, :models, entries, reset: true)
+  end
+
+  # A provider's header, then the models of it the query matches — or the one
+  # entry that says why its catalog has none to show.
+  defp provider_entries(socket, info, query) do
+    header = %{id: "g-#{info.key}", kind: :header, provider: info.key, name: info.name}
+
+    case socket.assigns.catalogs[info.key] do
+      nil ->
+        [Map.merge(header, %{status: :no_key, count: nil})]
+
+      {:ok, models} ->
+        matches = Enum.filter(models, &model_matches?(&1, query))
+        status = if matches == [], do: :empty, else: :ok
+
+        count =
+          if query == "", do: length(models), else: "#{length(matches)}/#{length(models)}"
+
+        [Map.merge(header, %{status: status, count: count})] ++
+          Enum.map(matches, &model_entry_data(info.key, &1))
+
+      other ->
+        [Map.merge(header, %{status: other, count: nil})]
+    end
   end
 
   defp model_matches?(_model, ""), do: true

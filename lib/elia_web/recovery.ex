@@ -338,16 +338,18 @@ defmodule EliaWeb.Recovery do
   # http(s) origin at all (`null`, a bare host, anything else).
   defp origin(conn) do
     case get_req_header(conn, "origin") do
-      [value | _rest] ->
-        case parse_uri(value) do
-          %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
-            if String.downcase(scheme) in ["http", "https"], do: uri
+      [value | _rest] -> origin_uri(value)
+      [] -> nil
+    end
+  end
 
-          _other ->
-            nil
-        end
+  # The parsed value when it is an http(s) origin, else nil.
+  defp origin_uri(value) do
+    case parse_uri(value) do
+      %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
+        if String.downcase(scheme) in ["http", "https"], do: uri
 
-      [] ->
+      _other ->
         nil
     end
   end

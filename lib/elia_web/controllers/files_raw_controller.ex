@@ -34,10 +34,9 @@ defmodule EliaWeb.FilesRawController do
   end
 
   defp raw(params) do
-    with path when is_binary(path) <- params["path"] do
-      Explorer.raw_file(path, FilesScope.root(params))
-    else
-      _ -> {:error, :not_found}
+    case params["path"] do
+      path when is_binary(path) -> Explorer.raw_file(path, FilesScope.root(params))
+      _other -> {:error, :not_found}
     end
   end
 
