@@ -198,19 +198,22 @@ defmodule Elia.Net.Proxy do
 
   defp serve(client, proxy) do
     case read_head(client, "") do
-      {:ok, head, rest} ->
-        case Request.parse(head) do
-          {:ok, request, _body} ->
-            hosts = GenServer.call(proxy, :hosts)
+      {:ok, head, rest} -> serve_request(client, proxy, head, rest)
+      :error -> refuse(client, @bad_request)
+    end
+  end
 
-            if Allowlist.match?(hosts, request.host, request.port) do
-              forward(client, request, rest)
-            else
-              refuse(client, @refused)
-            end
+  # A head that parses as a request and names a host the chat's allowlist holds
+  # is forwarded; anything else is refused.
+  defp serve_request(client, proxy, head, rest) do
+    case Request.parse(head) do
+      {:ok, request, _body} ->
+        hosts = GenServer.call(proxy, :hosts)
 
-          :error ->
-            refuse(client, @bad_request)
+        if Allowlist.match?(hosts, request.host, request.port) do
+          forward(client, request, rest)
+        else
+          refuse(client, @refused)
         end
 
       :error ->
@@ -226,16 +229,20 @@ defmodule Elia.Net.Proxy do
         {:ok, head <> "\r\n\r\n", rest}
 
       [_incomplete] ->
-        cond do
-          byte_size(buffer) > @head_limit ->
-            :error
+        read_more(client, buffer)
+    end
+  end
 
-          true ->
-            case :socket.recv(client, 0, @head_timeout) do
-              {:ok, data} -> read_head(client, buffer <> data)
-              {:error, _reason} -> :error
-            end
-        end
+  # A head that is not all here yet: unless it is already longer than one may
+  # be, read what comes next.
+  defp read_more(client, buffer) do
+    if byte_size(buffer) > @head_limit do
+      :error
+    else
+      case :socket.recv(client, 0, @head_timeout) do
+        {:ok, data} -> read_head(client, buffer <> data)
+        {:error, _reason} -> :error
+      end
     end
   end
 

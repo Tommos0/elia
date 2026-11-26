@@ -44,9 +44,10 @@ defmodule Elia.Workdir do
          "#{abs} goes through more symlinks than can be followed, so where it leads is unknown"}
 
       real ->
-        cond do
-          Workspace.classify(real, real_root(root)) == :outside -> {:error, outside(abs, real)}
-          true -> existing_directory(real)
+        if Workspace.classify(real, real_root(root)) == :outside do
+          {:error, outside(abs, real)}
+        else
+          existing_directory(real)
         end
     end
   end
