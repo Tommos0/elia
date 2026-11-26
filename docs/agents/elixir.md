@@ -56,12 +56,22 @@ Read this before deciding whether a change can break old data (`AGENTS.md` says 
 - Run it as plain `mix precommit`: since a command never inherits the server's `MIX_ENV` (ISOL-24, `Elia.Shell`), the alias's `preferred_envs: [precommit: :test]` applies and it compiles and tests in `test`. A `MIX_ENV` set explicitly on the command overrides that preference, so don't set one.
 - `credo` is a `dev`/`test` dependency and **advisory**: `mix credo` runs by
   hand (about 6 seconds, 57 checks over ~270 files) and is deliberately not in
-  the `precommit` gate (SUITE-8), so it can never fail a commit. Security
+  the `precommit` gate (SUITE-8), so it can never fail a commit.
+  Its default run reports no findings as of 2026-11-26 — the 60 it reported
+  were refactored away in eight sub-tasks (deep nesting, cyclomatic complexity,
+  one-condition `cond`s and single-clause `with`s, `Enum.filter |> filter` and
+  `Enum.map |> join`) — so a finding it reports in a change you are making is
+  usually yours to look at rather than an old one. `mix credo --strict` still
+  reports the low-priority `AliasUsage`, `AliasOrder` and `StringSigils` ones,
+  which nobody has chased. Security
   advisories need no dependency of their own: Hex 2.6 audits the lock by itself
   on every `mix deps.get`, and `mix hex.audit` runs the same check on demand —
   both exit non-zero for a retired package or an advisory. `mix_audit` was
   considered and left out: it would add `yaml_elixir` and `yamerl` for what Hex
   already does.
+- `mix credo --format=json` written to a file is not valid JSON when `mix`
+  compiles a dependency on the way: the compile output comes before the JSON, so
+  cut to the first `{` (`sed -n '/^{/,$p'`) before feeding it to `jq`.
 - `dialyxir` is the same kind of thing, and **advisory** too: `mix dialyzer`
   runs by hand, never in the `precommit` gate (SUITE-8). Its PLT lives in
   `_build/dialyzer` (`plt_local_path`/`plt_core_path` in `mix.exs`), so it is
