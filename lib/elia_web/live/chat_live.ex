@@ -2338,20 +2338,26 @@ defmodule EliaWeb.ChatLive do
         # attached where it is.
         case Elia.Uploads.directory(root) do
           {:ok, _dir} ->
-            Enum.reduce_while(done, {:ok, []}, fn entry, {:ok, paths} ->
-              case write_upload(socket, entry, root) do
-                {:ok, path} ->
-                  {:cont, {:ok, paths ++ [path]}}
-
-                {:error, reason} ->
-                  {:halt, {:error, upload_error_text(entry.client_name, reason)}}
-              end
-            end)
+            write_each_upload(socket, done, root)
 
           {:error, reason} ->
             {:error, "Could not save the files: #{:file.format_error(reason)}"}
         end
     end
+  end
+
+  # Every file taken out of the composer is written in the order it was attached;
+  # the first one that cannot be written stops it.
+  defp write_each_upload(socket, done, root) do
+    Enum.reduce_while(done, {:ok, []}, fn entry, {:ok, paths} ->
+      case write_upload(socket, entry, root) do
+        {:ok, path} ->
+          {:cont, {:ok, paths ++ [path]}}
+
+        {:error, reason} ->
+          {:halt, {:error, upload_error_text(entry.client_name, reason)}}
+      end
+    end)
   end
 
   defp write_upload(socket, entry, root) do
@@ -3041,15 +3047,16 @@ defmodule EliaWeb.ChatLive do
   defp refresh_item_times(socket, was, now) do
     Enum.reduce(socket.assigns.timed_items, socket, fn {_id, item}, socket ->
       case Map.get(item, :at) do
-        %DateTime{} = at ->
-          if EliaWeb.TimeAgo.format(at, was) == EliaWeb.TimeAgo.format(at, now),
-            do: socket,
-            else: put_item(socket, item)
-
-        _none ->
-          socket
+        %DateTime{} = at -> refresh_item_time(socket, item, at, was, now)
+        _none -> socket
       end
     end)
+  end
+
+  defp refresh_item_time(socket, item, at, was, now) do
+    if EliaWeb.TimeAgo.format(at, was) == EliaWeb.TimeAgo.format(at, now),
+      do: socket,
+      else: put_item(socket, item)
   end
 
   # UI-61: the compact view keeps the direct messages and hides tool calls and
