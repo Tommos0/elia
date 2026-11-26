@@ -146,19 +146,21 @@ defmodule Elia.SystemStats do
           into: %{},
           do: {key, String.to_integer(value) * 1024}
 
-    with %{"MemTotal" => total, "MemAvailable" => available} <- kb do
-      swap_total = Map.get(kb, "SwapTotal", 0)
+    case kb do
+      %{"MemTotal" => total, "MemAvailable" => available} ->
+        swap_total = Map.get(kb, "SwapTotal", 0)
 
-      %{
-        total: total,
-        available: available,
-        used: total - available,
-        cached: Map.get(kb, "Cached", 0) + Map.get(kb, "Buffers", 0),
-        swap_total: swap_total,
-        swap_used: swap_total - Map.get(kb, "SwapFree", 0)
-      }
-    else
-      _ -> nil
+        %{
+          total: total,
+          available: available,
+          used: total - available,
+          cached: Map.get(kb, "Cached", 0) + Map.get(kb, "Buffers", 0),
+          swap_total: swap_total,
+          swap_used: swap_total - Map.get(kb, "SwapFree", 0)
+        }
+
+      _ ->
+        nil
     end
   end
 

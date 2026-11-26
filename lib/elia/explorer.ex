@@ -340,10 +340,7 @@ defmodule Elia.Explorer do
       {:ok, _} ->
         {:error, :unreadable}
 
-      {:error, :enoent} ->
-        {:error, :not_found}
-
-      {:error, :enotdir} ->
+      {:error, reason} when reason in [:enoent, :enotdir] ->
         {:error, :not_found}
 
       {:error, _} ->

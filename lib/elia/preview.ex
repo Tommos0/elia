@@ -221,22 +221,26 @@ defmodule Elia.Preview do
   def path(chat_id, file, root \\ Workspace.runtime_root()) do
     with :ok <- check_id(chat_id),
          :ok <- check_file(file),
-         {:ok, abs} <-
-           Enum.find_value(served_roots(chat_id, root), {:error, :not_found}, fn tree ->
-             case Explorer.safe_path(Path.join(@dir, file), tree) do
-               {:ok, path} ->
-                 case File.stat(path) do
-                   {:ok, %File.Stat{type: :regular}} -> {:ok, path}
-                   _ -> nil
-                 end
-
-               _ ->
-                 nil
-             end
-           end) do
+         {:ok, abs} <- served(served_roots(chat_id, root), file) do
       {:ok, abs}
     else
       _ -> {:error, :not_found}
+    end
+  end
+
+  # PREVIEW-7: the first of `trees` that serves `file` — a regular file at the
+  # path that tree's `tmp/preview/` gives it, which EXPL-1 and EXPL-2 allow —
+  # or `{:error, :not_found}` when none of them does.
+  defp served(trees, file) do
+    Enum.find_value(trees, {:error, :not_found}, &served_file(&1, file))
+  end
+
+  defp served_file(tree, file) do
+    with {:ok, path} <- Explorer.safe_path(Path.join(@dir, file), tree),
+         {:ok, %File.Stat{type: :regular}} <- File.stat(path) do
+      {:ok, path}
+    else
+      _ -> nil
     end
   end
 

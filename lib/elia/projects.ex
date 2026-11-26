@@ -286,19 +286,22 @@ defmodule Elia.Projects do
           | {:error, :blank_name | :folder_exists | :folder_failed}
   def create(name) do
     case folder_for(name) do
-      nil ->
-        {:error, :blank_name}
+      nil -> {:error, :blank_name}
+      folder -> create_in(folder, name)
+    end
+  end
 
-      folder ->
-        with :ok <- make_folder(folder) do
-          project = new_project(name, folder)
-          save([project | read()])
+  # PROJ-34 - PROJ-38: the folder is made and the project saved; a folder that is
+  # not left a git repository does not fail the creation (PROJ-6).
+  defp create_in(folder, name) do
+    with :ok <- make_folder(folder) do
+      project = new_project(name, folder)
+      save([project | read()])
 
-          case setup_repository(folder, project.name) do
-            :ok -> {:ok, project}
-            {:error, _reason} -> {:ok, project, :no_repository}
-          end
-        end
+      case setup_repository(folder, project.name) do
+        :ok -> {:ok, project}
+        {:error, _reason} -> {:ok, project, :no_repository}
+      end
     end
   end
 

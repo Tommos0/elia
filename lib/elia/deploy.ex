@@ -860,14 +860,18 @@ defmodule Elia.Deploy do
       {removed, kept} =
         dir
         |> lock_files()
-        |> Enum.reduce({[], []}, fn path, {removed, kept} ->
-          case clear(path) do
-            :removed -> {[relative(path, root) | removed], kept}
-            {:kept, reason} -> {removed, [{relative(path, root), reason} | kept]}
-          end
-        end)
+        |> Enum.reduce({[], []}, &tally(&1, root, &2))
 
       {:ok, %{removed: Enum.sort(removed), kept: Enum.sort(kept)}}
+    end
+  end
+
+  # DEPLOY-46: each lock is either removed or left where it is, with why, and
+  # both are named relative to the live tree.
+  defp tally(path, root, {removed, kept}) do
+    case clear(path) do
+      :removed -> {[relative(path, root) | removed], kept}
+      {:kept, reason} -> {removed, [{relative(path, root), reason} | kept]}
     end
   end
 
@@ -1095,16 +1099,20 @@ defmodule Elia.Deploy do
   def rollback(sha, mode, root) when mode in [:reload, :restart] do
     with :ok <- deployable(root),
          {:ok, set_aside} <- set_aside(root) do
-      with {:ok, sha} <- ran?(sha, root),
-           :ok <- not_running?(sha, root),
-           :ok <- mode_available?(mode),
-           {:ok, before} <- git(root, ["rev-parse", @live]) do
-        case step(:reset, root, fn -> reset_to(sha, root) end) do
-          {:ok, _note} -> after_reset(sha, mode, before, root)
-          {:error, reason} -> {:error, reason}
-        end
-      end
-      |> with_set_aside(set_aside)
+      load_revision(sha, mode, root) |> with_set_aside(set_aside)
+    end
+  end
+
+  # DEPLOY-25, DEPLOY-26: a rollback goes back only to a revision the app has
+  # run and is not running now, in a mode the tree can load; the reset is a step
+  # the rollback reports (DEPLOY-21).
+  defp load_revision(sha, mode, root) do
+    with {:ok, sha} <- ran?(sha, root),
+         :ok <- not_running?(sha, root),
+         :ok <- mode_available?(mode),
+         {:ok, before} <- git(root, ["rev-parse", @live]),
+         {:ok, _note} <- step(:reset, root, fn -> reset_to(sha, root) end) do
+      after_reset(sha, mode, before, root)
     end
   end
 
@@ -1277,11 +1285,9 @@ defmodule Elia.Deploy do
   # reaches is never reported — the suite included, when the deploy was asked to
   # leave it out (DEPLOY-40).
   defp merge_and_test(count, root, skip?) do
-    with {:ok, before} <- git(root, ["rev-parse", @live]) do
-      case step(:merge, root, fn -> merge(root) end) do
-        {:ok, _merged} -> deps_and_test(count, before, root, skip?)
-        {:error, reason} -> {:error, reason}
-      end
+    with {:ok, before} <- git(root, ["rev-parse", @live]),
+         {:ok, _merged} <- step(:merge, root, fn -> merge(root) end) do
+      deps_and_test(count, before, root, skip?)
     end
   end
 
@@ -1374,30 +1380,34 @@ defmodule Elia.Deploy do
   # and so nothing to check (DEPLOY-24).
   defp build_front_end(root) do
     if File.exists?(Path.join(root, "assets/package.json")) do
-      staging = Path.join(root, @staging)
-      # DEPLOY-32: nothing a previous attempt staged is promoted, or left
-      # behind, whatever this one does: a deploy starts from the state it found.
-      File.rm_rf(staging)
-
-      result =
-        with {:ok, _packages} <-
-               step(:packages, root, fn -> seam(:packages, &install/1).(root) end),
-             {:ok, _assets} <- step(:assets, root, fn -> seam(:assets, &build/1).(root) end) do
-          # DEPLOY-24, DEPLOY-31, DEPLOY-32: after the build, what it staged is
-          # checked and then promoted — in that order, so a build that wrote
-          # nothing, or one whose bundle is incomplete, has changed nothing the
-          # browser can fetch.
-          case promote(staging, root) do
-            :ok -> {:ok, " The live tree's front end was rebuilt."}
-            {:error, reason} -> {:error, reason}
-          end
-        end
-
-      File.rm_rf(staging)
-      result
+      build_staged(root)
     else
       {:ok, ""}
     end
+  end
+
+  defp build_staged(root) do
+    staging = Path.join(root, @staging)
+    # DEPLOY-32: nothing a previous attempt staged is promoted, or left
+    # behind, whatever this one does: a deploy starts from the state it found.
+    File.rm_rf(staging)
+
+    result =
+      with {:ok, _packages} <-
+             step(:packages, root, fn -> seam(:packages, &install/1).(root) end),
+           {:ok, _assets} <- step(:assets, root, fn -> seam(:assets, &build/1).(root) end) do
+        # DEPLOY-24, DEPLOY-31, DEPLOY-32: after the build, what it staged is
+        # checked and then promoted — in that order, so a build that wrote
+        # nothing, or one whose bundle is incomplete, has changed nothing the
+        # browser can fetch.
+        case promote(staging, root) do
+          :ok -> {:ok, " The live tree's front end was rebuilt."}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+
+    File.rm_rf(staging)
+    result
   end
 
   defp seam(name, default), do: Application.get_env(:elia, __MODULE__, [])[name] || default
