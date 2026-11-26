@@ -188,39 +188,50 @@ defmodule Elia.LLM.OpenAI do
         opts[:req_options] || []
       )
 
+    retry = fn -> do_stream(body, opts, on_event, attempt + 1) end
+
     case Req.post(options) do
       {:ok, %Req.Response{status: 200} = resp} ->
         finish(Req.Response.get_private(resp, :stream, new_state()), opts)
 
-      {:ok, %Req.Response{status: status} = resp}
-      when status in @retry_statuses and attempt < @max_retries ->
-        delay = retry_delay(resp, attempt)
-        Logger.warning("#{label(opts)} API returned #{status}, retrying in #{delay}ms")
-        Process.sleep(delay)
-        do_stream(body, opts, on_event, attempt + 1)
-
       {:ok, %Req.Response{status: status} = resp} ->
-        # LLM-36: a status the provider retries itself, outlasting its retries,
-        # is a failure a turn's own retry may fix.
-        message = "#{label(opts)} API error #{status}: #{error_message(resp)}"
-        {:error, if(status in @retry_statuses, do: Error.transient(message), else: message)}
+        status_result(resp, status, opts, attempt, retry)
 
-      # LLM-31, LLM-35, LOCAL-8: a pooled connection that went stale while the
-      # app was idle, a stream that stalled before any data arrived, or the
-      # refused connection of a server that isn't up yet — none has emitted an
-      # event, so a fresh attempt can't repeat one.
       {:error, exception} ->
-        if attempt < @max_retries and retryable?(exception, opts) do
-          Logger.warning(
-            "#{label(opts)} stream failed (#{Exception.message(exception)}), retrying on a fresh one"
-          )
+        transport_result(exception, opts, attempt, retry)
+    end
+  end
 
-          do_stream(body, opts, on_event, attempt + 1)
-        else
-          # LLM-36: a transport failure — a stalled stream the idle timeout cut
-          # off, a connection that closed or was refused — is what a turn retries.
-          {:error, Error.transient(transport_message(exception, opts))}
-        end
+  # LLM-36: a status the provider retries itself, outlasting its retries, is a
+  # failure a turn's own retry may fix; one of ours is worth another attempt
+  # while attempts remain.
+  defp status_result(resp, status, opts, attempt, retry) do
+    if status in @retry_statuses and attempt < @max_retries do
+      delay = retry_delay(resp, attempt)
+      Logger.warning("#{label(opts)} API returned #{status}, retrying in #{delay}ms")
+      Process.sleep(delay)
+      retry.()
+    else
+      message = "#{label(opts)} API error #{status}: #{error_message(resp)}"
+      {:error, if(status in @retry_statuses, do: Error.transient(message), else: message)}
+    end
+  end
+
+  # LLM-31, LLM-35, LOCAL-8: a pooled connection that went stale while the app
+  # was idle, a stream that stalled before any data arrived, or the refused
+  # connection of a server that isn't up yet — none has emitted an event, so a
+  # fresh attempt can't repeat one.
+  defp transport_result(exception, opts, attempt, retry) do
+    if attempt < @max_retries and retryable?(exception, opts) do
+      Logger.warning(
+        "#{label(opts)} stream failed (#{Exception.message(exception)}), retrying on a fresh one"
+      )
+
+      retry.()
+    else
+      # LLM-36: a transport failure — a stalled stream the idle timeout cut
+      # off, a connection that closed or was refused — is what a turn retries.
+      {:error, Error.transient(transport_message(exception, opts))}
     end
   end
 
