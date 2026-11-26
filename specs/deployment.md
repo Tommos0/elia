@@ -183,6 +183,21 @@ tree's front end (`/recover`, RECOVER-10).
   removing it once no git process is running lets the next deploy through. It
   is not reported as a trunk that is not ahead of `live` (DEPLOY-14), which a
   lock is not.
+- **DEPLOY-46** The locks a killed git process leaves behind in the live tree's
+  repository can be cleared without a shell: `Elia.Deploy.clear_locks/1` removes
+  the `.lock` files of that repository's own git directory — git's `HEAD`, index
+  and reflog locks and the ones under `refs/`, where Elia's own snapshot and
+  checkpoint refs are locked (SNAP-2) — one of which is what a deploy is refused
+  for (DEPLOY-39). It removes one only when nothing is holding it: no process
+  has the file open (read from `/proc`'s file descriptors) and it is older than
+  a minute, since a git command holds a lock only for that command, so a lock
+  that is neither open nor fresh is one a killed process left. A lock a process
+  is holding is left where it is, and so is one taken a moment ago; each is
+  reported with which of the two it was. It touches nothing else in the
+  repository and no linked worktree's git directory — a chat's worktree is its
+  own (DEPLOY-28) — and it needs no lock of its own, being the way out of a tree
+  where every git call fails. It answers the files it removed and the ones it
+  left, named relative to the live tree.
 - **DEPLOY-18** A deploy fetches the dependencies of the trunk it is about to
   test in the live tree itself — `mix deps.get`, jailed in the live tree
   (ISOL-13, ISOL-14) — before the suite runs. A dependency a chat added lives in the
@@ -554,7 +569,8 @@ goes with the harness's own: ISOL-7, ISOL-22, ISOL-27, ISOL-28), SHELL
 `Elia.Deploy` (the trunk and `live`, the deploy, hot reload and restart,
 `push/2` — a repository's `master` to one of its remotes, DEPLOY-41 to
 DEPLOY-43 — with `remotes/1` and `pending/2` (DEPLOY-44),
-`deployable/1`, `status/1`, the inert request reloader, the steps a
+`deployable/1`, `status/1`, `clear_locks/1` (the locks a killed git process left
+behind, DEPLOY-46), the inert request reloader, the steps a
 deploy reports (DEPLOY-21), the record it writes (DEPLOY-23) with
 `last_deploy/1` and `loaded_revisions/1` on it (DEPLOY-25), `record_boot/1` (the
 revision a boot records, DEPLOY-36), the front-end step
@@ -603,13 +619,15 @@ nothing is created for it, the trunk, the deploy, the front
 end it builds before it loads — the staged build, what it promotes, and what a
 rejected deploy leaves as it was (DEPLOY-31, DEPLOY-32) — and the bundle it
 checks for, whether a restart is possible (DEPLOY-33), a merge that fails and
-leaves the live tree as it found it (DEPLOY-38, DEPLOY-39), the steps it
+leaves the live tree as it found it (DEPLOY-38, DEPLOY-39), the locks a killed
+git process left behind — which it clears, and which it leaves where a process
+holds one (DEPLOY-46) — the steps it
 reports and the record it writes, going back to a kept revision, hot reload,
 restart, the runner, a deploy that leaves the suite out (DEPLOY-40), the loaded
 revision a boot records and what a deploy brought, the uncommitted changes
 it puts aside (DEPLOY-37), and the push of a repository's `master` to one of
 its remotes, with the remotes it has and the standing of each (DEPLOY-41 to
-DEPLOY-44), DEPLOY-1 to DEPLOY-33, DEPLOY-36 to DEPLOY-44),
+DEPLOY-44), DEPLOY-1 to DEPLOY-33, DEPLOY-36 to DEPLOY-44, DEPLOY-46),
 `test/elia/self_modification_test.exs` (the instruction a chat in Elia's own
 project carries — its workspace is the project's folder, the worktree it makes
 itself, the copies it needs and what it does when making it fails — DEPLOY-28 to

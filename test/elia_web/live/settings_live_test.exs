@@ -780,6 +780,90 @@ defmodule EliaWeb.SettingsLiveTest do
     refute has_element?(again, "#deploy-skip-tests[checked]")
   end
 
+  # CONF-39, DEPLOY-46: the way out of the failure a deploy reports with the
+  # lock file in it — a lock a killed git process left, cleared from the page.
+  test "the clear-git-locks control clears the locks a killed process left (CONF-39)",
+       %{conn: conn} do
+    running_server()
+    tree = live_tree()
+
+    lock = Path.join([tree, ".git", "HEAD.lock"])
+    File.write!(lock, "")
+    File.touch!(lock, System.os_time(:second) - 120)
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    # CONF-39: it is there beside the deploy buttons, and nothing has been
+    # reported yet.
+    assert has_element?(view, "#clear-git-locks", "Clear git locks")
+    refute has_element?(view, "#clear-locks-result")
+
+    view |> element("#clear-git-locks") |> render_click()
+
+    # CONF-39: it clears the lock and says which file it removed, named
+    # relative to the live tree.
+    assert has_element?(view, "#clear-locks-result", ".git/HEAD.lock")
+    refute File.exists?(lock)
+
+    # CONF-39: the result belongs to the page and is stored nowhere, so a page
+    # that loads again reports none.
+    {:ok, reloaded, _html} = live(conn, ~p"/settings")
+    refute has_element?(reloaded, "#clear-locks-result")
+  end
+
+  # CONF-39: a lock nothing left — a fresh one, or one a process holds — is
+  # left where it is, and the control says which and why.
+  test "the clear-git-locks control leaves a lock a process holds (CONF-39)", %{conn: conn} do
+    running_server()
+    tree = live_tree()
+
+    held = Path.join([tree, ".git", "index.lock"])
+    File.write!(held, "")
+    File.touch!(held, System.os_time(:second) - 120)
+
+    {:ok, handle} = File.open(held, [:read, :write])
+
+    try do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      view |> element("#clear-git-locks") |> render_click()
+
+      assert has_element?(view, "#clear-locks-result", ".git/index.lock")
+      assert has_element?(view, "#clear-locks-result", "a process has it open")
+    after
+      File.close(handle)
+    end
+
+    assert File.exists?(held)
+  end
+
+  # CONF-39: the control waits for an operation in flight, the way the deploy
+  # buttons do (CONF-20).
+  test "the clear-git-locks control is disabled while an operation runs (CONF-39)",
+       %{conn: conn} do
+    running_server(true)
+    live_tree()
+    work_on_trunk()
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    Runner.subscribe()
+    view |> element("#deploy-reload") |> render_click()
+    assert_receive {:loading, deploy}, 60_000
+
+    {:ok, during, _html} = live(conn, ~p"/settings")
+    assert has_element?(during, "#clear-git-locks[disabled]")
+
+    send(deploy, :continue)
+    assert {:ok, _message} = await_deploy()
+  end
+
+  # CONF-39: it is offered where the deploy buttons are, and nowhere else.
+  test "the clear-git-locks control is offered only where a deploy is (CONF-39)",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    refute has_element?(view, "#clear-git-locks")
+  end
+
   # CONF-19, DEPLOY-14
   test "the deployment section says how the live tree stands", %{conn: conn} do
     # The test workspace isn't set up for deployment: it is not on `live`.

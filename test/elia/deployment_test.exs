@@ -1041,6 +1041,95 @@ defmodule Elia.DeploymentTest do
     assert head(tree) == trunk(tree)
   end
 
+  # DEPLOY-46: the locks a killed git process leaves behind, cleared without a
+  # shell — the ones git takes at the top of the git directory and under
+  # `refs/`, and only when nothing holds them and they are not fresh.
+  test "clear_locks/1 removes the locks a killed git process left (DEPLOY-46)",
+       %{tree: tree} do
+    git_dir = Path.join(tree, ".git")
+    stale = System.os_time(:second) - 120
+
+    head_lock = Path.join(git_dir, "HEAD.lock")
+    reflog_lock = Path.join([git_dir, "logs", "HEAD.lock"])
+    ref_lock = Path.join([git_dir, "refs", "elia", "snapshots", "1-ab.lock"])
+
+    File.mkdir_p!(Path.dirname(ref_lock))
+
+    for lock <- [head_lock, reflog_lock, ref_lock] do
+      File.write!(lock, "")
+      File.touch!(lock, stale)
+    end
+
+    assert {:ok, %{removed: removed, kept: []}} = Deploy.clear_locks(tree)
+
+    assert removed == [
+             ".git/HEAD.lock",
+             ".git/logs/HEAD.lock",
+             ".git/refs/elia/snapshots/1-ab.lock"
+           ]
+
+    refute File.exists?(head_lock)
+    refute File.exists?(reflog_lock)
+    refute File.exists?(ref_lock)
+  end
+
+  # DEPLOY-46: nothing to clear is reported as such, not as a failure.
+  test "clear_locks/1 reports a tree with no locks (DEPLOY-46)", %{tree: tree} do
+    assert {:ok, %{removed: [], kept: []}} = Deploy.clear_locks(tree)
+  end
+
+  # DEPLOY-46: a lock a process is holding and one taken a moment ago are a
+  # command's own, not a killed process's leftover, so they are left where they
+  # are and reported with which of the two they were.
+  test "clear_locks/1 leaves a held lock and a fresh one (DEPLOY-46)", %{tree: tree} do
+    git_dir = Path.join(tree, ".git")
+
+    held = Path.join(git_dir, "index.lock")
+    fresh = Path.join(git_dir, "HEAD.lock")
+
+    File.write!(held, "")
+    File.write!(fresh, "")
+    # Old enough to clear, but this process has it open.
+    File.touch!(held, System.os_time(:second) - 120)
+
+    {:ok, handle} = File.open(held, [:read, :write])
+
+    try do
+      assert {:ok, %{removed: [], kept: kept}} = Deploy.clear_locks(tree)
+      assert kept == [{".git/HEAD.lock", :fresh}, {".git/index.lock", :held}]
+    after
+      File.close(handle)
+    end
+
+    assert File.exists?(held)
+    assert File.exists?(fresh)
+  end
+
+  # DEPLOY-46: a chat's worktree is its own (DEPLOY-28), so the lock in its git
+  # directory is not the live tree's to clear.
+  test "clear_locks/1 leaves a linked worktree's lock alone (DEPLOY-46)", %{tree: tree} do
+    {id, _path} = new_worktree()
+
+    lock = Path.join([tree, ".git", "worktrees", id, "HEAD.lock"])
+    File.mkdir_p!(Path.dirname(lock))
+    File.write!(lock, "")
+    File.touch!(lock, System.os_time(:second) - 120)
+
+    assert {:ok, %{removed: [], kept: []}} = Deploy.clear_locks(tree)
+    assert File.exists?(lock)
+  end
+
+  # DEPLOY-46: a folder that is no git repository has no locks to clear, and
+  # says so rather than raising.
+  test "clear_locks/1 refuses a folder that is no git repository (DEPLOY-46)" do
+    dir = Path.join(System.tmp_dir!(), "elia-no-git-1186")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    assert {:error, message} = Deploy.clear_locks(dir)
+    assert message =~ "no git directory"
+  end
+
   # DEPLOY-6, HOT-5
   test "hot reload deploys, then reloads the running app", %{tree: tree} do
     running_server()

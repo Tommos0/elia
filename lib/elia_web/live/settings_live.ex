@@ -42,6 +42,10 @@ defmodule EliaWeb.SettingsLive do
         # (DEPLOY-40). The page's own state, and unchecked whenever it loads:
         # nothing about it is stored.
         deploy_skip_tests: false,
+        # CONF-39: what clearing the git locks a killed process left did. The
+        # page's own state too, and stored nowhere: a page that mounts reports
+        # none.
+        clear_locks_result: nil,
         # CONF-24: the clock the section's elapsed time is read against. It is
         # an assign because a render only recomputes what a tracked assign says
         # has changed, so the tick moves this one.
@@ -729,6 +733,36 @@ defmodule EliaWeb.SettingsLive do
               </button>
             </div>
 
+            <%!-- CONF-39, DEPLOY-46: the way out of a tree where every git
+            call fails — the locks a killed git process left, cleared without
+            a shell. Its result belongs to the page and is stored nowhere. --%>
+            <div
+              :if={deploy_ready?(@deployment)}
+              class="mt-2 flex flex-wrap items-center gap-2"
+            >
+              <button
+                type="button"
+                id="clear-git-locks"
+                phx-click="clear-locks"
+                disabled={@deploy_op != nil}
+                title="Remove the .lock files a killed git process left in the live tree's repository (DEPLOY-46)"
+                class="flex h-9 items-center gap-1.5 rounded-xl border border-base-300 px-3 text-xs font-medium transition hover:bg-base-200 disabled:opacity-50"
+              >
+                <.icon name="hero-lock-open" class="size-4" /> Clear git locks
+              </button>
+              <p
+                :if={@clear_locks_result}
+                id="clear-locks-result"
+                class={[
+                  "flex items-start gap-1.5 whitespace-pre-line break-words text-xs",
+                  @clear_locks_result.kind == :ok && "text-success",
+                  @clear_locks_result.kind != :ok && "text-error"
+                ]}
+              >
+                <span>{@clear_locks_result.text}</span>
+              </p>
+            </div>
+
             <%!-- CONF-21, CONF-22, DEPLOY-21, DEPLOY-22: what an operation is
             doing, and what the last one did — from the runner, and from the
             record when the runner has nothing (a page that comes back after a
@@ -1380,6 +1414,48 @@ defmodule EliaWeb.SettingsLive do
   defp restartable?(:ok), do: true
   defp restartable?({:error, _reason}), do: false
 
+  # CONF-39, DEPLOY-46: what the click did — the files it removed, the ones it
+  # left and why, or that there was nothing to clear.
+  defp clear_locks_result do
+    case Deploy.clear_locks() do
+      {:ok, %{removed: [], kept: []}} ->
+        %{kind: :ok, text: "No git locks were there to clear."}
+
+      {:ok, %{removed: removed, kept: kept}} ->
+        %{kind: :ok, text: locks_text(removed, kept)}
+
+      {:error, reason} ->
+        %{kind: :error, text: reason}
+    end
+  end
+
+  defp locks_text(removed, kept) do
+    [removed_text(removed), kept_text(kept)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
+  end
+
+  defp removed_text([]), do: nil
+
+  defp removed_text(removed) do
+    "Cleared #{length(removed)} #{lock_word(length(removed))}: " <>
+      Enum.join(removed, ", ") <> "."
+  end
+
+  defp kept_text([]), do: nil
+
+  defp kept_text(kept) do
+    "Left #{length(kept)} #{lock_word(length(kept))}: " <>
+      Enum.map_join(kept, ", ", fn {path, reason} -> "#{path} — #{lock_reason(reason)}" end) <>
+      "."
+  end
+
+  defp lock_word(1), do: "git lock"
+  defp lock_word(_count), do: "git locks"
+
+  defp lock_reason(:held), do: "a process has it open"
+  defp lock_reason(:fresh), do: "it was taken a moment ago"
+
   defp restart_title(:ok) do
     "Run the tests, merge master into live and restart the server on the deployed code"
   end
@@ -1558,6 +1634,13 @@ defmodule EliaWeb.SettingsLive do
   # page is what holds it, and the click that flipped it is the browser's own.
   def handle_event("skip-tests", _params, socket) do
     {:noreply, assign(socket, deploy_skip_tests: !socket.assigns.deploy_skip_tests)}
+  end
+
+  # CONF-39, DEPLOY-46: clearing the locks a killed git process left is not a
+  # deploy and takes no runner — it is the way out of a tree where every git
+  # call fails. Its result belongs to the page and is stored nowhere.
+  def handle_event("clear-locks", _params, socket) do
+    {:noreply, assign(socket, clear_locks_result: clear_locks_result())}
   end
 
   # CONF-23, DEPLOY-26: going back to a revision the app has run is an operation

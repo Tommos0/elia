@@ -56,6 +56,12 @@ defmodule Elia.Deploy do
   # again, and a tree being sent over it.
   @push_timeout :timer.minutes(5)
 
+  # How long a lock must sit untouched before it is one a killed git process
+  # left rather than one a command is holding (DEPLOY-46): git holds a lock for
+  # the length of one command, so a lock that is neither open nor this old is
+  # one nothing is using.
+  @stale_lock_seconds 60
+
   # The bundle the browser loads, checked after the build (DEPLOY-24): the two
   # entry points the endpoint serves, named as they are under the assets
   # directory — which is also what the build stages them as (DEPLOY-31).
@@ -831,6 +837,130 @@ defmodule Elia.Deploy do
       _ -> nil
     end
   end
+
+  @doc """
+  Clears the locks a killed git process left in the live tree's repository
+  (DEPLOY-46): the `.lock` files of the repository's own git directory — git's
+  `HEAD`, index and reflog locks and the ones under `refs/`, where Elia's own
+  snapshot and checkpoint refs are locked (SNAP-2) — when nothing holds them and
+  they are older than a minute. A lock a process has open, or one taken a moment
+  ago, is left where it is. Linked worktrees' git directories are not touched.
+
+  `{:ok, %{removed: paths, kept: [{path, reason}]}}` — the files removed and the
+  ones left, each named relative to the live tree, a left one with why: `:held`
+  or `:fresh` — or `{:error, reason}` when the live tree's git directory cannot
+  be found. It needs no lock of its own, being the way out of a tree where every
+  git call fails.
+  """
+  @spec clear_locks(binary()) ::
+          {:ok, %{removed: [binary()], kept: [{binary(), :held | :fresh}]}}
+          | {:error, binary()}
+  def clear_locks(root \\ Workspace.runtime_root()) do
+    with {:ok, dir} <- git_dir(root) do
+      {removed, kept} =
+        dir
+        |> lock_files()
+        |> Enum.reduce({[], []}, fn path, {removed, kept} ->
+          case clear(path) do
+            :removed -> {[relative(path, root) | removed], kept}
+            {:kept, reason} -> {removed, [{relative(path, root), reason} | kept]}
+          end
+        end)
+
+      {:ok, %{removed: Enum.sort(removed), kept: Enum.sort(kept)}}
+    end
+  end
+
+  # DEPLOY-46: the repository's own git directory — the one the live tree is
+  # checked out in. A `.git` file is a linked worktree's or a submodule's
+  # pointer, followed to the directory it names.
+  defp git_dir(root) do
+    path = Path.join(root, ".git")
+
+    cond do
+      File.dir?(path) ->
+        {:ok, path}
+
+      File.regular?(path) ->
+        case File.read(path) do
+          {:ok, "gitdir: " <> dir} ->
+            {:ok, Path.expand(String.trim(dir), root)}
+
+          _ ->
+            {:error, "The live tree's git directory could not be read from #{path}."}
+        end
+
+      true ->
+        {:error, "The live tree has no git directory: #{path} is not there."}
+    end
+  end
+
+  # DEPLOY-46: the locks git takes — its `HEAD`, index and reflog locks at the
+  # top of the git directory, and the ones under `refs/`. Nothing under
+  # `worktrees/`: another tree's git directory is its own (DEPLOY-28).
+  defp lock_files(dir) do
+    dir
+    |> Path.join("*.lock")
+    |> Path.wildcard()
+    |> Kernel.++(Path.wildcard(Path.join(dir, "logs/**/*.lock")))
+    |> Kernel.++(Path.wildcard(Path.join(dir, "refs/**/*.lock")))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  # DEPLOY-46: a lock is cleared when nothing holds it and it is not fresh; a
+  # file that cannot be removed is left and reported as held.
+  defp clear(path) do
+    cond do
+      held?(path) ->
+        {:kept, :held}
+
+      fresh?(path) ->
+        {:kept, :fresh}
+
+      true ->
+        case File.rm(path) do
+          :ok -> :removed
+          {:error, :enoent} -> :removed
+          {:error, _reason} -> {:kept, :held}
+        end
+    end
+  end
+
+  # DEPLOY-46: whether a process has the file open, read from the file
+  # descriptors `/proc` keeps for each of them — the directory the suite can
+  # point elsewhere with `:proc_root` (the way the dashboard's stats do).
+  defp held?(path) do
+    real = real_path(path)
+
+    Path.wildcard(Path.join(proc_root(), "*/fd/*"))
+    |> Enum.any?(fn fd ->
+      case File.read_link(fd) do
+        {:ok, target} -> target == real or String.starts_with?(target, real <> " (deleted)")
+        _ -> false
+      end
+    end)
+  end
+
+  defp proc_root, do: Application.get_env(:elia, :proc_root, "/proc")
+
+  defp real_path(path) do
+    case :file.read_link_all(String.to_charlist(path)) do
+      {:ok, real} -> to_string(real)
+      _ -> path
+    end
+  end
+
+  # DEPLOY-46: a lock taken within the last minute is a command's own, not a
+  # killed process's leftover.
+  defp fresh?(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, stat} -> System.system_time(:second) - stat.mtime < @stale_lock_seconds
+      _ -> false
+    end
+  end
+
+  defp relative(path, root), do: Path.relative_to(path, root)
 
   # DEPLOY-38: whether the live tree has nothing uncommitted — the question
   # `set_aside/1` asks of the same call (DEPLOY-37), asked here without stashing

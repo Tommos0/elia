@@ -199,6 +199,17 @@ grouped into four collapsible sections, collapsed on load (CONF-25).
   tree's own `origin/master` catches up on the next push (DEPLOY-43).~~ Retired:
   the project's own page offers and reports a push now (PROJ-58).
 
+- **CONF-39** The Deployment section has a "Clear git locks" control
+  (`#clear-git-locks`) beside the deploy buttons (CONF-19), for the failure a
+  deploy reports with the lock file in it (DEPLOY-39): clicking it clears the
+  locks a killed git process left in the live tree's repository (DEPLOY-46) and
+  says in `#clear-locks-result` what it did — the files it removed, named
+  relative to the live tree, that there was none, or which lock it left and why.
+  It is offered with the deploy buttons, where the live tree is set up for
+  deployment, and is disabled while an operation runs, the way they are
+  (CONF-20). Its result belongs to the page and is stored nowhere, the way the
+  skip-tests checkbox is (CONF-36), so a page that mounts reports none.
+
 ### Sections
 
 - **CONF-25** `/settings` groups what it holds into four collapsible sections,
@@ -282,8 +293,9 @@ reads and writes the same key.
 - `test/elia_web/live/settings_live_test.exs` (the page, a card per provider,
   checking, saving and removing a key, the credits line and its refresh,
   appearance and its UI scale control, the Deployment section, the checkbox
-  that leaves the suite out (CONF-36), its steps,
-  the elapsed time, the collapsible sections — CONF-7 to CONF-36).
+  that leaves the suite out (CONF-36), the control that clears the git locks a
+  killed process left (CONF-39), its steps,
+  the elapsed time, the collapsible sections — CONF-7 to CONF-39).
 - `test/elia_web/browser/settings_sections_test.exs` (the four sections in a
   real browser: all four collapsed on load, a header expanding and collapsing
   one, and an open one that a re-render the user did not ask for leaves open —
