@@ -1,6 +1,6 @@
 # Terminal
 
-Status: Draft
+Status: Implemented
 
 A Terminal page shows a chat a real terminal: a pty running a command — the
 user's own shell, or a terminal app the agent started — drawn with xterm.js in
@@ -9,9 +9,6 @@ the browser, with keystrokes going back the other way. It answers what the
 it and take input — a REPL, `htop`, a watch-mode test run, an interactive
 installer — instead of a command that finishes and comes back as a block of
 text.
-
-TERM-1 to TERM-40 are implemented; the page's key bar (TERM-42 to TERM-49)
-is drafted here and its code has not landed yet.
 
 The session layer is **tmux, driven in control mode**. tmux is what gives the
 command a pty: the BEAM has none, and a plain port gives a child no line
@@ -200,6 +197,13 @@ A phone's soft keyboard has no Esc, no Tab, no arrows and no Ctrl — the keys a
 terminal needs most — and Android's keyboard sends xterm.js nothing it can read
 for them. The page therefore offers those keys itself.
 
+Only what a button names is sent, and the page puts no modifier of its own in
+front of a name: tmux expands the key names it knows and types the rest as text,
+so `send-keys C-Escape` writes the letters `C-Escape` into the app, while
+`C-Tab` and `C-Up` are keys. A modifier is therefore worth arming only for the
+characters the soft keyboard sends, and a modified key the bar offers — Ctrl-C —
+carries the modifier in its own name.
+
 - **TERM-42** With a running session the page offers a key bar: buttons that send
   keys a soft keyboard cannot produce — Esc, Tab, the four arrows, Ctrl-C,
   Ctrl-D, and Ctrl and Alt as modifiers — so an app that needs them is usable on
@@ -211,13 +215,15 @@ for them. The page therefore offers those keys itself.
   keys on and `ESC [ A` for one without. The browser never maps a named key to
   bytes itself: a tap on the bar and a `terminal_send` of the same key reach the
   app as the same keystroke.
-- **TERM-44** Ctrl and Alt are sticky: a tap arms one, the next key — from the
-  bar or from the soft keyboard — goes with that modifier, and it disarms again;
-  a tap on an armed modifier disarms it without sending anything. Ctrl and then
-  `c` on the soft keyboard types Ctrl-C into the app.
+- **TERM-44** Ctrl and Alt are sticky: a tap arms one, the next character typed
+  on the soft keyboard goes with that modifier, and it disarms again; a tap on an
+  armed modifier disarms it without sending anything. Ctrl and then `c` on the
+  soft keyboard types Ctrl-C into the app. A bar button sends the key its own
+  name carries — Ctrl-C is a button of its own (TERM-42) — and neither takes the
+  armed modifier nor spends it.
 - **TERM-45** A second tap while a modifier is armed locks it: it stays on for
-  every key that follows until it is tapped once more. The page shows the three
-  states apart — off, armed for one key, and locked.
+  every character typed after it until it is tapped once more. The page shows the
+  three states apart — off, armed for one key, and locked.
 - **TERM-46** Holding an arrow button repeats it until the finger lifts: once
   after a short delay and then at a steady rate, as a held key on a keyboard
   does.
@@ -427,16 +433,19 @@ TERM-35; an unjailed session's server and socket gone however it ended, and
 nothing of another session's touched, TERM-36; and which chats have a
 terminal running, and the activity topic that says when that changes, TERM-41), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
-`test/elia_web/live/terminal_live_test.exs` (the page's states, and the jail it
-says and starts with — TERM-19..TERM-23, TERM-37..TERM-39),
+`test/elia_web/live/terminal_live_test.exs` (the page's states, the key bar's
+own row — the keys it offers, the modifiers arriving off, and the bar coming
+after the pane — TERM-42, TERM-44 to TERM-48 — and the jail it says and starts
+with, TERM-19..TERM-23, TERM-37..TERM-39),
 `test/elia_web/terminal_channel_test.exs` (join,
-keystrokes to the command's stdin, output to the client, resize, a join for an
+keystrokes to the command's stdin, a named key arriving from the key bar and a
+name the notation refuses, TERM-43, output to the client, resize, a join for an
 ended session, TERM-12..TERM-18), `test/elia/skills/terminal_test.exs` (the
 tools, TERM-24 to TERM-28, TERM-30 to TERM-34 and TERM-40), and
 `test/elia_web/browser/terminal_test.exs` for the parts that are a browser:
-typing into a running shell and seeing its echo, and a resize that reaches the
-pty (BROWSER-1). A test that needs tmux skips where it isn't installed
+typing into a running shell and seeing its echo, a resize that reaches the pty
+(BROWSER-1), and the key bar in a real browser — a tap's key and an armed and a
+locked modifier reaching the app, a held arrow repeating, and the once-and-locked
+states the bar shows (TERM-42 to TERM-46, TERM-48, TERM-49). A test that needs tmux skips where it isn't installed
 (TERM-29), like the jail's tests where bubblewrap is missing (ISOL-12).
 
-No test: TERM-42 to TERM-49 — the key bar is drafted here and its code has not
-landed: the bar and its tests land together, and this line goes when they do.

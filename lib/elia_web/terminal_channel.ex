@@ -8,7 +8,9 @@ defmodule EliaWeb.TerminalChannel do
   bytes are not text, and JSON is what a channel speaks by default.
 
   Coming back the same way: `"input"` is what the user typed, byte for byte
-  (TERM-13), and `"resize"` is the box their browser can draw (TERM-15). A
+  (TERM-13), `"keys"` is a named key the page's key bar sent, for tmux to
+  expand for the pane's own mode (TERM-43), and `"resize"` is the box their
+  browser can draw (TERM-15). A
   client that falls too far behind is told `"overflow"` and dropped, and joins
   again for a fresh screen rather than making the session hold its backlog
   (TERM-17).
@@ -44,6 +46,18 @@ defmodule EliaWeb.TerminalChannel do
 
       :error ->
         {:reply, {:error, %{message: "input must be base64-encoded bytes"}}, socket}
+    end
+  end
+
+  # TERM-43: the page's key bar sends named keys, through the same door the
+  # agent's keystrokes use (TERM-30): tmux expands a name for the pane's own
+  # mode, so the browser never maps one to bytes itself. What the notation
+  # allows is `Keys.parse/1`'s business (TERM-31), so a name from a page is
+  # trusted no further than one from a model.
+  def handle_in("keys", %{"keys" => keys}, socket) when is_binary(keys) do
+    case Terminal.keys(socket.assigns.chat_id, keys) do
+      {:ok, _segments} -> {:reply, :ok, socket}
+      {:error, message} -> {:reply, {:error, %{message: message}}, socket}
     end
   end
 

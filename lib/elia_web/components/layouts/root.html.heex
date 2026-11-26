@@ -102,6 +102,28 @@
         setScale(stored);
         window.addEventListener("storage", (e) => e.key === KEY && setScale(e.newValue));
         window.addEventListener("phx:set-ui-scale", (e) => setScale(e.target.dataset.phxUiScale));
+
+        // TERM-48: the terminal page's key bar is shown where the pointer is
+        // coarse and hidden where it is fine, and the page's own toggle overrides
+        // that for this browser. Applied here with the theme and the scale,
+        // because a bar that appeared once the bundle had loaded would move the
+        // terminal under it.
+        const KEYS = "elia:terminal-keys";
+
+        const showKeys = (choice) => {
+          document.documentElement.classList.toggle("elia-keys-on", choice === "on");
+          document.documentElement.classList.toggle("elia-keys-off", choice === "off");
+        };
+
+        let keysChoice = null;
+        try {
+          keysChoice = localStorage.getItem(KEYS);
+        } catch (_) {
+          keysChoice = null;
+        }
+
+        showKeys(keysChoice);
+        window.addEventListener("storage", (e) => e.key === KEYS && showKeys(e.newValue));
       })();
     </script>
   </head>

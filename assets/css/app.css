@@ -446,3 +446,30 @@
 .snapshot-diff .hljs-deletion {
   background: color-mix(in oklab, var(--color-error) 14%, transparent);
 }
+
+/* TERM-48: the terminal page's key bar (TERM-42) is shown where the pointer is
+   coarse and hidden where it is fine, and the page's toggle overrides that for
+   this browser. The choice is a class on the root element, set while the page
+   is parsed (root.html.heex), so the bar is in place before the first paint and
+   the terminal is fitted around it (TERM-15, TERM-47) rather than moving once
+   the bundle has loaded. */
+#terminal-keys {
+  display: none;
+}
+
+html.elia-keys-on #terminal-keys {
+  display: flex;
+}
+
+@media (pointer: coarse) {
+  html:not(.elia-keys-off) #terminal-keys {
+    display: flex;
+  }
+}
+
+/* TERM-47: a button of the bar keeps its own width. A row that fits wraps to
+   the next line at a phone width; without this the buttons shrink first, and
+   the arrows — the narrowest labels — are squeezed into a clipped sliver. */
+#terminal-keys > button {
+  flex: 0 0 auto;
+}

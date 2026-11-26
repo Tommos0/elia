@@ -148,6 +148,23 @@ things that cost a round trip each:
   are aiming at, so re-read the block after formatting rather than trusting the
   text from before it.
 
+## The terminal's keys
+
+`Elia.Terminal.keys/2` hands a name to `tmux send-keys`, so what a name becomes
+is tmux's business and not ours (TERM-30): `Esc` is `0x1b`, `Up` is `ESC [ A`
+(and `ESC O A` in a pane that has application cursor keys on), `C-Tab` is `TAB`,
+`C-Space` is NUL, `C-Up` is `ESC [ 1 ; 5 A`. tmux expands only the names it
+knows and types the rest as literal text, so `send-keys C-Escape` writes the
+seven characters `C-Escape` into the app — which is why the page's key bar
+sends nothing but the name a button carries (TERM-44).
+
+Measure rather than guess: a pane running
+`bash --norc -c 'stty raw -echo; cat > out'`, one
+`tmux -L <socket> send-keys -t <session> <Name> '|'` per name, and `cat -v out`
+shows exactly what each name sends. The `stty raw` matters — in a cooked pty
+`^C` becomes a signal and what is typed is buffered, so the file stays empty and
+looks like nothing was sent.
+
 ## Adding a skill
 
 Prefer a folder skill over changing Elixir code.

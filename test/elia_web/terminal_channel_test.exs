@@ -77,6 +77,47 @@ defmodule EliaWeb.TerminalChannelTest do
     assert collect_push("typed-4") =~ "typed-4"
   end
 
+  # TERM-43: the page's key bar sends a named key over this channel, and tmux is
+  # what expands it for the pane's own mode (TERM-30, TERM-31) — so a tap on the
+  # bar and a keystroke the agent makes reach the app the same way.
+  test "a named key from the page reaches the app", %{id: id, dir: dir} do
+    start(id, dir, "stty raw -echo; : > ready; cat > typed")
+    wait_for_file(Path.join(dir, "ready"))
+
+    assert {:ok, _reply, socket} = subscribe_and_join(terminal_socket(), "terminal:#{id}")
+    assert_push "screen", _screen, 15_000
+
+    # `push` hands back the ref it sent the message with, and a reply is matched
+    # by that ref.
+    ref = push(socket, "keys", %{keys: "<C-c>"})
+    assert_reply ref, :ok
+
+    ref = push(socket, "keys", %{keys: "<Tab>"})
+    assert_reply ref, :ok
+
+    assert typed_bytes(Path.join(dir, "typed"), "\x03\t") == "\x03\t"
+  end
+
+  # TERM-43, TERM-31: a name the notation does not know is refused with a
+  # message and reaches nothing — a name arriving from a page is trusted no
+  # further than one arriving from a model.
+  test "a name the notation does not know reaches nothing", %{id: id, dir: dir} do
+    start(id, dir, "stty raw -echo; : > ready; cat > typed")
+    wait_for_file(Path.join(dir, "ready"))
+
+    assert {:ok, _reply, socket} = subscribe_and_join(terminal_socket(), "terminal:#{id}")
+    assert_push "screen", _screen, 15_000
+
+    ref = push(socket, "keys", %{keys: "<Nope>"})
+    assert_reply ref, :error, %{message: message}
+    assert message =~ "not a key name tmux knows"
+
+    # Nothing of it was typed into the app: what is there is what the test put
+    # there, which is nothing.
+    Process.sleep(200)
+    assert File.read(Path.join(dir, "typed")) == {:ok, ""}
+  end
+
   # TERM-15: the client says how big its box is, and that is the app's pty.
   test "the client's size is the app's size", %{id: id, dir: dir} do
     {:ok, _pid} = Terminal.start(id, workspace: dir, jail: false)
@@ -177,6 +218,37 @@ defmodule EliaWeb.TerminalChannelTest do
   end
 
   ## Helpers
+
+  # TERM-30: the app of a send test is ready when it has said so — a pane that
+  # has not put its pty in raw mode yet would take ^C as a signal rather than a
+  # byte, and buffer what is typed.
+  defp wait_for_file(path, tries \\ 200)
+  defp wait_for_file(path, 0), do: flunk("the app never wrote #{path}")
+
+  defp wait_for_file(path, tries) do
+    if File.exists?(path) do
+      :ok
+    else
+      Process.sleep(10)
+      wait_for_file(path, tries - 1)
+    end
+  end
+
+  # The bytes the app has been sent, once they have arrived: a send returns when
+  # tmux has been told, and the app writes them when it reads them. What is
+  # there when the wait runs out is returned, so a failure shows what arrived.
+  defp typed_bytes(path, expected, tries \\ 300)
+
+  defp typed_bytes(path, _expected, 0), do: File.read!(path)
+
+  defp typed_bytes(path, expected, tries) do
+    if File.read(path) == {:ok, expected} do
+      expected
+    else
+      Process.sleep(10)
+      typed_bytes(path, expected, tries - 1)
+    end
+  end
 
   # TERM-12: the socket a terminal streams over, which is not the LiveView's.
   defp terminal_socket, do: socket(EliaWeb.TerminalSocket)

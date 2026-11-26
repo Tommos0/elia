@@ -2,7 +2,8 @@ defmodule EliaWeb.TerminalLive do
   @moduledoc """
   A chat's terminal page (TERM-19): the terminal itself, drawn by xterm.js from
   the channel's byte stream (TERM-12), and the controls around it — what to run
-  (TERM-20), Stop (TERM-3), and the font size a phone may want (TERM-22).
+  (TERM-20), Stop (TERM-3), the font size a phone may want (TERM-22), and the key
+  bar a soft keyboard has not got (TERM-42).
 
   The page holds no bytes of its own: it shows how the session is doing
   (TERM-23) and hands the terminal to the hook. A session that has ended keeps
@@ -292,6 +293,18 @@ defmodule EliaWeb.TerminalLive do
               </option>
             </select>
           </.form>
+          <%!-- TERM-48: the bar is shown where the pointer is coarse and hidden
+          where it is fine; this is how the page overrides that, remembered in
+          the browser it was made in. The hook that owns the bar listens to it. --%>
+          <button
+            :if={(@tmux and @status) && @status.running}
+            type="button"
+            id="terminal-keys-toggle"
+            aria-pressed="false"
+            class="btn btn-xs"
+          >
+            <.icon name="hero-key" class="size-3" /> Keys
+          </button>
           <%!-- TERM-20: what an empty field would run, said rather than left to
           be guessed. --%>
           <p :if={@tmux} id="terminal-default-command" class="text-xs text-base-content/50">
@@ -327,6 +340,98 @@ defmodule EliaWeb.TerminalLive do
             style="height: 100%; min-height: 0"
           >
           </div>
+        </div>
+
+        <%!-- TERM-42, TERM-43, TERM-47, TERM-48: the keys a soft keyboard has
+        not got — Esc, Tab, the arrows, ^C, ^D, and Ctrl and Alt as modifiers. A
+        button carries the name of the key it sends, or arms a modifier, and the
+        hook does the sending over the page's own channel (TERM-49); which
+        modifier is armed is the hook's state, so the server never sees it. Its
+        own row under the terminal, so the pane above it is fitted to what is
+        left (TERM-15) rather than the bar covering the last rows, and shown by
+        the class the root layout puts on the document before the first paint
+        (TERM-48). --%>
+        <div
+          :if={(@tmux and @status) && @status.running}
+          id="terminal-keys"
+          phx-hook="TerminalKeys"
+          phx-update="ignore"
+          role="toolbar"
+          aria-label="Keys the keyboard has not got"
+          class="touch-manipulation flex-wrap items-center gap-1 border-t border-base-300 px-2 py-1"
+        >
+          <button type="button" id="terminal-key-esc" data-key="Esc" class="btn btn-xs font-mono">
+            Esc
+          </button>
+          <button type="button" id="terminal-key-tab" data-key="Tab" class="btn btn-xs font-mono">
+            Tab
+          </button>
+          <button
+            type="button"
+            id="terminal-key-ctrl"
+            data-modifier="C-"
+            data-state="off"
+            aria-pressed="false"
+            class="btn btn-xs font-mono"
+          >
+            Ctrl
+          </button>
+          <button
+            type="button"
+            id="terminal-key-alt"
+            data-modifier="M-"
+            data-state="off"
+            aria-pressed="false"
+            class="btn btn-xs font-mono"
+          >
+            Alt
+          </button>
+          <button type="button" id="terminal-key-ctrl-c" data-key="C-c" class="btn btn-xs font-mono">
+            Ctrl-C
+          </button>
+          <button type="button" id="terminal-key-ctrl-d" data-key="C-d" class="btn btn-xs font-mono">
+            Ctrl-D
+          </button>
+          <button
+            type="button"
+            id="terminal-key-left"
+            data-key="Left"
+            data-repeat
+            aria-label="Left arrow"
+            class="btn btn-xs font-mono"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            id="terminal-key-up"
+            data-key="Up"
+            data-repeat
+            aria-label="Up arrow"
+            class="btn btn-xs font-mono"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            id="terminal-key-down"
+            data-key="Down"
+            data-repeat
+            aria-label="Down arrow"
+            class="btn btn-xs font-mono"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            id="terminal-key-right"
+            data-key="Right"
+            data-repeat
+            aria-label="Right arrow"
+            class="btn btn-xs font-mono"
+          >
+            →
+          </button>
         </div>
 
         <div

@@ -89,6 +89,45 @@ defmodule EliaWeb.TerminalLiveTest do
       assert has_element?(view, "#terminal-start", "Start again")
     end
 
+    # TERM-42, TERM-47, TERM-48: the bar is offered with a running session and
+    # not before one, as a row of its own after the terminal's pane, so the pane
+    # is fitted to what is left of the page rather than the bar covering its last
+    # rows.
+    test "the key bar is offered with a running session", %{conn: conn, id: id} do
+      {:ok, view, _html} = live(conn, ~p"/c/#{id}/terminal")
+
+      refute has_element?(view, "#terminal-keys")
+      refute has_element?(view, "#terminal-keys-toggle")
+
+      view
+      |> form("#terminal-form", terminal: %{command: "sleep 60"})
+      |> render_submit()
+
+      assert has_element?(view, "#terminal-keys[role='toolbar']")
+      assert has_element?(view, "#terminal-keys-toggle[aria-pressed='false']")
+
+      # TERM-42: the keys a soft keyboard has not got.
+      for key <- ["Esc", "Tab", "C-c", "C-d"] do
+        assert has_element?(view, "#terminal-keys [data-key='#{key}']")
+      end
+
+      # TERM-46: the arrows are the keys that repeat while they are held.
+      for key <- ["Left", "Up", "Down", "Right"] do
+        assert has_element?(view, "#terminal-keys [data-key='#{key}'][data-repeat]")
+      end
+
+      # TERM-44, TERM-45: the modifiers are the hook's to arm, so they arrive off.
+      for modifier <- ["C-", "M-"] do
+        assert has_element?(
+                 view,
+                 "#terminal-keys [data-modifier='#{modifier}'][data-state='off']"
+               )
+      end
+
+      # TERM-47: the bar's row is after the pane in the page, not over it.
+      assert render(view) =~ ~r/id="terminal-pane".*id="terminal-keys"/s
+    end
+
     # TERM-1: a chat's terminal is one, and what the page knows is the session's
     # own state rather than what it last rendered.
     test "a chat that already has a terminal shows it", %{conn: conn, id: id} do
