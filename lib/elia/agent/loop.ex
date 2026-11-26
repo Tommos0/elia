@@ -302,8 +302,13 @@ defmodule Elia.Agent.Loop do
   # request is recorded — `retries` is the attempt's number, `retry_wait_ms` the
   # wait that preceded it (0 for the first).
   defp ask(ctx, request, history, step, tools, retries, retry_wait_ms) do
-    attempt = retries + 1
-    started_at = DateTime.utc_now()
+    timing = %{
+      step: step,
+      attempt: retries + 1,
+      started_at: DateTime.utc_now(),
+      retry_wait_ms: retry_wait_ms
+    }
+
     started_ms = now_ms()
 
     case Elia.LLM.stream(request, &send(ctx.session, {:loop_event, &1})) do
@@ -312,103 +317,91 @@ defmodule Elia.Agent.Loop do
 
         case Enum.at(ctx.retry_delays, retries) do
           nil ->
-            record(ctx, step, attempt, :error, started_at, retry_wait_ms, elapsed)
+            record(ctx, timing, :error, elapsed)
             {:error, exhausted(error, retries)}
 
           delay ->
-            record(ctx, step, attempt, :error, started_at, retry_wait_ms, elapsed)
+            record(ctx, timing, :error, elapsed)
             retry(ctx, request, history, step, tools, retries, delay, error)
         end
 
       {:error, reason} ->
-        record(ctx, step, attempt, :error, started_at, retry_wait_ms, now_ms() - started_ms)
+        record(ctx, timing, :error, now_ms() - started_ms)
         {:error, to_string(reason)}
 
       # A refusal can cut a tool call off mid-input; never run that turn's tools.
       {:ok, %{stop_reason: :refusal}} ->
-        record(ctx, step, attempt, :refused, started_at, retry_wait_ms, now_ms() - started_ms)
+        record(ctx, timing, :refused, now_ms() - started_ms)
         :refused
 
       {:ok, %{message: message, stop_reason: stop_reason, usage: usage}} ->
         model_ms = now_ms() - started_ms
-        # The provider's real input count for this request; the session keeps
-        # the latest so the context indicator can show it (CTX-6).
-        send(ctx.session, {:loop_usage, usage})
-        # LOOP-22, LIMIT-12: what this request cost — input and output together —
-        # added to the turn's total, which the next step's check is against.
-        ctx = %{ctx | tokens: ctx.tokens + (Context.provider_tokens(usage) || 0)}
-        append(ctx, message)
-        history = history ++ [message]
+        completed(ctx, message, stop_reason, usage, history, timing, model_ms, tools)
+    end
+  end
 
-        case Message.tool_calls(message) do
-          [] when stop_reason == :max_tokens ->
-            record(ctx, step, attempt, :ok, started_at, retry_wait_ms, model_ms, usage)
-            {:error, "The response hit the output token limit"}
+  # What a successful request leaves behind — its usage counted, its message
+  # appended (CTX-6, LOOP-22, LIMIT-12) — and what the step does next.
+  defp completed(ctx, message, stop_reason, usage, history, timing, model_ms, tools) do
+    # The provider's real input count for this request; the session keeps
+    # the latest so the context indicator can show it (CTX-6).
+    send(ctx.session, {:loop_usage, usage})
+    # LOOP-22, LIMIT-12: what this request cost — input and output together —
+    # added to the turn's total, which the next step's check is against.
+    ctx = %{ctx | tokens: ctx.tokens + (Context.provider_tokens(usage) || 0)}
+    append(ctx, message)
+    history = history ++ [message]
 
-          [] ->
-            record(ctx, step, attempt, :ok, started_at, retry_wait_ms, model_ms, usage)
-            empty_or_done(ctx, message, history, step)
+    case Message.tool_calls(message) do
+      [] when stop_reason == :max_tokens ->
+        record(ctx, timing, :ok, model_ms, usage)
+        {:error, "The response hit the output token limit"}
 
-          calls ->
-            {results, waits} = run_tools(ctx, tools, calls, stop_reason)
-            {results, ctx} = note_repeats(ctx, calls, results)
-            tool_message = %Message{role: :tool, content: results}
+      [] ->
+        record(ctx, timing, :ok, model_ms, usage)
+        empty_or_done(ctx, message, history, timing.step)
 
-            append(ctx, tool_message)
+      calls ->
+        {results, waits} = run_tools(ctx, tools, calls, stop_reason)
+        {results, ctx} = note_repeats(ctx, calls, results)
+        tool_message = %Message{role: :tool, content: results}
 
-            record(
-              ctx,
-              step,
-              attempt,
-              :ok,
-              started_at,
-              retry_wait_ms,
-              model_ms,
-              usage,
-              waits
-            )
+        append(ctx, tool_message)
 
-            # LOOP-20: time spent waiting for the user's decisions doesn't count
-            # against the wall-clock budget.
-            step(
-              %{ctx | approved_ms: ctx.approved_ms + waits.approval_ms + waits.answer_ms},
-              history ++ [tool_message],
-              step + 1
-            )
-        end
+        record(ctx, timing, :ok, model_ms, usage, waits)
+
+        # LOOP-20: time spent waiting for the user's decisions doesn't count
+        # against the wall-clock budget.
+        step(
+          %{ctx | approved_ms: ctx.approved_ms + waits.approval_ms + waits.answer_ms},
+          history ++ [tool_message],
+          timing.step + 1
+        )
     end
   end
 
   # TIME-1 to TIME-5: the step's record — the identity of what it measured, its
   # wall-clock stamps, its monotonic durations (TIME-3), the calls that ran
-  # (TIME-4) and the tokens the provider reported (TIME-5). `waits` is
-  # `run_tools/4`'s report of a step with tools; a step without them has none.
-  defp record(
-         ctx,
-         step,
-         attempt,
-         outcome,
-         started_at,
-         retry_wait_ms,
-         model_ms,
-         usage \\ nil,
-         waits \\ nil
-       ) do
+  # (TIME-4) and the tokens the provider reported (TIME-5). `timing` is what was
+  # measured — the step, its attempt, when it started and the wait that preceded
+  # it — and `waits` is `run_tools/4`'s report of a step with tools; a step
+  # without them has none.
+  defp record(ctx, timing, outcome, model_ms, usage \\ nil, waits \\ nil) do
     waits = waits || %{tool_ms: 0, approval_ms: 0, answer_ms: 0, calls: []}
 
     entry = %{
       turn: ctx.turn_id,
       turn_started_at: stamp(ctx.turn_started_at),
-      step: step,
-      attempt: attempt,
+      step: timing.step,
+      attempt: timing.attempt,
       outcome: outcome,
-      started_at: DateTime.to_iso8601(started_at),
+      started_at: DateTime.to_iso8601(timing.started_at),
       finished_at: DateTime.utc_now() |> DateTime.to_iso8601(),
       model_ms: model_ms,
       tool_ms: waits.tool_ms,
       approval_wait_ms: waits.approval_ms,
       answer_wait_ms: waits.answer_ms,
-      retry_wait_ms: retry_wait_ms,
+      retry_wait_ms: timing.retry_wait_ms,
       tools: waits.calls
     }
 
@@ -802,21 +795,7 @@ defmodule Elia.Agent.Loop do
     # VISION-12: a tool may return facts about its call — the picture a look
     # recorded — which ride on the call's own tool result and are never sent to
     # a model (LLM-6, LLM-32).
-    {output, is_error, facts} =
-      try do
-        case Tool.call(tool, call.input, context) do
-          {:ok, output} -> {output, false, %{}}
-          {:ok, output, facts} -> {output, false, facts}
-          {:error, output} -> {output, true, %{}}
-          {:error, output, facts} -> {output, true, facts}
-        end
-      rescue
-        e -> {"Tool crashed: " <> Exception.message(e), true, %{}}
-      catch
-        # LOOP-26: an exit (a `GenServer.call` that times out, or whose server
-        # is gone) or a throw is the call's own failure too, not the step's.
-        kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true, %{}}
-      end
+    {output, is_error, facts} = call_tool(tool, call, context)
 
     # SNAP-6: the pair the call is bracketed by rides on that call's own tool
     # result beside the call's own facts (VISION-12), which the chat saves and
@@ -833,6 +812,24 @@ defmodule Elia.Agent.Loop do
 
     send(ctx.session, {:loop_tool_status, call.id, :done})
     Message.tool_result(call.id, output, is_error, facts)
+  end
+
+  # LOOP-26: the call's own failure — a crash, an exit (a `GenServer.call` that
+  # times out, or whose server is gone) or a throw — is kept as its result's
+  # text, so the step carries on.
+  defp call_tool(tool, call, context) do
+    try do
+      case Tool.call(tool, call.input, context) do
+        {:ok, output} -> {output, false, %{}}
+        {:ok, output, facts} -> {output, false, facts}
+        {:error, output} -> {output, true, %{}}
+        {:error, output, facts} -> {output, true, facts}
+      end
+    rescue
+      e -> {"Tool crashed: " <> Exception.message(e), true, %{}}
+    catch
+      kind, reason -> {"Tool crashed: " <> Exception.format_banner(kind, reason), true, %{}}
+    end
   end
 
   # SNAP-6: a `shell` call is the one that changes a tree through the shell, and
