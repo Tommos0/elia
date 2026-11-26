@@ -54,4 +54,19 @@ Read this before deciding whether a change can break old data (`AGENTS.md` says 
 - Read the docs and options with `mix help task_name` before using a task.
 - `mix precommit` (compile with warnings as errors, `deps.unlock --unused`, `format`, `test`) must pass before you finish — unless the change is one you judge safe without a run (a docs, spec or comment edit, a rename with nothing behind it), in which case skip it and say in your last message why it was safe to skip (`AGENTS.md`).
 - Run it as plain `mix precommit`: since a command never inherits the server's `MIX_ENV` (ISOL-24, `Elia.Shell`), the alias's `preferred_envs: [precommit: :test]` applies and it compiles and tests in `test`. A `MIX_ENV` set explicitly on the command overrides that preference, so don't set one.
+- `credo` is a `dev`/`test` dependency and **advisory**: `mix credo` runs by
+  hand (about 6 seconds, 57 checks over ~270 files) and is deliberately not in
+  the `precommit` gate (SUITE-8), so it can never fail a commit. Security
+  advisories need no dependency of their own: Hex 2.6 audits the lock by itself
+  on every `mix deps.get`, and `mix hex.audit` runs the same check on demand —
+  both exit non-zero for a retired package or an advisory. `mix_audit` was
+  considered and left out: it would add `yaml_elixir` and `yamerl` for what Hex
+  already does.
+- In a jailed call that audit reaches `repo.hex.pm` through the harness proxy
+  (it is in the project's allowlist, NET-28), while Hex's own version check
+  cannot reach `hex.pm` and prints `Failed to check for new Hex version` with
+  `{:could_not_establish_ssl_tunnel, {…, 403, …}}`. That line is expected noise,
+  not a failure. Fetching a dependency at all needs `repo.hex.pm` allowed: a
+  jail has no route out of its own and no `$HOME` to keep a hex cache in, so a
+  fetch starts from nothing every call.
 - `mix deps.clean --all` is almost never needed. Avoid it.

@@ -71,7 +71,11 @@ defmodule Elia.MixProject do
       {:req, "~> 0.5"},
       {:mdex, "~> 0.14"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      # Advisory only: `mix credo` is run by hand, not by the `precommit` gate
+      # (SUITE-8), so it cannot fail a commit. Security advisories come from
+      # Hex's own `mix hex.audit` — see docs/agents/elixir.md.
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
