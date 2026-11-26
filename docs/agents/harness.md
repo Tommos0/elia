@@ -178,6 +178,19 @@ one whose project has been deleted both belong to Elia's own project (PROJ-9), w
 `chats` tools list, read and search only the chat's own project's chats (HIST-11),
 which is where a scoped search gets its candidates.
 
+One project's chats are not readable from another's with these tools (HIST-11),
+and that is what an *unjailed* shell call is for — the user's permission for it is
+the whole boundary (ISOL-31, ISOL-32). `.elia/sessions/<id>.term` is one Erlang
+term per chat (and `<id>.timing` beside it one JSON line per model request), so a
+plain `elixir` script reads them with no app code and no server:
+`:erlang.binary_to_term(File.read!(f))`, which needs `Map.get/2` rather than
+`m[:content]` because a message is an `Elia.LLM.Message` *struct* and a struct has
+no Access. The keys to know: `:project_id` (`.elia/projects.term` maps an id to a
+name and folder), `:messages`, `:turn` (a turn still running), `:title`, `:done`,
+`:parent_id`/`:task`, and each message's `:meta` (`:stopped`, `:interrupted`,
+`:harness`). It is how a report of chats that "just stopped" in another project
+was traced (`specs/stopped-turns.md`, LOOP-27).
+
 ## Measuring search cost
 
 A search's cost is decided by the shape of an index entry, so measure it rather
