@@ -251,9 +251,9 @@ defmodule Elia.Skills.Chats do
     # other's, as the chat list holds one project's chats (PROJ-31).
     chats =
       Elia.Store.list(@scan, where: Elia.Projects.chats_of(project(ctx)))
-      |> Enum.filter(&Elia.Store.valid_id?(&1.id))
-      |> Enum.filter(&matching?(&1, query))
-      |> Enum.filter(&of_group?(&1, children))
+      |> Enum.filter(fn entry ->
+        Elia.Store.valid_id?(entry.id) and matching?(entry, query) and of_group?(entry, children)
+      end)
       |> Enum.take(limit)
       |> Enum.map(&listed(&1, running))
 
@@ -374,8 +374,9 @@ defmodule Elia.Skills.Chats do
   defp by_title(query, project) do
     matches =
       Elia.Store.list(@scan, where: Elia.Projects.chats_of(project))
-      |> Enum.filter(&Elia.Store.valid_id?(&1.id))
-      |> Enum.filter(&contains?(&1.title, query))
+      |> Enum.filter(fn entry ->
+        Elia.Store.valid_id?(entry.id) and contains?(entry.title, query)
+      end)
 
     case matches do
       [%{id: id}] ->
@@ -563,12 +564,18 @@ defmodule Elia.Skills.Chats do
       titled = Enum.all?(terms, &String.contains?(index.title, &1))
 
       case holding |> Map.get(entry.id, []) |> Enum.sort() do
-        [] -> if titled and index.messages > 0, do: [match(entry, 1, titled, true)], else: []
+        [] -> title_match(entry, index, titled)
         indexes -> Enum.map(indexes, &match(entry, &1, titled, false))
       end
     else
       _ -> []
     end
+  end
+
+  # SEARCH-8: when no message holds every term, a chat whose title holds them
+  # all is one match of its own, of its first message.
+  defp title_match(entry, index, titled) do
+    if titled and index.messages > 0, do: [match(entry, 1, titled, true)], else: []
   end
 
   defp match(entry, index, titled, by_title),

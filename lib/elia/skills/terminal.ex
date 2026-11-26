@@ -212,16 +212,21 @@ defmodule Elia.Skills.Terminal do
 
     with {:ok, segments} <- Terminal.keys(chat_id, input["keys"] || "") do
       if read?(input) do
-        wait = wait_ms(input)
-        Process.sleep(wait)
-
-        case screen(chat_id) do
-          {:ok, text} -> {:ok, "#{sent(segments)} Then, #{wait} ms later:\n#{text}"}
-          {:error, message} -> {:error, message}
-        end
+        read_back(chat_id, segments, wait_ms(input))
       else
         {:ok, sent(segments)}
       end
+    end
+  end
+
+  # TERM-33: what was sent, and the screen a read-back sees once the keys have
+  # had their wait to take effect.
+  defp read_back(chat_id, segments, wait) do
+    Process.sleep(wait)
+
+    case screen(chat_id) do
+      {:ok, text} -> {:ok, "#{sent(segments)} Then, #{wait} ms later:\n#{text}"}
+      {:error, message} -> {:error, message}
     end
   end
 
