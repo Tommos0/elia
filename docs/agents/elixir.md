@@ -62,6 +62,20 @@ Read this before deciding whether a change can break old data (`AGENTS.md` says 
   both exit non-zero for a retired package or an advisory. `mix_audit` was
   considered and left out: it would add `yaml_elixir` and `yamerl` for what Hex
   already does.
+- `dialyxir` is the same kind of thing, and **advisory** too: `mix dialyzer`
+  runs by hand, never in the `precommit` gate (SUITE-8). Its PLT lives in
+  `_build/dialyzer` (`plt_local_path`/`plt_core_path` in `mix.exs`), so it is
+  not committed; the first run builds the PLT (about 2½ minutes here on 4
+  cores) and a warm run takes about 13 seconds. It reports ~28 warnings today,
+  so read them rather than expecting exit 0.
+- Dialyzer is an OTP application, not an Elixir library: `dialyxir` only drives
+  `:dialyzer`, and **no hex package provides that app** — the registry has
+  `dialyxir`, `dialyzex`, `dialyze`, `dialyzer_html` and `dialyzer_json`, all
+  wrappers. Debian ships the app as the separate `erlang-dialyzer` package, so
+  `sudo apt install erlang-dialyzer` on the host is what makes `mix dialyzer`
+  run at all; a chat cannot install it (`/usr` is read-only in the jail, with
+  no package lists). `:code.lib_dir(:dialyzer)` returning `{:error, :bad_name}`
+  is how you tell it is missing.
 - In a jailed call that audit reaches `repo.hex.pm` through the harness proxy
   (it is in the project's allowlist, NET-28), while Hex's own version check
   cannot reach `hex.pm` and prints `Failed to check for new Hex version` with

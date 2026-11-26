@@ -11,6 +11,12 @@ defmodule Elia.MixProject do
       start_permanent: Mix.env() != :test,
       aliases: aliases(),
       deps: deps(),
+      # The PLT lives in `_build` so it is never committed.
+      dialyzer: [
+        plt_local_path: "_build/dialyzer",
+        plt_core_path: "_build/dialyzer",
+        plt_add_apps: [:mix, :ex_unit]
+      ],
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader]
     ]
@@ -75,7 +81,11 @@ defmodule Elia.MixProject do
       # Advisory only: `mix credo` is run by hand, not by the `precommit` gate
       # (SUITE-8), so it cannot fail a commit. Security advisories come from
       # Hex's own `mix hex.audit` — see docs/agents/elixir.md.
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      # Advisory too: `mix dialyzer` runs by hand. The OTP `dialyzer` app it
+      # drives is Debian's separate `erlang-dialyzer` package; no hex package
+      # provides it, only wrappers like this one.
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
