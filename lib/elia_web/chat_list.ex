@@ -2,7 +2,7 @@ defmodule EliaWeb.ChatList do
   @moduledoc """
   The chat list: its state, the markup it is drawn with and the events that
   drive it (UI-4 to UI-6, UI-31 to UI-36, UI-45 to UI-47, UI-59, UI-63 to UI-65,
-  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-111), and the
+  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-113), and the
   project whose chats it lists (PROJ-28 to PROJ-31).
 
   The list is drawn in two places — the chat page's own sidebar (UI-4, UI-35,
@@ -558,21 +558,37 @@ defmodule EliaWeb.ChatList do
           scope={@scope}
           renaming={@state.renaming == chat.id}
         />
-        <div
+        <%!-- UI-112, UI-113: the sub-tasks this chat spawned sit behind a
+        dropdown of their own, collapsed whenever the list is drawn, its
+        trigger naming how many are listed under it. --%>
+        <details
           :if={children != []}
-          id={"#{@scope}chat-children-#{chat.id}"}
-          class="ml-3 space-y-0.5 border-l border-base-300 pl-1.5"
+          id={"#{@scope}chat-subtasks-#{chat.id}"}
+          class="group/subtasks ml-3"
+          phx-mounted={JS.ignore_attributes("open")}
         >
-          <.chat_row
-            :for={child <- children}
-            chat={child}
-            active={child.id == @active}
-            statuses={@statuses}
-            now={@state.now}
-            scope={@scope}
-            renaming={@state.renaming == child.id}
-          />
-        </div>
+          <summary class="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-1 text-xs text-base-content/50 transition hover:bg-base-200 hover:text-base-content">
+            <.icon
+              name="hero-chevron-right"
+              class="size-3 shrink-0 transition group-open/subtasks:rotate-90"
+            />
+            <span>{subtasks_label(children)}</span>
+          </summary>
+          <div
+            id={"#{@scope}chat-children-#{chat.id}"}
+            class="space-y-0.5 border-l border-base-300 pl-1.5"
+          >
+            <.chat_row
+              :for={child <- children}
+              chat={child}
+              active={child.id == @active}
+              statuses={@statuses}
+              now={@state.now}
+              scope={@scope}
+              renaming={@state.renaming == child.id}
+            />
+          </div>
+        </details>
       <% end %>
       <%!-- UI-5: nothing saved in the open project; UI-107: chats saved, and
       every one the list holds hidden by the filters. --%>
@@ -712,6 +728,10 @@ defmodule EliaWeb.ChatList do
     do:
       "grid size-7 place-items-center rounded-none border border-base-300 text-base-content/40 transition hover:border-base-content/25 hover:text-base-content"
 
+  # UI-113: what the dropdown's trigger says the chats behind it are and how
+  # many of them the list holds.
+  defp subtasks_label([_one]), do: "1 sub-task"
+  defp subtasks_label(children), do: "#{length(children)} sub-tasks"
   # UI-45: task chats nested under their parent; orphans stay at the top level.
   defp chat_tree(chats) do
     ids = MapSet.new(chats, & &1.id)

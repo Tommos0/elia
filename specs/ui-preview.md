@@ -37,8 +37,11 @@ have something to render.
 - **PREVIEW-3** It drives the pinned headless Chromium of the browser layer
   (BROWSER-1, BROWSER-2) with a viewport of `ELIA_PREVIEW_WIDTH` ×
   `ELIA_PREVIEW_HEIGHT` (default 1280 × 900, so a narrow width previews the
-  small-screen layout) and waits `ELIA_PREVIEW_WAIT` milliseconds after load
-  (default 500) so client hooks have run. It captures the whole scrollable page.
+  small-screen layout), waits up to `ELIA_PREVIEW_TIMEOUT` milliseconds for a
+  page to load (default 10000, since the first visit of a chat page starts that
+  chat's session before it answers) and then waits `ELIA_PREVIEW_WAIT`
+  milliseconds after load (default 500) so client hooks have run. It captures
+  the whole scrollable page.
 - **PREVIEW-13** It emulates the colour scheme `ELIA_PREVIEW_THEME` names —
   `dark` or `light` — through the browser's `prefers-color-scheme`, which the
   app's theme script follows when no theme is stored (`data-theme="dark"`).
@@ -147,6 +150,19 @@ live tree's saved chats are never touched.
   Like the rest of the sample data they belong to the workspace the preview runs
   in (PREVIEW-2), and no chat anybody started is involved.
 
+- **PREVIEW-18** A preview also seeds a chat with sub-tasks of its own, so a
+  picture shows the dropdown they sit behind and the count its trigger carries
+  (UI-112, UI-113) rather than the feature being reasoned about. The parent is an
+  ordinary saved chat with a fixed id (`preview-parent`) and a title of its own,
+  and two such chats name it as the parent in the metadata `spawn_task` writes
+  (STORE-16, STORE-17), each with a fixed id (`preview-task-1`,
+  `preview-task-2`) and a title of its own. The parent is saved after the chats
+  of PREVIEW-16 and before the sample chat, so a picture of its page —
+  `@subtasks`, the path `/c/preview-parent` — has it near the top of the list,
+  with its dropdown closed under it (UI-112), while the sample chat stays the
+  newest one (PREVIEW-16). Like the rest of the sample data they belong to the
+  workspace the preview runs in (PREVIEW-2).
+
 ### Showing a preview in the chat
 
 - **PREVIEW-7** The running app serves an image a preview wrote:
@@ -190,6 +206,7 @@ bin/preview / /files /settings   # three pages, three PNGs, three links
 ELIA_PREVIEW_THEME=dark ELIA_PREVIEW_WIDTH=430 bin/preview @chat  # the agent's default
 ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
+ELIA_PREVIEW_TIMEOUT=20000 bin/preview @chat  # a slow first load
 ```
 
 | Variable | Default | Meaning |
@@ -198,6 +215,7 @@ ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
 | `ELIA_PREVIEW_WIDTH` | `1280` | viewport width |
 | `ELIA_PREVIEW_HEIGHT` | `900` | viewport height |
 | `ELIA_PREVIEW_WAIT` | `500` | milliseconds to settle after load |
+| `ELIA_PREVIEW_TIMEOUT` | `10000` | milliseconds to wait for a page to load |
 | `ELIA_PREVIEW_THEME` | *(browser default)* | colour scheme to emulate: `dark` or `light` |
 
 `tmp/preview/` is gitignored, so a preview is never committed and never reaches
@@ -212,7 +230,7 @@ CLI is not among them — it is user-wide, installed once for the user
 
 - Previewing the deployed tree, and a preview of the user's real chats,
   projects and settings: a preview runs the test env app on its own data — the
-  sample chat it seeds (PREVIEW-10 - PREVIEW-12, PREVIEW-15 to PREVIEW-17) and
+  sample chat it seeds (PREVIEW-10 - PREVIEW-12, PREVIEW-15 to PREVIEW-18) and
   nothing else. A dev-env
   preview over a copy of the live data would be a separate change.
 - Scripted interaction (clicking, hovering, typing, a streaming turn) and video
@@ -227,7 +245,8 @@ CLI is not among them — it is user-wide, installed once for the user
 
 - `Elia.Preview` (naming, path safety, the URLs, the chat id a preview is given
   for its links, PREVIEW-5, the sample chat, the paused
-  question of PREVIEW-15 and the chat with a terminal running, PREVIEW-17, no
+  question of PREVIEW-15, the chat with a terminal running, PREVIEW-17, and the
+  chat with sub-tasks, PREVIEW-18, no
   browser), `EliaWeb.PreviewController` + a router
   entry (PREVIEW-7), `test/elia_web/browser/preview_test.exs` with
   `use EliaWeb.BrowserCase` (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12,
@@ -240,7 +259,8 @@ CLI is not among them — it is user-wide, installed once for the user
 - `test/elia/preview_test.exs` (naming and path safety, PREVIEW-4, PREVIEW-7;
   the sample chat, PREVIEW-10 - PREVIEW-11; the paused question's id, path and
   input, PREVIEW-15; the chats seeded past the list's first page, PREVIEW-16;
-  the chat with a terminal running, PREVIEW-17).
+  the chat with a terminal running, PREVIEW-17; the chat with sub-tasks and
+  their ids and paths, PREVIEW-18).
 - `test/elia_web/browser/preview_test.exs` (a preview run itself: the paths it
   writes and its report, the theme and width it emulates, the sample chat as a
   saved chat, its own tag — PREVIEW-1 to PREVIEW-3, PREVIEW-5, PREVIEW-6,

@@ -101,7 +101,11 @@ defmodule EliaWeb.PreviewTest do
     taken =
       for {path, index} <- Enum.with_index(paths) do
         file = Preview.file_name(index, path)
-        conn |> visit(path) |> settle() |> screenshot(file, full_page: true)
+
+        conn
+        |> PhoenixTest.Playwright.visit(path, timeout: env_int("ELIA_PREVIEW_TIMEOUT", 10_000))
+        |> settle()
+        |> screenshot(file, full_page: true)
 
         assert File.exists?(Path.join(dir, file)),
                "no picture was written for #{path} (expected #{file} in #{dir})"

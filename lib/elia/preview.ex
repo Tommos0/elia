@@ -57,6 +57,14 @@ defmodule Elia.Preview do
   @page_count 30
   @page_id "preview-chat"
 
+  # PREVIEW-18: the sample chat whose sub-tasks a picture shows behind the
+  # dropdown the list draws (UI-112, UI-113), and the two chats that name it as
+  # their parent (STORE-16, STORE-17). Fixed ids, as the sample chat's is
+  # (PREVIEW-11).
+  @subtasks_id "preview-parent"
+  @subtasks_title "Plan the release"
+  @subtasks [{"preview-task-1", "Write the notes"}, {"preview-task-2", "Check the links"}]
+
   # PREVIEW-17: the sample chat whose terminal is running, so a picture shows
   # the mark a chat with one carries (UI-111, TERM-41). A fixed id for the same
   # reason as the sample chat's, and a command that outlives the preview.
@@ -123,6 +131,14 @@ defmodule Elia.Preview do
     :ok = Agent.send_message(@question_id, @question_prompt)
   end
 
+  @doc "The chat with sub-tasks' id (PREVIEW-18)."
+  @spec subtasks_id() :: binary()
+  def subtasks_id, do: @subtasks_id
+
+  @doc "The chat with sub-tasks' path in the app (PREVIEW-18)."
+  @spec subtasks_path() :: binary()
+  def subtasks_path, do: "/c/" <> @subtasks_id
+
   @doc "The chat with a terminal running's id (PREVIEW-17)."
   @spec terminal_id() :: binary()
   def terminal_id, do: @terminal_id
@@ -158,13 +174,15 @@ defmodule Elia.Preview do
 
   @doc """
   What a preview's argument means as a path: `@chat` is the sample chat, `@ask`
-  the paused-question chat and `@terminal` the chat with a terminal running
-  (PREVIEW-11, PREVIEW-15, PREVIEW-17).
+  the paused-question chat, `@terminal` the chat with a terminal running and
+  `@subtasks` the chat with sub-tasks (PREVIEW-11, PREVIEW-15, PREVIEW-17,
+  PREVIEW-18).
   """
   @spec resolve_path(binary()) :: binary()
   def resolve_path("@chat"), do: sample_path()
   def resolve_path("@ask"), do: question_path()
   def resolve_path("@terminal"), do: terminal_path()
+  def resolve_path("@subtasks"), do: subtasks_path()
   def resolve_path(path), do: path
 
   @doc """
@@ -247,7 +265,36 @@ defmodule Elia.Preview do
   """
   @spec seed() :: :ok | {:error, term()}
   def seed do
-    with :ok <- seed_page(), do: Store.save(@sample_id, sample_messages(), title: @sample_title)
+    with :ok <- seed_page(),
+         :ok <- seed_subtasks() do
+      Store.save(@sample_id, sample_messages(), title: @sample_title)
+    end
+  end
+
+  # PREVIEW-18: a chat with two sub-tasks of its own (STORE-16, STORE-17), saved
+  # after the chats of PREVIEW-16 and before the sample chat, so a picture of its
+  # page has the dropdown they sit behind (UI-112) and its count (UI-113) near the
+  # top of the list while the sample chat stays its newest (PREVIEW-16).
+  defp seed_subtasks do
+    with :ok <- seed_tasks(@subtasks) do
+      Store.save(@subtasks_id, [Message.user("Plan the release.")], title: @subtasks_title)
+    end
+  end
+
+  defp seed_tasks(tasks) do
+    Enum.reduce_while(tasks, :ok, fn {id, title}, :ok ->
+      case seed_subtask(id, title) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp seed_subtask(id, title) do
+    Store.save(id, [Message.user("A sub-task of the sample chat.")],
+      title: title,
+      task: %{parent_id: @subtasks_id, started_at: DateTime.utc_now()}
+    )
   end
 
   # PREVIEW-16: more chats than the chat list's first page holds (UI-4), so what

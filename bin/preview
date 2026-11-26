@@ -5,6 +5,7 @@
 #   bin/preview                      # the empty state and the sample chat
 #   bin/preview @chat                # just the sample chat
 #   bin/preview @ask                 # the chat whose turn is paused on a question
+#   bin/preview @subtasks            # the chat whose sub-tasks are in a dropdown
 #   bin/preview / /files /settings   # pages of your choosing
 #   ELIA_PREVIEW_WIDTH=390 bin/preview @chat   # the small-screen layout
 #   ELIA_PREVIEW_THEME=dark bin/preview @chat  # the dark theme
@@ -17,6 +18,7 @@
 #   ELIA_PREVIEW_WIDTH   viewport width  (default 1280)
 #   ELIA_PREVIEW_HEIGHT  viewport height (default 900)
 #   ELIA_PREVIEW_WAIT    milliseconds to settle after a page loads (default 500)
+#   ELIA_PREVIEW_TIMEOUT milliseconds to wait for a page load (default 10000)
 #   ELIA_PREVIEW_THEME   colour scheme to emulate: dark or light
 
 cd "$(dirname "$0")/.." || exit 1

@@ -161,6 +161,53 @@ defmodule EliaWeb.TaskUITest do
     assert has_element?(view, "#chat-status-#{lost}[data-status='working']")
   end
 
+  # UI-112, UI-113: what a chat's sub-tasks are behind, and what it says about
+  # them.
+  test "a chat's sub-tasks sit behind a collapsed dropdown that counts them", %{
+    conn: conn,
+    parent: parent,
+    child: child
+  } do
+    second = Agent.new_id()
+    lonely = Agent.new_id()
+    only = Agent.new_id()
+    on_exit(fn -> Enum.each([second, lonely, only], &Store.delete/1) end)
+
+    save_parent(parent)
+    save_child(child, parent, %{}, title: "First task")
+    save_child(second, parent, %{}, title: "Second task", done: true)
+
+    Store.save(lonely, [Message.user("one child only")])
+    save_child(only, lonely, %{}, title: "Only task")
+
+    {:ok, view, _html} = live(conn, ~p"/c/#{parent}")
+
+    # UI-112: the dropdown is drawn under the parent's row and is collapsed —
+    # no `open` — with the sub-task rows inside it all the same.
+    assert has_element?(view, "#chat-list #chat-subtasks-#{parent}")
+    refute has_element?(view, "#chat-subtasks-#{parent}[open]")
+    assert has_element?(view, "#chat-subtasks-#{parent} #chat-children-#{parent}")
+    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{child}", "First task")
+    assert has_element?(view, "#chat-children-#{parent} #chat-link-#{second}", "Second task")
+
+    # UI-113: the trigger counts them, and one chat's single sub-task is one.
+    assert has_element?(view, "#chat-subtasks-#{parent} summary", "2 sub-tasks")
+    assert has_element?(view, "#chat-subtasks-#{lonely} summary", "1 sub-task")
+
+    # UI-113: the count is of the sub-tasks the list would show — a filter that
+    # hides one lowers it, and hides its row with it (UI-106).
+    view |> element("#filter-done") |> render_click()
+
+    assert has_element?(view, "#chat-subtasks-#{parent} summary", "1 sub-task")
+    refute has_element?(view, "#chat-children-#{parent} #chat-link-#{second}")
+
+    view |> element("#filter-done") |> render_click()
+    assert has_element?(view, "#chat-subtasks-#{parent} summary", "2 sub-tasks")
+
+    # A chat with no sub-tasks has no dropdown at all.
+    refute has_element?(view, "#chat-subtasks-#{child}")
+  end
+
   # UI-46, UI-47, UI-59, DONE-2
   test "the child's own row follows its status, live, as any chat's row does", %{
     conn: conn,

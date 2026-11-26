@@ -297,6 +297,29 @@ defmodule Elia.PreviewTest do
       assert hd(listed).id == Preview.sample_id()
       assert Enum.uniq_by(listed, & &1.id) == listed
     end
+
+    # PREVIEW-18: a chat with sub-tasks of its own, so the dropdown the list
+    # draws (UI-112, UI-113) is in a picture, `@subtasks` naming its page.
+    test "seeds a chat with sub-tasks, near the top of the list" do
+      assert Preview.seed() == :ok
+
+      parent = Preview.subtasks_id()
+      assert Preview.resolve_path("@subtasks") == "/c/#{parent}"
+
+      listed = Enum.map(Elia.Store.list(1000), & &1.id)
+      assert parent in listed
+
+      for id <- ["preview-task-1", "preview-task-2"] do
+        assert id in listed
+        # STORE-16, STORE-17: the task metadata that nests it under the parent.
+        assert %{parent_id: ^parent} = Elia.Store.load_task(id)
+      end
+
+      # Near the top of the list — below the sample chat, which stays the newest
+      # (PREVIEW-10, PREVIEW-16).
+      assert Enum.find_index(listed, &(&1 == Preview.sample_id())) == 0
+      assert Enum.find_index(listed, &(&1 == parent)) == 1
+    end
   end
 
   # DEPLOY-28: the worktree a chat makes for itself, inside its project's folder

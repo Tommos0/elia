@@ -82,6 +82,44 @@ defmodule EliaWeb.ChatListBrowserTest do
     assert hidden(conn, done)
   end
 
+  # UI-112: the dropdown a chat's sub-tasks sit behind. It opens on a press and
+  # closes on a second one, and a re-render the user did not ask for — a filter
+  # press, which draws the list again — leaves it as they left it.
+  test "a sub-task dropdown opens on a press and stays open through a re-render (UI-112)", %{
+    conn: conn
+  } do
+    parent = Agent.new_id()
+    child = Agent.new_id()
+    on_exit(fn -> Enum.each([parent, child], &Store.delete/1) end)
+
+    :ok = Store.save(parent, [Message.user("delegate this")], project: "harness")
+
+    :ok =
+      Store.save(child, [Message.user("preamble")],
+        project: "harness",
+        title: "A task",
+        task: %{parent_id: parent, started_at: ~U[2026-01-02 03:04:05Z]}
+      )
+
+    conn = conn |> visit("/c/#{parent}") |> connected()
+
+    # UI-112, UI-113: collapsed as the list is drawn — its rows are in the page,
+    # behind a trigger that counts them — and a press opens it.
+    assert open?(conn, parent) == false
+    assert js(conn, rows_js(parent)) == 1
+
+    conn = conn |> click("#chat-subtasks-#{parent} summary") |> opened(parent)
+
+    # A re-render the user did not ask for leaves it open (UI-112).
+    conn = conn |> click("#filter-done")
+
+    assert open?(conn, parent)
+
+    conn = conn |> click("#chat-subtasks-#{parent} summary") |> closed(parent)
+
+    refute open?(conn, parent)
+  end
+
   # UI-105: what the filter button of a group says about itself — "true" while
   # the list shows that group.
   defp pressed(conn, group) do
@@ -103,6 +141,19 @@ defmodule EliaWeb.ChatListBrowserTest do
   defp listed_js(id), do: "window.document.querySelector('#chat-link-#{id}') !== null"
 
   defp listed?(conn, id), do: js(conn, listed_js(id)) == true
+
+  # UI-112: whether the dropdown is open — the browser shows and hides what it
+  # holds from that one property — and how many rows sit behind it.
+  defp open?(conn, id),
+    do: js(conn, "window.document.querySelector('#chat-subtasks-#{id}').open") == true
+
+  defp rows_js(id), do: "window.document.querySelectorAll('#chat-children-#{id} > *').length"
+
+  defp opened(conn, id), do: wait_for(conn, open_js(id), "the dropdown to open")
+
+  defp closed(conn, id), do: wait_for(conn, "!#{open_js(id)}", "the dropdown to close")
+
+  defp open_js(id), do: "window.document.querySelector('#chat-subtasks-#{id}').open"
 
   # UI-108: one chat of the tab's marked done, so a filter has a chat of its own
   # to hide.

@@ -252,6 +252,25 @@ stream in, approves or denies tool calls, and switches between saved chats.
   header's active chats (ACTIVE-13), the dashboard's rows (DASH-15) and a
   project's chats (PROJ-59).
 
+- **UI-112** A chat whose sub-tasks the list holds draws them behind a dropdown
+  under its own row (`#chat-subtasks-<id>`), collapsed whenever the list is
+  drawn: only the trigger shows — a chevron and the count of UI-113 — and the
+  rows sit behind it in `#chat-children-<id>` (UI-45). A press on the trigger
+  expands them and a second press collapses them again, without a round trip to
+  the server, and what a collapsed trigger hides is in the page all the same,
+  with the ids its rows have and their statuses live as they are expanded. The
+  open state belongs to the browser: a re-render the user did not ask for — a
+  status change (UI-47, UI-59), a chat opened, a list read again (UI-6) — leaves
+  it as it is, the way the settings page's sections keep theirs (CONF-25,
+  CONF-27). The sidebar and the drawer draw it alike (UI-4, UI-92).
+- **UI-113** The dropdown's trigger names the sub-tasks listed under it: "1
+  sub-task" for one and "<n> sub-tasks" for more, counting the rows the list
+  would show there — the ones the filters leave listed (UI-106) — so a chat
+  whose sub-tasks a filter hides counts none. It is drawn only while there is at
+  least one. The count follows the list: a sub-task chat started while the list
+  is on screen raises it (UI-49), and one deleted (UI-64) or hidden by a filter
+  lowers it.
+
 - **UI-64** Every chat row in the sidebar, task chats included (UI-45), has a
   delete entry in the row's own menu (`#delete-chat-<id>`, with the accessible
   label "Delete chat"), which asks for confirmation first, with `data-confirm`
@@ -738,12 +757,14 @@ with `list_chats` (HIST-2).
   opened from the sidebar like any chat (UI-45). The events the card followed
   (SESS-19, SESS-35) still refresh the sidebar (UI-49).
 - **UI-45** The sidebar nests a sub-task chat under the chat that spawned it
-  (STORE-17), indented and ordered by start time (oldest first). A sub-task
-  whose parent isn't in the list is shown on its own at the top level. The row
+  (STORE-17), indented and ordered by start time (oldest first), inside the
+  collapsed dropdown its parent's row draws (UI-112). A sub-task whose parent
+  isn't in the list is shown on its own at the top level. The row
   (`#chat-link-<id>`) uses the chat's own title (STORE-33, TITLE-3) and carries
   the status indicator any chat's row has (UI-46). *Changed:* the task's own
   title was what the row showed (STORE-17); a sub-task is named by its own title
-  now (TITLE-3).
+  now (TITLE-3). *Changed:* the nested rows were always listed; they are behind
+  a collapsed dropdown now (UI-112).
 - **UI-46** A sub-task chat in the sidebar shows its status the way any chat's row
   does (UI-59, UI-72): the same indicator (`#chat-status-<id>`), the same
   `data-status` values and the same `title`, derived by the same code, so a
@@ -926,8 +947,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   `test/elia_web/live/compact_view_test.exs` (the Focus view, UI-60 to UI-62,
   UI-90).
 - `test/elia_web/live/task_ui_test.exs` (the task card and its statuses, the
-  nested rows, the header, the pause banner — UI-43 to UI-49, UI-57 to UI-59,
-  UI-64).
+  nested rows and the collapsed dropdown they sit behind, with its count, the
+  header, the pause banner — UI-43 to UI-49, UI-57 to UI-59, UI-64, UI-112 to
+  UI-113).
 - `test/elia_web/live/user_input_test.exs` (the question card and the
   indicators, the collapsible output, the card in the Focus view — UI-15, UI-16,
   UI-44, UI-61, UI-62, UI-75, UI-76, UI-83).
@@ -957,9 +979,10 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
 - `test/elia_web/live/dashboard_test.exs` (the rows and indicators it shows,
   UI-32, UI-34, UI-45 to UI-47, UI-59).
 - `test/elia_web/browser/chat_list_test.exs` (the size a tab remembers when
-  another chat is opened, the button outside the list's scroll box, and the
-  filters a tab remembers — UI-84, UI-85, UI-108 — a browser test, so it runs
-  with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
+  another chat is opened, the button outside the list's scroll box, the filters
+  a tab remembers, and a sub-task dropdown opening on a press and closing on a
+  second one, kept open through a re-render — UI-84, UI-85, UI-108, UI-112 — a
+  browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_layout_test.exs` (the page fits the screen, UI-78;
   a browser test, so it runs with `ELIA_BROWSER_TESTS=1` — BROWSER-5).
 - `test/elia_web/browser/chat_row_menu_test.exs` (a row's menu in a real
