@@ -90,34 +90,35 @@ defmodule Elia.Net.Request do
   end
 
   # `host:port`, `host`, or an IPv6 address in brackets.
-  defp authority(target) do
-    case target do
-      "[" <> _rest ->
-        case String.split(target, "]:", parts: 2) do
-          [host, port] -> {host <> "]", to_integer(port)}
-          [host] -> {host, nil}
-        end
+  defp authority("[" <> _rest = target) do
+    case String.split(target, "]:", parts: 2) do
+      [host, port] -> {host <> "]", to_integer(port)}
+      [host] -> {host, nil}
+    end
+  end
 
-      _other ->
-        case String.split(target, ":", parts: 2) do
-          [host, port] -> if host == "", do: nil, else: {host, to_integer(port)}
-          [host] -> {host, nil}
-        end
+  defp authority(target) do
+    case String.split(target, ":", parts: 2) do
+      [host, port] -> if host == "", do: nil, else: {host, to_integer(port)}
+      [host] -> {host, nil}
     end
   end
 
   defp host_header(rest) do
     rest
     |> String.split("\r\n")
-    |> Enum.find_value(fn line ->
-      case String.split(line, ":", parts: 2) do
-        [name, value] ->
-          if String.downcase(String.trim(name)) == "host", do: authority(String.trim(value))
+    |> Enum.find_value(&header_authority/1)
+  end
 
-        _other ->
-          nil
-      end
-    end)
+  # A header line's authority, when the line is the `Host` header's.
+  defp header_authority(line) do
+    case String.split(line, ":", parts: 2) do
+      [name, value] ->
+        if String.downcase(String.trim(name)) == "host", do: authority(String.trim(value))
+
+      _other ->
+        nil
+    end
   end
 
   defp to_integer(text) do

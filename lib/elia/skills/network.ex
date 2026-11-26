@@ -86,18 +86,16 @@ defmodule Elia.Skills.Network do
   defp run(input, ctx) do
     host = input |> Map.get("host", "") |> to_string() |> String.trim()
 
-    cond do
-      not Elia.Net.Allowlist.valid?(host) ->
-        {:error,
-         "#{inspect(host)} is not a host this allowlist can hold: name a host " <>
-           "(`api.example.com`), a `*.` suffix of one (`*.example.com`), or either with a " <>
-           "port (`api.example.com:443`). Nothing was asked and nothing was allowed."}
-
-      true ->
-        case Map.get(ctx, :answer) do
-          answer when is_binary(answer) -> decide(host, answer, ctx)
-          _none -> {:error, "No answer: the request was not put to the user."}
-        end
+    if Elia.Net.Allowlist.valid?(host) do
+      case Map.get(ctx, :answer) do
+        answer when is_binary(answer) -> decide(host, answer, ctx)
+        _none -> {:error, "No answer: the request was not put to the user."}
+      end
+    else
+      {:error,
+       "#{inspect(host)} is not a host this allowlist can hold: name a host " <>
+         "(`api.example.com`), a `*.` suffix of one (`*.example.com`), or either with a " <>
+         "port (`api.example.com:443`). Nothing was asked and nothing was allowed."}
     end
   end
 
@@ -118,17 +116,15 @@ defmodule Elia.Skills.Network do
     id = Map.get(ctx, :session_id)
     setting = is_binary(id) && Elia.Agent.network_setting(id)
 
-    cond do
-      not is_map(setting) ->
-        {:error,
-         "This chat has no running session, so #{host} was not allowed: nothing " <>
-           "reaches it, and nothing was added to anything."}
-
-      true ->
-        case Elia.Agent.set_network(id, Elia.Net.add_host(setting, host)) do
-          :ok -> {:ok, allowed_chat(host, setting, ctx)}
-          {:error, message} -> {:error, message}
-        end
+    if is_map(setting) do
+      case Elia.Agent.set_network(id, Elia.Net.add_host(setting, host)) do
+        :ok -> {:ok, allowed_chat(host, setting, ctx)}
+        {:error, message} -> {:error, message}
+      end
+    else
+      {:error,
+       "This chat has no running session, so #{host} was not allowed: nothing " <>
+         "reaches it, and nothing was added to anything."}
     end
   end
 
