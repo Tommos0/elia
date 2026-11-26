@@ -234,6 +234,14 @@ name and folder), `:messages`, `:turn` (a turn still running), `:title`, `:done`
 `:harness`). It is how a report of chats that "just stopped" in another project
 was traced (`specs/stopped-turns.md`, LOOP-27).
 
+What a chat's own records say *from inside a chat* is totals only: the
+`chat_timings` tool (TIME-11..TIME-18) reports per chat the step count, the
+model/tool/approval/answer/retry milliseconds and the tokens, and a per-step or
+per-call view is deliberately outside it. A question about a single slow step —
+or about which tool call ate the time — therefore needs the unjailed `elixir`
+read above, because the `.timing` files are out of a jailed command's reach
+(ISOL-6), or a spec change to TIME-13/TIME-15.
+
 ## Measuring search cost
 
 A search's cost is decided by the shape of an index entry, so measure it rather

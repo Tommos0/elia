@@ -8,8 +8,9 @@ Status: review, checked against the tree on 2026-11-13, and again the same day
 after the last three proposals landed. Proposals **1** to **7** are implemented
 (marked in the ranked table and in the findings they came from); **8** needs no
 change, because the ladder already elides tool results before assistant prose
-(COMPACT-14..16). What this review still owes is the measurement its proposal 4
-was built for: the `.timing` records exist and no pass has read them.
+(COMPACT-14..16). The measurement its proposal 4 was built for has since been
+taken: the first reading of the `.timing` records is **Speed review, 2026-11-26**
+below.
 
 ## Method
 
@@ -231,8 +232,9 @@ model request and the session appends one JSON line per step — turn id and
 start, step and attempt, outcome, two ISO-8601 stamps, `model_ms`, `tool_ms`,
 `approval_wait_ms`, `answer_wait_ms`, `retry_wait_ms`, per-call timings and the
 provider's token counts — to `.elia/sessions/<chat id>.timing`, read back with
-`Elia.StepTiming.load/1` (`lib/elia/step_timing.ex`). No review has read them
-yet: the measurement this proposal was for is still to be taken.
+`Elia.StepTiming.load/1` (`lib/elia/step_timing.ex`). The measurement this
+proposal was for was taken on 2026-11-26: see **Speed review, 2026-11-26**
+below.
 
 ## Ranked proposals
 
@@ -265,13 +267,158 @@ Settled by the overlay work on 2026-11-12 (bwrap 0.12, scratch overlays):
 
 Still open:
 
-- The measurement half of proposal 4: the records exist but no pass has read
-  them, so nothing in this file has been turned into a measurement yet — neither
-  the single-lookup habit that 2 instructs against, the orientation tax of 3, nor
-  what 5 and 6 saved. A measurement pass has to run outside a chat's jail:
-  `.elia/sessions`, and so the `.timing` files, is masked inside one.
+- The measurement half of proposal 4 was taken on 2026-11-26 — see **Speed
+  review, 2026-11-26** below — and it no longer has to run outside a chat's jail:
+  the `chat_timings` tool reads the `.timing` files through the harness (TIME-11),
+  so a chat whose jail is on can take it, where `.elia/sessions` is out of a
+  command's reach (ISOL-6). What is still owed is the other half — turning a
+  measurement into a number for what 2, 3, 5 and 6 saved — which needs the
+  records to say more than a chat's totals (proposal 1 below).
 
 Landed alongside this review's proposals, but not one of them (2026-11-13): the
 worktree build cache (`BUILD-1..BUILD-6`, `d35be55`/`1f9d17a` — a chat's first
 compile 35 s → 5 s) and the shell and `run_tests` timeout bounds (SHELL-10,
 VERIFY-1).
+
+# Speed review, 2026-11-26
+
+The first reading of the `.timing` records (TIME-1 to TIME-10), through the
+`chat_timings` tool (TIME-11 to TIME-18) as the deployed app provides it. Not a
+spec: findings and proposals, for discussion. Every figure below is one call of
+that tool, so the whole pass can be taken again unchanged.
+
+Status: review. The findings are measurements of what the records already held;
+none of the proposals at the end is implemented.
+
+## Method
+
+`chat_timings` with no `id` — the 20 newest chats of this project that have
+records, 1,134 steps — plus one older chat by id (`q150vbPWtfXA`, 79 steps) as a
+check on the trouble figure. Where the 2026-11-12 pass counted messages in saved
+chats, this reads the durations the loop measured while running (TIME-1, TIME-3),
+so a step's 6 s is 6 s rather than an inference from counts.
+
+What the method cannot see, and why it matters here:
+
+- **No per-step or per-call detail.** `chat_timings` reports a chat's totals
+  (TIME-13); the per-call timings (TIME-4) are in the `.timing` files, which a
+  command cannot read (ISOL-6) and no tool surfaces. So "which tool call cost
+  40 s" is not answerable today, and the per-step figures below are means
+  standing in for distributions (proposal 1).
+- **The newest 20 chats that have records** (TIME-12, TIME-17): older chats, and
+  chats that ran before the records existed, are outside the sample.
+- **A chat's sums are dominated by its longest idle stretches**, so a total over
+  chats is not a measure of work (finding 1).
+- **The figures are per chat and the chats ran in parallel**, so the totals are
+  chat-time — a sum over chats, not a wall clock.
+- **No record carries the model that answered** (TIME-2), so the cost below is
+  priced at the model this chat runs.
+
+## The shape of the work
+
+| | 20 newest chats with records |
+| --- | --- |
+| steps | 1,134 |
+| `model_ms` | 6,981,202 (116 min) |
+| `tool_ms` | 7,351,877 (122 min) |
+| `waited_ms` | 48,262,986 (804 min) |
+| input tokens | 80,094,791 |
+| output tokens | 1,233,689 |
+
+Per step: **6.2 s** of model, **6.5 s** of tools, **70.6k** input tokens, **1.1k**
+output tokens. At the price OpenRouter listed the model this chat runs on
+2026-11-26 (`deepseek/deepseek-v4.1-flash`, $0.0507 per million in, $0.2028 per
+million out) those 1,134 steps cost about **$4.31**, some $0.0038 a step — and
+cached prompt reads would put it below that, since a record keeps no cache split
+(TIME-5).
+
+## 1. Almost all of the "waiting" is a chat sitting idle
+
+`waited_ms` is 48.26M ms — 77% of everything the records measured — and 99.8% of
+it is `answer_wait_ms` (48.18M; approval waits are 84k in total and retry waits
+zero). Two chats are 92% of that: `ou9jtfbDN6UO` ("Chats that stop without an
+error", 9.0 h) and `vEqnAezQYlNQ` ("bin/test retries a flaky partition", 3.4 h).
+Take those two out and the other 18 chats wait 59 min over 1,021 steps: 3.5 s a
+step of waiting against 10.4 s a step of work, a quarter of their time rather
+than four fifths.
+
+The figure is honest — a chat that asks a question and waits hours for the answer
+did wait hours — but summing it turns a project's "where did the time go" into
+"how long did we leave chats open". Those two chats are not slow. They were
+waiting for a person.
+
+## 2. Model time and tool time are equal, and tool time spreads 90×
+
+116 min of model against 122 min of tools. Per chat, `tool_ms` per step runs from
+0.3 s (`RwLR4vtzuY0W`, a reading-only chat) to 26.2 s (`q150vbPWtfXA`), and the
+high end is uniformly a chat that ran the suite:
+
+| chat | steps | tool s/step | model s/step |
+| --- | --- | --- | --- |
+| `q150vbPWtfXA` Deploy failed: jail_test failure | 79 | 26.2 | 15.0 |
+| `pLbBqTs64tPa` 003 Lower the suite's floor | 66 | 18.5 | 6.3 |
+| `VZMMKoau548P` Terminal icon in chat lists | 106 | 9.8 | 6.1 |
+| `ziFDfYl0rUVr` Run credo and fix findings | 22 | 7.4 | 6.1 |
+| `wy0uQDpi_-ET` Auto-dismissing flash toasts | 88 | 6.6 | 4.8 |
+| `RwLR4vtzuY0W` Elia vs stem AGENTS.md | 19 | 0.3 | 6.7 |
+
+A chat's tool time is therefore mostly a question of how often it runs
+`mix precommit`, which is what the suite work (`d0af060`, SUITE-14..SUITE-18)
+went after: the suite's critical path 104 s → 64 s, and `deployment_test.exs`
+alone 60.2 s → 44.6 s. What the remaining 122 min went on, this pass cannot say —
+that is what proposal 1 asks for.
+
+## 3. Every step reads 70k tokens and writes 1.1k
+
+65 input tokens for every output token, and a mean request of 70.6k against a
+compaction trigger of 100k: `min(budget, fraction × window)` with a budget of
+100,000 and a fraction of 0.6 (COMPACT-6, `config/config.exs`), where the window
+is 1M for this model, so the budget is the binding limit. Chats therefore run
+near the trigger for much of their life — the largest chat sampled
+(`DECYZCppHlrb`, 128 steps) averaged 80.6k in and 1.2k out.
+
+COMPACT-6 says the budget is there to bound cost and latency on purpose, so this
+is not a defect. It is, however, the knob that model time and the token bill both
+hang on, and it is per chat (COMPACT-9). Nothing in this pass says which way to
+turn it; that needs a chat measured at a lower budget, which the records can now
+do (proposal 4).
+
+## 4. The trouble figure counts the trouble we don't have
+
+`failed_or_retried` is **0** across all 1,213 steps sampled — including
+`q150vbPWtfXA`, whose own title is a failed deploy. That is TIME-14 working as
+written: it counts a step whose model request was retried or came back `error` or
+`refused`. The failures this project actually hits are *tool* failures — a failing
+test, a refused deploy — which TIME-4 records per call (`name`, `ms`, `failed`)
+and no figure surfaces. A chat can be 26 s a step of failed deploys and read as
+untroubled (proposal 2).
+
+## 5. The model-retry path did not fire in the sample
+
+`retry_wait_ms` is zero, and no step of the 1,213 has an attempt above 1. RETRY-1
+to RETRY-5 is insurance these chats did not need, and the same reading means the
+records cannot yet show what a retried step costs. 21 chats is a sample, not a
+census.
+
+## Ranked proposals
+
+| # | Change | Kind | Expected | Status |
+| --- | --- | --- | --- | --- |
+| 1 | A per-step/per-call view over the records — the slowest steps and the calls in them, from TIME-4's data, as a `chat_timings` listing or a page | code + spec (TIME-13, TIME-15, the `Out of scope` line) | turns "122 min of tools" into the twenty calls that are half of it, and means into distributions — the missing half of every finding above | proposed |
+| 2 | A trouble figure that includes tool failures: `failed_tool_calls`, and the slowest call, from the records | code + spec (TIME-14) | friction visible where it happens (finding 4) | proposed |
+| 3 | Report waiting so it cannot mislead: keep `waited_ms`, add a per-step figure or a per-wait cap so one idle chat cannot dominate a project total | code + spec (TIME-13, TIME-15) | the headline total becomes a work figure (finding 1) | proposed |
+| 4 | Measure the compaction budget: run a chat at a lower budget (COMPACT-9) and compare `model_ms` and tokens per step | measurement; a config default only if it wins | if model time tracks context, a lower trigger cuts both, at the cost of more compaction passes and lost context (finding 3) | proposed |
+| 5 | A chat's own timing in the UI: model against tool against wait, and the slowest steps, on the chat page | code + spec (the `Out of scope` line) | the user sees a slow chat without asking an agent | proposed |
+| 6 | Rotate the records: a size or age bound on `<chat id>.timing` | code + spec (TIME-6) | bounded files (the largest chat sampled has 128 steps) | proposed |
+
+## Open questions
+
+- Is `answer_wait_ms` a figure a *summary* should carry at all? It is the one
+  number that measures the user rather than the app (finding 1).
+- Should a listing include chats with no records, so "this chat has never been
+  measured" is visible rather than absent (TIME-17)?
+- Does the 20-chat window need a `since`, so the same measurement can be taken
+  again in a month and compared (TIME-12)?
+- The 2026-11-12 review closed its proposal 8 ("compact tool results before
+  prose") as needing no change. With 70.6k tokens read per step against 1.1k
+  written, view size is now measurable — worth re-checking rather than assuming.
