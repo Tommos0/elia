@@ -218,15 +218,17 @@ defmodule Elia.SpecLint do
         []
 
       {id, [first | rest]} ->
-        Enum.map(rest, fn {_, path, entry} ->
-          if entry.retired or elem(first, 2).retired do
-            "#{path}:#{entry.line} #{id} reuses the number of a retired requirement (SPEC-3, SPEC-4)"
-          else
-            "#{path}:#{entry.line} #{id} is defined twice, also at " <>
-              "#{elem(first, 1)}:#{elem(first, 2).line} (SPEC-2)"
-          end
-        end)
+        Enum.map(rest, fn {_, path, entry} -> duplicate_message(id, first, path, entry) end)
     end)
+  end
+
+  defp duplicate_message(id, first, path, entry) do
+    if entry.retired or elem(first, 2).retired do
+      "#{path}:#{entry.line} #{id} reuses the number of a retired requirement (SPEC-3, SPEC-4)"
+    else
+      "#{path}:#{entry.line} #{id} is defined twice, also at " <>
+        "#{elem(first, 1)}:#{elem(first, 2).line} (SPEC-2)"
+    end
   end
 
   defp index_violations(root, specs, plans, spec_files) do
@@ -290,12 +292,7 @@ defmodule Elia.SpecLint do
           lines
           |> Enum.drop(i + 1)
           |> Enum.take_while(&(not String.starts_with?(&1, "## ")))
-          |> Enum.flat_map(fn line ->
-            case Regex.run(@plan, line) do
-              nil -> []
-              match -> [Enum.at(match, 1)]
-            end
-          end)
+          |> Enum.flat_map(&plan_link/1)
       end
 
     names = MapSet.new(listed, &Path.basename/1)
@@ -321,6 +318,14 @@ defmodule Elia.SpecLint do
     missing ++ dead ++ no_section
   end
 
+  # The plan a plans-list line links to, if it links to one.
+  defp plan_link(line) do
+    case Regex.run(@plan, line) do
+      nil -> []
+      match -> [Enum.at(match, 1)]
+    end
+  end
+
   defp defined(spec_files) do
     spec_files
     |> Enum.flat_map(& &1.entries)
@@ -334,15 +339,18 @@ defmodule Elia.SpecLint do
     Enum.flat_map(files, fn file ->
       file.lines
       |> Enum.with_index(1)
-      |> Enum.flat_map(fn {line, n} ->
-        for id <- ids(line),
-            prefix = String.split(id, "-") |> hd(),
-            Map.has_key?(defined, prefix),
-            not MapSet.member?(defined[prefix], id) do
-          "#{file.path}:#{n} cites #{id}, which no spec defines (SPEC-15)"
-        end
-      end)
+      |> Enum.flat_map(fn {line, n} -> line_citations(file, line, n, defined) end)
     end)
+  end
+
+  # The citations on one line that no spec defines (SPEC-15).
+  defp line_citations(file, line, n, defined) do
+    for id <- ids(line),
+        prefix = String.split(id, "-") |> hd(),
+        Map.has_key?(defined, prefix),
+        not MapSet.member?(defined[prefix], id) do
+      "#{file.path}:#{n} cites #{id}, which no spec defines (SPEC-15)"
+    end
   end
 
   ## Traceability (TRACE)
@@ -410,8 +418,7 @@ defmodule Elia.SpecLint do
       section
       |> Kernel.||([])
       |> Enum.reject(fn {text, _} -> no_test?(text) end)
-      |> Enum.map(&elem(&1, 0))
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &elem(&1, 0))
 
     ids(text)
   end
@@ -425,30 +432,34 @@ defmodule Elia.SpecLint do
       List.flatten(
         for {text, n} <- sections[file.path],
             no_test?(text) do
-          {named, reason} =
-            case String.split(text, "—", parts: 2) do
-              [named, reason] -> {ids(named), reason}
-              [named] -> {ids(named), ""}
-            end
-
-          cond do
-            MapSet.size(named) == 0 ->
-              ["#{file.path}:#{n} a No test: line names no requirement (TRACE-3)"]
-
-            not String.match?(reason, ~r/[A-Za-z]{3}/) ->
-              [
-                "#{file.path}:#{n} No test: for #{list(named)} does not say why, after an " <>
-                  "em dash (TRACE-3)"
-              ]
-
-            true ->
-              for id <- Enum.sort(named), id not in defined do
-                "#{file.path}:#{n} No test: names #{id}, which #{file.path} does not define (TRACE-4)"
-              end
-          end
+          no_test_line_violations(file, text, n, defined)
         end
       )
     end)
+  end
+
+  defp no_test_line_violations(file, text, n, defined) do
+    {named, reason} =
+      case String.split(text, "—", parts: 2) do
+        [named, reason] -> {ids(named), reason}
+        [named] -> {ids(named), ""}
+      end
+
+    cond do
+      MapSet.size(named) == 0 ->
+        ["#{file.path}:#{n} a No test: line names no requirement (TRACE-3)"]
+
+      not String.match?(reason, ~r/[A-Za-z]{3}/) ->
+        [
+          "#{file.path}:#{n} No test: for #{list(named)} does not say why, after an " <>
+            "em dash (TRACE-3)"
+        ]
+
+      true ->
+        for id <- Enum.sort(named), id not in defined do
+          "#{file.path}:#{n} No test: names #{id}, which #{file.path} does not define (TRACE-4)"
+        end
+    end
   end
 
   # TRACE-6: every path a Tests section names is in the tree.

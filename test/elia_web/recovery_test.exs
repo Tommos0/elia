@@ -361,7 +361,7 @@ defmodule EliaWeb.RecoveryTest do
     assert text(id(page, "recover-current")) == "No revision is recorded as loaded."
     assert Enum.count(id(page, "recover-no-revisions")) == 1
     assert Enum.count(id(page, "recover-nothing")) == 1
-    assert Enum.count(LazyHTML.query(page, "form")) == 0
+    assert Enum.empty?(LazyHTML.query(page, "form"))
   end
 
   # RECOVER-11: and so does a corrupt one — the page works when other things
@@ -404,14 +404,14 @@ defmodule EliaWeb.RecoveryTest do
 
     # The revision the form goes back to, in a field a test can post.
     assert Enum.count(LazyHTML.query(form, ~s(input[name="revision"][value="#{first}"]))) == 1
-    assert Enum.count(LazyHTML.query(form, ~s(input[name="revision"][value="#{second}"]))) == 0
+    assert Enum.empty?(LazyHTML.query(form, ~s(input[name="revision"][value="#{second}"])))
 
     # A button per load mode (DEPLOY-6, DEPLOY-7), each posting its own mode.
     assert Enum.count(LazyHTML.query(form, ~s(button[name="mode"][value="reload"]))) == 1
     assert Enum.count(LazyHTML.query(form, ~s(button[name="mode"][value="restart"]))) == 1
 
     # And no form for the revision running now: there is nothing to go back to.
-    assert Enum.count(id(page, "recover-form-" <> short(second))) == 0
+    assert Enum.empty?(id(page, "recover-form-" <> short(second)))
   end
 
   # RECOVER-12, DEPLOY-15, DEPLOY-16: the POST hands the work to the runner — a

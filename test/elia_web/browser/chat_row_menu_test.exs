@@ -152,9 +152,10 @@ defmodule EliaWeb.ChatRowMenuBrowserTest do
 
   defp await_path(conn, path) do
     Enum.reduce_while(1..50, conn, fn _, conn ->
-      cond do
-        js(conn, "window.location.pathname") == path -> {:halt, conn}
-        true -> Process.sleep(100) && {:cont, conn}
+      if js(conn, "window.location.pathname") == path do
+        {:halt, conn}
+      else
+        Process.sleep(100) && {:cont, conn}
       end
     end)
   end

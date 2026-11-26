@@ -257,18 +257,16 @@ defmodule Elia.Skills.TerminalTest do
   defp collect_until(needle, collected, deadline \\ nil) do
     deadline = deadline || System.monotonic_time(:millisecond) + 15_000
 
-    cond do
-      String.contains?(collected, needle) ->
-        true
-
-      true ->
-        receive do
-          {:terminal_output, output} -> collect_until(needle, collected <> output, deadline)
-          {:terminal_screen, screen} -> collect_until(needle, collected <> screen, deadline)
-        after
-          max(deadline - System.monotonic_time(:millisecond), 0) ->
-            flunk("no output containing #{inspect(needle)}, saw #{inspect(collected)}")
-        end
+    if String.contains?(collected, needle) do
+      true
+    else
+      receive do
+        {:terminal_output, output} -> collect_until(needle, collected <> output, deadline)
+        {:terminal_screen, screen} -> collect_until(needle, collected <> screen, deadline)
+      after
+        max(deadline - System.monotonic_time(:millisecond), 0) ->
+          flunk("no output containing #{inspect(needle)}, saw #{inspect(collected)}")
+      end
     end
   end
 end
