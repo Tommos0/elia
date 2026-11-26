@@ -76,8 +76,15 @@ Read this before deciding whether a change can break old data (`AGENTS.md` says 
   runs by hand, never in the `precommit` gate (SUITE-8). Its PLT lives in
   `_build/dialyzer` (`plt_local_path`/`plt_core_path` in `mix.exs`), so it is
   not committed; the first run builds the PLT (about 2½ minutes here on 4
-  cores) and a warm run takes about 13 seconds. It reports ~28 warnings today,
-  so read them rather than expecting exit 0.
+  cores) and a warm run takes about 8 seconds. Its first run on this tree found
+  28 warnings and they are now fixed, so a clean run exits 0 and prints `done
+  (passed successfully)`; a warning is a finding to read, not noise to ignore.
+  Most of those 28 came from one wrong typespec — `Elia.Specs.Cache` and
+  `Elia.Source.Cache` typed their entry as the map alone while both callers
+  stored and matched a `{read_at, value}` tuple, which made `Cache.put` break
+  its contract and left everything downstream "no local return" (22 warnings,
+  including 8 `unused_fun` in `EliaWeb.SpecRefs` that only looked like
+  template false positives).
 - Dialyzer is an OTP application, not an Elixir library: `dialyxir` only drives
   `:dialyzer`, and **no hex package provides that app** — the registry has
   `dialyxir`, `dialyzex`, `dialyze`, `dialyzer_html` and `dialyzer_json`, all

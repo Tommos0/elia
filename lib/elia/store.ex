@@ -178,7 +178,6 @@ defmodule Elia.Store do
     case File.mkdir_p(dir()) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
-      {:error, reason, _path} -> {:error, reason}
     end
   end
 

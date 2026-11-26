@@ -22,19 +22,19 @@ defmodule Elia.Source.Cache do
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   @doc "The definitions for `root` when its files still have `identity`, else `nil`."
-  @spec fetch(binary(), term()) :: %{binary() => Elia.Source.definition()} | nil
+  @spec fetch(binary(), term()) :: {integer(), %{binary() => Elia.Source.definition()}} | nil
   def fetch(root, identity) do
     case :ets.lookup(@table, root) do
-      [{^root, ^identity, definitions}] -> definitions
+      [{^root, ^identity, entry}] -> entry
       _ -> nil
     end
   rescue
     ArgumentError -> nil
   end
 
-  @spec put(binary(), term(), %{binary() => Elia.Source.definition()}) :: :ok
-  def put(root, identity, definitions) do
-    :ets.insert(@table, {root, identity, definitions})
+  @spec put(binary(), term(), {integer(), %{binary() => Elia.Source.definition()}}) :: :ok
+  def put(root, identity, entry) do
+    :ets.insert(@table, {root, identity, entry})
     :ok
   rescue
     ArgumentError -> :ok

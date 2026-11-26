@@ -1628,9 +1628,6 @@ defmodule Elia.Deploy do
   defp unix_seconds({{_, _, _}, {_, _, _}} = erl_datetime),
     do: :calendar.datetime_to_gregorian_seconds(erl_datetime) - 62_167_219_200
 
-  defp unix_seconds(%NaiveDateTime{} = naive),
-    do: NaiveDateTime.diff(naive, ~N[1970-01-01 00:00:00])
-
   defp loader do
     Application.get_env(:elia, __MODULE__, [])[:load] || (&Phoenix.CodeReloader.reload/1)
   end

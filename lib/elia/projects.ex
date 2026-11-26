@@ -464,6 +464,10 @@ defmodule Elia.Projects do
     end
   end
 
+  # OTP types `:inet.gethostname/0` as always answering `{:ok, host}`; the
+  # fallback stays for one that does not, so Dialyzer is told not to call the
+  # clause dead.
+  @dialyzer {:nowarn_function, hostname: 0}
   defp hostname do
     case :inet.gethostname() do
       {:ok, host} -> List.to_string(host)

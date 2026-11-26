@@ -207,5 +207,6 @@ defmodule Elia.Push do
   defp classify({:ok, %{status: status}}), do: {:error, {:http, status}}
   defp classify({:error, reason}), do: {:error, reason}
 
-  defp title(chat_id), do: Elia.Store.chat_title(chat_id) || "Elia"
+  # STORE-33: a chat always answers with a title ("New chat" when it has none).
+  defp title(chat_id), do: Elia.Store.chat_title(chat_id)
 end

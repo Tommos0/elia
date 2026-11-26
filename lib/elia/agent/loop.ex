@@ -733,7 +733,7 @@ defmodule Elia.Agent.Loop do
 
   # TIME-4: a call failed when its result is an error — what LOOP-12 answers a
   # crash with, and what a tool that returns `{:error, output}` gives.
-  defp failed?(%{is_error: is_error}), do: is_error == true
+  defp failed?(%{is_error: true}), do: true
   defp failed?(_result), do: false
 
   defp check(_ctx, _tools, _call, :max_tokens) do
