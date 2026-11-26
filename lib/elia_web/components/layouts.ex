@@ -352,7 +352,7 @@ defmodule EliaWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div id={@id} aria-live="polite" phx-hook=".FlashAutoDismiss">
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 
@@ -385,6 +385,45 @@ defmodule EliaWeb.Layouts do
         Attempting to reconnect
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".FlashAutoDismiss">
+        // FLASH-1: how long a notice the flash put there stays — about a second
+        // is what a message about something that has already happened is worth.
+        const LIFETIME_MS = 1000
+
+        export default {
+          // FLASH-1: a notice arrives with the reply to an event, so the group
+          // is patched when one is put there (`updated`); one already on the
+          // page when it loads is caught by `mounted`.
+          mounted() {
+            // One timer per notice, not one per patch (`updated` runs on every
+            // patch of the group, while a notice on screen stays the element it
+            // was). Kept here rather than in an attribute of the notice, which
+            // is LiveView's own markup to patch.
+            this.timed = new WeakSet()
+            this.timeOut()
+          },
+          updated() { this.timeOut() },
+
+          timeOut() {
+            // FLASH-3: the flash's own notices only — the two the connection
+            // draws carry other ids (#client-error, #server-error) and are
+            // shown and hidden by the connection itself, never by this timer.
+            this.el.querySelectorAll('[id^="flash-"]').forEach(notice => {
+              if (this.timed.has(notice)) return
+              this.timed.add(notice)
+
+              setTimeout(() => {
+                // FLASH-2: the × is the one dismissal there is — pressing it
+                // clears the notice from the LiveView's flash as well as hiding
+                // it, so a notice that times out is cleared, not merely gone.
+                const close = notice.querySelector("button[aria-label='close']")
+                if (close && close.isConnected) close.click()
+              }, LIFETIME_MS)
+            })
+          }
+        }
+      </script>
     </div>
     """
   end

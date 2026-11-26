@@ -177,6 +177,7 @@ it.
 | [Real-browser tests](browser-tests.md) | `BROWSER` | PhoenixTest + Playwright headless Chromium tests for JavaScript, websocket and layout; excluded from the default run |
 | [UI preview](ui-preview.md) | `PREVIEW` | `bin/preview` screenshots the chat's own code with the browser layer, before a deploy; the chat shows the pictures |
 | [Interaction feedback](interaction-feedback.md) | `FEED` | Every control shows a pressed state at once and reads as working while the server has not replied |
+| [Flash messages](flashes.md) | `FLASH` | A notice the app puts in the LiveView flash goes away by itself about a second after it appeared; the close button still hides it at once, and the two notices the connection draws are not on that timer |
 | [Spec hygiene](spec-hygiene.md) | `SPEC` | The rules that keep `specs/` coherent — including reserving the requirement IDs a chat is about to use — and the lint that fails the suite on the ones a machine can decide |
 | [Test traceability](test-traceability.md) | `TRACE` | Every requirement is accounted for by a test file that exists or by a `No test:` line saying why, and a lint keeps it true |
 
