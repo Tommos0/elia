@@ -38,6 +38,7 @@ Files: styles in `assets/css/app.css`, JS in `assets/js/app.js`, shared componen
 
 - Only the `app.js` and `app.css` bundles are supported.
 - You can't reference an external `src` or `href` in the layouts. Import vendor dependencies into `app.js` or `app.css`.
+- A vendored package under `assets/node_modules/` ships minified: grepping `@xterm/xterm/lib/xterm.js` prints one line of hundreds of kilobytes into the transcript and answers nothing. Read the package's `src/` where it ships one (`@xterm/xterm` does) or its `typings/*.d.ts` instead.
 - **Never** write inline `<script>` tags in templates. Use a colocated hook (see `docs/agents/phoenix-liveview.md`). The one script written by hand is in the root layout's head (`components/layouts/root.html.heex`), which applies a preference while the page is parsed rather than after it: the theme, and the UI scale (CONF-30–CONF-35). A hook runs only once the bundle has loaded, so a preference applied there would be painted at the old value first and jump.
 
 ## Layers
