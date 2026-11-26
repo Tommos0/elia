@@ -238,6 +238,20 @@ stream in, approves or denies tool calls, and switches between saved chats.
   (SESS-19) and is right on first render, from
   `Elia.Agent.awaiting_input/0`.
 
+- **UI-111** A chat whose terminal is running shows a small terminal mark beside
+  its status indicator (UI-59): `#chat-terminal-<id>`, scoped as the row's other
+  ids are (UI-92), an icon (`hero-command-line`) with the `title` "Terminal
+  running". The mark is on the row only while that chat's terminal is running: a
+  chat with no terminal, one whose command has exited (TERM-1, TERM-4) and one
+  that never started one show none, and the mark neither takes the status
+  indicator's place nor changes what it shows. It is right on first render, from
+  `Elia.Terminal.running_ids/0` (TERM-41), and follows the terminal's activity
+  topic, so a terminal started or stopped while the list is on screen appears on
+  that chat's row or leaves it without a reload. Every list that draws a chat's
+  row draws the mark with it: the sidebar and the drawer (UI-4, UI-92), the
+  header's active chats (ACTIVE-13), the dashboard's rows (DASH-15) and a
+  project's chats (PROJ-59).
+
 - **UI-64** Every chat row in the sidebar, task chats included (UI-45), has a
   delete entry in the row's own menu (`#delete-chat-<id>`, with the accessible
   label "Delete chat"), which asks for confirmation first, with `data-confirm`
@@ -826,6 +840,8 @@ UI-59, UI-80),
 `Elia.Agent` and `Elia.Agent.Session` (the chat's done flag: `set_done/2`, the
 `{:done, on?}` event, and clearing it when a message continues the chat, UI-79,
 DONE-9),
+`Elia.Terminal` (which chats have a terminal running, `running_ids/0`, and the
+activity topic the list follows, TERM-41, UI-111),
 `Elia.Store` (the chat `/chats` resumes, STORE-29, UI-77; the title a row and the
 page show, STORE-33, UI-74; the done flag a row shows, STORE-35, UI-80),
 `EliaWeb.ChatSettingsLive` (the per-chat settings page the composer links to,
@@ -884,8 +900,9 @@ same pages (UI-85). The store itself is unchanged: a page is a prefix of
   their badges, a multi-line command's collapsed card — UI-98, UI-99 — the
   sidebar and its rows, its row menu and renaming a chat in a row, a delete,
   the Markdown in a reply, and what `/chats`
-  opens — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37, UI-45, UI-59,
-  UI-63 to UI-66, UI-77, UI-103, UI-104).
+  opens, and the terminal mark a row shows while that chat's terminal is
+  running — UI-2, UI-6 to UI-10, UI-18, UI-25, UI-29 to UI-37, UI-45, UI-59,
+  UI-63 to UI-66, UI-77, UI-103, UI-104, UI-111).
 - No test: UI-5, UI-11, UI-13, UI-22 to UI-24, UI-49 — no test in the
   tree asserts them: the sidebar's "No chats yet" state, the "Working" indicator
   while a turn runs with nothing streamed yet, a `{:reset, messages}` rebuilding

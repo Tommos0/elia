@@ -150,6 +150,13 @@ defmodule EliaWeb.ProjectLive do
   def handle_info({:chat_deleted, _id}, socket), do: {:noreply, refresh(socket)}
 
   # PROJ-52, UI-34: the relative times keep up with the clock.
+  # PROJ-59, TERM-41: a chat's terminal started running or ended, so its row
+  # shows the mark or drops it — nothing else on the page changed.
+  def handle_info({:chat_terminal, id, running?}, socket) do
+    {:noreply,
+     assign(socket, terminals: ChatStatus.put_terminal(socket.assigns.terminals, id, running?))}
+  end
+
   def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
 
   defp allowlist_error(entry) do
@@ -182,6 +189,8 @@ defmodule EliaWeb.ProjectLive do
   defp watch(socket) do
     if connected?(socket) and !socket.assigns[:watching] do
       Agent.subscribe_activity()
+      # PROJ-59, TERM-41: a chat's terminal starting or ending.
+      Elia.Terminal.subscribe_activity()
       :timer.send_interval(@time_tick, :tick)
       assign(socket, watching: true)
     else
@@ -200,6 +209,8 @@ defmodule EliaWeb.ProjectLive do
       chats: page,
       more_chats: more != [],
       now: DateTime.utc_now(),
+      # PROJ-59, TERM-41: the chats whose terminal is running.
+      terminals: Elia.Terminal.running_ids(),
       marks: %{
         awaiting: Agent.awaiting_approval(),
         input: Agent.awaiting_input(),
@@ -408,6 +419,11 @@ defmodule EliaWeb.ProjectLive do
                   <ChatStatus.status_icon
                     id={"project-chat-status-#{chat.id}"}
                     status={ChatStatus.for_chat(chat, @marks)}
+                  />
+                  <%!-- PROJ-59: the mark a running terminal gets. --%>
+                  <ChatStatus.terminal_mark
+                    :if={chat.id in @terminals}
+                    id={"project-chat-terminal-#{chat.id}"}
                   />
                   <span class="min-w-0 flex-1 truncate">{chat.title}</span>
                   <time

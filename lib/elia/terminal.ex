@@ -248,6 +248,15 @@ defmodule Elia.Terminal do
   def subscribe_status(chat_id), do: Phoenix.PubSub.subscribe(Elia.PubSub, topic(chat_id))
 
   @doc """
+  TERM-41: the topic that says which chats have a terminal running, for a page
+  that lists many of them — one subscription rather than one per chat.
+  """
+  def activity_topic, do: "terminal:activity"
+
+  @doc "TERM-41: follows `{:chat_terminal, chat_id, running?}` for every chat."
+  def subscribe_activity, do: Phoenix.PubSub.subscribe(Elia.PubSub, activity_topic())
+
+  @doc """
   Broadcasts `chat_id`'s terminal status to the page watching it. The session
   calls this when it starts running, ends or is stopped (TERM-23); the page
   needs no stream of bytes of its own, so this carries the status alone.
@@ -255,6 +264,39 @@ defmodule Elia.Terminal do
   @spec broadcast_status(binary(), map()) :: :ok
   def broadcast_status(chat_id, status) do
     Phoenix.PubSub.broadcast(Elia.PubSub, topic(chat_id), {:terminal_status, chat_id, status})
+
+    # TERM-41: the same change as the one fact a list of chats needs — whether
+    # this chat has a terminal running — so a row shows the mark or drops it
+    # (UI-111) without following every chat's own topic.
+    running? = Map.get(status, :running, false) == true
+    Phoenix.PubSub.broadcast(Elia.PubSub, activity_topic(), {:chat_terminal, chat_id, running?})
+  end
+
+  @doc """
+  TERM-41: the ids of the chats whose terminal's command is still running — a
+  registry read and a question to each of the few sessions there are, as
+  `Elia.Agent.running/0` reads the agent registry (SESS-19). A chat whose
+  session has ended is not among them (TERM-4), and neither is one with no
+  session at all.
+  """
+  @spec running_ids() :: [binary()]
+  def running_ids do
+    if Process.whereis(@registry) do
+      @registry
+      |> Registry.select([{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+      |> Enum.filter(fn {_chat_id, pid} -> running?(pid) end)
+      |> Enum.map(fn {chat_id, _pid} -> chat_id end)
+    else
+      []
+    end
+  end
+
+  # TERM-1, TERM-4: a session that ended between the registry read and this
+  # question — or is on its way out — is not running.
+  defp running?(pid) do
+    Session.running?(pid)
+  catch
+    :exit, _ -> false
   end
 
   @doc "How many sessions are running right now, across chats (TERM-1's bound)."

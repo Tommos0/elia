@@ -92,6 +92,12 @@ leaving the page.
   row's does (UI-110): the flag is saved with the chat (STORE-34) and the row
   leaves the menu, which lists the chats that are not done (ACTIVE-2), with the
   count following (ACTIVE-3) — without a reload.
+- **ACTIVE-13** A row of the menu (ACTIVE-5) whose chat has a terminal running
+  shows the terminal mark (UI-111) beside its status indicator, under the
+  control's own ids (`#active-chats-terminal-<id>`), and a row whose chat has
+  none shows nothing. It is right on first render, from
+  `Elia.Terminal.running_ids/0` (TERM-41), and follows the terminal's activity
+  topic while the page is open, as the rows follow a status change (ACTIVE-7).
 
 ## Out of scope
 
@@ -132,7 +138,9 @@ STORE-55): the stored shape is the one that is already there.
   the statuses from the registry (`Elia.Agent.awaiting_approval/0`,
   `awaiting_input/0`, `paused/0`, `running/0`) and the record a restart left
   behind (STORE-31), and follows the activity topic
-  (`Elia.Agent.subscribe_activity/0`) for ACTIVE-7.
+  (`Elia.Agent.subscribe_activity/0`) for ACTIVE-7; the terminal mark a row
+  shows (ACTIVE-13) comes from `Elia.Terminal.running_ids/0` and the terminal's
+  activity topic (`Elia.Terminal.subscribe_activity/0`, TERM-41).
 - `EliaWeb.Layouts` — the control and its menu in the header, drawn from that
   state (ACTIVE-1, ACTIVE-5, ACTIVE-6), which is what keeps it on every page.
 - `EliaWeb.ChatRowMenu` — a chat row's own menu, the box a name is typed in, and
@@ -167,7 +175,9 @@ STORE-55): the stored shape is the one that is already there.
   page is open (ACTIVE-7); and a row's own menu — in the markup and shut, its
   entries under the control's own ids, Rename putting the box in that row and
   saving the name, the done entry marking the chat done and taking its row out of
-  the menu, and the delete entry removing the row (ACTIVE-8 to ACTIVE-12).
+  the menu, and the delete entry removing the row (ACTIVE-8 to ACTIVE-12); and the
+  terminal mark on the row of a chat whose terminal is running, and on no other
+  row (ACTIVE-13).
 - `test/elia_web/browser/chat_row_menu_test.exs` — the gesture in a real
   browser, for a chat list's rows and for the header's (UI-103, UI-104,
   ACTIVE-8), and the done entry, offered for an idle chat and gone for any other

@@ -78,6 +78,31 @@ defmodule Elia.PreviewTest do
     end
   end
 
+  # PREVIEW-17
+  describe "the chat whose terminal is running" do
+    test "is fixed, and `@terminal` stands for it" do
+      assert Preview.terminal_id() == "preview-terminal"
+      assert Preview.terminal_path() == "/c/preview-terminal"
+      assert Preview.resolve_path("@terminal") == "/c/preview-terminal"
+    end
+
+    # PREVIEW-17: the terminal is a real one — the app's own session (TERM-1) —
+    # so the row a picture shows is a row the app marked itself (UI-111,
+    # TERM-41). Without tmux there is no terminal to run (TERM-29), so the chat
+    # is still saved and only the mark is missing.
+    @tag skip: if(Elia.Terminal.available?(), do: false, else: "tmux is not installed")
+    test "saves the chat and starts its own terminal" do
+      id = Preview.terminal_id()
+      on_exit(fn -> Elia.Agent.delete(id) end)
+
+      assert Preview.start_terminal() == :ok
+
+      assert id in Elia.Terminal.running_ids()
+      assert {:ok, %{running: true}} = Elia.Terminal.status(id)
+      assert Enum.any?(Elia.Store.list(1000), &(&1.id == id))
+    end
+  end
+
   # PREVIEW-13
   describe "the colour scheme a preview emulates" do
     test "is the one `ELIA_PREVIEW_THEME` names" do

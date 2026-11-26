@@ -278,6 +278,12 @@ project's (PROJ-42, PROJ-46).
   the 30 chats the chat list's first page holds (UI-4), and while the project
   has more chats than that a "Load more chats" button (`#project-load-more`)
   lists the next 30. A project with no chats says so (`#project-no-chats`).
+- **PROJ-59** A row of the project's chats (PROJ-52) whose chat has a terminal
+  running shows the terminal mark (UI-111) beside its status indicator, under
+  the page's own ids (`#project-chat-terminal-<id>`), and a row whose chat has
+  none shows nothing. It is right on first render, from
+  `Elia.Terminal.running_ids/0` (TERM-41), and follows the terminal's activity
+  topic while the page is open, as the rows follow a status change (PROJ-52).
 - **PROJ-53** A row of the dashboard's projects card links to the project's own
   page (`#dash-project-open-<id>`, DASH-9), and the switcher's menu is the other
   way in: choosing a project there opens its own page (`#project-option-<id>`,
@@ -427,7 +433,8 @@ nothing is migrated and a project saved by an older Elia still reads.
 
 ## Implementation
 
-`Elia.Projects`, `Elia.Settings`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`, `Elia.Agent.Session`,
+`Elia.Projects`, `Elia.Settings`, `Elia.Workspace`, `Elia.Store`, `Elia.Agent`,
+`Elia.Agent.Session`, `Elia.Terminal`,
 `Elia.Agent.Loop`, `Elia.Skills`, `Elia.Skills.Harness`,
 `Elia.Skills.Shell`,
 `Elia.Skills.Folder`, `Elia.Skills.Tasks`, `Elia.Explorer`, `Elia.LLM.Context`,
@@ -460,8 +467,9 @@ nothing is migrated and a project saved by an older Elia still reads.
   at a time, the projects root control, and what the flash says after a creation
   whose repository was not set up — PROJ-39 to PROJ-41, PROJ-55).
 - `test/elia_web/live/project_live_test.exs` (a project's own page: the project
-  it names, the chats it lists with their status, its paging, an id that names
-  no project, the New chat control (PROJ-51, PROJ-52), the Files button
+  it names, the chats it lists with their status and the terminal mark one of
+  them shows while its terminal runs, its paging, an id that names no project,
+  the New chat control (PROJ-51, PROJ-52, PROJ-59), the Files button
   (PROJ-48) and the Delete button (PROJ-54) on it, the project's allowlist field
   and its Save (PROJ-50), and one push button per remote of the project's
   folder with the standing beside each, a folder that has none, and a push

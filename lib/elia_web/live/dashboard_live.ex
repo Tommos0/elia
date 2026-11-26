@@ -28,6 +28,8 @@ defmodule EliaWeb.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Agent.subscribe_activity()
+      # DASH-15, TERM-41: a chat's terminal starting or ending.
+      Elia.Terminal.subscribe_activity()
       :timer.send_interval(@stats_tick, :stats)
       :timer.send_interval(@time_tick, :tick)
       :timer.send_interval(@deploy_tick, :deploy)
@@ -49,6 +51,11 @@ defmodule EliaWeb.DashboardLive do
   # SESS-48, DASH-3: a chat was deleted, so the lists built from the store are
   # built again without it (ACTIVE-7).
   def handle_info({:chat_deleted, _id}, socket), do: {:noreply, refresh(socket)}
+
+  # DASH-15, TERM-41: a chat's terminal started running or ended. Its rows are
+  # built from the ids, so they are built again — the cards are cheap to build
+  # and a terminal starts or ends far less often than a turn changes status.
+  def handle_info({:chat_terminal, _id, _running?}, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(:stats, socket), do: {:noreply, update_stats(socket, sample())}
 
@@ -85,7 +92,9 @@ defmodule EliaWeb.DashboardLive do
     paused = Agent.paused()
     running = Agent.running()
     resume = Store.latest()
-    {attention, more} = attention_rows(chats, awaiting, paused, names)
+    # DASH-15, TERM-41: the chats whose terminal is running.
+    terminals = Elia.Terminal.running_ids()
+    {attention, more} = attention_rows(chats, awaiting, paused, names, terminals)
 
     assign(socket,
       now: DateTime.utc_now(),
@@ -95,7 +104,9 @@ defmodule EliaWeb.DashboardLive do
       resume: resume,
       resume_status: resume && status_of(resume, awaiting, paused, running),
       resume_project: resume && Map.get(names, resume.project_id, "Elia"),
-      recent: Enum.map(Enum.take(chats, @recent), &row(&1, names, awaiting, paused, running)),
+      resume_terminal: resume && resume.id in terminals,
+      recent:
+        Enum.map(Enum.take(chats, @recent), &row(&1, names, awaiting, paused, running, terminals)),
       attention: attention,
       attention_more: more,
       default_project: Projects.default(),
@@ -110,9 +121,9 @@ defmodule EliaWeb.DashboardLive do
   # (awaiting approval, then paused), then the interrupted ones, capped at
   # `@interrupted_rows` with the rest counted. The store lists chats newest
   # first, and so does each group.
-  defp attention_rows(chats, awaiting, paused, names) do
+  defp attention_rows(chats, awaiting, paused, names, terminals) do
     split = fn chats, match, reason_key, reason ->
-      {for(chat <- chats, match.(chat), do: row(chat, names, reason_key, reason)),
+      {for(chat <- chats, match.(chat), do: row(chat, names, reason_key, reason, terminals)),
        Enum.reject(chats, match)}
     end
 
@@ -121,29 +132,32 @@ defmodule EliaWeb.DashboardLive do
 
     interrupted =
       for chat <- rest, Map.get(chat, :interrupted, false) do
-        row(chat, names, "interrupted", "Interrupted by a restart")
+        row(chat, names, "interrupted", "Interrupted by a restart", terminals)
       end
 
     {waiting ++ held ++ Enum.take(interrupted, @interrupted_rows),
      max(length(interrupted) - @interrupted_rows, 0)}
   end
 
-  defp row(chat, names, reason_key, reason) do
+  defp row(chat, names, reason_key, reason, terminals) do
     %{
       chat: chat,
       project: Map.get(names, chat.project_id, "Elia"),
       reason_key: reason_key,
-      reason: reason
+      reason: reason,
+      # DASH-15, TERM-41: whether its terminal is running.
+      terminal: chat.id in terminals
     }
   end
 
   # DASH-3, DASH-7: a chat as a list row, with the status it shows — the
   # sidebar's own rules (UI-46, UI-47, UI-58, UI-59, UI-72).
-  defp row(chat, names, awaiting, paused, running) do
+  defp row(chat, names, awaiting, paused, running, terminals) do
     %{
       chat: chat,
       project: Map.get(names, chat.project_id, "Elia"),
-      status: status_of(chat, awaiting, paused, running)
+      status: status_of(chat, awaiting, paused, running),
+      terminal: chat.id in terminals
     }
   end
 
@@ -220,6 +234,7 @@ defmodule EliaWeb.DashboardLive do
                 resume={@resume}
                 status={@resume_status}
                 project={@resume_project}
+                terminal={@resume_terminal}
                 default_project={@default_project}
                 now={@now}
               />
@@ -254,6 +269,7 @@ defmodule EliaWeb.DashboardLive do
   attr :resume, :map, default: nil
   attr :status, :string, default: nil
   attr :project, :string, default: nil
+  attr :terminal, :boolean, default: false
   attr :default_project, :map, required: true
   attr :now, :any, required: true
 
@@ -269,6 +285,8 @@ defmodule EliaWeb.DashboardLive do
         class="mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-base-200"
       >
         <ChatStatus.status_icon id="continue-status" status={@status} />
+        <%!-- DASH-15: the mark a running terminal gets. --%>
+        <ChatStatus.terminal_mark :if={@terminal} id="continue-terminal" />
         <span class="min-w-0 flex-1">
           <span id="continue-title" class="block truncate font-medium">{@resume.title}</span>
           <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/50">
@@ -322,6 +340,10 @@ defmodule EliaWeb.DashboardLive do
             class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-base-200"
           >
             <ChatStatus.status_icon id={"attention-status-#{row.chat.id}"} status={row.reason_key} />
+            <ChatStatus.terminal_mark
+              :if={row.terminal}
+              id={"attention-terminal-#{row.chat.id}"}
+            />
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium">{row.chat.title}</span>
               <span class="block truncate text-xs text-base-content/60">
@@ -372,6 +394,7 @@ defmodule EliaWeb.DashboardLive do
             class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-base-200"
           >
             <ChatStatus.status_icon id={"recent-status-#{row.chat.id}"} status={row.status} />
+            <ChatStatus.terminal_mark :if={row.terminal} id={"recent-terminal-#{row.chat.id}"} />
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm">{row.chat.title}</span>
               <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/50">

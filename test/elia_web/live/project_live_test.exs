@@ -3,7 +3,7 @@ defmodule EliaWeb.ProjectLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, Deploy, LiveTree, Projects}
+  alias Elia.{Agent, Deploy, LiveTree, Projects, Terminal}
   alias Elia.LLM.Message
 
   setup do
@@ -27,6 +27,28 @@ defmodule EliaWeb.ProjectLiveTest do
     File.mkdir_p!(path)
     on_exit(fn -> File.rm_rf!(path) end)
     path
+  end
+
+  # PROJ-59, TERM-41: a row of the project's chats marks a chat whose terminal
+  # is running, and drops the mark when that terminal ends; a row whose chat has
+  # none shows nothing.
+  @tag skip: if(Terminal.available?(), do: false, else: "tmux is not installed")
+  test "a chat's row marks a running terminal", %{conn: conn} do
+    dir = make_dir("terminal-mark")
+    {:ok, project} = Projects.create("Widgets", dir)
+    plain = save_chat(project.id, title: "No terminal")
+    marked = save_chat(project.id, title: "Has a terminal")
+    on_exit(fn -> Agent.delete(marked) end)
+
+    assert {:ok, _pid} = Terminal.start(marked, command: "sleep 30", jail: false)
+
+    {:ok, view, _html} = live(conn, ~p"/p/#{project.id}")
+
+    assert has_element?(view, "#project-chat-terminal-#{marked}[data-terminal='running']")
+    refute has_element?(view, "#project-chat-terminal-#{plain}")
+
+    assert {:ok, _status} = Terminal.stop(marked)
+    refute has_element?(view, "#project-chat-terminal-#{marked}")
   end
 
   # One saved chat in a project (STORE-6), removed when the test ends.

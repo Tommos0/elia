@@ -92,6 +92,17 @@ left off in exactly as `/` used to (UI-1, UI-71).
   show without a reload (UI-6, UI-49), and the relative times refresh every
   minute (UI-34).
 
+### A running terminal
+
+- **DASH-15** Every row of the dashboard that draws a chat — the "Continue"
+  card's chat (DASH-3), a "Needs attention" row (DASH-5) and a "Recent chats"
+  row (DASH-7) — draws the terminal mark (UI-111) while that chat's terminal is
+  running, under its own ids (`#continue-terminal`, `#attention-terminal-<id>`,
+  `#recent-terminal-<id>`), and nothing in a row whose chat has no terminal
+  running. It is right on first render, from `Elia.Terminal.running_ids/0`
+  (TERM-41), and follows the terminal's activity topic while the page is open,
+  as the rows follow a status change (DASH-8).
+
 ### Projects
 
 - **DASH-9** A "Projects" card (`#projects`) has one row
@@ -150,8 +161,10 @@ left off in exactly as `/` used to (UI-1, UI-71).
 `EliaWeb.DashboardLive` (whose column grid shrinks with the screen, DASH-12),
 `EliaWeb.Router` (the `/` route and the `/chats` route
 of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/1` (STORE-29),
-`Elia.Projects`, `Elia.Agent` (statuses), `Elia.SystemStats` (DASH-10),
-`Elia.Deploy.status/0` (DASH-11) and `Elia.Deploy.changes/0` (DASH-14).
+`Elia.Projects`, `Elia.Agent` (statuses),
+`Elia.Terminal` (the ids with a terminal running, TERM-41, DASH-15),
+`Elia.SystemStats` (DASH-10), `Elia.Deploy.status/0` (DASH-11) and
+`Elia.Deploy.changes/0` (DASH-14).
 
 ## Tests
 
@@ -159,7 +172,9 @@ of UI-77), `EliaWeb.Layouts`, `Elia.Store.latest/1` (STORE-29),
   "Continue" card and a done chat being skipped, "Needs attention", "Recent
   chats" and the room its title gets, the refresh, "Projects" and the link a
   project's row carries to its own page, "System",
-  "Deploy" and "What's new" — DASH-1, DASH-3 to DASH-11, DASH-13, DASH-14).
+  "Deploy" and "What's new", and the terminal mark a row shows while that
+  chat's terminal is running — DASH-1, DASH-3 to DASH-11, DASH-13, DASH-14,
+  DASH-15).
 - `test/elia_web/live/chat_live_test.exs` (the dashboard as `/`, DASH-1, DASH-2;
   what `/chats` opens, UI-77).
 - `test/elia_web/live/chat_drawer_test.exs` (the drawer the dashboard's header

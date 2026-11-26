@@ -85,6 +85,10 @@ defmodule EliaWeb.PreviewTest do
     # PREVIEW-15: so is a card nobody has been asked yet.
     start_question()
 
+    # PREVIEW-17: and so is the mark a chat with a terminal running carries
+    # (UI-111) — a real session, started here and left running for the pictures.
+    :ok = Preview.start_terminal()
+
     {:ok, root: root}
   end
 

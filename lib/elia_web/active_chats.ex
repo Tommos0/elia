@@ -1,7 +1,7 @@
 defmodule EliaWeb.ActiveChats do
   @moduledoc """
   The header's active chats control: its state, the events that drive it and the
-  markup it is drawn with (ACTIVE-1 to ACTIVE-11).
+  markup it is drawn with (ACTIVE-1 to ACTIVE-13).
 
   Like `EliaWeb.ChatList` it hangs off every page of the live session
   (`EliaWeb.Router`'s `on_mount`), which is what puts the control in the header
@@ -107,6 +107,10 @@ defmodule EliaWeb.ActiveChats do
   defp handle_info({:chat_status, _id, _status}, socket), do: {:cont, refresh(socket)}
 
   defp handle_info({:chat_deleted, _id}, socket), do: {:cont, refresh(socket)}
+
+  # ACTIVE-13, TERM-41: a chat's terminal started running or ended, so its row
+  # shows the mark or drops it.
+  defp handle_info({:chat_terminal, _id, _running?}, socket), do: {:cont, refresh(socket)}
 
   defp handle_info(_message, socket), do: {:cont, socket}
 
@@ -218,6 +222,11 @@ defmodule EliaWeb.ActiveChats do
               class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2"
             >
               <ChatStatus.status_icon id={"active-chats-status-#{chat.id}"} status={chat.status} />
+              <%!-- ACTIVE-13: the mark a running terminal gets. --%>
+              <ChatStatus.terminal_mark
+                :if={chat.terminal}
+                id={"active-chats-terminal-#{chat.id}"}
+              />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm">{chat.title}</span>
                 <span class="block truncate text-xs text-base-content/60">{chat.project}</span>
@@ -239,6 +248,9 @@ defmodule EliaWeb.ActiveChats do
   defp list do
     chats = Elia.Store.list(@read, where: &(Map.get(&1, :done) != true))
     projects = project_names()
+    # ACTIVE-13, TERM-41: the chats whose terminal is running, right on first
+    # render.
+    terminals = Elia.Terminal.running_ids()
 
     marks = %{
       awaiting: Elia.Agent.awaiting_approval(),
@@ -247,7 +259,7 @@ defmodule EliaWeb.ActiveChats do
       running: Elia.Agent.running()
     }
 
-    rows = Enum.map(chats, &row(&1, projects, marks))
+    rows = Enum.map(chats, &row(&1, projects, marks, terminals))
 
     %{
       chats: Enum.take(rows, @listed),
@@ -258,7 +270,7 @@ defmodule EliaWeb.ActiveChats do
     }
   end
 
-  defp row(chat, projects, marks) do
+  defp row(chat, projects, marks, terminals) do
     status =
       ChatStatus.status(chat, %{
         awaiting: chat.id in marks.awaiting,
@@ -273,7 +285,9 @@ defmodule EliaWeb.ActiveChats do
       id: chat.id,
       title: chat.title,
       project: Map.get(projects, chat.project_id, "Elia"),
-      status: status
+      status: status,
+      # ACTIVE-13: whether its terminal is running (TERM-41).
+      terminal: chat.id in terminals
     }
   end
 
@@ -288,7 +302,12 @@ defmodule EliaWeb.ActiveChats do
   end
 
   defp subscribe(socket) do
-    if connected?(socket), do: Elia.Agent.subscribe_activity()
+    if connected?(socket) do
+      Elia.Agent.subscribe_activity()
+      # ACTIVE-13, TERM-41: a chat's terminal starting or ending.
+      Elia.Terminal.subscribe_activity()
+    end
+
     socket
   end
 

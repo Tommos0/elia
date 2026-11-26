@@ -88,6 +88,33 @@ defmodule Elia.TerminalTest do
     assert message =~ "already has a running terminal"
   end
 
+  # TERM-41, UI-111: which chats have a terminal running is a registry read a
+  # list of chats makes, and every change to it is published on one activity
+  # topic — a start as much as an end.
+  test "the chats with a terminal running are readable, and every change is published",
+       %{id: id, dir: dir} do
+    :ok = Terminal.subscribe_activity()
+
+    refute id in Terminal.running_ids()
+
+    assert {:ok, _pid} = Terminal.start(id, command: "sleep 30", workspace: dir, jail: false)
+    assert_receive {:chat_terminal, ^id, true}, 15_000
+    assert id in Terminal.running_ids()
+
+    assert {:ok, _status} = Terminal.stop(id)
+    assert_receive {:chat_terminal, ^id, false}, 15_000
+    refute id in Terminal.running_ids()
+
+    # TERM-4, TERM-41: a session whose command has exited is not running either,
+    # though its screen is still there (TERM-23).
+    assert {:ok, _} = Terminal.start(id, command: "exit 0", workspace: dir, jail: false)
+    assert_receive {:chat_terminal, ^id, false}, 15_000
+    refute id in Terminal.running_ids()
+
+    # And a chat with no session at all is not among them.
+    refute "terminal-no-session" in Terminal.running_ids()
+  end
+
   # TERM-4, TERM-23: the app's exit status is what the session records.
   # TERM-1: a session whose command has exited is not running, so the next start
   # replaces it.

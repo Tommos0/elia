@@ -3,7 +3,7 @@ defmodule EliaWeb.ChatLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, FakeLLM, Projects, Workspace}
+  alias Elia.{Agent, FakeLLM, Projects, Terminal, Workspace}
   alias Elia.LLM.Message
 
   setup do
@@ -1620,6 +1620,31 @@ defmodule EliaWeb.ChatLiveTest do
       File.rm_rf!(root)
       Elia.Settings.delete(:default_project)
     end
+  end
+
+  # UI-111, TERM-41: a chat whose terminal is running shows the small terminal
+  # mark beside its status indicator in the sidebar, and loses it when that
+  # terminal ends. A chat with no terminal shows none.
+  @tag skip: if(Terminal.available?(), do: false, else: "tmux is not installed")
+  test "a chat's row marks a running terminal", %{conn: conn} do
+    with_empty_store(fn ->
+      id = saved_chat()
+      # TERM-3: deleting the chat stops its terminal, which is what a leaked
+      # session needs to not leave a process tree behind for the next test.
+      on_exit(fn -> Agent.delete(id) end)
+
+      assert {:ok, _pid} = Terminal.start(id, command: "sleep 30", jail: false)
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{id}")
+
+      assert has_element?(view, "#chat-terminal-#{id}[data-terminal='running']")
+      # UI-59: the status indicator is still there, unchanged — the mark is
+      # beside it, not in its place.
+      assert has_element?(view, "#chat-status-#{id}")
+
+      assert {:ok, _status} = Terminal.stop(id)
+      refute has_element?(view, "#chat-terminal-#{id}")
+    end)
   end
 
   # A chat `/` can resume: saved with one message, so it has a title (STORE-7).

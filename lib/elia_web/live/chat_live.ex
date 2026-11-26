@@ -2446,6 +2446,11 @@ defmodule EliaWeb.ChatLive do
   # (`EliaWeb.ActiveChats`), so there is nothing here to do with it.
   def handle_info({:chat_deleted, _id}, socket), do: {:noreply, socket}
 
+  # UI-111, TERM-41: a chat's terminal started running or ended. This page draws
+  # the chat list's own rows (`EliaWeb.ChatList`'s hook, which runs before this
+  # clause), so there is nothing here to do with it.
+  def handle_info({:chat_terminal, _id, _running?}, socket), do: {:noreply, socket}
+
   # Keeps the transcript's item times current (MSGAT-6), by sending again the
   # items whose text has moved on. The chat list has its own clock, wherever it
   # is shown (`EliaWeb.ChatList`, UI-34, UI-92).

@@ -58,6 +58,18 @@ guardrails: it is the same confinement as a command, held open.
   showing an empty terminal that looks broken (TERM-23). A session that
   outlives the server would have to sit outside the jail, which is the trade
   this feature does not make.
+- **TERM-41** Which chats have a terminal running is readable without calling
+  their sessions, and a change to it is published where a page that lists many
+  chats can follow it: `Elia.Terminal.running_ids/0` answers the chat ids whose
+  session's command is still running (TERM-1) — a registry read, as
+  `Elia.Agent.running/0` is (SESS-19) — and not the id of a chat whose session
+  has ended, which is kept for its screen (TERM-4, TERM-23), nor of one with no
+  session at all. A session says what it is doing when its command starts
+  (TERM-1) and whenever that changes (TERM-23), and each of those is broadcast
+  on one activity topic of the terminal's as well as on that chat's own topic,
+  carrying the chat id, so a list of chats shows which of them have a terminal
+  running (UI-111) and keeps that current with one subscription rather than one
+  per chat. `Elia.Terminal.subscribe_activity/0` subscribes to it.
 
 ### Guardrails
 
@@ -335,7 +347,8 @@ config :elia, Elia.Terminal,
 
 ## Implementation
 
-`Elia.Terminal` (the session registry and its supervisor, one per chat),
+`Elia.Terminal` (the session registry and its supervisor, one per chat;
+`running_ids/0` and the activity topic a chat list follows, TERM-41),
 `Elia.Terminal.Session` (the port, control mode's notifications, the screen,
 the resize, the keys and the stop), `Elia.Terminal.Keys` (the `<Name>` notation,
 the aliases and the key-name whitelist, TERM-30, TERM-31), `Elia.Shell` (the
@@ -364,7 +377,8 @@ chat, the stop leaving nothing running, the missing tmux, the screen and resize
 commands, and the keys reaching a real app — a name expanded by tmux for the
 pane's own mode — TERM-1 to TERM-11; a stop whose command exits under it,
 TERM-35; an unjailed session's server and socket gone however it ended, and
-nothing of another session's touched, TERM-36), `test/elia/terminal/keys_test.exs` (the notation, its aliases
+nothing of another session's touched, TERM-36; and which chats have a
+terminal running, and the activity topic that says when that changes, TERM-41), `test/elia/terminal/keys_test.exs` (the notation, its aliases
 and the whitelist, TERM-30, TERM-31),
 `test/elia_web/live/terminal_live_test.exs` (the page's states, and the jail it
 says and starts with — TERM-19..TERM-23, TERM-37..TERM-39),

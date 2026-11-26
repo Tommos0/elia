@@ -12,7 +12,7 @@ defmodule Elia.Preview do
   """
 
   alias Elia.LLM.Message
-  alias Elia.{Agent, Explorer, Store, Workspace}
+  alias Elia.{Agent, Explorer, Store, Terminal, Workspace}
 
   # PREVIEW-4: a preview's own dir, gitignored so it never reaches a commit or
   # a deploy.
@@ -56,6 +56,13 @@ defmodule Elia.Preview do
   # a fixed id each for the same reason as the sample chat's.
   @page_count 30
   @page_id "preview-chat"
+
+  # PREVIEW-17: the sample chat whose terminal is running, so a picture shows
+  # the mark a chat with one carries (UI-111, TERM-41). A fixed id for the same
+  # reason as the sample chat's, and a command that outlives the preview.
+  @terminal_id "preview-terminal"
+  @terminal_title "Terminal chat"
+  @terminal_command "sleep 900"
 
   @doc "The dir a workspace's previews are written to, under `root` (PREVIEW-4)."
   @spec dir(binary()) :: binary()
@@ -116,13 +123,48 @@ defmodule Elia.Preview do
     :ok = Agent.send_message(@question_id, @question_prompt)
   end
 
+  @doc "The chat with a terminal running's id (PREVIEW-17)."
+  @spec terminal_id() :: binary()
+  def terminal_id, do: @terminal_id
+
+  @doc "The chat with a terminal running's path in the app (PREVIEW-17)."
+  @spec terminal_path() :: binary()
+  def terminal_path, do: "/c/" <> @terminal_id
+
   @doc """
-  What a preview's argument means as a path: `@chat` is the sample chat and
-  `@ask` the paused-question chat (PREVIEW-11, PREVIEW-15).
+  Saves the sample chat whose terminal is running and starts that terminal
+  (PREVIEW-17): a real session through the app's own terminal (TERM-1) in the
+  workspace the preview runs in, so what a picture shows on its row is what the
+  app shows (UI-111, TERM-41) rather than something stubbed. It is saved after
+  the sample chat (PREVIEW-10), so it is the newest chat and the dashboard's
+  "Continue" card holds it (DASH-3) as well as "Recent chats" (DASH-7). Where no
+  terminal can run — a machine without tmux (TERM-29) — the chat is saved
+  without one, and the mark is simply absent from the picture.
+  """
+  @spec start_terminal() :: :ok
+  def start_terminal do
+    :ok =
+      Store.save(@terminal_id, [Message.user("Run the suite in a terminal.")],
+        title: @terminal_title
+      )
+
+    # Unjailed: a picture needs a command that runs, and a machine without the
+    # jail's own tools (ISOL-1) would otherwise show no mark at all.
+    case Terminal.start(@terminal_id, command: @terminal_command, jail: false) do
+      {:ok, _pid} -> :ok
+      {:error, _message} -> :ok
+    end
+  end
+
+  @doc """
+  What a preview's argument means as a path: `@chat` is the sample chat, `@ask`
+  the paused-question chat and `@terminal` the chat with a terminal running
+  (PREVIEW-11, PREVIEW-15, PREVIEW-17).
   """
   @spec resolve_path(binary()) :: binary()
   def resolve_path("@chat"), do: sample_path()
   def resolve_path("@ask"), do: question_path()
+  def resolve_path("@terminal"), do: terminal_path()
   def resolve_path(path), do: path
 
   @doc """

@@ -13,7 +13,9 @@ defmodule EliaWeb.ChatStatus do
   `running/0`, SESS-19) and the record a restart left behind (STORE-31). A chat
   marked done (DONE-2, STORE-35) reads `done` in place of `idle`. `for_chat/2`
   is the same answer for a caller that holds the markers a page keeps, which is
-  what the row and the header use.
+  what the row and the header use. `terminal_mark/1` is the separate mark a chat
+  whose terminal is running shows beside it (UI-111): a terminal is a fact about
+  the chat, not a status it has.
   """
   use EliaWeb, :html
 
@@ -83,6 +85,36 @@ defmodule EliaWeb.ChatStatus do
     </span>
     """
   end
+
+  @doc """
+  UI-111: the small mark a chat's row draws beside its status indicator while
+  that chat's terminal is running (TERM-41) — the icon, and the words on hover.
+  It never stands in for the indicator itself, which still says what the chat is
+  doing.
+  """
+  attr :id, :string, required: true
+
+  def terminal_mark(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      data-terminal="running"
+      title="Terminal running"
+      class="inline-flex shrink-0 items-center text-base-content/50"
+    >
+      <.icon name="hero-command-line" class="size-3.5" />
+    </span>
+    """
+  end
+
+  @doc """
+  UI-111, TERM-41: the ids of the chats with a terminal running, one of them
+  added or removed as the terminal activity topic says a terminal started or
+  ended.
+  """
+  @spec put_terminal([binary()], binary(), boolean()) :: [binary()]
+  def put_terminal(ids, id, true), do: if(id in ids, do: ids, else: [id | ids])
+  def put_terminal(ids, id, false), do: List.delete(ids, id)
 
   @doc "UI-46, UI-59: the icon and colour for a status."
   def icon_spec("working"), do: {"hero-arrow-path", "text-info motion-safe:animate-spin"}

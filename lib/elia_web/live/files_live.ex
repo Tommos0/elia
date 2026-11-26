@@ -17,6 +17,13 @@ defmodule EliaWeb.FilesLive do
     {:ok, assign(socket, page_title: "Files")}
   end
 
+  # The activity the live session announces to every page — a chat's status, a
+  # deletion, a terminal starting (SESS-19, TERM-41) — is drawn by the chat list
+  # and the header's control (`EliaWeb.ChatList`, `EliaWeb.ActiveChats`), and
+  # this page shows neither, so there is nothing here to do with it.
+  @impl true
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   # EXPL-6, EXPL-9, EXPL-15, EXPL-17, EXPL-19
   @impl true
   def handle_params(params, _uri, socket) do

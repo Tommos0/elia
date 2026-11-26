@@ -2,7 +2,7 @@ defmodule EliaWeb.ChatList do
   @moduledoc """
   The chat list: its state, the markup it is drawn with and the events that
   drive it (UI-4 to UI-6, UI-31 to UI-36, UI-45 to UI-47, UI-59, UI-63 to UI-65,
-  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-110), and the
+  UI-72, UI-76, UI-80, UI-84, UI-85, UI-91 to UI-93, UI-105 to UI-111), and the
   project whose chats it lists (PROJ-28 to PROJ-31).
 
   The list is drawn in two places — the chat page's own sidebar (UI-4, UI-35,
@@ -80,6 +80,9 @@ defmodule EliaWeb.ChatList do
         input: [],
         paused: [],
         running: [],
+        # UI-111, TERM-41: the chats whose terminal is running, as the ids the
+        # terminal registry gives.
+        terminals: [],
         # UI-105, UI-108: the filters the list is shown under, all on until a
         # press (UI-106) or the tab's stored value (UI-108) says otherwise.
         filters: @filters,
@@ -144,7 +147,8 @@ defmodule EliaWeb.ChatList do
       awaiting: Elia.Agent.awaiting_approval(),
       input: Elia.Agent.awaiting_input(),
       paused: Elia.Agent.paused(),
-      running: Elia.Agent.running()
+      running: Elia.Agent.running(),
+      terminals: Elia.Terminal.running_ids()
     )
   end
 
@@ -329,6 +333,16 @@ defmodule EliaWeb.ChatList do
     {:halt, put_state(socket, now: DateTime.utc_now())}
   end
 
+  # UI-111, TERM-41: a chat's terminal started running or ended, so its row
+  # shows the mark or drops it. Nothing else about the chat changed, so the list
+  # itself is not read again.
+  defp handle_info({:chat_terminal, id, running?}, socket) do
+    {:cont,
+     put_state(socket,
+       terminals: ChatStatus.put_terminal(socket.assigns.chat_list.terminals, id, running?)
+     )}
+  end
+
   defp handle_info(_message, socket), do: {:cont, socket}
 
   # UI-47, UI-58, UI-59, UI-72, UI-76: the markers one chat's status event sets.
@@ -347,6 +361,8 @@ defmodule EliaWeb.ChatList do
   defp clock(socket) do
     if connected?(socket) do
       Elia.Agent.subscribe_activity()
+      # UI-111, TERM-41: a chat's terminal starting or ending.
+      Elia.Terminal.subscribe_activity()
       Process.send_after(self(), :chat_list_tick, 60_000)
     end
 
@@ -442,7 +458,8 @@ defmodule EliaWeb.ChatList do
   same state (UI-91).
   """
   def chat_list(assigns) do
-    statuses = Map.take(assigns.state, [:awaiting, :input, :paused, :running, :interrupted])
+    statuses =
+      Map.take(assigns.state, [:awaiting, :input, :paused, :running, :interrupted, :terminals])
 
     assigns =
       assign(assigns,
@@ -593,7 +610,8 @@ defmodule EliaWeb.ChatList do
         status_id: "#{assigns.scope}chat-status-#{assigns.chat.id}",
         # UI-46: a task chat's row is the row any chat has, from the one
         # derivation its header (UI-48) reads too.
-        status: ChatStatus.for_chat(assigns.chat, assigns.statuses)
+        status: ChatStatus.for_chat(assigns.chat, assigns.statuses),
+        terminal: assigns.chat.id in Map.get(assigns.statuses, :terminals, [])
       )
 
     ~H"""
@@ -613,6 +631,7 @@ defmodule EliaWeb.ChatList do
         chat={@chat}
         status_id={@status_id}
         status={@status}
+        terminal={@terminal}
         active={@active}
         now={@now}
         scope={@scope}
@@ -624,6 +643,7 @@ defmodule EliaWeb.ChatList do
   attr :chat, :map, required: true
   attr :status_id, :string, required: true
   attr :status, :atom, required: true
+  attr :terminal, :boolean, required: true
   attr :active, :boolean, required: true
   attr :now, :any, required: true
   attr :scope, :string, default: ""
@@ -649,6 +669,8 @@ defmodule EliaWeb.ChatList do
     >
       <span class="flex items-center gap-1.5">
         <ChatStatus.status_icon id={@status_id} status={@status} />
+        <%!-- UI-111: the mark a running terminal gets, beside the status. --%>
+        <ChatStatus.terminal_mark :if={@terminal} id={"#{@scope}chat-terminal-#{@chat.id}"} />
         <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
       </span>
       <time

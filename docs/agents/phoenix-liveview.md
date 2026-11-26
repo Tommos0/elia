@@ -43,6 +43,13 @@ Reference code: `lib/elia_web/live/chat_live.ex` (chat, streams, hooks, `to_form
 - To show literal `{` or `}` in `<pre>`/`<code>`, put `phx-no-curly-interpolation` on the parent tag.
 - A function component sees **only the attributes passed to it**, not the caller's assigns: `assigns[:x]` inside `Layouts.app` is `nil` for an assign the page holds and did not hand over. So a new piece of the header's state is a new attr on `Layouts.app` **and** an edit at all ten `<Layouts.app ...>` call sites (the new-project modal, PROJ-55). `required: true` on the attr makes a page that misses it a compile error rather than a header quietly missing a control, which is what `active_chats` does. The failure the other way round is a shape with no error at all: the modal simply never rendered in the test.
 - The heavy state that hangs off every page (`EliaWeb.ChatList`, `EliaWeb.ActiveChats`, `EliaWeb.NewProject`) is one module per control, registered in the router's `on_mount` and attached as a `:handle_event` hook, so a page wires nothing; a hook that does not know an event returns `{:cont, socket}` and the next one sees it. `EliaWeb.NewProject` needs two functions of the chat list's own state, so they are public on `EliaWeb.ChatList` (`refresh_projects/1`, `close_menu/1`) rather than a second copy of `projects_open` two modules disagree about.
+  Those hooks see the activity messages (`{:chat_status, …}` from SESS-19,
+  `{:chat_terminal, …}` from TERM-41) **before the page does**, and a hook that
+  handles one halts: it returns `{:cont, socket}` for what it does not know, but
+  a message it *did* handle never reaches the page's own `handle_info/2`, so a
+  page's clause for it is dead code. A page that draws no chat list of its own
+  therefore needs a catch-all `handle_info/2` — `EliaWeb.FilesLive` had to grow
+  one — or the LiveView logs a FunctionClauseError and the socket dies.
 
 ## LiveView
 

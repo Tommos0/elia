@@ -3,7 +3,7 @@ defmodule EliaWeb.ActiveChatsTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, FakeLLM, Store, Workspace}
+  alias Elia.{Agent, FakeLLM, Store, Terminal, Workspace}
   alias Elia.LLM.Message
 
   # The header's active chats control (`specs/active-chats.md`, ACTIVE-1 to
@@ -396,6 +396,29 @@ defmodule EliaWeb.ActiveChatsTest do
       # UI-65, UI-77: deleting the chat the page shows leaves the chat page.
       view |> element("#active-delete-chat-#{open}") |> render_click()
       assert_redirect(view, "/chats")
+    end)
+  end
+
+  # ACTIVE-13, TERM-41: a row whose chat has a terminal running shows the
+  # terminal mark, and drops it when that terminal ends; a row whose chat has
+  # none shows nothing.
+  @tag skip: if(Terminal.available?(), do: false, else: "tmux is not installed")
+  test "a row marks a chat whose terminal is running", %{conn: conn} do
+    with_empty_store(fn ->
+      marked = save_chat("Has a terminal")
+      plain = save_chat("Has none")
+      on_exit(fn -> Agent.delete(marked) end)
+
+      assert {:ok, _pid} = Terminal.start(marked, command: "sleep 30", jail: false)
+
+      {:ok, view, _html} = live(conn, ~p"/sessions")
+      view |> element("#active-chats-toggle") |> render_click()
+
+      assert has_element?(view, "#active-chats-terminal-#{marked}[data-terminal='running']")
+      refute has_element?(view, "#active-chats-terminal-#{plain}")
+
+      assert {:ok, _status} = Terminal.stop(marked)
+      refute has_element?(view, "#active-chats-terminal-#{marked}")
     end)
   end
 

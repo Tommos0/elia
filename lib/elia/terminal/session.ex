@@ -258,6 +258,11 @@ defmodule Elia.Terminal.Session do
       started_at: DateTime.utc_now()
     }
 
+    # TERM-41: a session that has just started says so, on the chat's own topic
+    # and on the terminal's activity topic, so a list of chats shows that this
+    # chat has a terminal running (UI-111) without asking every chat's session.
+    notify_status(state)
+
     {:ok, state}
   end
 

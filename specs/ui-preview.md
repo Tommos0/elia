@@ -125,6 +125,18 @@ live tree's saved chats are never touched.
   that chat is awaiting an answer before it visits the page, so a picture never
   catches the turn mid-flight.
 
+- **PREVIEW-17** A preview also gives one sample chat a terminal that is
+  running, so a picture shows the mark a chat whose terminal is running carries
+  (UI-111, TERM-41) rather than the feature being reasoned about. It is a real
+  session started through the app's own `Elia.Terminal` (TERM-1) in the
+  workspace the preview runs in, on a command that keeps running, and the chat
+  is an ordinary sample chat with a fixed id (`preview-terminal`) and a title of
+  its own, saved after the sample chat of PREVIEW-10 so it is the newest one and
+  a picture of the dashboard shows it on the "Continue" card as well as in
+  "Recent chats" (DASH-3, DASH-7). Where no terminal can run — a machine without
+  tmux (TERM-29) — the chat is saved without one and the mark is simply absent
+  from the picture.
+
 - **PREVIEW-16** A preview also seeds more chats than the chat list's first page
   (UI-4) holds, so what the list does with them is seen in a picture rather than
   reasoned about: the "Load more chats" button (UI-84) where it sits below the
@@ -200,7 +212,8 @@ CLI is not among them — it is user-wide, installed once for the user
 
 - Previewing the deployed tree, and a preview of the user's real chats,
   projects and settings: a preview runs the test env app on its own data — the
-  sample chat it seeds (PREVIEW-10 - PREVIEW-12) and nothing else. A dev-env
+  sample chat it seeds (PREVIEW-10 - PREVIEW-12, PREVIEW-15 to PREVIEW-17) and
+  nothing else. A dev-env
   preview over a copy of the live data would be a separate change.
 - Scripted interaction (clicking, hovering, typing, a streaming turn) and video
   or Playwright traces: a preview navigates and waits. The scripted turn of
@@ -213,11 +226,12 @@ CLI is not among them — it is user-wide, installed once for the user
 ## Implementation
 
 - `Elia.Preview` (naming, path safety, the URLs, the chat id a preview is given
-  for its links, PREVIEW-5, the sample chat and the paused
-  question of PREVIEW-15, no browser), `EliaWeb.PreviewController` + a router
+  for its links, PREVIEW-5, the sample chat, the paused
+  question of PREVIEW-15 and the chat with a terminal running, PREVIEW-17, no
+  browser), `EliaWeb.PreviewController` + a router
   entry (PREVIEW-7), `test/elia_web/browser/preview_test.exs` with
   `use EliaWeb.BrowserCase` (PREVIEW-1 - PREVIEW-6, PREVIEW-10 - PREVIEW-12,
-  PREVIEW-15), `bin/preview` (PREVIEW-1, PREVIEW-14), the transcript's image
+  PREVIEW-15, PREVIEW-17), `bin/preview` (PREVIEW-1, PREVIEW-14), the transcript's image
   styling in `EliaWeb.ChatLive` (PREVIEW-8), `AGENTS.md` and
   `docs/agents/harness.md` (PREVIEW-9).
 
@@ -225,7 +239,8 @@ CLI is not among them — it is user-wide, installed once for the user
 
 - `test/elia/preview_test.exs` (naming and path safety, PREVIEW-4, PREVIEW-7;
   the sample chat, PREVIEW-10 - PREVIEW-11; the paused question's id, path and
-  input, PREVIEW-15; the chats seeded past the list's first page, PREVIEW-16).
+  input, PREVIEW-15; the chats seeded past the list's first page, PREVIEW-16;
+  the chat with a terminal running, PREVIEW-17).
 - `test/elia_web/browser/preview_test.exs` (a preview run itself: the paths it
   writes and its report, the theme and width it emulates, the sample chat as a
   saved chat, its own tag — PREVIEW-1 to PREVIEW-3, PREVIEW-5, PREVIEW-6,

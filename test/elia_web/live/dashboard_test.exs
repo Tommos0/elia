@@ -9,7 +9,7 @@ defmodule EliaWeb.DashboardTest do
 
   import Phoenix.LiveViewTest
 
-  alias Elia.{Agent, Deploy, LiveTree, Projects, Store, Workspace}
+  alias Elia.{Agent, Deploy, LiveTree, Projects, Store, Terminal, Workspace}
   alias Elia.LLM.Message
 
   # DASH-1: a store of its own — a throwaway runtime root, where Elia's data,
@@ -30,6 +30,31 @@ defmodule EliaWeb.DashboardTest do
       File.rm_rf!(root)
       Elia.Settings.delete(:default_project)
     end
+  end
+
+  # DASH-15, TERM-41: the "Recent chats" row and the "Continue" card's chat mark
+  # a chat whose terminal is running, and drop the mark when that terminal ends;
+  # a row whose chat has none shows nothing.
+  @tag skip: if(Terminal.available?(), do: false, else: "tmux is not installed")
+  test "the rows mark a chat whose terminal is running", %{conn: conn} do
+    with_empty_store(fn ->
+      plain = saved_chat("has no terminal")
+      # The newest chat, so it is also the one the "Continue" card holds (DASH-3).
+      marked = saved_chat("has a terminal")
+      on_exit(fn -> Agent.delete(marked) end)
+
+      assert {:ok, _pid} = Terminal.start(marked, command: "sleep 30", jail: false)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#recent-terminal-#{marked}[data-terminal='running']")
+      refute has_element?(view, "#recent-terminal-#{plain}")
+      assert has_element?(view, "#continue-terminal[data-terminal='running']")
+
+      assert {:ok, _status} = Terminal.stop(marked)
+      refute has_element?(view, "#recent-terminal-#{marked}")
+      refute has_element?(view, "#continue-terminal")
+    end)
   end
 
   # A saved chat with one message, so it has a title (STORE-7).
