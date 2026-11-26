@@ -340,6 +340,18 @@ excluded`). Run that one yourself instead:
   (SUITE-15). A partition is started by the script's own shell, never from a
   command substitution: `pid=$(start ...)` leaves the job a grandchild of the
   shell, `wait` then cannot wait for it, and every partition reads as failed.
+- `capture_log([level: :info], fun)` does **not** raise the level in this Elixir
+  (1.18): the test env logs at `:warning` (`config/test.exs`), so an `Logger.info`
+  inside it is captured as `""` and the assertion fails as if nothing were logged.
+  `Logger.configure(level: :info)` inside the captured function is what shows it,
+  and `capture_log` puts the level back afterwards.
+- A process the application starts that acts on its own timer (`Process.send_after`
+  on an interval) keeps acting inside other tests, on files and directories those
+  tests are using, which shows up as a *different* `bin/test` partition failing
+  each run. Give it a configurable interval, set that interval to `0` in
+  `config/test.exs` (no timer: the process still does its start-up work, and the
+  tests call the thing directly with the moment they mean), and never let a test
+  depend on the timer firing. `Elia.Worktrees` is the worked example (WTREE-10).
 - A suite run started from a chat's shell inherits **the running server's own
   environment**, and two variables change what tests see there: `ELIA_SUPERVISED`
   (DEPLOY-33, RESTART-12) makes the two deploy tests that expect a server nothing

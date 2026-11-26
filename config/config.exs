@@ -226,6 +226,15 @@ config :elia, Elia.Harness,
   test_timeout: 60_000,
   max_test_timeout: 600_000
 
+# The worktrees the chats have, and the sweep that removes the ones nothing needs
+# any more (WTREE): `interval_ms` is how often it runs (WTREE-10), and
+# `min_age_ms` the least age a worktree's chat must have been done for — or, for
+# a worktree whose chat is gone, the least age the worktree itself must have —
+# before it is removed (WTREE-6, WTREE-7). An hour is the default.
+config :elia, Elia.Worktrees,
+  interval_ms: 60_000,
+  min_age_ms: 3_600_000
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

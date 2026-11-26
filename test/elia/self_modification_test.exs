@@ -202,6 +202,24 @@ defmodule Elia.SelfModificationTest do
       assert agents =~ "ask the user"
       assert agents =~ "rather than editing the live tree"
     end
+
+    # WTREE-5, DEPLOY-28: a finished chat leaves its worktree and its branch
+    # where they are — the server's sweep removes them (WTREE-6) — so the
+    # recipe ends at the merge and says so, rather than removing the tree the
+    # chat no longer needs.
+    test "the worktree recipe leaves a finished chat's worktree to the sweep" do
+      agents = File.read!("AGENTS.md")
+
+      assert agents =~ "leave the worktree and its branch where they are"
+      assert agents =~ "the server sweep removes them"
+      assert agents =~ "WTREE-5"
+      # WTREE-9: the branch goes only once its work is in the trunk, and the
+      # recipe says which condition that is.
+      assert agents =~ "deletes `chat/<chat id>` only when that branch is in `master`"
+      # The chat no longer removes what it made: the recipe has no removal step.
+      refute agents =~ "git worktree remove"
+      refute agents =~ "git branch -D"
+    end
   end
 
   describe "run_tests" do

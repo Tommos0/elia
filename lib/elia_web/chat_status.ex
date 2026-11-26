@@ -108,6 +108,27 @@ defmodule EliaWeb.ChatStatus do
   end
 
   @doc """
+  WTREE-1, WTREE-2: the small mark a chat that still has a worktree shows beside
+  its status indicator — the icon, and the words on hover (`Elia.Worktrees`,
+  WTREE-3). It never stands in for the indicator itself, which still says what
+  the chat is doing (UI-59).
+  """
+  attr :id, :string, required: true
+
+  def worktree_mark(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      data-worktree="present"
+      title="Worktree"
+      class="inline-flex shrink-0 items-center text-base-content/50"
+    >
+      <.icon name="hero-square-2-stack" class="size-3.5" />
+    </span>
+    """
+  end
+
+  @doc """
   UI-111, TERM-41: the ids of the chats with a terminal running, one of them
   added or removed as the terminal activity topic says a terminal started or
   ended.

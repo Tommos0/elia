@@ -51,6 +51,11 @@ defmodule Elia.Application do
       {Registry, keys: :unique, name: Elia.Terminal.Registry},
       {DynamicSupervisor, name: Elia.Terminal.Supervisor, strategy: :one_for_one},
       Elia.Settings,
+
+      # WTREE-4, WTREE-10: the worktrees the chats have, and the sweep that
+      # removes the ones of chats that are done or gone. It reads the saved
+      # chats and the settings, so it comes after both.
+      Elia.Worktrees,
       # CITE-4: the spec corpus the transcript cites from, kept while the files
       # it was made from are unchanged. After the store's cache, which is the
       # same idea for a saved chat (STORE-45).

@@ -514,6 +514,36 @@ defmodule EliaWeb.ChatListTest do
     end)
   end
 
+  # WTREE-1: a chat whose worktree still exists marks it in its row, beside the
+  # status indicator — and a chat without one marks nothing, whatever status it
+  # shows (UI-59). The mark is read from what the last scan found (WTREE-4), not
+  # from the filesystem, so it costs the list no call of its own.
+  test "a chat's row marks a worktree that still exists", %{conn: conn} do
+    with_empty_store(fn ->
+      [first, second] = save_chats(2)
+      folder = Elia.Workspace.runtime_root()
+      path = Path.join([folder, "tmp", "worktrees", first])
+      File.mkdir_p!(path)
+
+      on_exit(fn ->
+        File.rm_rf!(path)
+        Elia.Worktrees.scan(folders: [folder])
+      end)
+
+      # WTREE-3: the chat's own command made it (DEPLOY-28), so the filesystem is
+      # what says it is there.
+      Elia.Worktrees.scan()
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{second}")
+
+      assert has_element?(view, "#chat-worktree-#{first}[title='Worktree']")
+      # UI-59: the status indicator is still there, unchanged — the mark is
+      # beside it, not in its place.
+      assert has_element?(view, "#chat-status-#{first}")
+      refute has_element?(view, "#chat-worktree-#{second}")
+    end)
+  end
+
   # N chats, oldest first, so the list's pages can be named (STORE-12 order).
   defp save_chats(n) do
     for _ <- 1..n do

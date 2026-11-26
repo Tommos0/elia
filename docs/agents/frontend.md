@@ -67,6 +67,21 @@ belongs under a header menu goes below `z-40`.
   30 chats under its header — hides its lower sections unless the viewport is
   made tall enough: `ELIA_PREVIEW_HEIGHT=2600 bin/preview /p/harness`.
 
+- A mark that is only a few pixels wide — a status icon beside a chat's title —
+  is invisible in a whole-page picture at 1x, and `screenshot/3` takes no `clip`
+  (only `assert_screenshot` does), so there is nothing to crop with. A throwaway
+  `@tag :preview` test in `test/elia_web/browser/` is the way to look closely: a
+  `PhoenixTest.Playwright.Case` whose `setup_all` puts
+  `viewport: %{width: 430, height: 150}` (or `1280x560` for the sidebar) and
+  `device_scale_factor: 4.0` — a **float**; an integer is refused — into
+  `:browser_context_opts`, with `color_scheme: :dark` (the **atom**, not
+  `"dark"`), then `visit` and `screenshot`. It needs `ELIA_BROWSER_TESTS=1` (the
+  Playwright pool is started only then) and its own `ELIA_TEST_PORT`, and it
+  writes where `ELIA_PREVIEW_DIR` points. Take the same picture twice — once with
+  the thing present and once without — since a glyph that was there all along
+  (the title-edit affordance beside a chat's title) reads as the new mark
+  otherwise. Pictures copied into `tmp/preview/` are served by the preview route,
+  so a zoomed one can go into a reply beside the whole-page ones.
 - A preview writes its pictures into the `tmp/preview/` of the tree it ran in —
   the chat's worktree — and the route that serves them
   (`/preview/<chat id>/<file>`) looks there first and then in the chat's own

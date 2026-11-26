@@ -1647,6 +1647,58 @@ defmodule EliaWeb.ChatLiveTest do
     end)
   end
 
+  # WTREE-2: a chat whose worktree still exists marks it in its own header — the
+  # title header of an ordinary chat (UI-96) and the task header of a task chat
+  # (UI-48) — and a chat without one marks nothing.
+  test "a chat's header marks a worktree that still exists", %{conn: conn} do
+    with_empty_store(fn ->
+      id = saved_chat()
+      plain = saved_chat()
+      folder = Elia.Workspace.runtime_root()
+      path = Path.join([folder, "tmp", "worktrees", id])
+      File.mkdir_p!(path)
+
+      on_exit(fn ->
+        File.rm_rf!(path)
+        Elia.Worktrees.scan(folders: [folder])
+      end)
+
+      Elia.Worktrees.scan()
+
+      {:ok, _view, _html} = live(conn, ~p"/c/#{id}")
+
+      assert has_element?(_view, "#chat-worktree-header[title='Worktree']")
+      # UI-96: the title is still the header's, and the row marks the same fact.
+      assert has_element?(_view, "#chat-title")
+      assert has_element?(_view, "#chat-worktree-#{id}")
+      refute has_element?(_view, "#chat-worktree-#{plain}")
+    end)
+  end
+
+  # WTREE-2: a task chat's header draws the mark too, beside the status it shows
+  # (UI-48, UI-46).
+  test "a task chat's header marks a worktree that still exists", %{conn: conn} do
+    with_empty_store(fn ->
+      parent = saved_chat()
+      task = saved_task_chat(parent)
+      folder = Elia.Workspace.runtime_root()
+      path = Path.join([folder, "tmp", "worktrees", task])
+      File.mkdir_p!(path)
+
+      on_exit(fn ->
+        File.rm_rf!(path)
+        Elia.Worktrees.scan(folders: [folder])
+      end)
+
+      Elia.Worktrees.scan()
+
+      {:ok, view, _html} = live(conn, ~p"/c/#{task}")
+
+      assert has_element?(view, "#task-header-worktree[title='Worktree']")
+      assert has_element?(view, "#task-header-status")
+    end)
+  end
+
   # A chat `/` can resume: saved with one message, so it has a title (STORE-7).
   defp saved_chat do
     id = Agent.new_id()

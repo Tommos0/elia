@@ -82,9 +82,9 @@ tree's front end (`/recover`, RECOVER-10).
   with the copies DEPLOY-29 lists. It edits, compiles, previews and commits
   there, so the tree it was given stays as it was and nothing half-done is in
   the tree that runs. When the work is done it merges its own branch into the
-  trunk (DEPLOY-13) and then removes the worktree and its branch (`git worktree
-  remove`, `git branch -d` once it is merged), so a finished chat leaves neither
-  a tree nor a branch behind.
+  trunk (DEPLOY-13) and leaves the worktree and its branch where they are:
+  removing a finished chat's worktree is the server's sweep (WTREE-5, WTREE-6)
+  rather than the chat's step.
 - **DEPLOY-29** The same instruction says how to give that worktree what its
   first command needs: a fresh worktree of this repository has neither `deps`
   nor `_build` nor `assets/node_modules` — all three are gitignored — so each is

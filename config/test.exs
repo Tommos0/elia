@@ -104,3 +104,8 @@ config :elia,
 # tests turn the jail on per call and skip where bubblewrap is missing
 # (ISOL-12).
 config :elia, Elia.Shell, jail: false
+
+# WTREE-10: no sweep timer under the tests — a periodic sweep would remove a
+# worktree a test is using, and the tests that need one call `sweep/1` with the
+# moment they mean. The server still scans when it comes up (WTREE-4).
+config :elia, Elia.Worktrees, interval_ms: 0

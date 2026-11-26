@@ -627,7 +627,10 @@ defmodule EliaWeb.ChatList do
         # UI-46: a task chat's row is the row any chat has, from the one
         # derivation its header (UI-48) reads too.
         status: ChatStatus.for_chat(assigns.chat, assigns.statuses),
-        terminal: assigns.chat.id in Map.get(assigns.statuses, :terminals, [])
+        terminal: assigns.chat.id in Map.get(assigns.statuses, :terminals, []),
+        # WTREE-1: whether the chat still has a worktree, read from what the
+        # last scan found rather than from the filesystem (WTREE-4).
+        worktree: Elia.Worktrees.exists?(assigns.chat.id)
       )
 
     ~H"""
@@ -648,6 +651,7 @@ defmodule EliaWeb.ChatList do
         status_id={@status_id}
         status={@status}
         terminal={@terminal}
+        worktree={@worktree}
         active={@active}
         now={@now}
         scope={@scope}
@@ -660,6 +664,7 @@ defmodule EliaWeb.ChatList do
   attr :status_id, :string, required: true
   attr :status, :atom, required: true
   attr :terminal, :boolean, required: true
+  attr :worktree, :boolean, required: true
   attr :active, :boolean, required: true
   attr :now, :any, required: true
   attr :scope, :string, default: ""
@@ -687,6 +692,9 @@ defmodule EliaWeb.ChatList do
         <ChatStatus.status_icon id={@status_id} status={@status} />
         <%!-- UI-111: the mark a running terminal gets, beside the status. --%>
         <ChatStatus.terminal_mark :if={@terminal} id={"#{@scope}chat-terminal-#{@chat.id}"} />
+        <%!-- WTREE-1: the mark a chat that still has a worktree gets, beside the
+        status. --%>
+        <ChatStatus.worktree_mark :if={@worktree} id={"#{@scope}chat-worktree-#{@chat.id}"} />
         <span class="block min-w-0 flex-1 truncate">{@chat.title}</span>
       </span>
       <time

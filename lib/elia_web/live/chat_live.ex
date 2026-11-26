@@ -242,7 +242,7 @@ defmodule EliaWeb.ChatLive do
             parent_title={@parent_title}
           />
           <%!-- UI-96: the chat's title, above the context indicator (CTX-1). --%>
-          <.title_header title={@page_title} />
+          <.title_header title={@page_title} worktree={Elia.Worktrees.exists?(@session_id)} />
           <.context_header
             total={@context_breakdown.total}
             context_length={@context_window.context_length}
@@ -1280,12 +1280,16 @@ defmodule EliaWeb.ChatLive do
   # and the row agree.
   defp task_header(assigns) do
     assigns = assign(assigns, :status, ChatStatus.for_chat(assigns.chat, assigns.marks))
+    # WTREE-2: whether the chat still has a worktree, with the status beside it.
+    assigns = assign(assigns, :worktree, Elia.Worktrees.exists?(assigns.chat.id))
 
     ~H"""
     <div id="task-header" class="border-b border-base-300 bg-base-200/40">
       <div class="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-xs sm:px-6">
         <div class="flex items-center gap-2">
           <ChatStatus.status_icon id="task-header-status" status={@status} />
+          <%!-- WTREE-2: the mark a chat that still has a worktree gets. --%>
+          <ChatStatus.worktree_mark :if={@worktree} id="task-header-worktree" />
           <span class="text-base-content/60">Task of</span>
           <.link
             navigate={~p"/c/#{@task.parent_id}"}
@@ -1302,6 +1306,7 @@ defmodule EliaWeb.ChatLive do
   end
 
   attr :title, :string, required: true
+  attr :worktree, :boolean, default: false
 
   # UI-96, TITLE-1: the chat's own title, in a row above the context indicator
   # (CTX-1) and below the app header — a task chat's below its task header
@@ -1312,14 +1317,17 @@ defmodule EliaWeb.ChatLive do
   defp title_header(assigns) do
     ~H"""
     <div class="bg-base-200/40">
-      <div class="mx-auto max-w-3xl px-4 pt-2 sm:px-6">
+      <div class="mx-auto flex max-w-3xl items-center gap-1.5 px-4 pt-2 sm:px-6">
         <h1
           id="chat-title"
           title={@title}
-          class="truncate text-sm font-semibold tracking-tight"
+          class="min-w-0 truncate text-sm font-semibold tracking-tight"
         >
           {@title}
         </h1>
+        <%!-- WTREE-2: the mark a chat that still has a worktree gets, beside the
+        title. --%>
+        <ChatStatus.worktree_mark :if={@worktree} id="chat-worktree-header" />
       </div>
     </div>
     """
