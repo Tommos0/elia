@@ -119,6 +119,25 @@ defmodule Elia.Agent.Session do
     fold: nil
   ]
 
+  # SESS-15: the fields a state a build older than this code saved may lack —
+  # every one added to the state since a session could first outlive a hot
+  # reload. A field added to the struct from now on belongs here too, so that a
+  # state from before it is upgraded rather than read for a field it lacks.
+  @state_fields [
+    :settings,
+    :task_meta,
+    :project,
+    :workspace,
+    :compaction,
+    :pause,
+    :turn,
+    :title,
+    :input,
+    :title_by,
+    :done,
+    :cwd
+  ]
+
   def start_link(opts) do
     id = Keyword.fetch!(opts, :id)
     GenServer.start_link(__MODULE__, opts, name: via(id))
@@ -137,24 +156,7 @@ defmodule Elia.Agent.Session do
     workspace =
       opts[:workspace] || Keyword.get(loop_opts, :workspace) || project.folder
 
-    state = %__MODULE__{
-      id: opts[:id],
-      project: project,
-      workspace: workspace,
-      # WD-2, WD-7: the chat's own working directory, saved with it, read back
-      # only while it is still a directory inside the workspace.
-      cwd: if(persist, do: load_cwd(opts[:id], workspace)),
-      loop_opts: loop_opts,
-      persist: persist,
-      messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
-      settings: initial_settings(opts[:id], persist, opts),
-      task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
-      compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
-      title: if(persist, do: Elia.Store.load_title(opts[:id])),
-      # TITLE-9, STORE-55: "user" when the chat's title was set by hand.
-      title_by: if(persist, do: Elia.Store.title_by(opts[:id])),
-      done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
-    }
+    state = initial_state(opts, project, workspace, loop_opts, persist)
 
     # COMPACT-38, `## Stored data`: a saved state carries the items the ladder
     # elided; one saved before the item list existed carries only its level and
@@ -187,102 +189,75 @@ defmodule Elia.Agent.Session do
   end
 
   @impl true
-  # SESS-15: upgrade state from before `:settings` (SESS-41), `:task_meta`,
-  # `:project`, `:workspace`, `:compaction`, `:pause`, `:turn` (INTR-1),
-  # `:title`, `:input` (ASK), `:done` (DONE-1) or `:cwd` (WD-1) existed (a
-  # session that outlived a hot reload). Fields it already has are kept —
-  # including the five values a state from before the one map holds as fields of
-  # its own — and `:turn` is not loaded from disk, since it belongs to the
-  # process that is running the turn.
-  def handle_call(msg, from, state)
-      when not is_map_key(state, :settings) or
-             not is_map_key(state, :task_meta) or not is_map_key(state, :project) or
-             not is_map_key(state, :workspace) or not is_map_key(state, :compaction) or
-             not is_map_key(state, :pause) or
-             not is_map_key(state, :turn) or
-             not is_map_key(state, :title) or not is_map_key(state, :input) or
-             not is_map_key(state, :title_by) or
-             not is_map_key(state, :done) or not is_map_key(state, :cwd) do
-    upgraded = Map.merge(%__MODULE__{}, Map.from_struct(state))
+  # SESS-15: a state from before `:settings` (SESS-41), `:task_meta`, `:project`,
+  # `:workspace`, `:compaction`, `:pause`, `:turn` (INTR-1), `:title`, `:input`
+  # (ASK), `:done` (DONE-1) or `:cwd` (WD-1) existed is a session that outlived
+  # a hot reload: its state is upgraded before the message it was sent is
+  # handled, since reading a field it lacks would raise.
+  def handle_call(msg, from, state) do
+    state = if current?(state), do: state, else: upgraded(state)
+    dispatch(msg, from, state)
+  end
 
-    upgraded =
-      if is_map_key(state, :project),
-        do: upgraded,
-        else: %{upgraded | project: load_project(upgraded.id, upgraded.persist)}
+  # SESS-15: whether the state carries every field `@state_fields` names — a
+  # state a build older than this code saved lacks the ones added since.
+  defp current?(state), do: Enum.all?(@state_fields, &is_map_key(state, &1))
 
-    upgraded =
-      if is_map_key(state, :workspace),
-        do: upgraded,
-        else: %{upgraded | workspace: upgraded.project.folder}
+  # SESS-15: the same session's state with every field it predates filled in
+  # from the stored chat. Fields it already has are kept — including the five
+  # values a state from before the one map holds as fields of its own — and
+  # `:turn` is not loaded from disk, since it belongs to the process that is
+  # running the turn.
+  defp upgraded(old) do
+    state = Map.merge(%__MODULE__{}, Map.from_struct(old))
 
-    upgraded =
-      if is_map_key(state, :task_meta),
-        do: upgraded,
-        else: %{
-          upgraded
-          | task_meta: if(upgraded.persist, do: Elia.Store.load_task(upgraded.id))
-        }
+    state = fill_missing(old, state, :project, &load_project(&1.id, &1.persist))
+    state = fill_missing(old, state, :workspace, & &1.project.folder)
 
-    upgraded =
-      if is_map_key(state, :settings),
-        do: upgraded,
-        else: %{upgraded | settings: upgraded_settings(state, upgraded)}
+    state =
+      fill_missing(old, state, :task_meta, fn s ->
+        if(s.persist, do: Elia.Store.load_task(s.id))
+      end)
 
-    upgraded =
-      if is_map_key(state, :compaction),
-        do: upgraded,
-        else: %{upgraded | compaction: initial_compaction(upgraded.id, upgraded.persist, nil)}
+    state = fill_missing(old, state, :settings, &upgraded_settings(old, &1))
+
+    state = fill_missing(old, state, :compaction, &initial_compaction(&1.id, &1.persist, nil))
 
     # COMPACT-38, `## Stored data`: an upgraded session materialises its items
     # the same way a loading one does.
-    upgraded = %{
-      upgraded
-      | compaction: Compaction.materialise(upgraded.compaction, upgraded.messages)
-    }
+    state = %{state | compaction: Compaction.materialise(state.compaction, state.messages)}
 
-    upgraded =
-      if is_map_key(state, :title),
-        do: upgraded,
-        else: %{upgraded | title: if(upgraded.persist, do: Elia.Store.load_title(upgraded.id))}
+    state =
+      fill_missing(old, state, :title, fn s ->
+        if(s.persist, do: Elia.Store.load_title(s.id))
+      end)
 
-    upgraded =
-      if is_map_key(state, :title_by),
-        do: upgraded,
-        else: %{
-          upgraded
-          | title_by: if(upgraded.persist, do: Elia.Store.title_by(upgraded.id))
-        }
+    state =
+      fill_missing(old, state, :title_by, fn s ->
+        if(s.persist, do: Elia.Store.title_by(s.id))
+      end)
 
-    upgraded =
-      if is_map_key(state, :done),
-        do: upgraded,
-        else: %{
-          upgraded
-          | done: if(upgraded.persist, do: Elia.Store.load_done(upgraded.id), else: false)
-        }
+    state =
+      fill_missing(old, state, :done, fn s ->
+        if(s.persist, do: Elia.Store.load_done(s.id), else: false)
+      end)
 
-    upgraded =
-      if is_map_key(state, :cwd),
-        do: upgraded,
-        else: %{
-          upgraded
-          | cwd: if(upgraded.persist, do: load_cwd(upgraded.id, upgraded.workspace))
-        }
-
-    handle_call(msg, from, upgraded)
+    fill_missing(old, state, :cwd, fn s ->
+      if(s.persist, do: load_cwd(s.id, s.workspace))
+    end)
   end
 
   # WD-1, WD-10: the chat's working directory, which the loop reads at the start
   # of every step, so a `cd` applies from the next one.
-  def handle_call(:cwd, _from, state), do: {:reply, cwd(state), state}
+  defp dispatch(:cwd, _from, state), do: {:reply, cwd(state), state}
 
   # WD-3, WD-4: `cd` sets the chat's working directory — or reports it, when it
   # names no path. WD-5 is the refusal, which changes nothing.
-  def handle_call({:set_cwd, path}, _from, state) when path in [nil, ""] do
+  defp dispatch({:set_cwd, path}, _from, state) when path in [nil, ""] do
     {:reply, {:ok, label(state)}, state}
   end
 
-  def handle_call({:set_cwd, path}, _from, state) when is_binary(path) do
+  defp dispatch({:set_cwd, path}, _from, state) when is_binary(path) do
     case Elia.Workdir.resolve(path, cwd(state), workspace(state)) do
       {:ok, dir} ->
         state = %{state | cwd: stored_cwd(dir, state)}
@@ -297,7 +272,7 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  def handle_call(:snapshot, _from, state) do
+  defp dispatch(:snapshot, _from, state) do
     snapshot =
       Map.take(state, [
         :id,
@@ -320,30 +295,30 @@ defmodule Elia.Agent.Session do
   # NET-6: the chat's network setting as it stands, for the proxy that decides a
   # running command's requests. A chat with no session answers nil, and its
   # caller falls back to the list it started with.
-  def handle_call(:network, _from, state) do
+  defp dispatch(:network, _from, state) do
     {:reply, Elia.Net.effective(settings(state).network, project(state)), state}
   end
 
   # NET-36: the network setting the chat holds of its own — its mode and the
   # entries it names — without its project's, which is what a request that
   # allows a host for this chat adds to (NET-33).
-  def handle_call(:network_setting, _from, state) do
+  defp dispatch(:network_setting, _from, state) do
     {:reply, Elia.Net.setting(settings(state).network), state}
   end
 
-  def handle_call({:send_message, text}, _from, state),
+  defp dispatch({:send_message, text}, _from, state),
     do: reply_to_send(state, Message.user(text))
 
   # UPLOAD-10, UPLOAD-11: a message that carries files says what the user wrote
   # and names the paths of what it carries.
-  def handle_call({:send_message, text, attachments}, _from, state),
+  defp dispatch({:send_message, text, attachments}, _from, state),
     do: reply_to_send(state, Message.user(text, attachments))
 
   # UPLOAD-6 - UPLOAD-11: the chat's own settings — its model, auto-approved
   # tools, jail, turn limits and effort — have one write path. A change is
   # validated as a whole, applied as a whole, saved once and broadcast as one
   # event; a change with anything wrong in it is no change at all.
-  def handle_call({:set_settings, changes}, _from, state) do
+  defp dispatch({:set_settings, changes}, _from, state) do
     case validate_settings(state, changes) do
       {:ok, changes} ->
         state = apply_settings(state, changes)
@@ -361,22 +336,22 @@ defmodule Elia.Agent.Session do
   # COMPACT-10, COMPACT-45: compact an idle chat on demand, ignoring the threshold
   # and the target (and without needing a window, which only gates COMPACT-7). A
   # chat that is mid-turn, or whose summary is still being folded, is busy.
-  def handle_call(:compact, _from, %{status: status} = state) when status != :idle do
+  defp dispatch(:compact, _from, %{status: status} = state) when status != :idle do
     {:reply, {:error, :busy}, state}
   end
 
-  def handle_call(:compact, _from, %{fold: fold} = state) when fold != nil do
+  defp dispatch(:compact, _from, %{fold: fold} = state) when fold != nil do
     {:reply, {:error, :busy}, state}
   end
 
-  def handle_call(:compact, _from, state) do
+  defp dispatch(:compact, _from, state) do
     {state, _fold?} = compact(state, target: nil, overhead: overhead(state))
     {:reply, :ok, state}
   end
 
   # COMPACT-9: this chat's own budget, fraction, target, working set, user cap
   # and whether automatic compaction is on.
-  def handle_call({:set_compaction, options}, _from, state) do
+  defp dispatch({:set_compaction, options}, _from, state) do
     compaction = %{
       state.compaction
       | options: Map.merge(state.compaction.options, Map.new(options))
@@ -391,7 +366,7 @@ defmodule Elia.Agent.Session do
   end
 
   # COMPACT-21: pin a message or one of its blocks, so no rule may elide it.
-  def handle_call({:set_pin, index, block, on?}, _from, state) when is_integer(index) do
+  defp dispatch({:set_pin, index, block, on?}, _from, state) when is_integer(index) do
     if index < 0 or index >= length(state.messages) do
       {:reply, {:error, :no_such_message}, state}
     else
@@ -409,7 +384,7 @@ defmodule Elia.Agent.Session do
   # COMPACT-22: exact facts, appended (and trimmed) but never re-summarized, so
   # the identifiers that matter survive folding. The model writes them with the
   # `update_ledger` tool, mid-turn as well.
-  def handle_call({:add_ledger, entries}, _from, state) do
+  defp dispatch({:add_ledger, entries}, _from, state) do
     compaction = Compaction.add_ledger(state.compaction, entries)
 
     if compaction == state.compaction do
@@ -421,23 +396,23 @@ defmodule Elia.Agent.Session do
     end
   end
 
-  def handle_call({:decide, call_id, decision}, _from, %{approval: {pid, decisions}} = state)
-      when is_map_key(decisions, call_id) and decision in [:approve, :deny] do
+  defp dispatch({:decide, call_id, decision}, _from, %{approval: {pid, decisions}} = state)
+       when is_map_key(decisions, call_id) and decision in [:approve, :deny] do
     decisions = Map.put(decisions, call_id, decision)
     status = if decision == :approve, do: :approved, else: :done
     state = put_tool_status(state, call_id, status)
     {:reply, :ok, settle(state, pid, decisions)}
   end
 
-  def handle_call({:decide, _call_id, _decision}, _from, state) do
+  defp dispatch({:decide, _call_id, _decision}, _from, state) do
     {:reply, {:error, :not_pending}, state}
   end
 
   # ASK-4, ASK-6, SESS-34: the user's answer to a question the loop is waiting
   # on. A blank answer is refused, and the loop only hears back once every
   # pending question has an answer.
-  def handle_call({:answer, call_id, answer}, _from, %{input: {pid, answers}} = state)
-      when is_map_key(answers, call_id) and is_binary(answer) do
+  defp dispatch({:answer, call_id, answer}, _from, %{input: {pid, answers}} = state)
+       when is_map_key(answers, call_id) and is_binary(answer) do
     case String.trim(answer) do
       "" ->
         {:reply, {:error, :blank}, state}
@@ -450,7 +425,7 @@ defmodule Elia.Agent.Session do
 
   # ASK-7, SESS-34: no question is open, or not this one (an answer that arrives
   # after the turn ended lands here).
-  def handle_call({:answer, _call_id, _answer}, _from, state) do
+  defp dispatch({:answer, _call_id, _answer}, _from, state) do
     {:reply, {:error, :not_pending}, state}
   end
 
@@ -459,7 +434,7 @@ defmodule Elia.Agent.Session do
   # model must not do — saving and broadcasting nothing. The record is held in
   # this session's state (and saved with the chat, STORE-55), so a session that
   # resumes the chat holds to the refusal.
-  def handle_call({:set_title, _text}, _from, %{title_by: "user"} = state) do
+  defp dispatch({:set_title, _text}, _from, %{title_by: "user"} = state) do
     {:reply, {:error, "This chat's title was set by hand, so it is the user's."}, state}
   end
 
@@ -467,7 +442,7 @@ defmodule Elia.Agent.Session do
   # (TITLE-5). A blank title is no title at all (TITLE-2, TITLE-6). A sub-task
   # may name itself like any chat (TITLE-3): its spawn's title is its first
   # name, saved as its own when the chat was created (STORE-32), not a rule.
-  def handle_call({:set_title, text}, _from, state) do
+  defp dispatch({:set_title, text}, _from, state) do
     case Elia.Store.shape_title(text) do
       nil ->
         {:reply, {:error, "The title must not be blank."}, state}
@@ -489,7 +464,7 @@ defmodule Elia.Agent.Session do
   # Unlike the model's own naming, a chat with no messages yet is saved with its
   # new name too (TITLE-8, STORE-22), so the name isn't lost before the first
   # message.
-  def handle_call({:rename, text}, _from, state) do
+  defp dispatch({:rename, text}, _from, state) do
     case Elia.Store.shape_title(text) do
       nil ->
         {:reply, {:error, "The title must not be blank."}, state}
@@ -508,7 +483,7 @@ defmodule Elia.Agent.Session do
   # (SUBTASK-33): the harness builds the result (SUBTASK-9) and this chat's own
   # session saves it with its metadata (SESS-18, SUBTASK-13). There is no task
   # status beside the flag.
-  def handle_call({:set_done, on?}, _from, state) do
+  defp dispatch({:set_done, on?}, _from, state) do
     state = %{state | done: on?}
     # As with the model selection, an empty chat is saved with its first message.
     state = if state.messages == [], do: state, else: save(state)
@@ -517,13 +492,13 @@ defmodule Elia.Agent.Session do
     {:reply, {:ok, on?}, state}
   end
 
-  def handle_call(:stop, _from, %{task: nil} = state) do
+  defp dispatch(:stop, _from, %{task: nil} = state) do
     # COMPACT-43: with no loop running, what a stop ends is a summary in flight
     # and the turn that was waiting on it.
     {:reply, :ok, end_pending_turn(stop_children(cancel_fold(state)))}
   end
 
-  def handle_call(:stop, _from, state) do
+  defp dispatch(:stop, _from, state) do
     Task.Supervisor.terminate_child(Elia.Agent.TaskSupervisor, state.task.pid)
     Process.demonitor(state.task.ref, [:flush])
 
@@ -540,18 +515,18 @@ defmodule Elia.Agent.Session do
   end
 
   # SESS-27: the user's decision on a turn paused at a limit (LOOP-19).
-  def handle_call(:resume, _from, %{pause: nil} = state),
+  defp dispatch(:resume, _from, %{pause: nil} = state),
     do: {:reply, {:error, :not_paused}, state}
 
-  def handle_call(:resume, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
+  defp dispatch(:resume, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
     send(pid, {:pause_decision, :continue})
     {:reply, :ok, set_status(%{state | pause: nil}, :running)}
   end
 
-  def handle_call(:fail_task, _from, %{pause: nil} = state),
+  defp dispatch(:fail_task, _from, %{pause: nil} = state),
     do: {:reply, {:error, :not_paused}, state}
 
-  def handle_call(:fail_task, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
+  defp dispatch(:fail_task, _from, %{pause: _message, task: %Task{pid: pid}} = state) do
     send(pid, {:pause_decision, :fail})
     {:reply, :ok, set_status(%{state | pause: nil}, :running)}
   end
@@ -888,6 +863,29 @@ defmodule Elia.Agent.Session do
   defp initial_effort(id, true), do: Elia.Store.load_effort(id)
   defp initial_effort(_id, false), do: nil
 
+  # The state a session starts with: the chat as the store holds it where the
+  # chat saves, and each field's own default where it does not.
+  defp initial_state(opts, project, workspace, loop_opts, persist) do
+    %__MODULE__{
+      id: opts[:id],
+      project: project,
+      workspace: workspace,
+      # WD-2, WD-7: the chat's own working directory, saved with it, read back
+      # only while it is still a directory inside the workspace.
+      cwd: if(persist, do: load_cwd(opts[:id], workspace)),
+      loop_opts: loop_opts,
+      persist: persist,
+      messages: if(persist, do: Elia.Store.load(opts[:id]), else: []),
+      settings: initial_settings(opts[:id], persist, opts),
+      task_meta: opts[:task] || if(persist, do: Elia.Store.load_task(opts[:id])),
+      compaction: initial_compaction(opts[:id], persist, opts[:compaction]),
+      title: if(persist, do: Elia.Store.load_title(opts[:id])),
+      # TITLE-9, STORE-55: "user" when the chat's title was set by hand.
+      title_by: if(persist, do: Elia.Store.title_by(opts[:id])),
+      done: if(persist, do: Elia.Store.load_done(opts[:id]), else: false)
+    }
+  end
+
   # SESS-41, SESS-7: the per-chat settings a session starts with — what its
   # caller gave it (SESS-17, SUBTASK-30), else what the chat has saved, else
   # each one's own default. The auto-approved set is worked out by the caller,
@@ -969,6 +967,13 @@ defmodule Elia.Agent.Session do
 
   defp from_state(old, key, load),
     do: if(is_map_key(old, key), do: Map.get(old, key), else: load.())
+
+  # SESS-15: the same, one level up — a field a state from before it existed
+  # does not have is filled in with what `fill` works out from the state as the
+  # fields before it left it, and one it already has is kept as it is.
+  defp fill_missing(old, state, field, fill) do
+    if is_map_key(old, field), do: state, else: Map.put(state, field, fill.(state))
+  end
 
   # SESS-41: the changes of a validated request applied to the one map. The
   # limits and the auto-approved tools are changed by key, the others set whole.
@@ -1399,14 +1404,17 @@ defmodule Elia.Agent.Session do
   # behind reads as the workspace root, which is where the chat's tools then run.
   defp load_cwd(id, workspace) do
     case Elia.Store.load_cwd(id) do
-      nil ->
-        nil
+      nil -> nil
+      saved -> resolved_cwd(saved, workspace)
+    end
+  end
 
-      saved ->
-        case Elia.Workdir.resolve(saved, workspace, workspace) do
-          {:ok, dir} -> if dir == Elia.Workdir.real_root(workspace), do: nil, else: dir
-          {:error, _message} -> nil
-        end
+  # WD-2, WD-7: the directory the workspace still holds, or nil — which reads
+  # as its root — where it no longer does or where it is that root already.
+  defp resolved_cwd(saved, workspace) do
+    case Elia.Workdir.resolve(saved, workspace, workspace) do
+      {:ok, dir} -> if dir == Elia.Workdir.real_root(workspace), do: nil, else: dir
+      {:error, _message} -> nil
     end
   end
 
