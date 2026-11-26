@@ -321,13 +321,17 @@ defmodule Elia.Skills.Tasks do
     if blank?(task_id) do
       {:error, "task_id must be the id of a sub-task of this chat."}
     else
-      with {:ok, _task} <- task_of(ctx[:session_id], task_id) do
-        # SUBTASK-27: the saved result is the end, and it is there whether the
-        # child's session is still around or not.
-        case saved_result(task_id) do
-          {:ok, json} -> {:ok, json}
-          {:error, _none} -> wait_for(task_id)
-        end
+      await_result(ctx[:session_id], task_id)
+    end
+  end
+
+  # SUBTASK-27: the saved result is the end, and it is there whether the child's
+  # session is still around or not.
+  defp await_result(session_id, task_id) do
+    with {:ok, _task} <- task_of(session_id, task_id) do
+      case saved_result(task_id) do
+        {:ok, json} -> {:ok, json}
+        {:error, _none} -> wait_for(task_id)
       end
     end
   end
