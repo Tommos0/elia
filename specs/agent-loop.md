@@ -135,6 +135,23 @@ results back, and repeat until the model answers without calling a tool.
   the calls were made (LOOP-10), and a failed call's status still ends `:done`
   (LOOP-11). Stopping the turn still ends every call it is running (SESS-43).
 
+- **LOOP-27** A response that carries neither text nor a tool call is not a
+  finished turn: there is nothing in it for the user to read and nothing for the
+  loop to run. The loop appends a harness message of its own to the history
+  (UI-9, `meta.harness`) — "You answered with no text and no tool call. Say what
+  you found, or call a tool." — and asks the model again in the same turn, the
+  step count moving as it does for any other step (LOOP-16). The empty answer
+  stays in the transcript, and the turn carries on: whether the next answer has
+  text or calls a tool, the turn ends as it always did (`:done`, LLM-4, STOP-1).
+
+- **LOOP-28** An answer that is empty again (LOOP-27) — no text and no tool
+  call, with the nudge already in the history and nothing answered between the
+  two — ends the turn: the loop returns `:empty`, its own result beside `:done`,
+  `:refused`, `{:limit, limit}` and `{:error, reason}`, and the session writes
+  why into the transcript (STOP-2, STOP-6). The loop nudges once between two
+  empty answers and never twice in a row, so a provider that keeps answering
+  with nothing costs the turn one extra request rather than a loop of them.
+
 ## Implementation
 
 `Elia.Agent.Loop`, `Elia.Tool`.
@@ -145,7 +162,7 @@ results back, and repeat until the model answers without calling a tool.
   forwarded deltas and notices, the step limit, the error results, input
   validation, approval, the concurrent tools and their statuses, the options,
   and a step's error ending the turn, a call that exits, throws or dies —
-  LOOP-1 to LOOP-12, LOOP-16 to LOOP-26).
+  LOOP-1 to LOOP-12, LOOP-16 to LOOP-28).
 - `test/elia/step_timing_test.exs` (the outcome a record keeps, LOOP-4).
 - `test/elia_web/live/chat_settings_test.exs` (a chat's own step limit, LOOP-3).
 - `test/elia/llm/context_test.exs` (the token budget, LOOP-22).

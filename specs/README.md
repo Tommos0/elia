@@ -134,7 +134,7 @@ it.
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
 | [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included, with their entry in the running-children registry taken again — once per turn and never when it was waiting on the user |
-| [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, the user's stop — writes why into the transcript |
+| [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, a model that answered with nothing, the user's stop — writes why into the transcript |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Turn retries](turn-retries.md) | `RETRY` | A model call that failed transiently — a timeout, a dropped connection, an overloaded provider — is asked again after a wait, so the turn carries on by itself |
 | [Step timing](step-timing.md) | `TIME` | Every loop step recorded beside the chat with its stamps, durations and usage, so a review of where time goes measures a turn instead of inferring it, and a `chat_timings` tool that sums those records for a chat or a project's newest chats |

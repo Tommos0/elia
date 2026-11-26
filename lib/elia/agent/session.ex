@@ -711,6 +711,11 @@ defmodule Elia.Agent.Session do
           broadcast(state, {:reset, state.messages})
           stop(state, :refused, "The model declined this request.")
 
+        :empty ->
+          # LOOP-28, STOP-6: the model answered with nothing, and answered that
+          # way again after the nudge LOOP-27 gives the first one.
+          stop(state, :empty, "The model answered with nothing.")
+
         {:limit, limit} ->
           stop(state, :limit, limit_message(limit))
 

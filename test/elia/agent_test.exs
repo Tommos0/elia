@@ -1488,6 +1488,63 @@ defmodule Elia.AgentTest do
     assert Enum.any?(request.messages, &(&1.meta[:stopped] == :crash))
   end
 
+  # LOOP-27, LOOP-28, STOP-6: an answer that carries no text and no tool call is
+  # not the model finishing the turn. It gets one nudge — a harness message in
+  # the history, so the model is asked again — and an answer that is empty again
+  # after that nudge ends the turn with the stop the transcript keeps.
+  test "an answer with no text and no tool call is nudged, then stopped", %{id: id} do
+    FakeLLM.push(FakeLLM.assistant([%{type: :reasoning, text: "still thinking"}]))
+    FakeLLM.push(FakeLLM.assistant([%{type: :reasoning, text: "thinking again"}]))
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    # STOP-4: a watcher reads the same text the message carries.
+    assert_receive {:agent, ^id, {:error, "The model answered with nothing."}}, 5000
+
+    # LOOP-27, LOOP-28, STOP-6: the empty answers, the nudge between them and the
+    # stop, in the order they were said, with the stop last.
+    assert [%Message{role: :user}, empty, nudge, empty_again, stopped] =
+             Agent.snapshot(id).messages
+
+    assert %Message{role: :assistant} = empty
+    assert Message.text_content(empty) == ""
+    assert %Message{role: :assistant} = empty_again
+    assert Message.text_content(empty_again) == ""
+    assert %Message{role: :user, meta: %{harness: true}} = nudge
+    assert Message.text_content(nudge) =~ "no text and no tool call"
+    assert %Message{role: :user, meta: %{harness: true, stopped: :empty}} = stopped
+    assert Message.text_content(stopped) =~ "The model answered with nothing."
+    assert %Message{meta: %{stopped: :empty}} = List.last(Elia.Store.load(id))
+
+    # LOOP-27, LOOP-28: the nudge was in the request the loop asked again with,
+    # and the turn cost one extra request — never a loop of them.
+    assert [first, second] = FakeLLM.requests()
+    refute Enum.any?(first.messages, &(&1.meta[:harness] == true))
+    # The session stamps the message it appends as it enters the history
+    # (MSGAT-2), so the nudge in the request is compared by its text.
+    assert Message.text_content(List.last(second.messages)) =~ "no text and no tool call"
+  end
+
+  # LOOP-27: the nudge is one step of the same turn, so an answer that does carry
+  # text after it carries the turn on, as any other answer does.
+  test "a turn nudged for an empty answer carries on with the next one", %{id: id} do
+    FakeLLM.push(FakeLLM.assistant([%{type: :reasoning, text: "thinking"}]))
+    FakeLLM.push(FakeLLM.assistant([Message.text("Found it.")]))
+
+    :ok = Agent.send_message(id, "hi")
+    await_status(id, :idle)
+
+    assert [%Message{role: :user}, empty, %Message{role: :user} = nudge, reply] =
+             Agent.snapshot(id).messages
+
+    assert Message.text_content(empty) == ""
+    assert nudge.meta[:harness] == true
+    assert Message.text_content(reply) == "Found it."
+    refute Enum.any?(Agent.snapshot(id).messages, &(&1.meta[:stopped] != nil))
+    assert length(FakeLLM.requests()) == 2
+  end
+
   # CTX-10: usage carries the estimate for the history that request sent, which
   # excludes the reply it produced.
   test "usage records the estimate of the request's history", %{id: id} do

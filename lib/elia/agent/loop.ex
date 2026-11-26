@@ -64,6 +64,12 @@ defmodule Elia.Agent.Loop do
   # before the turn is standing still.
   @standing_still 4
 
+  # LOOP-27: the nudge an answer that carries neither text nor a tool call
+  # gets, once in a turn (LOOP-28). It goes into the history as a harness
+  # message, so the model is asked again with it in the request rather than
+  # the same request twice.
+  @empty_nudge "You answered with no text and no tool call. Say what you found, or call a tool."
+
   # RETRY-4: the waits before each retry of a model call that failed
   # transiently, unless the turn's option or `config :elia, :step_retry` says
   # otherwise. Its length is how many retries a step gets.
@@ -75,7 +81,7 @@ defmodule Elia.Agent.Loop do
           | {:tokens, non_neg_integer()}
           | {:repetition, binary(), pos_integer()}
 
-  @type result :: :done | :refused | {:limit, limit()} | {:error, term()}
+  @type result :: :done | :refused | :empty | {:limit, limit()} | {:error, term()}
 
   @spec run(pid(), [Message.t()], keyword()) :: result()
   def run(session, history, opts \\ []) do
@@ -108,6 +114,11 @@ defmodule Elia.Agent.Loop do
       # and input, with the last result each returned and how many times in a row
       # it has returned it.
       repeats: %{},
+      # LOOP-27, LOOP-28: whether this turn has already nudged an answer that
+      # carried neither text nor a tool call. It is set once in a turn, so a
+      # model that keeps answering with nothing costs one extra request and
+      # not a loop of them.
+      nudged: false,
       # RETRY-1, RETRY-4: the waits before each retry of a failed model call;
       # [] retries nothing.
       retry_delays: retry_delays(Keyword.get(opts, :step_retry)),
@@ -336,7 +347,7 @@ defmodule Elia.Agent.Loop do
 
           [] ->
             record(ctx, step, attempt, :ok, started_at, retry_wait_ms, model_ms, usage)
-            :done
+            empty_or_done(ctx, message, history, step)
 
           calls ->
             {results, waits} = run_tools(ctx, tools, calls, stop_reason)
@@ -561,6 +572,27 @@ defmodule Elia.Agent.Loop do
   defp repetition_notice(name, count) do
     "[Elia harness] The identical call to #{name} has now returned the identical " <>
       "result #{times(count)} in this turn, and nothing has changed since."
+  end
+
+  # LOOP-27, LOOP-28, STOP-6: an answer that carries neither text nor a tool
+  # call says nothing — nothing for the user to read and nothing for the loop
+  # to run — so it is not the model finishing the turn. The first one is given
+  # the loop's own nudge, appended to the history, and the model is asked
+  # again in the same turn; an answer that is empty again after that nudge
+  # ends the turn with `:empty`, which the session writes into the transcript
+  # as a stop.
+  defp empty_or_done(ctx, message, history, step) do
+    cond do
+      String.trim(Message.text_content(message)) != "" -> :done
+      ctx.nudged -> :empty
+      true -> nudge(ctx, history, step)
+    end
+  end
+
+  defp nudge(ctx, history, step) do
+    nudge = Message.harness(@empty_nudge)
+    append(ctx, nudge)
+    step(%{ctx | nudged: true}, history ++ [nudge], step + 1)
   end
 
   # LOOP-10, LOOP-20, LOOP-21, TIME-3: returns the step's tool results and what

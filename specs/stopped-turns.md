@@ -4,7 +4,8 @@ Status: Implemented
 
 A turn can end without the model finishing it: it reaches a limit (LOOP-3), a
 provider fails (LOOP-5, LLM-13), the model declines the request (LOOP-4), the
-user stops it (SESS-8), or the loop dies (SESS-12). In every one of those cases
+model answers with nothing at all (LOOP-27, LOOP-28, STOP-6), the user stops it
+(SESS-8), or the loop dies (SESS-12). In every one of those cases
 the session broadcast the reason once, to whoever happened to be looking: no
 page open, no record, nothing saved. A chat could then sit there stopped, with a
 transcript that ends mid-thought — a tool call and nothing after it — and
@@ -48,6 +49,9 @@ and saved, so the chat says why it stopped whenever it is opened again.
     "The harness crashed: ** (RuntimeError) boom", "…: ** (exit) killed" — and
     not a stacktrace.
   - `:stopped` — "Stopped by the user." (SESS-8).
+  - `:empty` — "The model answered with nothing." (LOOP-28, STOP-6), written
+    where the nudge the first empty answer got (LOOP-27) did not get an answer
+    either.
 
 - **STOP-3** The message is part of the history (SESS-1) and so is sent to the
   model on the next turn, exactly as INTR-3's notice and LIMIT-10's pause are:
@@ -71,6 +75,16 @@ and saved, so the chat says why it stopped whenever it is opened again.
   (INTR-3) — the record that turn left behind is what reports it (INTR-1), not
   this message.
 
+- **STOP-6** A model that answers with no text and no tool call has not finished
+  the turn (LOOP-27), and one that answers that way again after the nudge ends
+  it (LOOP-28): the session writes "The model answered with nothing." into the
+  transcript as the stop STOP-1 describes, marked `meta.stopped` with the kind
+  `:empty` (STOP-2), saved with the chat, rendered as an error row (UI-82) and
+  reported to the chat's subscribers with the same text (STOP-4). The turn's own
+  messages stay in the order they were said — the answer that was empty, the
+  nudge, the answer that was empty again — so the stop is the last thing the
+  transcript holds and the chat says why it is not running.
+
 ## Out of scope
 
 - Running a turn again once it has stopped: a failure inside a running turn is
@@ -82,13 +96,15 @@ and saved, so the chat says why it stopped whenever it is opened again.
 ## Implementation
 
 `Elia.Agent.Session` (one way to stop a turn: append the message and report it),
-`EliaWeb.ChatLive` (the row, and the event it no longer renders, UI-82).
+`Elia.Agent.Loop` (the empty answer it no longer takes for a finish, and the
+nudge it gives instead, LOOP-27, LOOP-28), `EliaWeb.ChatLive` (the row, and the
+event it no longer renders, UI-82).
 
 ## Tests
 
 `test/elia/agent_test.exs` (each kind: a limit ending, a provider error, a
-refusal, a crash and a stop — written, marked and saved — and only a stop being
-written — STOP-1 to STOP-5),
+refusal, a crash, a stop and a model that answered with nothing — written,
+marked and saved — and only a stop being written — STOP-1 to STOP-6),
 `test/elia_web/live/chat_live_test.exs` (the row, once per stop, UI-82),
 `test/elia/tasks_test.exs` (a child that fails still reports its failure,
 SUBTASK-13).
