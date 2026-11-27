@@ -392,7 +392,10 @@ excluded`). Run that one yourself instead:
   re-ran. `Elia.TerminalTest`'s "leaves no tmux server and no socket" is one of
   these too: tmux keeps its sockets in `/tmp/tmux-<uid>/` for the whole user
   rather than in the run's own temp directory, so the test can see one a
-  concurrent run's terminal is using, and the file passes when run alone.
+  concurrent run's terminal is using, and the file passes when run alone. The
+  load need not be another suite run: a Claude Code review working in the chat's
+  own terminal was one (checked 2026-11-26 — partitions 2 and 4 each failed
+  their first attempt and passed on the retry, on identical code).
 - `test/elia_web/live/chat_live_test.exs`'s "a command awaiting approval is
   open" (UI-99, around line 1687) fails on `master` when it is run alone: it
   waits 5s for `{:status, :idle}` after approving a command that really runs
