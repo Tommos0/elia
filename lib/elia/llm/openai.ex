@@ -18,8 +18,9 @@ defmodule Elia.LLM.OpenAI do
   @retry_statuses [408, 429, 500, 502, 503, 504]
   @max_retries 2
 
-  # LOCAL-30-style process key: whether any response data has arrived, which is
-  # what decides if a failed streaming attempt may be repeated (LLM-30).
+  # Process key: whether any response data has arrived, which is what decides if
+  # a failed streaming attempt may be repeated (LLM-30) — the same rule the local
+  # provider uses; LOCAL ends at LOCAL-28, so this cites no LOCAL requirement.
   @received_key :elia_open_ai_received
 
   @doc "The statuses both providers retry themselves (LLM-23, LOCAL-8)."

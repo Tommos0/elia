@@ -175,8 +175,8 @@ only reader.
     line: one word there, the rest below — SPEC-6.
   - `specs/chat-history.md`'s `## Data` became `## Stored data`, the name
     `specs/step-timing.md` already used — SPEC-10, SPEC-11.
-  - `specs/deployment.md`'s `## Terms` moved into its intro and its
-    `## Specs to amend` into `## Implementation`, `specs/recovery.md`'s
+  - `specs/deployment.md`'s
+    `## Specs to amend` moved into `## Implementation`, `specs/recovery.md`'s
     `## Retired requirements` folded into `## Requirements` in place, and
     `specs/subtasks.md`'s `## Out of scope (later phases of the plan)` dropped
     its qualifier — SPEC-10.

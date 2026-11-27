@@ -26,9 +26,7 @@ genuinely needs the rest of the machine (ISOL-16).
 - **ISOL-1** Every process Elia runs for a tool call is jailed by default: the
   `shell` tool (SHELL-1), the suite a deploy runs (VERIFY-1, ISOL-14), a folder
   skill's script tools (FOLDER), and the `git` calls the harness itself makes in
-  the live tree (DEPLOY-13, DEPLOY-18). All of them go through `Elia.Shell.run/2`; the
-  `System.cmd("git", …)` calls in `Elia.Tasks` and `Elia.Deploy` move behind it,
-  since they bypass it today. A git call that times out counts as a failure,
+  the live tree (DEPLOY-13, DEPLOY-18). All of them go through `Elia.Shell.run/2` (ISOL-19). A git call that times out counts as a failure,
   like one that exits non-zero (ISOL-10).
 - **ISOL-2** The jail is bubblewrap, run as the same user with no privileges:
   `--die-with-parent`, `--unshare-pid`, `--unshare-uts`, `--unshare-ipc`,
@@ -293,7 +291,7 @@ is harmless.
   else: with the jail off a command runs on the whole machine (ISOL-20), where
   jailed it reached its workspace and the toolchain (ISOL-13); approval is
   unchanged (SHELL-1, APPR), the working directory and the workspace root are
-  unchanged (WD), no tool is auto-approved, and turning it back on affects only
+  unchanged (WD), no tool's approval changes (APPR-8, APPR-14), and turning it back on affects only
   calls that come later — a command already running isn't killed.
 - **ISOL-20** A host can turn the jail off for every chat (`config :elia,
   Elia.Shell, jail: false`), which is what a machine without bubblewrap does.

@@ -16,10 +16,12 @@ defmodule Elia.Deploy do
   tree it was given stays as it was and nothing half-done is in the tree that
   runs. When the work is done the chat's agent merges that branch into the trunk
   itself (`git push . HEAD:master`, which refuses anything but a fast-forward,
-  DEPLOY-13), and removes the worktree and its branch once it is merged. A
+  DEPLOY-13), and leaves the worktree and its branch where they are once it is merged
+  (WTREE-5), for the server's sweep (WTREE-6). A
   *deploy* is then the user's step, from the Settings page
-  (`EliaWeb.SettingsLive`): it runs the full test suite in the live tree,
-  fast-forwards `live` to the trunk when the tests pass (DEPLOY-5), makes the
+  (`EliaWeb.SettingsLive`): it fast-forwards `live` to the trunk, fetches the trunk's
+  deps (DEPLOY-18) and runs the full suite there on the merged tree, resetting
+  `live` where it was when the tests fail (DEPLOY-5); it makes the
   tree's front end current — the Node packages and the bundle a browser loads
   (DEPLOY-19) — on every deploy, merge or not (DEPLOY-20) — and loads the result
   into the running app, by hot reload

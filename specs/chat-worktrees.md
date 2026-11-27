@@ -45,13 +45,12 @@ an hour.
   and a sub-task's no more than its parent's (SUBTASK-23). *Changed:* the
   instruction a chat in Elia's own project carries (DEPLOY-28) used to end with
   `git worktree remove` and `git branch -D` once its work was merged.
-- **WTREE-6** A chat's worktree is removed when the chat is marked done (DONE-1),
-  the chat's saved `updated_at` is at least the minimum age ago (STORE-1,
-  STORE-34) and no turn of that chat is running (SESS-19).
+- **WTREE-6** A chat's worktree is removed when the chat is marked done (DONE-1, STORE-34),
+  the chat's saved `updated_at` is at least the minimum age ago (STORE-1) and no turn of that chat is running (SESS-19).
 - **WTREE-7** A worktree whose chat no longer exists is removed once the
   worktree's own directory has not been modified for the minimum age: deleting a
-  chat deletes the chat and nothing else (DEPLOY-10, retired), so its worktree is
-  left for the sweep.
+  chat deletes the chat and nothing else (STORE-23), so its worktree is left for
+  the sweep.
 - **WTREE-8** A worktree with uncommitted changes is left where it is: `git
   status --porcelain` in it printing anything — a modified file, a file git does
   not ignore — keeps it, so nothing a chat left uncommitted is discarded.
@@ -102,7 +101,7 @@ feature is swept by the same rule as any other.
 - `EliaWeb.ChatStatus` — the mark, beside `terminal_mark/1` (UI-111).
 - `EliaWeb.ChatList` — the row's mark (WTREE-1).
 - `config/config.exs` — the interval and the minimum age (Configuration).
-- `EliaWeb.Live.ChatLive` — the header's mark (WTREE-2).
+- `EliaWeb.ChatLive` — the header's mark (WTREE-2).
 - `AGENTS.md` and `specs/deployment.md` (DEPLOY-28) — the recipe ends at the
   merge (WTREE-5).
 

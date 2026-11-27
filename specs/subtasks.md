@@ -40,7 +40,7 @@ built.
 ## Requirements
 
 - **SUBTASK-1** The built-in skill `tasks` (a `spawn_task` call needs approval,
-  APPR-5) gives a chat two tools: `spawn_task` (parent) and `await_task`
+  APPR-7) gives a chat two tools: `spawn_task` (parent) and `await_task`
   (SUBTASK-2, SUBTASK-27). A child gets neither them nor any skill of its own:
   its session is built from the skill registry minus the `tasks` skill (LOOP-17,
   `Elia.Skills.for_child/1`), so a child has exactly the tools an ordinary chat

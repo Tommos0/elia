@@ -47,6 +47,10 @@ Status: Implemented | Draft | Planned | Retired
 ## Tests                (test files that cover it)
 ```
 
+A spec whose feature keeps state — a file it writes or a setting it stores —
+carries a `## Stored data` section (SPEC-11): the shape it writes, and whether
+the change still loads what an older version wrote.
+
 Requirement IDs are stable: never renumber or reuse one. Retire a requirement
 by striking it through (`~~**X-4** ...~~ Removed: <reason>`) rather than
 deleting it.
@@ -133,7 +137,7 @@ it.
 | [File uploads](file-uploads.md) | `UPLOAD` | The composer's attach control: a file the user picks is written into the chat's own workspace, and the message names it |
 | [Agent sessions](agent-sessions.md) | `SESS` | One process per conversation; turns, status, stop, events |
 | [Interrupted turns](interrupted-turns.md) | `INTR` | A turn the app restarted during is recorded, reported in the transcript and flagged in the chat list |
-| [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included, with their entry in the running-children registry taken again — once per turn and never when it was waiting on the user |
+| [Auto resume](auto-resume.md) | `RESUME` | A chat a restart cut a turn short in carries on by itself when the server comes back — sub-task chats included — once per turn and never when it was waiting on the user |
 | [Stopped turns](stopped-turns.md) | `STOP` | A turn that ends without the model finishing — a limit, a provider error, a refusal, a crash, a model that answered with nothing, the user's stop — writes why into the transcript |
 | [Agent loop](agent-loop.md) | `LOOP` | Model ↔ tool loop, limits, error handling |
 | [Turn retries](turn-retries.md) | `RETRY` | A model call that failed transiently — a timeout, a dropped connection, an overloaded provider — is asked again after a wait, so the turn carries on by itself |

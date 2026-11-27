@@ -146,7 +146,7 @@ every view.
   re-derives the listed one from what it holds (UI-59, UI-72) rather than
   reading the event's value, and a subscriber that reads it as a session status
   ignores `:done`, which is not one (PUSH-12). A session also keeps its
-  status as its value in `Elia.Agent.Registry`,
+  status as its value in the `Elia.Agent.Registry` registry,
   `Elia.Agent.awaiting_approval/0` returns the ids of the sessions whose status
   is `:awaiting_approval`, `Elia.Agent.awaiting_input/0` (SESS-34) those whose
   status is `:awaiting_input`, and `Elia.Agent.paused/0` those whose status is
@@ -305,7 +305,7 @@ every view.
   with it.
 
 - **SESS-32** `Elia.Agent.live?/1` reports whether a session for a chat is
-  running in this app instance, read from `Elia.Agent.Registry` without calling
+  running in this app instance, read from the `Elia.Agent.Registry` registry without calling
   it, like `running/0` and `awaiting_approval/0` (SESS-19, SESS-28). It is
   `false` for a chat with no session, for an invalid or unknown id, and when the
   registry isn't running. A chat list uses it to tell the record a restart left

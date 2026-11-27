@@ -166,6 +166,28 @@ shows exactly what each name sends. The `stty raw` matters — in a cooked pty
 `^C` becomes a signal and what is typed is buffered, so the file stays empty and
 looks like nothing was sent.
 
+## Claude Code in the terminal
+
+`claude` lives at `~/.local/bin/claude`: a login shell finds it, the jail does
+not, so the chat has to be unjailed (ISOL-31). A terminal's own working
+directory is the workspace root whatever `cd` set, so start it in the worktree
+itself: `cd tmp/worktrees/<chat id> && /bin/bash -lc claude`.
+
+- A long prompt typed into it collapses to `[Pasted text #1]`; send the text and
+  the `<Enter>` as two `terminal_send` calls, or the prompt never submits.
+- What sits at its `❯` prompt after a turn — "fix C1 and C2 first" — is a
+  *suggested* follow-up, not typed input: typing replaces it, and an `<Enter>`
+  alone does nothing.
+- `/login` is an OAuth flow the user has to finish: the CLI prints a URL and
+  waits for the pasted code. The login is kept on disk (`~/.claude`), so
+  stopping and restarting the terminal does not lose it.
+- It has none of the harness's own tools — no `search_chats`, no `read_chat` —
+  so it never sees an earlier chat. Put everything it needs in the prompt.
+- Its session state, history and logs live under `~/.claude`, and it re-reads
+  the filesystem as it goes: started inside this project's own chat terminal it
+  has, at least once, left the outer agent's turn out of the saved transcript.
+  Keep what you need from it in a file in the worktree.
+
 ## Adding a skill
 
 Prefer a folder skill over changing Elixir code.

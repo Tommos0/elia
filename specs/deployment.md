@@ -53,7 +53,7 @@ tree's front end (`/recover`, RECOVER-10).
 
 - **DEPLOY-1** A chat in Elia's own project works in the folder of its project,
   which is the live tree (DEPLOY-2, DEPLOY-3). That folder is the workspace root
-  its file and shell tools resolve against (PROJ-12), the directory a command
+  its shell commands and its `cd` resolve against (PROJ-12), the directory a command
   runs in until the chat `cd`s elsewhere (SHELL-2, WD-1) and the tree a command
   is jailed to when the jail is on (ISOL-13, ISOL-16). The harness creates no
   worktree and no branch for a chat: the tree a chat's own work goes in is one
@@ -249,7 +249,7 @@ tree's front end (`/recover`, RECOVER-10).
   something to merge. A front end that can't be built fails the deploy the way
   it does after a merge: nothing is loaded, and the error carries the command's
   output.
-- **DEPLOY-6** Hot reload is the soft deploy mode (HOT-1–HOT-6): after
+- **DEPLOY-6** Hot reload is the soft deploy mode (HOT-2 to HOT-6): after
   DEPLOY-5 the live tree is recompiled and the changed modules are loaded into
   the running app, keeping running state. Its control is on the Settings page
   (CONF-19); it needs the code reloader on (HOT-2, HOT-7).
@@ -476,11 +476,11 @@ nothing, loads nothing and is never rolled back.
   layer goes with it (ISOL-7). A branch is kept while its chat exists, since
   chats are resumable; there is no time-based pruning.~~ Retired: the harness
   creates no worktree to remove, and deleting a chat deletes the chat and
-  nothing else. The worktree a chat made itself is one it removes once its work
-  is merged (DEPLOY-28); a chat deleted before that leaves a tree and a branch
-  under the gitignored `tmp/worktrees/`, which the user clears with ordinary git
-  if they want it cleared. A branch is still kept while it exists — chats are
-  resumable — and nothing prunes by time.
+  nothing else (STORE-23). The worktree a chat made itself is left where it is
+  once its work is merged (WTREE-5): the server's sweep removes it once the
+  chat is done (WTREE-6, WTREE-7), and it deletes `chat/<id>` only when that
+  branch is in `master` (WTREE-9). A branch is still kept while its chat
+  exists — chats are resumable — and no branch is pruned by time.
 
 ### Setting up a tree
 

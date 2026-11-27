@@ -109,7 +109,8 @@ left off in exactly as `/` used to (UI-1, UI-71).
   (`#dash-project-<id>`) per project (`Elia.Projects.list/0`), with its name, a
   link (`#dash-project-open-<id>`) to the project's own page (PROJ-51, PROJ-53),
   its folder (shown truncated with the whole path in the `title`) and how many
-  chats it has (`#dash-project-chats-<id>`), and a "New chat" link
+  chats it has (`#dash-project-chats-<id>`) — Elia's own project counting the
+  chats that name no project too — and a "New chat" link
   (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26). *Changed:* the card
   used to end with a single link to the projects page (`#all-projects`), which
   is gone with that page (PROJ-23).

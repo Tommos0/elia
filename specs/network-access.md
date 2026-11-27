@@ -264,7 +264,7 @@ has none, which reads as the empty list.
 
 `Elia.Net.Allowlist` (parsing an entry and deciding a host and port against a
 list), `Elia.Net.Proxy` (the per-command and per-session proxy: a Unix-socket
-listener, the decision, the byte forwarding), `Elia.Net.Relay` (the in-jail
+listener, the decision, the byte forwarding), `priv/net/relay.exs` (the in-jail
 script, bound into the jail read-only, that listens on the namespace's loopback
 and carries it to the proxy's socket), `Elia.Shell` (the namespace and the relay
 in the argv, the proxy's environment, and where the limit cannot be built),

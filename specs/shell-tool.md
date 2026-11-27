@@ -15,7 +15,8 @@ call takes.
 
 ## Requirements
 
-- **SHELL-1** Every `shell` call needs approval.
+- **SHELL-1** A `shell` call needs approval, unless the chat's auto-approved set
+  already covers it (APPR-1, APPR-8).
 - **SHELL-2** The command runs with `bash -c` where bash is installed,
   otherwise with POSIX `sh -c` (`Elia.Shell.shell/1`), in the chat's working
   directory (WD-9), which is its workspace root until `cd` changes it,

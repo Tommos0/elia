@@ -111,8 +111,9 @@ a chat that wants its commands reviewed turns that switch off (UI-39).
   requirement the row's facts come from. A folder skill's script tool has no
   fixed name and so has no row: it always needs approval (FOLDER-8).
 - **APPR-16** An approval cell in the APPR-7 table is either `never` or
-  `always`: `never` is a tool that never needs approval, and `always` one that
-  needs it for every call. The `path read` and `path write` kinds this
+  `always`: `never` is a tool that never needs approval, and `always` one whose calls
+  need approval, which the chat's auto-approved set may already cover (APPR-8,
+  APPR-14). The `path read` and `path write` kinds this
   requirement used to allow retired with the file tools (FILE), since no tool
   left judges a path for its approval.
 - **APPR-17** The APPR-7 table's third column says which chats a tool is offered
