@@ -140,11 +140,11 @@ tree's front end (`/recover`, RECOVER-10).
   running app. It is refused, before anything runs, when the live tree isn't
   set up for deployment (DEPLOY-14); uncommitted changes there are put aside
   rather than refused (DEPLOY-37). Otherwise it
-  runs the full test suite in the live tree — after fetching the trunk's
-  dependencies there (DEPLOY-18) — then fast-forwards `live` to
-  `master` when the tests pass; when they fail it rolls `live` back to where it
-  was, so nothing is deployed and the running app is unaffected, and it returns
-  the test output. When `live` is already at `master` there is nothing to
+  fast-forwards `live` to `master`, fetches the trunk's dependencies in the
+  live tree (DEPLOY-18), and then runs the full test suite there, on the merged
+  tree; when the tests fail it rolls `live` back to where it was before the
+  fast-forward, so nothing is deployed and the running app is unaffected, and
+  it returns the test output. When `live` is already at `master` there is nothing to
   *merge*: no tests run, the live tree's front end is still made current before
   the load (DEPLOY-19), and then the load (DEPLOY-6, DEPLOY-7) happens. A
   deploy can be asked to leave the suite out, and is then the same deploy
