@@ -258,7 +258,11 @@ defmodule Elia.Agent.Session do
   end
 
   defp dispatch({:set_cwd, path}, _from, state) when is_binary(path) do
-    case Elia.Workdir.resolve(path, cwd(state), workspace(state)) do
+    # WD-5: a protected directory is refused only while the chat is jailed — its
+    # own setting (ISOL-16) and the host's (ISOL-20) both on.
+    protected = Elia.Shell.wanted?(jail: settings(state).jail)
+
+    case Elia.Workdir.resolve(path, cwd(state), workspace(state), protected: protected) do
       {:ok, dir} ->
         state = %{state | cwd: stored_cwd(dir, state)}
         # WD-2: the new directory is saved with the chat. As with its other

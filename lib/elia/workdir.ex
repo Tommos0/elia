@@ -8,8 +8,8 @@ defmodule Elia.Workdir do
   It changes what a relative path names, never what a path is allowed to be:
   every path is still judged by its own class (`Elia.Workspace.classify/2`) and
   its own real location (WS-5), so a chat reaches no further by standing
-  somewhere else — and a directory outside the workspace is refused outright
-  (WD-5).
+  somewhere else — and a directory outside the workspace is refused outright,
+  as is a protected one while the chat is jailed (WD-5).
 
   The session owns the chat's directory (`Elia.Agent.Session`) and saves it with
   the chat (STORE-46); this module is the part every caller shares.
@@ -33,9 +33,15 @@ defmodule Elia.Workdir do
   `base` (WD-3) — as its real location (WS-5): `{:ok, dir}` when it is a
   directory inside `root`, and otherwise `{:error, message}` naming the path and
   the reason (WD-5).
+
+  `protected: true` also refuses a directory whose real location is protected
+  (`.git`, `_build`, `deps` or `.elia` at the root, WS-1, WS-7), which is what
+  `cd` asks for while the chat's jail is on (WD-5). It defaults to `false`:
+  with the jail off nothing is protected.
   """
-  @spec resolve(binary(), binary(), binary()) :: {:ok, binary()} | {:error, binary()}
-  def resolve(path, base, root) do
+  @spec resolve(binary(), binary(), binary(), keyword()) ::
+          {:ok, binary()} | {:error, binary()}
+  def resolve(path, base, root, opts \\ []) do
     abs = Path.expand(path, base)
 
     case Workspace.real_location(abs) do
@@ -44,10 +50,17 @@ defmodule Elia.Workdir do
          "#{abs} goes through more symlinks than can be followed, so where it leads is unknown"}
 
       real ->
-        if Workspace.classify(real, real_root(root)) == :outside do
-          {:error, outside(abs, real)}
-        else
-          existing_directory(real)
+        case Workspace.classify(real, real_root(root)) do
+          :outside ->
+            {:error, outside(abs, real)}
+
+          :protected ->
+            if opts[:protected],
+              do: {:error, protected(abs, real)},
+              else: existing_directory(real)
+
+          _class ->
+            existing_directory(real)
         end
     end
   end
@@ -84,4 +97,12 @@ defmodule Elia.Workdir do
   # goes, so the chat is told the outside directory it named.
   defp outside(abs, real) when real == abs, do: "#{abs} is outside the workspace."
   defp outside(abs, real), do: "#{abs} resolves to #{real}, outside the workspace."
+
+  # WD-5, WS-7: `.git`, `_build`, `deps` and `.elia` at the root are protected,
+  # however the path reaches them — directly or through a link.
+  defp protected(abs, real) when real == abs,
+    do: "#{abs} is a protected path (.git, _build, deps or .elia)."
+
+  defp protected(abs, real),
+    do: "#{abs} resolves to #{real}, a protected path (.git, _build, deps or .elia)."
 end

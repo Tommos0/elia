@@ -44,9 +44,9 @@ defmodule Elia.WorkingDirectoryTest do
   end
 
   # A chat of this test's own, working in `dir` (PROJ-12, DEPLOY-1).
-  defp start_chat(dir) do
+  defp start_chat(dir, opts \\ []) do
     id = Agent.new_id()
-    {:ok, pid} = Agent.ensure_started(id, workspace: dir)
+    {:ok, pid} = Agent.ensure_started(id, Keyword.put(opts, :workspace, dir))
     Agent.subscribe(id)
     on_exit(fn -> stop_chat(id, pid) end)
     {id, pid}
@@ -121,6 +121,61 @@ defmodule Elia.WorkingDirectoryTest do
 
     assert {:error, up} = Wd.resolve("..", dir, dir)
     assert up =~ "outside the workspace"
+  end
+
+  # WD-5, WS-7: while the chat is jailed a protected directory — `.git` here,
+  # directly, below it, or through a link inside the workspace — is refused with
+  # the path and why; while it isn't, nothing is protected.
+  test "cd into .git is refused only while the chat is jailed", %{dir: dir} do
+    git = Path.join(dir, ".git")
+    refs = Path.join(git, "refs")
+    File.mkdir_p!(refs)
+    File.ln_s!(git, Path.join(dir, "git-link"))
+
+    assert {:error, direct} = Wd.resolve(".git", dir, dir, protected: true)
+    assert direct =~ git
+    assert direct =~ "protected"
+
+    assert {:error, below} = Wd.resolve(".git/refs", dir, dir, protected: true)
+    assert below =~ "protected"
+
+    assert {:error, link} = Wd.resolve("git-link", dir, dir, protected: true)
+    assert link =~ "resolves to #{git}"
+    assert link =~ "protected"
+
+    # A name that only starts like a protected one is an ordinary directory.
+    File.mkdir_p!(Path.join(dir, ".github"))
+    assert {:ok, _} = Wd.resolve(".github", dir, dir, protected: true)
+
+    # Unjailed, the same paths are ordinary directories.
+    assert {:ok, ^git} = Wd.resolve(".git", dir, dir)
+    assert {:ok, ^refs} = Wd.resolve(".git/refs", dir, dir, protected: false)
+    assert {:ok, ^git} = Wd.resolve("git-link", dir, dir, protected: false)
+  end
+
+  # WD-5, ISOL-16, ISOL-20: the `cd` a chat's session runs judges a protected
+  # directory by that chat's own jail setting, with the host's jail on.
+  test "a jailed chat's cd refuses .git and an unjailed chat's allows it", %{dir: dir} do
+    git = Path.join(dir, ".git")
+    File.mkdir_p!(git)
+
+    shell = Application.get_env(:elia, Elia.Shell, [])
+    Application.put_env(:elia, Elia.Shell, Keyword.put(shell, :jail, true))
+    on_exit(fn -> Application.put_env(:elia, Elia.Shell, shell) end)
+
+    {jailed, _pid} = start_chat(dir, jail: true)
+    assert {:error, message} = Agent.set_cwd(jailed, ".git")
+    assert message =~ "protected"
+    assert Agent.cwd(jailed) == Wd.real_root(dir)
+
+    {unjailed, _pid} = start_chat(dir, jail: false)
+    assert {:ok, ".git"} = Agent.set_cwd(unjailed, ".git")
+    assert Agent.cwd(unjailed) == Path.join(Wd.real_root(dir), ".git")
+
+    # The host's jail off is the jail off, whatever the chat's own setting says.
+    Application.put_env(:elia, Elia.Shell, Keyword.put(shell, :jail, false))
+    {host_off, _pid} = start_chat(dir, jail: true)
+    assert {:ok, ".git"} = Agent.set_cwd(host_off, ".git")
   end
 
   # WD-3, WD-4, WD-5: `cd` through a chat's session — it sets the chat's working

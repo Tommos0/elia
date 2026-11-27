@@ -31,8 +31,13 @@ standing somewhere else.
 - **WD-4** `cd` with no `path` changes nothing and returns the current working
   directory in the form of WD-3, so a chat can ask where it is.
 - **WD-5** `cd` fails, changing nothing and naming the path and the reason, when
-  the path does not exist, is not a directory, has no real location (WS-6), or
-  whose real location (WS-5) is outside the workspace (WS-8).
+  the path does not exist, is not a directory, has no real location (WS-6),
+  or whose real location (WS-5) is outside the workspace (WS-8). While the
+  chat's jail is on — its own jail setting (ISOL-16) and the host's (ISOL-20)
+  both on — it also fails when the path's real location is a protected path:
+  `.git`, `_build`, `deps` or `.elia` at the workspace root, or anything under
+  one (WS-1, WS-7). While the jail is off nothing is protected, and `cd` into
+  those is allowed.
 - **WD-6** `cd` never needs approval: it changes no file and grants no reach of
   its own, since a command's reach is its jail (ISOL-13) — which binds the
   chat's workspace and not the directory the command starts in — and the path
@@ -91,15 +96,12 @@ the file changes shape, and no other stored data is read or written.
 - `cd` is not a shell: there is no `~`, no globbing, no `-` for the previous
   directory and no environment. It names one directory, and a chat that wants a
   shell's own `cd` has the terminal for it.
-- The `deps` and `.git` of the live tree are `:protected` paths (WS-1), so `cd`
-  into them is refused even though a jailed command may reach them (ISOL-13); a
-  command can still name such a path
-  absolutely.
 
 ## Implementation
 
 `Elia.Workdir` (the working directory of a tool call's context, and the
-resolution and refusal of WD-5), `Elia.Skills.Workdir` (the skill and its `cd`
+resolution and refusal of WD-5, told by its caller whether protected paths are
+refused), `Elia.Skills.Workdir` (the skill and its `cd`
 tool), `Elia.Agent.Session` (the `:cwd` state, `{:set_cwd, path}` and `:cwd`
 calls, saving and loading of WD-2 and WD-7) with `Elia.Agent.set_cwd/2`, and
 `Elia.Store`'s `cwd:` option and `load_cwd/1` (STORE-46). The callers that
