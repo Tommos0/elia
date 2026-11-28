@@ -5,6 +5,14 @@ Status: Implemented
 A single LiveView where the user chats with the agent, watches responses
 stream in, approves or denies tool calls, and switches between saved chats.
 
+Earlier, a row carried a trash button of its own (UI-64), a chat list's menu held
+"Rename" and the delete entry before the done entry (UI-109) was added (UI-103),
+the toolbar showed the settings link, the terminal link and the done control side
+by side (UI-97), and a sub-task chat was named and shown by its task's own title
+and status (STORE-17, the retired UI-44 and SUBTASK-7). The 80px tolerance UI-14
+allows is there because the position alone decided before, and a reader who had
+scrolled up within it was pulled back to the end by the content arriving next.
+
 ## Requirements
 
 ### Routing
@@ -275,9 +283,7 @@ stream in, approves or denies tool calls, and switches between saved chats.
   delete entry in the row's own menu (`#delete-chat-<id>`, with the accessible
   label "Delete chat"), which asks for confirmation first, with `data-confirm`
   naming the chat, and only then deletes it. The menu is the list's one way to
-  delete a chat: a row carries no delete control of its own. *Changed:* a row
-  used to carry a trash button (`#delete-chat-<id>`) of its own beside its link
-  (`#chat-link-<id>`).
+  delete a chat: a row carries no delete control of its own.
 - **UI-103** A chat row opens a menu of its own on a long press of it — a press
   held for about half a second — on a right-click on it with a pointer, and from
   the keyboard, the context-menu key or Shift+F10, while the row's link has
@@ -297,8 +303,6 @@ stream in, approves or denies tool calls, and switches between saved chats.
   UI-104). It is drawn above the list rather than clipped by its scroll box, and
   within the screen's width (UI-78), so a row at the list's edge shows all of
   it. A chat row in the drawer (UI-92, UI-93) opens the same menu the same way.
-  *Changed:* the menu held two entries — "Rename" and the delete entry — before
-  the done entry (UI-109) was added.
 - **UI-104** Choosing "Rename" (UI-103) renames the chat in its row: the input
   (`#chat-rename-<id>`) takes the link's place in the row — the row's link is
   not rendered while it is open, so no control is nested in another and a press
@@ -398,11 +402,7 @@ the list.
   position has drifted back inside a tolerance. Displacement that is not their
   own — the content growing, a rounding, a re-render — does not turn it off:
   while the following is on, content arriving keeps the list at its end as long
-  as it is less than 80px away from it. *Changed:* the position alone decided
-  before, so that 80px tolerance undid the reader's own scroll up — one that
-  left them within it was pulled back to the end by the content arriving next,
-  and staying up while output streamed came down to scrolling more than 80px at
-  a time.
+  as it is less than 80px away from it.
 - **UI-87** The top of the chat page carries a jump-to-the-end control
   (`#jump-to-end`): a small button at the right of the context indicator
   (CTX-1), the transcript's own counterpart to it. Pressing it scrolls the
@@ -608,8 +608,6 @@ the list.
   warning (CSET-9, `#jail-warning`, `#jail-unavailable`) stay outside it, in
   the toolbar: one acts on what the user is reading, the other is a warning,
   and neither is a setting — a warning inside a shut menu is not one.
-  *Changed:* the toolbar used to show the settings link, the terminal link and
-  the done control side by side, in every chat and at every width.
 
 ### Fitting the screen
 
@@ -733,9 +731,7 @@ with `list_chats` (HIST-2).
   the usual badge (UI-16) and approval buttons (UI-18) while it awaits approval.
   Nothing else is drawn on it: the child's status and a link to the child chat
   are the retired UI-44, so the call never shows a status the child's own row
-  doesn't (UI-46, UI-59). *Changed:* the card's status row, its "waiting for
-  approval" line and its link to the child went with UI-44; the brief section
-  stays, and the brief is also the child's first message (SUBTASK-5).
+  doesn't (UI-46, UI-59).
 - ~~**UI-44** Once the child exists, the card shows its status
   (`#task-status-<call_id>`) and a link to the child chat
   (`#task-link-<call_id>`). The status is the child chat's own — the same
@@ -748,9 +744,7 @@ with `list_chats` (HIST-2).
   children's saved metadata (`parent_call_id`, STORE-18). While the child waits
   for the user to approve a tool call in its own chat (SESS-19), the card says
   so (`#task-awaiting-<call_id>`), and so does a child waiting for an answer to
-  a question (ASK-9, `#task-input-<call_id>`). *Changed:* the status used to be
-  the task's own, from a `{:subtask, …}` event (the retired SUBTASK-7), and the
-  card no longer shows a status the child's own chat doesn't have (SUBTASK-33).~~
+  a question (ASK-9, `#task-input-<call_id>`).~~
   Retired: there is no task card (UI-43). A child's status is the status its own
   chat has and is drawn in its own row (UI-46, UI-59), a parent that wants it in
   text lists its children with `list_chats` (HIST-2, HIST-3), and its chat is
@@ -761,19 +755,11 @@ with `list_chats` (HIST-2).
   collapsed dropdown its parent's row draws (UI-112). A sub-task whose parent
   isn't in the list is shown on its own at the top level. The row
   (`#chat-link-<id>`) uses the chat's own title (STORE-33, TITLE-3) and carries
-  the status indicator any chat's row has (UI-46). *Changed:* the task's own
-  title was what the row showed (STORE-17); a sub-task is named by its own title
-  now (TITLE-3). *Changed:* the nested rows were always listed; they are behind
-  a collapsed dropdown now (UI-112).
+  the status indicator any chat's row has (UI-46).
 - **UI-46** A sub-task chat in the sidebar shows its status the way any chat's row
   does (UI-59, UI-72): the same indicator (`#chat-status-<id>`), the same
   `data-status` values and the same `title`, derived by the same code, so a
-  child chat is never shown a status its own page doesn't have. *Changed:* a
-  task chat used to show its task's status (`running`, `done`, `blocked`,
-  `failed`, `unfinished`, `cancelled`), with the chat's own flag and turn
-  standing in for some of them (DONE-2); that vocabulary went with the task
-  status itself (SUBTASK-33), so a child whose chat isn't marked done and has
-  no turn running reads `idle`, and one whose chat is marked done reads `done`.
+  child chat is never shown a status its own page doesn't have.
 - **UI-47** Any chat in the sidebar that has a tool call awaiting approval
   (SESS-4) shows it in its status indicator (`#chat-status-<id>`, with
   `data-status="awaiting_approval"`, a hand icon and the `title` "Needs
@@ -786,14 +772,10 @@ with `list_chats` (HIST-2).
   UI-72, on `#task-header-status`, with UI-46's `data-status` values). It shows
   neither the brief — that is the child's first message, in the transcript
   (SUBTASK-5, UI-9) — nor the result the task finished with (SUBTASK-9). The
-  header follows the chat's own status events (SESS-19). *Changed:* the
-  collapsible "Brief" (`#task-header-brief`) and the `{:task, metadata}` event
-  it followed (SESS-20) went with the second copy of the brief.
+  header follows the chat's own status events (SESS-19).
 - **UI-49** The sidebar refreshes when a chat's status changes (SESS-19) or its
   done flag does (SESS-35), so a new task chat and its status show without
-  waiting for the turn to end (UI-6). *Changed:* it used to follow a
-  `{:subtask, …}` event (the retired SUBTASK-7), which is now the same status
-  every chat broadcasts.
+  waiting for the turn to end (UI-6).
 
 - ~~**UI-50** The status `cancelled` — one a task saved before SUBTASK-16
   changed may still have — has its own icon, wherever a task status is shown

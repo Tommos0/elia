@@ -71,8 +71,7 @@ leaving the page.
   `#active-delete-chat-<id>`), all in the menu `#active-chat-row-menu-<id>` — the
   control's own ids, the same ones a chat row's menu draws under the `active-`
   scope (UI-103, UI-104), so a chat listed by both the header and the chat list
-  has two menus and the two never collide. *Changed:* the menu held two entries —
-  "Rename" and the delete entry — before the done entry (UI-109) was added.
+  has two menus and the two never collide.
 - **ACTIVE-10** Choosing "Rename" (ACTIVE-9) renames the chat in the header's
   row: the input (`#active-chat-rename-<id>`) takes the row's link's place
   in the row — the row's link is not rendered while it is open, so a press on

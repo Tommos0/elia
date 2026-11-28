@@ -63,9 +63,7 @@ turn that stopped for the user says so however much later the chat is opened.
   the child actually runs with and the child can be given more of it while it is
   paused. The child's limits are its own from then on, like its jail setting and
   auto-approvals (ISOL-18, APPR-12): a later change in either chat never affects
-  the other, and the parent's own limits are not inherited. *Changed:* a child's
-  limits used to be set at its spawn, from `spawn_task`'s `max_steps`
-  (SUBTASK-12) and `max_minutes` (SUBTASK-18), which went with them.
+  the other, and the parent's own limits are not inherited.
 - **LIMIT-6** The chat settings page's **Limits** section (CSET-5) shows the
   four settings — the three numbers in the page's single form (`#limit-steps`,
   `#limit-minutes`, `#limit-tokens`, CSET-7) and `pause_on_limit` as a switch

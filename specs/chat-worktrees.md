@@ -42,9 +42,7 @@ an hour.
 - **WTREE-5** A chat that has merged its branch into the trunk (DEPLOY-13) leaves
   its worktree and its branch where they are: it removes neither. Removing a
   finished chat's worktree is the sweep's step (WTREE-6) rather than the chat's,
-  and a sub-task's no more than its parent's (SUBTASK-23). *Changed:* the
-  instruction a chat in Elia's own project carries (DEPLOY-28) used to end with
-  `git worktree remove` and `git branch -D` once its work was merged.
+  and a sub-task's no more than its parent's (SUBTASK-23).
 - **WTREE-6** A chat's worktree is removed when the chat is marked done (DONE-1, STORE-34),
   the chat's saved `updated_at` is at least the minimum age ago (STORE-1) and no turn of that chat is running (SESS-19).
 - **WTREE-7** A worktree whose chat no longer exists is removed once the

@@ -10,6 +10,15 @@ effort — are one map with one write path and one event (SESS-41), so a setting
 costs a row rather than a field, a setter, a save, an event and a follower in
 every view.
 
+Earlier, a child's status and a chat's task metadata travelled as their own events
+(`{:subtask, call_id, child_id, status}` and `{:task, metadata}`) and a resumed
+child took an entry in a registry of running children (the retired SUBTASK-7,
+SUBTASK-11, SESS-20 and UI-44); a chat's task metadata is now written when its
+chat is created and once when a result is saved with it, and no view draws it
+live. Turn records used to be saved as they were appended, and a failed save used
+to clear the marker that said the chat was unsaved, so nothing was retried until
+the chat changed again and a later shutdown saved nothing.
+
 ## Requirements
 
 - **SESS-1** A session is identified by a chat id and is unique per id.
@@ -24,7 +33,7 @@ every view.
   Every change is broadcast.
 - **SESS-5** Every message the loop produces is appended to the history,
   saved (STORE-1) — when SESS-44 says — and broadcast. Messages with empty
-  content are dropped. *Changed:* each one used to be saved as it was appended.
+  content are dropped.
 - **SESS-6** Events are broadcast on `Elia.Agent.topic(id)` as
   `{:agent, id, event}`, where event is one of `{:message, m}`,
   `{:delta, :text | :reasoning, text}`, `{:notice, text}`, `{:status, s}`,
@@ -37,13 +46,6 @@ every view.
   `{:done, on?}` (the chat's done flag changed, SESS-35, DONE-1, DONE-9),
   `{:paused, message}` (the turn paused at a limit, SESS-27),
   `{:retry, info}` (a failed model call is being retried, SESS-39, RETRY-3).
-  *Changed:* a `{:subtask, call_id, child_id, status}` event, sent by
-  `Elia.Tasks` when a child started or ended, went with the per-task status
-  (the retired SUBTASK-7): a child's status is its chat's own and reaches every
-  view through SESS-19 and SESS-35. A `{:task, metadata}` event went with the
-  card and the header brief that read it (the retired SESS-20, UI-44): a chat's
-  task metadata is set when its chat is created and once when a result is saved
-  with it (SESS-18), and no view draws it live.
 - **SESS-7** `snapshot/1` returns the id, messages, status, per-call tool
   status, the chat's per-chat settings as one map (`settings`, SESS-41) whose
   `model` is its selection (`nil` if none yet, MODEL-1), whose `auto_approve` is
@@ -133,9 +135,6 @@ every view.
   it (STORE-16, STORE-17) — and, once the task ends, the result built then
   (SUBTASK-9, SUBTASK-13). A session whose state predates the `task` field is
   upgraded as in SESS-15, and a chat that isn't a sub-task's has none.
-  *Changed:* `Elia.Agent.update_task/2`, which merged changes into that map and
-  saved them, and the `{:task, metadata}` broadcast (SESS-20) went with the card
-  and header brief that read them (the retired UI-44).
 - **SESS-19** Every status change (SESS-4) is also broadcast on
   `Elia.Agent.activity_topic/0` as `{:chat_status, id, status}`, so a page can
   follow every chat without subscribing to each: `status` is the session status
@@ -173,11 +172,7 @@ every view.
   isn't marked done (`Elia.Store.children/1`, STORE-18, SUBTASK-34) that is
   running a turn is stopped too, and each of those children goes on as a
   sub-task afterwards. Stopping a child's own turn ends that turn and nothing
-  more (SUBTASK-16). *Changed:* a child's own stop used to be recorded as the
-  stop of that turn, so the process watching it wouldn't read the turn's end as
-  the task's end; no turn's end is the task's end now (SUBTASK-33), so there is
-  nothing to record, and a parent's children are read from its own chat rows
-  rather than from a registry of running children (the retired SUBTASK-11).
+  more (SUBTASK-16).
 
 - **SESS-23** A turn runs in the chat's project and in the workspace its session
   resolved when it started: the `workspace` its caller passed in the loop
@@ -276,9 +271,6 @@ every view.
   so a storage failure that recovers leaves the chat saved without a further
   message, a further change or a shutdown. Each failed attempt is logged again
   (SESS-13), and a session that does not persist writes and retries nothing.
-  *Changed:* a failed save used to clear the one thing that marked the chat
-  unsaved, so nothing was retried until the chat changed again and a later
-  shutdown saved nothing.
 
 - **SESS-31** A session loads the chat's turn limits on start (STORE-28), and a
   session started for a sub-task is given that child's own (LIMIT-5, SESS-17).

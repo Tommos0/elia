@@ -7,7 +7,9 @@ screen rather than a jump straight into the most recent chat: it shows what
 needs the user, where they left off, their projects, the machine's health,
 whether the trunk is deployed and what the last deploy brought. Opening a chat stays one tap away, and the chat
 list's entry point moved to `/chats` (UI-77), which resumes the chat the user
-left off in exactly as `/` used to (UI-1, UI-71).
+left off in exactly as `/` used to (UI-1, UI-71). The projects page this list
+replaced (PROJ-23) is gone: a project is opened and changed from its own page
+(PROJ-51, PROJ-53), and the switcher's menu already lists them (PROJ-29).
 
 ## Requirements
 
@@ -111,9 +113,7 @@ left off in exactly as `/` used to (UI-1, UI-71).
   its folder (shown truncated with the whole path in the `title`) and how many
   chats it has (`#dash-project-chats-<id>`) — Elia's own project counting the
   chats that name no project too — and a "New chat" link
-  (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26). *Changed:* the card
-  used to end with a single link to the projects page (`#all-projects`), which
-  is gone with that page (PROJ-23).
+  (`#dash-project-new-<id>`) to `/p/<id>/new` (PROJ-26).
 
 ### Machine and deployment
 

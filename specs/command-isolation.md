@@ -106,14 +106,10 @@ genuinely needs the rest of the machine (ISOL-16).
   > directly, as before.
 - **ISOL-8** The environment is cleared and rebuilt from an allowlist: `PATH`,
   `HOME`, `LANG`, `TERM`, plus `MIX_ENV` and `GIT_*` only where the caller sets
-  them. Nothing is inherited, so a key in the server's own environment (CONF-5)
-  reaches no command.
-  *Changed:* a command in allowlist mode is given the proxy's address as well,
-  `http_proxy`, `https_proxy` and `all_proxy` (NET-13), which is the one place
-  the network allowlist adds to the list. A chat's own secrets are added to a
-  command's environment too (SECRET-5) — the project's, read from its own
-  `.env` (SECRET-1), never the server's own environment, which is what this
-  requirement keeps out.
+  them, the proxy's address — `http_proxy`, `https_proxy` and `all_proxy`
+  (NET-13) — in allowlist mode, and the chat's own secrets, read from its
+  project's `.env` (SECRET-1, SECRET-5). Nothing else is inherited, so a key in
+  the server's own environment (CONF-5) reaches no command.
 - **ISOL-24** A command never builds in the environment the server happens to
   run in: `MIX_ENV` is absent whichever path it takes. A jailed command has
   none (ISOL-8), and an unjailed one (ISOL-12, ISOL-16) runs in a shell that
@@ -142,9 +138,6 @@ genuinely needs the rest of the machine (ISOL-16).
   reach is its chat's network setting (NET) — and it changes neither what a
   command may write inside its workspace nor what approval it needs (APPR, WS).
   It is a second line behind the approval prompt, not a replacement for it.
-  *Changed:* the jail used to be the whole answer to what a command reaches, and
-  left the wire alone; it still leaves it alone, and a chat's network mode is
-  what limits it now.
 - **ISOL-12** When there is no jail — bubblewrap not installed, user namespaces
   not permitted (ISOL-20) — a command runs unjailed as it does today and its
   result says the jail was skipped, so a run that wasn't isolated never looks
@@ -270,9 +263,6 @@ is harmless.
   monitor (`-c core.hooksPath=/dev/null -c core.fsmonitor=false`), so none of
   them runs code the repository's files name, whatever they hold. A chat's own
   git commands, which it runs through the `shell` tool, are unaffected.
-  *Changed:* the harness used to run git in a child's worktree too, for the
-  result of a task (the retired SUBTASK-9); the result is what the child said
-  now, and no harness git command reads a child's branch.
 
 ### The per-chat setting
 

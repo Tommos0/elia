@@ -7,7 +7,9 @@ is the model it was built with, consolidated further: a sub-task is an ordinary
 chat and nothing about it is special beyond the chat that started it. What is
 left of the earlier task model — the registry of running children, the writer
 lock, the child's own limits and start commit, the harness-derived result, the
-`list_tasks` tool, the task card and the task-only title rule — goes.
+`list_tasks` tool, the task card and the task-only title rule — is gone
+(SUBTASK-3, SUBTASK-4, SUBTASK-7, SUBTASK-8, SUBTASK-11, SUBTASK-12,
+SUBTASK-18, SUBTASK-21, SUBTASK-26, UI-44).
 
 A chat (the **parent**) hands a focused piece of work to a **child** chat with a
 fresh context and its own session, and collects a short result when the child is
@@ -44,17 +46,14 @@ built.
   (SUBTASK-2, SUBTASK-27). A child gets neither them nor any skill of its own:
   its session is built from the skill registry minus the `tasks` skill (LOOP-17,
   `Elia.Skills.for_child/1`), so a child has exactly the tools an ordinary chat
-  has, `mark_done` (DONE-6) among them. There is no child-only tool. *Changed:*
-  `list_tasks` went with the second listing (the retired SUBTASK-26).
+  has, `mark_done` (DONE-6) among them. There is no child-only tool.
 
 - **SUBTASK-2** `spawn_task` takes a `title` (the child chat's own title,
   TITLE-3) and a `brief` (the whole of the child's input), and optionally a
   `model` (SUBTASK-6). It starts the child (SUBTASK-5) and returns as soon as it
   has started, as JSON: `{"task_id", "title", "status"}`, where `status` is the
   child chat's own status (UI-59) — `working`, since its first turn has just
-  started. Waiting for the child is `await_task` (SUBTASK-27). *Changed:* the
-  `max_minutes` input and the `max_steps` it accepted went with the child's own
-  limits (LIMIT-5, the retired SUBTASK-12, SUBTASK-18).
+  started. Waiting for the child is `await_task` (SUBTASK-27).
 
 - ~~**SUBTASK-3** The child-only tool `finish_task(status, summary,
   questions?)` records the result: `status` is `"done"`, `"blocked"` or
@@ -89,10 +88,7 @@ built.
   anything you need the user to settle goes there — and then calling `mark_done`
   (SUBTASK-33, DONE-6). The child's tools are SUBTASK-1's, and it cannot start
   sub-tasks of its own. The spawn returns at once (SUBTASK-2) and does not wait
-  for anything the child does. *Changed:* the spawn no longer records a start
-  commit, takes an entry or sets the child's limits (the retired SUBTASK-11,
-  SUBTASK-12, SUBTASK-18; LIMIT-5), and the brief is the child's first message
-  rather than a field of its own (STORE-16).
+  for anything the child does.
 
 - **SUBTASK-6** The child's session starts with the parent's auto-approved
   tools (APPR-8) and no approval inheritance beyond that, and with the model
@@ -124,9 +120,6 @@ built.
   `await_task` reports (SUBTASK-27). What the child changed is not in it: its
   committed work is on its own branch (SUBTASK-23) and its transcript is in its
   chat (HIST-4, STORE-1), and the parent looks there when it wants either.
-  *Changed:* `commit` and `files` went as the retired SUBTASK-21's
-  `start_commit` and `tree_clean` did — a question about the child's branch,
-  which the parent can look at itself.
 
 - ~~**SUBTASK-10** A child whose turn ends without reporting a result is
   `"unfinished"`, with its last assistant text as the summary, and the
@@ -162,7 +155,7 @@ built.
 - **SUBTASK-13** When the child's chat is marked done, the harness builds the
   result (SUBTASK-9) and saves it in the child's task metadata with the chat
   (STORE-16, SESS-18). A result is saved once: a chat that is marked done again, or reopened and marked done again (DONE-9), keeps the result it
-  has. *Changed:* there is no entry to release (the retired SUBTASK-11).
+  has.
 
 - ~~**SUBTASK-14** A child can also be stopped by the user from its own chat:
   stopping the turn ends the task with `status: "cancelled"`.~~ Removed: a stop
@@ -174,9 +167,7 @@ built.
   chat (UI-48), so a child opened later still says whose task it is. Nothing
   else links the two: the parent's `spawn_task` call renders as the tool call it
   is, with its own brief and no status (UI-43), and the child is a row in the
-  chat list like any chat (UI-45, UI-46). *Changed:* the `parent_call_id` that
-  tied each `spawn_task` call to its child, and the card that read it to draw the
-  child's status, went with the card (the retired UI-44).
+  chat list like any chat (UI-45, UI-46).
 
 - **SUBTASK-16** Stopping a running child's turn (SESS-8, SESS-22) ends that
   turn and nothing more. The turn ends as any chat's stop does — its open tool
@@ -185,8 +176,7 @@ built.
   stays a sub-task whose chat isn't marked done (SUBTASK-34), the user can send
   it another turn, and a parent's wait goes on (SUBTASK-27). The child's chat is
   left idle, not done, and that is the state its row in the chat list shows
-  (UI-46). *Changed:* this used to be the exception to "the child's turn end is
-  the child's end" (the retired SUBTASK-8); now no turn's end is (SUBTASK-33).
+  (UI-46).
 
 - **SUBTASK-17** Stopping the parent's turn (SESS-8) first stops the turn of
   every child of that chat whose chat isn't marked done (SUBTASK-34, read from
@@ -219,9 +209,7 @@ built.
   it is resumed like any chat (RESUME-7). The parent's own `await_task` call was
   killed with the turn: the parent's next turn gets an error result for it, as
   for any tool call the restart cut off (SESS-21), and a later `await_task`
-  waits for the child's chat to be marked done (SUBTASK-27). *Changed:* a
-  resumed child used to take its entry in the registry again before its turn ran
-  (the retired SUBTASK-11, RESUME-7); there is no entry to take.
+  waits for the child's chat to be marked done (SUBTASK-27).
 
 - ~~**SUBTASK-21** The result also carries `task_id` (the child chat's id), and
   a result that isn't `"done"` carries `start_commit` and `tree_clean`, so a
@@ -260,10 +248,7 @@ built.
   either gives the child another turn or marks its chat done when they want it
   over (SUBTASK-34). Stopping the paused turn is the same as stopping any turn
   (SUBTASK-16). A restart takes the paused turn with it and a paused child is
-  not resumed (RESUME-8). *Changed:* a child's limits used to come from its
-  spawn (the retired SUBTASK-12, SUBTASK-18), and failing a paused child used to
-  end its task as `"failed"` with the reason `budget`; now its limits are its
-  chat's own (LIMIT-5) and only marking the chat done ends a task (SUBTASK-33).
+  not resumed (RESUME-8).
 
 - **SUBTASK-25** A child's session is started even when the app has restarted
   since the spawn (SUBTASK-20) and is started for the user's benefit too: the
@@ -328,9 +313,7 @@ built.
   (SUBTASK-27) and a parent that lists its children sees the same (HIST-2). It
   ends the ordinary ways — its chat is marked done (SUBTASK-33) or its chat is
   deleted (SUBTASK-35) — and a turn the user starts in it after the stop goes on
-  being part of it (SUBTASK-16). *Changed:* this used to be a special case (a
-  stopped turn is not the child's end); it is now what any turn's end is
-  (SUBTASK-10).
+  being part of it (SUBTASK-16).
 
 - ~~**SUBTASK-32** Saving a child's final metadata straight to disk (SUBTASK-29)
   preserves every other key the file has, so a concurrent save by the child's
@@ -345,9 +328,7 @@ built.
   the end of a turn (SUBTASK-10), not a turn the user stops (SUBTASK-16), not a
   limit they fail (SUBTASK-24), not a session that dies (SUBTASK-19). The end is
   recorded once and doesn't move: reopening the chat (DONE-9) doesn't un-end the
-  task, which keeps the result it has (SUBTASK-13). *Changed:* the entry in the
-  registry of running children is no longer released with it (the retired
-  SUBTASK-11).
+  task, which keeps the result it has (SUBTASK-13).
 
 - **SUBTASK-34** A sub-task whose chat nobody has marked done keeps running,
   however its turns end: its chat is left where it is — `idle`, `awaiting_*`,
@@ -356,16 +337,13 @@ built.
   it (SUBTASK-35). Nothing has to happen for the task to be over, and no
   deadline of the harness's own ends it: a parent that waits for such a child
   waits until the user settles it (SUBTASK-27), and the chat stays a sub-task
-  until then (STORE-16, STORE-17). *Changed:* the child used to hold an entry
-  for as long as it ran (the retired SUBTASK-11), which is also what kept its
-  workspace to itself (the retired SUBTASK-4); there is nothing to hold.
+  until then (STORE-16, STORE-17).
 
 - **SUBTASK-35** Deleting a running sub-task's chat (SESS-29, UI-65) ends it
   without a result: a parent's `await_task` on it answers with a tool error
   saying the chat is gone, rather than waiting for a chat that no longer exists
   (SUBTASK-27). The chat stays deleted: nothing recreates it (SUBTASK-13,
-  SUBTASK-29). *Changed:* there is no entry to release with it (the retired
-  SUBTASK-11).
+  SUBTASK-29).
 
 - ~~**SUBTASK-36** A child whose brief was never sent — its spawner died before
   it got there — is not a running child: its entry is released (SUBTASK-11) and

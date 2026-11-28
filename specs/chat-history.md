@@ -57,9 +57,7 @@ is its own project's history and not another project's.
   `"interrupted"` when a restart cut its turn short (STORE-31); otherwise
   `"open"`. It is the status the chat as a whole is in, not the progress of a
   turn that isn't running. A sub-task's status is its chat's own like this
-  (SUBTASK-34, UI-59). *Changed:* a task chat used to be listed under its task's
-  own status (STORE-17); that vocabulary went with the task status itself
-  (SUBTASK-33).
+  (SUBTASK-34, UI-59).
 - **HIST-4** `read_chat` takes `id` (a chat id, STORE-4) and returns that
   chat's saved transcript (STORE-1), or, instead of `id`, `query`: a non-blank
   string that must match exactly one title among the chats of the chat's own

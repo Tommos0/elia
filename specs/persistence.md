@@ -50,8 +50,7 @@ values a save can carry, deleting a chat, and the two tables themselves.
   whichever renames last — and never a truncated or mixed file, nor one that
   fails because another save renamed its temporary file away. A write that fails
   leaves no temporary file behind, and a temporary file a crash left behind is
-  never read or listed as a chat. *Changed:* every save of a chat used to share
-  the one `<id>.term.tmp`.
+  never read or listed as a chat.
 - **STORE-47** A save never raises for a filesystem it can't write: when the
   sessions directory can't be made, the write fails and `save/3` answers the
   same `{:error, reason}` a write that fails for any other reason gives
@@ -144,17 +143,11 @@ values a save can carry, deleting a chat, and the two tables themselves.
 - **STORE-17** A listed chat that has task metadata also carries `parent_id`, the
   id of the chat that spawned it (STORE-16). Its `title` is its own (STORE-33,
   TITLE-3) and its status the status any chat's is (STORE-31, UI-59), so a
-  sub-task is listed as the ordinary chat it is. *Changed:* the task status a
-  task chat used to be listed under, and the derivation a listing needed to work
-  out whether a running task still ran, went with the task status itself
-  (SUBTASK-33), and the task's own title it was listed under went with the
-  task-only title rule (TITLE-3).
+  sub-task is listed as the ordinary chat it is.
 - **STORE-18** `Elia.Store.children/1` (parent chat id) returns the listed entries
   (STORE-17) of the task chats whose `parent_id` it is, oldest first, with no
   limit: what `list_chats`'s `children` filter reads (HIST-2), and what a parent
-  stopped ends the turns of (SESS-22). *Changed:* the task metadata's
-  `parent_call_id`, which no longer exists (STORE-16), went with the task card it
-  existed for (SUBTASK-15).
+  stopped ends the turns of (SESS-22).
 - **STORE-20** Each listed chat carries `project_id`, or `nil` when it has none.
 - **STORE-29** `latest/1` returns the most recently started listed chat
   (STORE-12) that isn't a task chat (STORE-17) and isn't done (STORE-35,
@@ -244,9 +237,9 @@ values a save can carry, deleting a chat, and the two tables themselves.
   `status` key an earlier version wrote is ignored when the metadata is read
   (SUBTASK-34). It holds no title and no brief either: a child's title is its
   chat's own (STORE-32, TITLE-3) and its brief is the first message of its
-  transcript (SUBTASK-5). *Changed:* `title`, `brief` and `start_commit` went,
-  as the result's `commit` and `files` did (SUBTASK-9, SUBTASK-21); a file
-  written with them is read for the keys it has, the extra ones ignored.
+  transcript (SUBTASK-5). A key an earlier version wrote and nothing reads now
+  — `title`, `brief`, `start_commit`, or the result's `commit` and `files` — is
+  ignored: a file written with them is read for the keys it has.
   `load_task/1` returns it, or `nil` when the chat is missing, unreadable,
   corrupt or has none.
 - **STORE-21** `save/3` takes `compaction:` (the chat's compaction state, a map,

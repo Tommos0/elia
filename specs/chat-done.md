@@ -42,9 +42,7 @@ on its own branch rather than landed on the trunk (SUBTASK-23, DONE-6).
   restart cut short (UI-72) are all shown as they are, done or not. A task chat
   is no different: it has no status of its own to stand in for (UI-46), so its
   row and its header (UI-48) read `done` where its chat is marked done and
-  whatever the chat is doing otherwise. *Changed:* a task chat used to show its
-  task's status, with `done` standing in for the ones that meant the task was
-  over.
+  whatever the chat is doing otherwise.
 - **DONE-3** A task chat's flag is the end of its task (SUBTASK-33): marking
   one done ends it — the result is built and saved (SUBTASK-9, SUBTASK-13) and a
   parent's `await_task` returns it
@@ -52,9 +50,6 @@ on its own branch rather than landed on the trunk (SUBTASK-23, DONE-6).
   un-end the task: the end happened and the result stays (SUBTASK-13). Both the
   page's control (DONE-4) and the tool (DONE-6) work on a task chat, which is
   what makes a child's own `mark_done` the ordinary way for it to finish.
-  *Changed:* a task chat's flag used to be bookkeeping beside the task, which
-  ended with the child's `finish_task` (the retired SUBTASK-3) or its turn
-  (SUBTASK-8).
 
 ### Marking it by hand
 

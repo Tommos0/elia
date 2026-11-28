@@ -98,11 +98,6 @@ resumed either: one paused at a limit (RESUME-8) was asking them to decide.
   SUBTASK-13). There is no watcher to put back (the retired SUBTASK-28) and no
   entry to take again (the retired SUBTASK-11): what waits for a child is the
   parent's own `await_task` call, and what makes it a child is its chat.
-  *Changed:* a resumed child used to take its entry in the registry of running
-  children again before its turn ran, so the tree it worked in had one writer
-  again (the retired SUBTASK-4), and a child whose entry couldn't be taken, or
-  whose task said nothing about the commit it started from, was not resumed at
-  all; both went with the registry and the start commit.
 
 - **RESUME-8** A chat whose turn had paused at a limit when the restart came
   (SESS-27, LOOP-19) is not resumed: it was waiting for the user's decision, and

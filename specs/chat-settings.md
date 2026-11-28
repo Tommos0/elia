@@ -49,8 +49,6 @@ what are my limits?" from the conversation rather than by asking.
   project's of NET-22 to NET-24),
   **Limits** (LIMIT-6) and **Context** (the chat's compaction options of
   COMPACT-9 and the "Compact" button of UI-54, COMPACT-10).
-  *Changed:* the page gained the Network section, whose controls NET-22 to
-  NET-24 and NET-38 give.
 - **CSET-6** Every control that changes a chat's saved value does so through the
   session (SESS-14, SESS-16, SESS-30, LIMIT-2), so a chat with no messages yet
   is not written to disk by a change made here: the value lives in the running
@@ -59,16 +57,6 @@ what are my limits?" from the conversation rather than by asking.
   (`#settings-form`) with **one** Save button (`#save-settings`), which saves
   them all: the turn limits (LIMIT-6) and the compaction options (COMPACT-30) of
   the Limits and Context sections alike. A half-typed number is never a setting.
-  *Changed:* the form used to save the Network section's host list too; the
-  entries a chat names of its own have a Save of their own in that section
-  (NET-38), and its project's are changed on the project's own page
-  (NET-24, PROJ-50, PROJ-51).
-  The save is all or nothing: a value that isn't one (LIMIT-7, COMPACT-30)
-  changes nothing — no limit and no option — and the page shows the message for
-  the first bad value (`#settings-error`), keeping what was typed so it can be
-  corrected. A setting that is on or off is a switch that applies the moment it
-  is clicked, like the jail switch and the auto-approve switches
-  (UI-42, UI-67), and says its state in words.
 
 ### The chat page
 
@@ -78,9 +66,7 @@ what are my limits?" from the conversation rather than by asking.
   (`#chat-settings-link`) to `/c/<id>/settings`, and the menu shows the model
   in use above it as text — the selected model's name (`#chat-settings-model`)
   and its provider badge — so the click that used to open the picker now leads
-  to where the picker lives. *Changed:* the model's name used to sit in the
-  toolbar itself, in the link to the page, so what was answering was visible
-  while typing; the menu holds it now (UI-97).
+  to where the picker lives.
 - **CSET-9** While a chat's jail is off, or the host has no jail at all, the
   chat page still says so in its composer toolbar, beside the chat menu's
   trigger (`#jail-warning`, `#jail-unavailable`) and never inside the menu —

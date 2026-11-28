@@ -42,10 +42,7 @@ expensive because of this feature.
   created (STORE-32), so it is the chat's title wherever a title is shown or
   listed, and its row in the chat list reads it (UI-45). The child may set a
   title of its own afterwards, like any chat (TITLE-4, TITLE-5): the spawn's
-  title is its first name, not a rule it is held to. *Changed:* a task chat used
-  to ignore any stored title and be listed under its task's title (STORE-17),
-  with `set_title` refused in it (TITLE-6); both went with the task-only title
-  rule.
+  title is its first name, not a rule it is held to.
 
 ### Setting it
 
@@ -66,9 +63,7 @@ expensive because of this feature.
   also refuses a chat whose title was set by hand (TITLE-9), with an error
   naming that reason — that name is the user's, so overwriting it is the one
   thing the model must not do — saving and broadcasting nothing. It refuses
-  nothing else. *Changed:* it used to refuse only a blank title; before that it
-  also refused a chat whose session has task metadata (TITLE-3), and a sub-task
-  may name itself like any chat.
+  nothing else.
 
 ### The trigger
 
