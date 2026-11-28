@@ -54,8 +54,11 @@ only reader.
   worktree of a project and the live tree read the same ones and a chat's jailed
   command reaches them.
 - **SPEC-22** A reservation is bookkeeping, not corpus: it is not committed, it
-  appears in no `git status --porcelain`, and a reserved number that is never
-  used stays unused.
+  appears in no `git status --porcelain`, and a number the corpus defines
+  (SPEC-3) is never handed out again, whatever the store holds. A reservation
+  holds a number until the chat drafts it; one a chat reserved and did not use
+  is released by removing its directory from the store, which frees the number
+  for a later `bin/reserve`.
 - **SPEC-23** `bin/reserve <PREFIX> [<count>]` prints the IDs to use, one per
   line, and exits 0.
 - **SPEC-24** `bin/reserve` given no prefix, a prefix that is not a requirement
