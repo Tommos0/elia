@@ -436,6 +436,15 @@ bubblewrap is missing (ISOL-12).
 - Seccomp filters, cgroup limits, and capping what a jailed command may write
   inside its own workspace.
 
+## Stored data
+
+A chat stores one thing about isolation: `jail: false`, written only while that
+chat's jail is off and dropped when it is turned back on (STORE-1, STORE-25), so
+a chat with the jail on carries no entry and reads as jailed (ISOL-16). Nothing
+about the jail itself is stored — the namespace, the relay script and whether
+this host can build one at all (ISOL-20) are the running process's. A file an
+older version wrote is read as it is: backward compatible, no migration.
+
 ## Implementation
 
 `Elia.Shell` (the bubblewrap argv, the one profile and what it holds, the

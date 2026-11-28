@@ -101,6 +101,13 @@ tree's own file aside.
 - A project's `.env` is not read for anything else: it is not a place for a
   project's settings, and no other part of the harness reads it.
 
+## Stored data
+
+Nothing is stored: Elia only reads the project's `.env` (SECRET-1, SECRET-4), and
+reading it adds or changes no key of a saved chat and none of the settings
+database, so no stored shape moves and no migration is needed. The file itself
+is the user's, and one an older version read is read the same way.
+
 ## Implementation
 
 `Elia.Secrets` (reading the file, what is a secret and redaction),

@@ -81,6 +81,15 @@ code change.
   `/settings` instead of selectable models — except one that needs no key at
   all (LOCAL-2), which offers its models with none.
 
+## Stored data
+
+A chat's own selection is the `model` key of its saved file — a map, written
+only when the chat has a selection of its own (STORE-1, STORE-9), so a chat with
+none carries no entry and follows the default. The default the settings page
+last used is the `:model` entry of the settings database (MODEL-15, CONF-5).
+Neither changes the other's shape, and each is read as it is when an older
+version wrote it: backward compatible, no migration.
+
 ## Implementation
 
 `Elia.LLM` (`selection/1`, `select/3`, `models/1`), `Elia.LLM.Catalog`,

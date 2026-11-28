@@ -126,6 +126,16 @@ a chat that wants its commands reviewed turns that switch off (UI-39).
   whose row states an approval or a role the tool doesn't have each fail the
   suite.
 
+## Stored data
+
+A chat's auto-approved tools are the `auto_approve` key of its saved file
+(STORE-1): a list of tool-name strings, written when the chat auto-approves a
+tool and dropped when the list is empty (STORE-14, APPR-8). The settings
+database holds no approval state of its own (CONF-5), so this one key is the
+whole shape the feature writes. A list an older version wrote is read name by
+name, and a name no tool answers to is ignored rather than dropped: backward
+compatible, no migration.
+
 ## Implementation
 
 `Elia.Tool`, `Elia.Agent.Loop`, `Elia.Agent.Session` (auto-approval is applied

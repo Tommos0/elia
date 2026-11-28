@@ -150,6 +150,15 @@ turn that stopped for the user says so however much later the chat is opened.
   it."; ended, the stop message says "Stopped standing still: <tool> returned the
   same result 4 times" (STOP-1, STOP-2).
 
+## Stored data
+
+A chat's own limits are the `limits` key of its saved file (STORE-1): a map of
+only the limits that are not the configured default, so a chat that sets none
+carries no entry at all (STORE-27, LIMIT-1). Writing a limit adds or drops an
+entry of that map and changes nothing else a chat holds, so a file an older
+version wrote loads with the limits it names and the default for each it does
+not: backward compatible, no migration.
+
 ## Implementation
 
 `Elia.Limits` (the defaults, LIMIT-9), `Elia.Agent` (`set_limits/2`),

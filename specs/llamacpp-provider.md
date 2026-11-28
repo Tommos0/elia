@@ -171,6 +171,17 @@ config :elia, Elia.LLM.LlamaServer,
 - Agent tools to start or stop the server; it is done from Settings.
 - Running more than one local server, or a server per chat.
 
+## Stored data
+
+Saving the section (LOCAL-28) writes the local server's settings — binary,
+models directory, model, host, port, context, threads, extra args and jinja
+(LOCAL-25) — as entries of the settings database (CONF-1), and Reset drops them
+so the configuration applies again (LOCAL-28). Nothing about a running server is
+stored: the process, its status and its output lines are the running app's
+(LOCAL-26, LOCAL-27). A table an older version wrote, or one carrying none of
+these entries, reads as the configured defaults: backward compatible, no
+migration.
+
 ## Implementation
 
 `Elia.LLM.LlamaCpp`, `Elia.LLM.OpenAI` (LOCAL-10),

@@ -113,6 +113,16 @@ expensive because of this feature.
 - Re-titling a chat as its subject shifts, beyond a second `set_title` the agent
   itself chooses to make (TITLE-5).
 
+## Stored data
+
+A chat's title is the `title` key of its saved file (STORE-1, STORE-32), and a
+title set by hand carries the `title_by` key `"user"` beside it (STORE-55,
+TITLE-9). A blank title, a title the model set and one derived from the first
+message are not written at all (STORE-7, STORE-32), so a chat with no title of
+its own carries neither key. Backward compatible: a chat saved before `title_by`
+existed reads as one whose title was not set by hand, and no migration is
+needed.
+
 ## Implementation
 
 `Elia.Store` (the saved fields, the listing's precedence, the accessors for a

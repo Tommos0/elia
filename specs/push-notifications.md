@@ -157,6 +157,16 @@ next receives it. Registration rides on the existing service worker (PWA-4).
 - Offline queueing: a push is sent when the event happens, from a server that
   must be able to reach the push service.
 
+## Stored data
+
+Both shapes are entries of the settings database (CONF-1): the VAPID key pair
+(`push_vapid_keys`, PUSH-1) and the subscriptions (`push_subscriptions`, PUSH-3)
+— each subscription a map of `endpoint`, `p256dh` and `auth`, keyed by endpoint,
+so subscribing an endpoint that is already stored replaces its entry rather than
+adding a second (PUSH-3, PUSH-4). A table an older version wrote keeps its
+entries, and one carrying no key pair generates a pair on first use (PUSH-1):
+backward compatible, no migration.
+
 ## Implementation
 
 - `Elia.Push` — the VAPID key pair (PUSH-1, PUSH-25, generated with `:crypto`

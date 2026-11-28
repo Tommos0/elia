@@ -160,6 +160,19 @@ what are my limits?" from the conversation rather than by asking.
   output-token cap (`config :elia, Elia.LLM.Anthropic`) — which is a candidate
   for this page in a later change.
 
+## Stored data
+
+The page writes no file of its own (CSET-1): every control goes through the
+session (CSET-6), so what it stores is the chat's own keys — the model selection
+(`model`, STORE-9), the auto-approved tools (`auto_approve`, STORE-14), the jail
+(`jail`, STORE-25), the network mode (`network`, STORE-53), the limits
+(`limits`, STORE-27) and the reasoning effort (`effort`, STORE-37) — each one
+written only when it differs from its default, and a chat with no messages yet
+is written by none of them until its first message (CSET-6, STORE-1). The
+settings database holds the values every chat shares, never a chat's own
+(CONF-5). A file an older version wrote loads with the default of STORE-1 for
+each key it lacks: backward compatible, no migration.
+
 ## Implementation
 
 `EliaWeb.ChatSettingsLive` (the page, which the model picker, the auto-approve
